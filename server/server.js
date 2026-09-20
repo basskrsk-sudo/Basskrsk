@@ -200,7 +200,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Тайга: сервер запущен на порту ${PORT} (Node.js ${process.version})`);
+  console.log(`Тайга: сервер запущен на порту ${PORT}`);
   require('./backup').scheduleBackups();
   require('./telegram-login-poller').startPolling();
   require('./max-bot').startPolling();
