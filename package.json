@@ -1,0 +1,14 @@
+{
+  "name": "taiga-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Сервер сайта Тайга: статика + БД (SQLite) + оплата ЮKassa + Telegram-уведомления",
+  "scripts": {
+    "dev": "PORT=4173 node server/server.js",
+    "start": "node server/server.js",
+    "seed": "node server/seed.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
