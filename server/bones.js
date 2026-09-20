@@ -43,60 +43,6 @@ function spendBones(customerId, amount, orderId, description) {
   return actual;
 }
 
-// Временный резерв на время оплаты. Баланс уменьшается сразу, поэтому второй
-// параллельный заказ не сможет использовать те же косточки. Запись остаётся
-// в истории как reserve, пока платёж не завершится.
-function reserveBones(customerId, amount, orderId, description) {
-  const rounded = Math.round(amount);
-  if (!customerId || !orderId || !Number.isFinite(rounded) || rounded <= 0) return 0;
-  const result = db.prepare(`
-    UPDATE customers SET bones_balance = bones_balance - ?
-    WHERE id = ? AND bones_balance >= ?
-  `).run(rounded, customerId, rounded);
-  if (result.changes !== 1) return 0;
-  db.prepare(`
-    INSERT INTO bone_transactions (customer_id, amount, type, description, order_id)
-    VALUES (?, ?, 'reserve', ?, ?)
-  `).run(customerId, -rounded, description || 'Резерв косточек на время оплаты', orderId);
-  return rounded;
-}
-
-// Превращает существующий резерв в окончательное списание без повторного
-// изменения баланса. Условие type='reserve' делает операцию идемпотентной.
-function consumeReservedBones(orderId, description) {
-  if (!orderId) return 0;
-  const reservation = db.prepare(`
-    SELECT id, amount FROM bone_transactions
-    WHERE order_id = ? AND type = 'reserve'
-    ORDER BY id DESC LIMIT 1
-  `).get(orderId);
-  if (!reservation) return 0;
-  db.prepare("UPDATE bone_transactions SET type = 'spend', description = ? WHERE id = ? AND type = 'reserve'")
-    .run(description || 'Оплата заказа косточками', reservation.id);
-  return Math.abs(reservation.amount);
-}
-
-// Освобождает неиспользованный резерв. Исходная отрицательная запись остаётся
-// в истории, а парная положительная release возвращает баланс и даёт полный
-// аудиторский след. Повторный вызов ничего не делает.
-function releaseReservedBones(orderId, description) {
-  if (!orderId) return 0;
-  const reservation = db.prepare(`
-    SELECT id, customer_id, amount FROM bone_transactions
-    WHERE order_id = ? AND type = 'reserve'
-    ORDER BY id DESC LIMIT 1
-  `).get(orderId);
-  if (!reservation) return 0;
-  const amount = Math.abs(reservation.amount);
-  db.prepare("UPDATE bone_transactions SET type = 'reserve_released' WHERE id = ? AND type = 'reserve'").run(reservation.id);
-  db.prepare('UPDATE customers SET bones_balance = bones_balance + ? WHERE id = ?').run(amount, reservation.customer_id);
-  db.prepare(`
-    INSERT INTO bone_transactions (customer_id, amount, type, description, order_id)
-    VALUES (?, ?, 'release', ?, ?)
-  `).run(reservation.customer_id, amount, description || 'Освобождение резерва косточек', orderId);
-  return amount;
-}
-
 // Возврат косточек, списанных за заказ, который потом отменили/вернули.
 function refundBones(customerId, amount, orderId, description) {
   return awardBones(customerId, amount, 'refund', description || 'Возврат косточек за отменённый заказ', orderId);
@@ -127,15 +73,4 @@ function computeMaxUsableBones(balance, amountBeforeBones, isSelfOrder) {
   return Math.max(0, Math.min(Math.max(0, balance), maxSpendable));
 }
 
-module.exports = {
-  getBonesBalance,
-  awardBones,
-  spendBones,
-  reserveBones,
-  consumeReservedBones,
-  releaseReservedBones,
-  refundBones,
-  computeMaxUsableBones,
-  getMaxBonesShare,
-  BONES_SHARE_TIERS,
-};
+module.exports = { getBonesBalance, awardBones, spendBones, refundBones, computeMaxUsableBones, getMaxBonesShare, BONES_SHARE_TIERS };

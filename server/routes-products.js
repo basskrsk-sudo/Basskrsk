@@ -10,20 +10,8 @@ const { sendJson } = require('./http-utils');
 const { requireAuth, tryAuth } = require('./routes-auth');
 const { reverseAndDeleteOrdersBy } = require('./order-reversal');
 const { getReviewSummary } = require('./routes-reviews');
-const { sendTelegram } = require('./telegram');
-const { logManagerAction } = require('./audit-log');
 
-const PRODUCT_CATEGORIES = new Set(['treats', 'toys', 'accessories', 'care']);
-
-// Папка с загруженными фото товаров — специально ВНЕ public/, в постоянном
-// хранилище (DATA_DIR, то же самое, где живёт база данных). public/
-// пересобирается заново из архива при каждом деплое на Amvera — если бы
-// фото лежали внутри неё, любой следующий деплой стирал бы всё, что
-// владелец успел загрузить через админку. Для запуска без Amvera
-// (DATA_DIR не задан) — используем локальную папку рядом с проектом, как
-// раньше.
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
-const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+const UPLOADS_DIR = path.join(__dirname, '..', 'public', 'images', 'uploads');
 
 function productWithVariantsAndStock(product, includeCost, includeInactiveVariants) {
   const variants = db.prepare(
@@ -229,7 +217,7 @@ function registerProductRoutes(router) {
   });
 
   // POST /api/points — админ вручную добавляет новую точку (без привязки к регистрации партнёра)
-  router.post('/api/points', async (req, res, ctx) => {
+  router.post('/api/points', (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
     if (!payload) return;
     const { name, addr, icon, lat, lng, city_id } = ctx.body || {};
@@ -281,28 +269,6 @@ function registerProductRoutes(router) {
         db.prepare('INSERT OR IGNORE INTO stock (variant_id, point_id, qty) VALUES (?, ?, 0)').run(v.id, candidate);
       }
     }
-
-    const cityRow = db.prepare('SELECT name FROM cities WHERE id = ?').get(city_id);
-    const creatorLine = payload.role === 'manager'
-      ? '👤 Создал менеджер: ' + payload.login
-      : '👤 Создал администратор: ' + payload.login;
-    await sendTelegram([
-      '📍 <b>Новая точка</b>',
-      '',
-      (icon || '📍') + ' ' + name,
-      '🏠 ' + addr,
-      '🏙 ' + (cityRow ? cityRow.name : city_id),
-      creatorLine,
-      '🕐 ' + new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Krasnoyarsk' }),
-    ].join('\n'));
-
-    if (payload.role === 'manager') {
-      logManagerAction(payload.id, 'Создание точки', {
-        type: 'point', id: candidate, name,
-        details: (cityRow ? cityRow.name : city_id) + ' · ' + addr,
-      });
-    }
-
     sendJson(res, 201, { ok: true, id: candidate });
   });
 
@@ -488,13 +454,6 @@ function registerProductRoutes(router) {
       WHERE id = ?
     `).run(nextTagline, nextDescription, nextPhoto, nextInstagram, nextVk, nextWebsite, nextPublished ? 1 : 0, ctx.params.id);
 
-    if (payload.role === 'manager') {
-      logManagerAction(payload.id, 'Изменение страницы точки', {
-        type: 'salon_page', id: point.id, name: point.name,
-        details: nextPublished ? 'Страница сохранена и опубликована' : 'Страница сохранена без публикации',
-      });
-    }
-
     sendJson(res, 200, { ok: true, published: nextPublished });
   });
 
@@ -581,9 +540,6 @@ function registerProductRoutes(router) {
     if (!slug || !name || !category || !icon || !desc || !Array.isArray(variants) || variants.length === 0) {
       return sendJson(res, 400, { error: 'Заполните slug, name, category, icon, desc и хотя бы один вариант' });
     }
-    if (!PRODUCT_CATEGORIES.has(category)) {
-      return sendJson(res, 400, { error: 'Выберите категорию: лакомства, игрушки, аксессуары или уход' });
-    }
     const info = db.prepare(
       'INSERT INTO products (slug, name, category, icon, badge, img, desc, comp, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)'
     ).run(slug, name, category, icon, badge || null, img || null, desc, JSON.stringify(comp || []));
@@ -606,9 +562,6 @@ function registerProductRoutes(router) {
     const payload = requireAuth(['admin', 'warehouse'])(req, res, ctx);
     if (!payload) return;
     const { name, category, icon, badge, desc, comp, active, img } = ctx.body || {};
-    if (category !== undefined && !PRODUCT_CATEGORIES.has(category)) {
-      return sendJson(res, 400, { error: 'Выберите категорию: лакомства, игрушки, аксессуары или уход' });
-    }
     const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Товар не найден' });
     db.prepare(

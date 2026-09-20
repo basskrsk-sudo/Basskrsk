@@ -9,18 +9,16 @@ const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
-const { sendTelegram } = require('./telegram');
-const { logManagerAction } = require('./audit-log');
 
 function safeOwner(o) {
-  const { password_hash, telegram_chat_id, ...rest } = o;
-  return { ...rest, telegram_connected: !!telegram_chat_id };
+  const { password_hash, ...rest } = o;
+  return rest;
 }
 
 function registerOwnerRoutes(router) {
   // POST /api/salon-owners — админ создаёт аккаунт владельца, сразу
   // привязывая к точке.
-  router.post('/api/salon-owners', async (req, res, ctx) => {
+  router.post('/api/salon-owners', (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
     if (!payload) return;
     const { full_name, phone, login, password, point_id } = ctx.body || {};
@@ -55,29 +53,6 @@ function registerOwnerRoutes(router) {
     // собственный id владельца, поэтому не может быть частью самого INSERT.
     const ownerCode = 'OWN-' + String(info.lastInsertRowid).padStart(3, '0');
     db.prepare('UPDATE salon_owners SET owner_code = ? WHERE id = ?').run(ownerCode, info.lastInsertRowid);
-
-    const pointRow = point_id ? db.prepare('SELECT name FROM points WHERE id = ?').get(point_id) : null;
-    const creatorLine = payload.role === 'manager'
-      ? '👤 Создал менеджер: ' + payload.login
-      : '👤 Создал администратор: ' + payload.login;
-    await sendTelegram([
-      '🏠 <b>Новый владелец салона</b>',
-      '',
-      '👤 ' + full_name + ' (' + ownerCode + ')',
-      '📞 ' + phone,
-      '🔑 Логин: ' + login,
-      '📍 Точка: ' + (pointRow ? pointRow.name : 'не привязана'),
-      creatorLine,
-      '🕐 ' + new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Krasnoyarsk' }),
-    ].join('\n'));
-
-    if (payload.role === 'manager') {
-      logManagerAction(payload.id, 'Регистрация владельца салона', {
-        type: 'salon_owner', id: info.lastInsertRowid, name: full_name,
-        details: 'Точка: ' + (pointRow ? pointRow.name : point_id),
-      });
-    }
-
     sendJson(res, 201, { ok: true, id: info.lastInsertRowid, owner_code: ownerCode });
   });
 

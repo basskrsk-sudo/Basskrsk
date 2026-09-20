@@ -125,29 +125,6 @@ async function getPayment(paymentId) {
   return data;
 }
 
-// Отменяет ещё не завершённый платёж перед освобождением 15-минутного
-// резерва. Пока ЮKassa не подтвердила status='canceled', товар не возвращаем
-// в доступный остаток — иначе поздний успех мог бы привести к перепродаже.
-async function cancelPayment(paymentId) {
-  const res = await fetchWithTimeout(`${API_BASE}/payments/${paymentId}/cancel`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': authHeader(),
-      'Idempotence-Key': `cancel-${paymentId}`,
-    },
-    body: '{}',
-  });
-  const data = await parseJsonSafe(res, 'отмене платежа');
-  if (!res.ok) {
-    const err = new Error(data.description || 'Ошибка отмены платежа в ЮKassa');
-    err.statusCode = 502;
-    err.details = data;
-    throw err;
-  }
-  return data;
-}
-
 // Создаёт возврат (полный или частичный) уже проведённого платежа. ЮKassa
 // сама формирует чек возврата на основе данных исходного платежа — заново
 // передавать receipt не нужно.
@@ -176,4 +153,4 @@ async function createRefund({ paymentId, amount, description, orderCode }) {
   return data; // { id, status, amount, payment_id, ... }
 }
 
-module.exports = { createPayment, getPayment, cancelPayment, createRefund, isConfigured };
+module.exports = { createPayment, getPayment, createRefund, isConfigured };

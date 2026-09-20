@@ -6,9 +6,6 @@ const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
-const { sendTelegram } = require('./telegram');
-const { logManagerAction } = require('./audit-log');
-const { getUnpaidSummary, listManagerPartnerPayouts } = require('./partner-payouts');
 
 function nextMgrCode() {
   const row = db.prepare("SELECT mgr_code FROM managers ORDER BY id DESC LIMIT 1").get();
@@ -18,8 +15,8 @@ function nextMgrCode() {
 }
 
 function safeMgr(a) {
-  const { password_hash, telegram_chat_id, ...rest } = a;
-  return { ...rest, telegram_connected: !!telegram_chat_id };
+  const { password_hash, ...rest } = a;
+  return rest;
 }
 
 // Вознаграждение менеджера — постоянная ставка 7% со всех точек, без
@@ -51,10 +48,10 @@ function mgrWithPoints(a) {
 
 function registerManagerRoutes(router) {
   // POST /api/managers — админ создаёт нового менеджера (по договорённости, не самостоятельная регистрация)
-  router.post('/api/managers', async (req, res, ctx) => {
+  router.post('/api/managers', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    const { full_name, phone, email, login, password, legal_form, inn, bank_details, city_id } = ctx.body || {};
+    const { full_name, phone, login, password, legal_form, inn, bank_details, city_id } = ctx.body || {};
     if (!full_name || !phone || !login || !password) {
       return sendJson(res, 400, { error: 'Заполните ФИО, телефон, логин и пароль' });
     }
@@ -67,22 +64,9 @@ function registerManagerRoutes(router) {
 
     const code = nextMgrCode();
     const info = db.prepare(`
-      INSERT INTO managers (mgr_code, login, password_hash, full_name, phone, email, legal_form, inn, bank_details, city_id, active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(code, login, hashPassword(password), full_name, phone, email || null, legal_form || null, inn || null, bank_details || null, cityId);
-
-    const cityRow = db.prepare('SELECT name FROM cities WHERE id = ?').get(cityId);
-    await sendTelegram([
-      '🌟 <b>Новый менеджер</b>',
-      '',
-      '👤 ' + full_name + ' (' + code + ')',
-      '📞 ' + phone,
-      '🔑 Логин: ' + login,
-      '🏙 ' + (cityRow ? cityRow.name : cityId),
-      '👤 Создал администратор: ' + payload.login,
-      '🕐 ' + new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Krasnoyarsk' }),
-    ].join('\n'));
-
+      INSERT INTO managers (mgr_code, login, password_hash, full_name, phone, legal_form, inn, bank_details, city_id, active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(code, login, hashPassword(password), full_name, phone, legal_form || null, inn || null, bank_details || null, cityId);
     sendJson(res, 201, { ok: true, mgr_code: code, id: info.lastInsertRowid });
   });
 
@@ -103,12 +87,11 @@ function registerManagerRoutes(router) {
     if (!payload) return;
     const existing = db.prepare('SELECT * FROM managers WHERE id = ?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Менеджер не найден' });
-    const { active, full_name, phone, email, legal_form, inn, bank_details } = ctx.body || {};
-    db.prepare('UPDATE managers SET active=?, full_name=?, phone=?, email=?, legal_form=?, inn=?, bank_details=? WHERE id=?').run(
+    const { active, full_name, phone, legal_form, inn, bank_details } = ctx.body || {};
+    db.prepare('UPDATE managers SET active=?, full_name=?, phone=?, legal_form=?, inn=?, bank_details=? WHERE id=?').run(
       active !== undefined ? (active ? 1 : 0) : existing.active,
       full_name ?? existing.full_name,
       phone ?? existing.phone,
-      email !== undefined ? email : existing.email,
       legal_form !== undefined ? legal_form : existing.legal_form,
       inn !== undefined ? inn : existing.inn,
       bank_details !== undefined ? bank_details : existing.bank_details,
@@ -162,12 +145,6 @@ function registerManagerRoutes(router) {
       INSERT INTO manager_points (manager_id, point_id, point_name, point_type, revenue, commission_rate, active, bonus_paid)
       VALUES (?, ?, ?, ?, 0, ?, 1, 0)
     `).run(ctx.params.id, pointId, point_name, point_type, computeManagerCommissionRate());
-    if (payload.role === 'manager') {
-      logManagerAction(payload.id, 'Создание точки', {
-        type: 'point', id: pointId || info.lastInsertRowid, name: point_name,
-        details: address ? String(address) : String(point_type),
-      });
-    }
     sendJson(res, 201, { ok: true, id: info.lastInsertRowid, point_id: pointId });
   });
 
@@ -178,77 +155,6 @@ function registerManagerRoutes(router) {
     const mgr = db.prepare('SELECT * FROM managers WHERE id = ?').get(payload.id);
     if (!mgr) return sendJson(res, 404, { error: 'Не найдено' });
     sendJson(res, 200, { manager: mgrWithPoints(mgr) });
-  });
-
-  // PUT /api/manager/profile — менеджер сохраняет собственные контактные данные.
-  // Отдельный путь исключает пересечение с административным /api/managers/:id.
-  // и реквизиты. Запись идёт в SQLite в /data, поэтому переживает новый деплой.
-  router.put('/api/manager/profile', (req, res, ctx) => {
-    const payload = requireAuth(['manager'])(req, res, ctx);
-    if (!payload) return;
-    const existing = db.prepare('SELECT * FROM managers WHERE id = ?').get(payload.id);
-    if (!existing) return sendJson(res, 404, { error: 'Менеджер не найден' });
-
-    const body = ctx.body || {};
-    const fullName = body.full_name !== undefined ? String(body.full_name).trim() : existing.full_name;
-    const phone = body.phone !== undefined ? String(body.phone).trim() : existing.phone;
-    const email = body.email !== undefined ? String(body.email).trim().toLowerCase() : (existing.email || '');
-    const legalForm = body.legal_form !== undefined ? String(body.legal_form).trim() : (existing.legal_form || '');
-    const inn = body.inn !== undefined ? String(body.inn).replace(/\D/g, '') : (existing.inn || '');
-    const bankDetails = body.bank_details !== undefined ? String(body.bank_details).trim() : (existing.bank_details || '');
-
-    if (!fullName) return sendJson(res, 400, { error: 'Укажите ФИО' });
-    if (phone.replace(/\D/g, '').length < 10) return sendJson(res, 400, { error: 'Укажите корректный телефон' });
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return sendJson(res, 400, { error: 'Укажите корректный email' });
-    }
-    if (legalForm && !['npd', 'ip', 'ooo'].includes(legalForm)) {
-      return sendJson(res, 400, { error: 'Неизвестная форма работы' });
-    }
-    if (inn && ![10, 12].includes(inn.length)) {
-      return sendJson(res, 400, { error: 'ИНН должен содержать 10 или 12 цифр' });
-    }
-    if (fullName.length > 200 || phone.length > 40 || email.length > 254 || bankDetails.length > 3000) {
-      return sendJson(res, 400, { error: 'Одно из полей слишком длинное' });
-    }
-
-    db.prepare(`
-      UPDATE managers
-      SET full_name = ?, phone = ?, email = ?, legal_form = ?, inn = ?, bank_details = ?
-      WHERE id = ?
-    `).run(fullName, phone, email || null, legalForm || null, inn || null, bankDetails || null, payload.id);
-    const updated = db.prepare('SELECT * FROM managers WHERE id = ?').get(payload.id);
-    logManagerAction(payload.id, 'Обновление профиля', { type: 'manager', id: payload.id, name: fullName });
-    sendJson(res, 200, { ok: true, manager: mgrWithPoints(updated) });
-  });
-
-  // GET /api/managers/me/orders?days=N — заказы только с точек текущего
-  // менеджера. Имя грумера берём из снимка в заказе, а для старых записей
-  // используем действующую карточку партнёра.
-  router.get('/api/managers/me/orders', (req, res, ctx) => {
-    const payload = requireAuth(['manager'])(req, res, ctx);
-    if (!payload) return;
-    const days = Math.max(1, Math.min(365, parseInt(ctx.query.days, 10) || 30));
-    const limit = Math.max(1, Math.min(500, parseInt(ctx.query.limit, 10) || 200));
-    const orders = db.prepare(`
-      SELECT o.id, o.order_code, o.customer_name, o.customer_lname,
-             o.pickup_point, o.point_id, o.total, o.payment_method,
-             o.status, o.refund_status, o.refunded_amount, o.created_at,
-             pt.name AS point_name,
-             COALESCE(o.partner_name, pr.full_name) AS partner_name
-      FROM orders o
-      JOIN points pt ON pt.id = o.point_id
-      LEFT JOIN partners pr ON pr.id = o.partner_id
-      WHERE pt.manager_id = ?
-        AND o.created_at >= datetime('now', '-' || ? || ' days')
-      ORDER BY o.id DESC
-      LIMIT ?
-    `).all(payload.id, days, limit);
-    const getItems = db.prepare('SELECT variant_id, name, weight, price, qty, is_custom FROM order_items WHERE order_id = ?');
-    sendJson(res, 200, {
-      orders: orders.map((order) => ({ ...order, items: getItems.all(order.id) })),
-      days,
-    });
   });
 
   // DELETE /api/managers/:id — админ удаляет менеджера безвозвратно. Точки,
@@ -332,55 +238,6 @@ function registerManagerRoutes(router) {
       return { point_id: point.id, point_name: point.name, point_icon: point.icon, items: rows };
     });
     sendJson(res, 200, { points: result });
-  });
-  // GET /api/managers/me/partners — партнёры на ВСЕХ точках менеджера, с
-  // реальными результатами продаж за период. Показывает менеджеру, кто
-  // сейчас работает на его точках и как у них идут дела — без этого
-  // менеджер видел только свою собственную выручку по точке в целом, не
-  // видя, кто конкретно из партнёров её приносит.
-  router.get('/api/managers/me/partners', (req, res, ctx) => {
-    const payload = requireAuth(['manager'])(req, res, ctx);
-    if (!payload) return;
-    const days = Math.max(1, Math.min(365, parseInt(ctx.query.days, 10) || 30));
-
-    const points = db.prepare('SELECT id, name, icon FROM points WHERE manager_id = ? ORDER BY name').all(payload.id);
-    const result = points.map((point) => {
-      const partners = db.prepare(`
-        SELECT id, partner_code, full_name, phone, commission_rate, active
-        FROM partners WHERE point_id = ? ORDER BY full_name
-      `).all(point.id);
-      const withStats = partners.map((p) => {
-        const stats = db.prepare(`
-          SELECT COUNT(*) AS orders_count, COALESCE(SUM(total), 0) AS revenue
-          FROM orders
-          WHERE partner_id = ? AND status = 'paid' AND created_at >= datetime('now', '-' || ? || ' days')
-        `).get(p.id, days);
-        return {
-          id: p.id,
-          partner_code: p.partner_code,
-          full_name: p.full_name,
-          phone: p.phone,
-          commission_rate: p.commission_rate,
-          active: !!p.active,
-          orders_count: stats.orders_count,
-          revenue: stats.revenue,
-          commission_earned: Math.round(stats.revenue * p.commission_rate),
-          unpaid_earnings: getUnpaidSummary(p.id).amount,
-        };
-      });
-      return { point_id: point.id, point_name: point.name, point_icon: point.icon, partners: withStats };
-    });
-    sendJson(res, 200, { points: result });
-  });
-
-  // Выплаты грумерам, закреплённым за точками этого менеджера. manager_id и
-  // имя фиксируются в момент выплаты, поэтому история не меняется при
-  // последующем переназначении точки другому менеджеру.
-  router.get('/api/managers/me/partner-payouts', (req, res, ctx) => {
-    const payload = requireAuth(['manager'])(req, res, ctx);
-    if (!payload) return;
-    const limit = Math.max(1, Math.min(200, parseInt(ctx.query.limit, 10) || 100));
-    sendJson(res, 200, { payouts: listManagerPartnerPayouts(payload.id, limit) });
   });
 }
 

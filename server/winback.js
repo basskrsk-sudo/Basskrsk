@@ -34,7 +34,7 @@ function findWinbackCandidates() {
 function buildWinbackMessage(customer) {
   const greeting = customer.pet_name
     ? `🐾 Соскучились по лакомствам для ${customer.pet_name}?`
-    : '🐾 Соскучились по покупкам в ХвостМаркете?';
+    : '🐾 Соскучились по лакомствам «Тайга»?';
   return [
     greeting,
     '',

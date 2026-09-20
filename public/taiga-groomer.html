@@ -2,21 +2,18 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=28">
-<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=28">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="shortcut icon" href="/favicon.ico">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Тайга — Личный кабинет партнёра</title>
 <link rel="manifest" href="manifest-groomer.json">
 <meta name="theme-color" content="#1C3A2F">
-<link rel="apple-touch-icon" href="images/icons/icon-180-apple.png?v=20">
+<link rel="apple-touch-icon" href="images/icons/icon-180-apple.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Тайга Грумер">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="payout-schedule.css">
-<link rel="stylesheet" href="telegram-connect.css?v=38">
-<link rel="stylesheet" href="cabinet-navigation.css?v=46">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 html { font-size: 16px; }
@@ -82,8 +79,6 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
   border-bottom:1px solid rgba(255,255,255,.1);
 }
 .sidebar-logo span{color:var(--amber);}
-.sidebar-brand-mark{width:66px;height:66px;box-sizing:border-box;flex:0 0 66px;display:flex;align-items:center;justify-content:center;padding:4px;background:#fff;border-radius:16px;box-shadow:0 3px 12px rgba(0,0,0,.22);}
-.sidebar-brand-mark img{width:58px;height:auto;display:block;image-rendering:auto;}
 .sidebar-user{
   padding:.9rem 1.25rem;display:flex;align-items:center;gap:.65rem;
   border-bottom:1px solid rgba(255,255,255,.08);
@@ -281,16 +276,13 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
 </style>
 <script src="config.js"></script>
-<script src="payout-schedule.js"></script>
-<script src="telegram-connect.js?v=38"></script>
-<script src="cabinet-navigation.js?v=46"></script>
 </head>
 <body>
 
 <!-- ══ LOGIN SCREEN ══ -->
 <div id="login-screen">
   <div class="login-card">
-    <div class="login-logo"><img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" style="height:132px;width:auto;display:block;margin:0 auto;"></div>
+    <div class="login-logo"><img src="images/taiga-logo.png" alt="Тайга" style="height:38px;width:auto;display:block;margin:0 auto;"></div>
     <div class="login-sub">Личный кабинет партнёра</div>
     <div class="field">
       <label>Логин</label>
@@ -307,7 +299,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
     <button class="login-btn" onclick="doLogin()">Войти</button>
 
     <div style="text-align:center;margin:.9rem 0;">
-      <a onclick="toggleTgLogin()" style="font-size:.8rem;color:var(--muted);cursor:pointer;text-decoration:underline;">Подключить Telegram и получать уведомления о продажах</a>
+      <a onclick="toggleTgLogin()" style="font-size:.8rem;color:var(--muted);cursor:pointer;text-decoration:underline;">Войти через Telegram по номеру телефона</a>
     </div>
     <div id="tg-login-block" style="display:none;background:var(--bg,#F7F3EC);border-radius:10px;padding:1rem;margin-bottom:.8rem;">
       <div id="tg-login-error" style="display:none;color:#9B2335;font-size:.78rem;margin-bottom:.5rem;"></div>
@@ -346,8 +338,8 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <div class="layout">
 
 <!-- SIDEBAR -->
-<aside class="sidebar cabinet-sidebar" id="groomer-sidebar">
-  <div class="sidebar-logo" style="display:flex;align-items:center;gap:.6rem;"><span class="sidebar-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;line-height:.88;font-family:'Inter',sans-serif;font-size:1rem;font-weight:800;letter-spacing:0;"><span style="color:#fff;">Хвост</span><span style="color:#FF5A49;margin-top:.2rem;">Маркет</span></span><button class="cabinet-menu-close" type="button" onclick="HvostCabinetNavigation.close()" aria-label="Закрыть меню">×</button></div>
+<aside class="sidebar">
+  <div class="sidebar-logo"><img src="images/taiga-logo.png" alt="Тайга" style="height:26px;width:auto;display:block;"></div>
   <div class="sidebar-user">
     <div class="avatar" id="sb-avatar">АН</div>
     <div>
@@ -356,23 +348,38 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       <div class="user-role" id="sb-city" style="opacity:.7;font-size:.75rem;"></div>
     </div>
   </div>
-  <div class="sidebar-label">Разделы</div>
-  <button class="nav-item active" data-group="home" onclick="showSec('home')"><span class="nav-dot"></span> Главная</button>
-  <button class="nav-item" data-group="work" onclick="showSec('orders')"><span class="nav-dot"></span> Продажи и остатки</button>
-  <button class="nav-item" data-group="income" onclick="showSec('earnings')"><span class="nav-dot"></span> Доход</button>
-  <button class="nav-item" data-group="growth" onclick="showSec('referral')"><span class="nav-dot"></span> Развитие</button>
-  <button class="nav-item" data-group="profile" onclick="showSec('profile')"><span class="nav-dot"></span> Профиль</button>
+  <div class="sidebar-label">Меню</div>
+  <button class="nav-item active" onclick="showSec('home')">
+    <span class="nav-dot"></span> Главная
+  </button>
+  <button class="nav-item" onclick="showSec('earnings')">
+    <span class="nav-dot"></span> Мои начисления
+  </button>
+  <button class="nav-item" onclick="showSec('stock')">
+    <span class="nav-dot"></span> Остатки на стойке
+  </button>
+  <button class="nav-item" onclick="showSec('orders')">
+    <span class="nav-dot"></span> Мои продажи
+  </button>
+  <button class="nav-item" onclick="showSec('referral')">
+    <span class="nav-dot"></span> Реферальная программа
+  </button>
+  <button class="nav-item" onclick="showSec('calculator')">
+    <span class="nav-dot"></span> Калькулятор дохода
+  </button>
+  <button class="nav-item" onclick="showSec('profile')">
+    <span class="nav-dot"></span> Профиль
+  </button>
   <div class="sidebar-footer">
     <span>v1.0</span>
     <button class="logout-btn" onclick="doLogout()">Выйти →</button>
   </div>
 </aside>
-<div class="cabinet-sidebar-overlay" id="groomer-sidebar-overlay" onclick="HvostCabinetNavigation.close()"></div>
 
 <!-- MAIN -->
 <div class="main">
   <div class="topbar">
-    <div class="cabinet-title-wrap"><button class="cabinet-menu-btn" type="button" data-cabinet-menu-button onclick="HvostCabinetNavigation.toggle()" aria-label="Открыть меню" aria-controls="groomer-sidebar" aria-expanded="false">☰</button><h1 id="sec-title">Главная</h1></div>
+    <h1 id="sec-title">Главная</h1>
     <div class="topbar-right">
       <button class="period-btn active" onclick="setPeriod('7d',this)">7 дней</button>
       <button class="period-btn" onclick="setPeriod('30d',this)">30 дней</button>
@@ -380,7 +387,6 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
     </div>
   </div>
   <div class="content">
-    <div class="cabinet-context-tabs" id="groomer-context-tabs" aria-label="Подразделы"></div>
 
     <!-- ══ HOME ══ -->
     <div class="page-sec active" id="sec-home">
@@ -402,16 +408,6 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
       <div style="background:var(--cream,#F7F3EC);border-radius:8px;padding:.8rem 1rem;margin-bottom:1.25rem;font-size:.8rem;color:var(--muted,#8A7D6B);line-height:1.6;">
         🐾 <strong>Покупаете лакомства сами себе?</strong> Если оформляете заказ на свой же номер телефона через свою точку — комиссия на этот заказ не начисляется (0%, вы не платите комиссию сами себе), а как клиент вы дополнительно получите 10% кэшбэка косточками на баланс.
-      </div>
-
-      <div class="payout-schedule-card">
-        <div class="payout-schedule-icon">📅</div>
-        <div class="payout-schedule-content">
-          <div class="payout-schedule-title">Следующая выплата вознаграждения</div>
-          <span class="payout-schedule-date" data-next-payout-date>—</span>
-          <span class="payout-schedule-countdown" data-next-payout-countdown></span>
-          <div class="payout-schedule-rule">Выплаты производятся два раза в месяц: 9-го и 24-го числа.</div>
-        </div>
       </div>
 
       <!-- KPI -->
@@ -480,9 +476,8 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
             <span>₽</span>
           </div>
           <div style="font-size:.8rem;color:var(--muted);line-height:1.7;">
-            Следующая выплата: <strong data-next-payout-date style="color:var(--text);">—</strong>
-            (<span data-next-payout-countdown></span>)<br>
-            График: 9-го и 24-го числа каждого месяца, на карту из профиля.
+            Выплаты производятся 1-го и 15-го числа каждого месяца<br>
+            на карту, привязанную в профиле.
           </div>
           <button class="payout-btn" onclick="requestPayout()">Запросить выплату</button>
         </div>
@@ -529,13 +524,6 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
             </tr>
           </thead>
           <tbody id="earn-tbody"></tbody>
-        </table>
-      </div>
-      <div class="card" style="margin-top:1rem;overflow-x:auto;">
-        <div class="card-title">История выплат <span id="payout-history-count"></span></div>
-        <table class="tbl">
-          <thead><tr><th>Дата</th><th class="r">Заказов</th><th class="r">Сумма</th><th>Статус</th></tr></thead>
-          <tbody id="payout-history-tbody"></tbody>
         </table>
       </div>
     </div>
@@ -763,7 +751,6 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
               Сменить карту
             </button>
           </div>
-          <div id="partner-telegram-connect"></div>
           <div class="card">
             <div class="card-title">Безопасность</div>
             <button style="width:100%;background:none;border:1.5px solid var(--border);color:var(--text);border-radius:var(--r);padding:.6rem;font-size:.82rem;cursor:pointer;font-family:'Inter',sans-serif;margin-bottom:.5rem;">
@@ -1005,39 +992,6 @@ async function fetchMyOrders(days) {
   return myOrdersCache;
 }
 
-async function fetchMyPayouts() {
-  try {
-    const res = await authFetch('/api/partners/me/payouts?limit=100');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return await res.json();
-  } catch (e) {
-    console.error('Не удалось загрузить выплаты:', e);
-    return { unpaid_amount: 0, unpaid_orders_count: 0, payouts: [] };
-  }
-}
-
-function escapePayoutCell(value) {
-  return String(value == null ? '' : value)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function renderPayoutHistory(payouts) {
-  const countEl = document.getElementById('payout-history-count');
-  const bodyEl = document.getElementById('payout-history-tbody');
-  if (!countEl || !bodyEl) return;
-  countEl.textContent = payouts.length + ' выплат';
-  bodyEl.innerHTML = payouts.length ? payouts.map(function(payout) {
-    const paidAt = new Date(String(payout.paid_at).replace(' ', 'T') + 'Z').toLocaleString('ru-RU');
-    return '<tr>' +
-      '<td style="white-space:nowrap;color:var(--muted);">' + paidAt + '</td>' +
-      '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
-      '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td><span class="pill pill-green">Выплачено</span></td>' +
-      '</tr>';
-  }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплат пока не было</td></tr>';
-}
-
 // Строит {labels, earn} для графика по дням из РЕАЛЬНЫХ заказов — каждый
 // день периода присутствует в графике (с нулём, если продаж не было),
 // чтобы график не «прыгал» из-за отсутствующих дат.
@@ -1136,12 +1090,6 @@ async function onPartnerLoginSuccess(data) {
   document.getElementById('sb-name').textContent = currentUser.name;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
-  HvostTelegramConnect.mount({
-    containerId: 'partner-telegram-connect',
-    role: 'partner',
-    tokenGetter: getPartnerToken,
-    connected: !!data.user.telegram_connected,
-  });
   renderSec('home');
 }
 
@@ -1290,14 +1238,15 @@ document.getElementById('l-pass').addEventListener('keydown',e=>{ if(e.key==='En
 
 // ── NAVIGATION ────────────────────────────────────────────────────────
 const SECS={home:'Главная',earnings:'Мои начисления',stock:'Остатки на стойке',orders:'Мои продажи',referral:'Реферальная программа',calculator:'Калькулятор дохода',profile:'Профиль'};
-const GROOMER_SECTION_GROUPS={home:'home',orders:'work',stock:'work',earnings:'income',calculator:'income',referral:'growth',profile:'profile'};
-HvostCabinetNavigation.init({sidebarId:'groomer-sidebar',overlayId:'groomer-sidebar-overlay',tabsId:'groomer-context-tabs',initialSection:'home',sectionGroups:GROOMER_SECTION_GROUPS,tabs:{work:[['orders','Продажи'],['stock','Остатки']],income:[['earnings','Начисления'],['calculator','Калькулятор']]}});
 function showSec(id){
   currentSec=id;
   document.querySelectorAll('.page-sec').forEach(s=>s.classList.remove('active'));
   document.getElementById('sec-'+id).classList.add('active');
   document.getElementById('sec-title').textContent=SECS[id]||id;
-  HvostCabinetNavigation.activate(id);
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  const keys=Object.keys(SECS);
+  const btn=document.querySelectorAll('.nav-item')[keys.indexOf(id)];
+  if(btn) btn.classList.add('active');
   renderSec(id);
 }
 function setPeriod(p,btn){
@@ -1377,11 +1326,10 @@ async function renderHome(){
   await renderTierProgress();
   const days=periodDays();
   const orders = await fetchMyOrders(days);
-  const payoutData = await fetchMyPayouts();
   const {labels,earn}=buildDailyEarnings(orders, days);
   const totalComm=orders.reduce((s,o)=>s+o.commission,0);
   const avgComm=Math.round(totalComm/Math.max(orders.length,1));
-  const payout=Number(payoutData.unpaid_amount || 0);
+  const payout=Math.round(totalComm*0.85);
 
   document.getElementById('h-kpi-earn').textContent=totalComm.toLocaleString('ru-RU')+' ₽';
   document.getElementById('h-kpi-earn-d').textContent='за выбранный период';
@@ -1390,7 +1338,7 @@ async function renderHome(){
   document.getElementById('h-kpi-avg').textContent=avgComm.toLocaleString('ru-RU')+' ₽';
   document.getElementById('h-kpi-avg-d').innerHTML='<span style="color:var(--muted)">на заказ</span>';
   document.getElementById('h-kpi-payout').textContent=payout.toLocaleString('ru-RU')+' ₽';
-  document.getElementById('h-kpi-payout-d').innerHTML='<span style="color:var(--muted)">' + Number(payoutData.unpaid_orders_count || 0) + ' невыплаченных заказов</span>';
+  document.getElementById('h-kpi-payout-d').innerHTML='<span style="color:var(--muted)">по стандартному графику выплат</span>';
 
   destroyChart('hEarn');
   charts['hEarn']=new Chart(document.getElementById('chartHomeEarn'),{
@@ -1444,10 +1392,9 @@ async function renderHome(){
 async function renderEarnings(){
   const days=periodDays();
   const orders = await fetchMyOrders(days);
-  const payoutData = await fetchMyPayouts();
   const {labels,earn}=buildDailyEarnings(orders, days);
   const totalComm=orders.reduce((s,o)=>s+o.commission,0);
-  const payout=Number(payoutData.unpaid_amount || 0);
+  const payout=Math.round(totalComm*0.85);
 
   document.getElementById('earn-payout').textContent=payout.toLocaleString('ru-RU');
   document.getElementById('earn-chart-label').textContent='за '+days+' дней';
@@ -1478,7 +1425,6 @@ async function renderEarnings(){
     <td class="r" style="font-weight:600;color:var(--amber)">${o.commission.toLocaleString('ru-RU')} ₽</td>
     <td><span class="pill pill-blue">Оплачен</span></td>
   </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">За этот период продаж пока не было</td></tr>';
-  renderPayoutHistory(payoutData.payouts || []);
 }
 
 // ── STOCK ────────────────────────────────────────────────────────────
@@ -1621,7 +1567,7 @@ async function saveDisplayFormat() {
 }
 
 // ── СТРАНИЦА САЛОНА (публичная реклама на сайте «Тайги») ──────────────
-// ── СТРАНИЦА САЛОНА (публичная реклама на сайте «ХвостМаркета») ───────
+// ── СТРАНИЦА САЛОНА (публичная реклама на сайте «Хвостомаркета») ──────
 // Раньше эти поля жили на самом партнёре — теперь на точке (myPointId),
 // поэтому сначала подгружаем актуальное состояние отдельным запросом,
 // а не берём из currentPartnerUser (там их больше нет).

@@ -2,14 +2,14 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=28">
-<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=28">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="shortcut icon" href="/favicon.ico">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Тайга — Кабинет кладовщика</title>
 <link rel="manifest" href="manifest-warehouse.json">
 <meta name="theme-color" content="#1C3A2F">
-<link rel="apple-touch-icon" href="images/icons/icon-180-apple.png?v=20">
+<link rel="apple-touch-icon" href="images/icons/icon-180-apple.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Тайга Склад">
@@ -52,8 +52,6 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 .sidebar{width:224px;flex-shrink:0;background:var(--forest);display:flex;flex-direction:column;}
 .sidebar-logo{padding:1.4rem 1.25rem .9rem;font-family:'Playfair Display',serif;font-size:1.2rem;color:#fff;letter-spacing:.04em;border-bottom:1px solid rgba(255,255,255,.1);}
 .sidebar-logo span{color:var(--amber);}
-.sidebar-brand-mark{width:66px;height:66px;box-sizing:border-box;flex:0 0 66px;display:flex;align-items:center;justify-content:center;padding:4px;background:#fff;border-radius:16px;box-shadow:0 3px 12px rgba(0,0,0,.22);}
-.sidebar-brand-mark img{width:58px;height:auto;display:block;image-rendering:auto;}
 .sidebar-user{padding:.9rem 1.25rem;display:flex;align-items:center;gap:.65rem;border-bottom:1px solid rgba(255,255,255,.08);}
 .avatar{width:34px;height:34px;border-radius:50%;background:rgba(212,135,42,.3);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;color:var(--amber-lt);flex-shrink:0;}
 .user-name{font-size:.82rem;font-weight:600;color:#fff;line-height:1.3;}
@@ -124,15 +122,13 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 }
 
 </style>
-<link rel="stylesheet" href="cabinet-navigation.css?v=46">
-<script src="cabinet-navigation.js?v=46"></script>
 </head>
 <body>
 
 <!-- ══ LOGIN ══ -->
 <div id="login-screen">
   <div class="login-card">
-    <div class="login-logo"><img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" style="height:132px;width:auto;display:block;margin:0 auto;"></div>
+    <div class="login-logo">Тайга<span>.</span></div>
     <div class="login-role">Кабинет кладовщика</div>
     <div class="login-error" id="login-error">Неверный логин или пароль</div>
     <div class="field">
@@ -153,8 +149,8 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <!-- ══ APP ══ -->
 <div id="app">
   <div class="layout">
-    <div class="sidebar cabinet-sidebar" id="warehouse-sidebar">
-      <div class="sidebar-logo" style="display:flex;align-items:center;gap:.6rem;"><span class="sidebar-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;line-height:.88;font-family:'Inter',sans-serif;font-size:1rem;font-weight:800;letter-spacing:0;"><span style="color:#fff;">Хвост</span><span style="color:#FF5A49;margin-top:.2rem;">Маркет</span></span><button class="cabinet-menu-close" type="button" onclick="HvostCabinetNavigation.close()" aria-label="Закрыть меню">×</button></div>
+    <div class="sidebar">
+      <div class="sidebar-logo">Тайга<span>.</span></div>
       <div class="sidebar-user">
         <div class="avatar" id="sb-avatar">К</div>
         <div>
@@ -162,20 +158,21 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <div class="user-role">Кладовщик</div>
         </div>
       </div>
-      <div class="sidebar-label">Разделы</div>
-      <button class="nav-item active" data-group="operations" onclick="showSec('receive')"><span class="nav-dot"></span> Операции</button>
-      <button class="nav-item" data-group="accounting" onclick="showSec('stock')"><span class="nav-dot"></span> Учёт склада</button>
+      <div class="sidebar-label">Склад</div>
+      <button class="nav-item active" onclick="showSec('receive')"><span class="nav-dot"></span> Приход товара</button>
+      <button class="nav-item" onclick="showSec('newproduct')"><span class="nav-dot"></span> Новый товар</button>
+      <button class="nav-item" onclick="showSec('requests')"><span class="nav-dot"></span> Заявки на выдачу</button>
+      <button class="nav-item" onclick="showSec('stock')"><span class="nav-dot"></span> Остаток склада</button>
+      <button class="nav-item" onclick="showSec('history')"><span class="nav-dot"></span> История приходов</button>
       <div class="sidebar-footer">
         <span>Тайга</span>
         <button class="logout-btn" onclick="location.reload()">Выйти</button>
       </div>
     </div>
-    <div class="cabinet-sidebar-overlay" id="warehouse-sidebar-overlay" onclick="HvostCabinetNavigation.close()"></div>
 
     <div class="main">
-      <div class="topbar"><div class="cabinet-title-wrap"><button class="cabinet-menu-btn" type="button" data-cabinet-menu-button onclick="HvostCabinetNavigation.toggle()" aria-label="Открыть меню" aria-controls="warehouse-sidebar" aria-expanded="false">☰</button><h1 id="sec-title">Приход товара</h1></div></div>
+      <div class="topbar"><h1 id="sec-title">Приход товара</h1></div>
       <div class="content">
-        <div class="cabinet-context-tabs" id="warehouse-context-tabs" aria-label="Подразделы"></div>
 
         <!-- ══ RECEIVE ══ -->
         <div class="page-sec active" id="sec-receive">
@@ -222,9 +219,8 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
               <label>Категория</label>
               <select id="np-category">
                 <option value="treats">Лакомства</option>
-                <option value="toys">Игрушки</option>
-                <option value="accessories">Аксессуары</option>
-                <option value="care">Уход</option>
+                <option value="chews">Жевательное</option>
+                <option value="toys">Аксессуары/игрушки</option>
               </select>
             </div>
             <div class="field">
@@ -334,14 +330,12 @@ async function doLogin() {
 }
 
 const SECS = { receive: 'Приход товара', newproduct: 'Новый товар', requests: 'Заявки на выдачу', stock: 'Остаток склада', history: 'История приходов' };
-const WAREHOUSE_SECTION_GROUPS = { receive: 'operations', newproduct: 'operations', requests: 'operations', stock: 'accounting', history: 'accounting' };
-HvostCabinetNavigation.init({ sidebarId: 'warehouse-sidebar', overlayId: 'warehouse-sidebar-overlay', tabsId: 'warehouse-context-tabs', initialSection: 'receive', sectionGroups: WAREHOUSE_SECTION_GROUPS, tabs: { operations: [['receive','Приход'],['newproduct','Новый товар'],['requests','Заявки']], accounting: [['stock','Остатки'],['history','История']] } });
 
 async function showSec(id) {
   document.querySelectorAll('.page-sec').forEach(function(s) { s.classList.remove('active'); });
   document.getElementById('sec-' + id).classList.add('active');
   document.getElementById('sec-title').textContent = SECS[id] || id;
-  HvostCabinetNavigation.activate(id);
+  document.querySelectorAll('.nav-item').forEach(function(b, i) { b.classList.toggle('active', Object.keys(SECS)[i] === id); });
 
   if (id === 'receive')    await renderReceiveForm();
   if (id === 'newproduct') resetNewProductForm();

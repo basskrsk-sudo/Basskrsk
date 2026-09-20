@@ -83,116 +83,6 @@ function registerCustomerRoutes(router) {
     sendJson(res, 200, { customers: rows });
   });
 
-  // DELETE /api/customers/:id — очистка тестовых регистраций из админки.
-  // Историю реальных продаж не трогаем: при любом связанном заказе админ
-  // сначала должен разобраться с ним в разделе «Заказы», а оплаченный заказ
-  // полностью блокирует удаление клиента. Зависимые бонусные/игровые данные
-  // удаляются одной транзакцией, а сам факт операции остаётся в журнале.
-  router.delete('/api/customers/:id', (req, res, ctx) => {
-    const payload = requireAuth(['admin'])(req, res, ctx);
-    if (!payload) return;
-
-    const customerId = Number(ctx.params.id);
-    if (!Number.isInteger(customerId) || customerId <= 0) {
-      return sendJson(res, 400, { error: 'Некорректный клиент' });
-    }
-    const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId);
-    if (!customer) return sendJson(res, 404, { error: 'Клиент уже удалён или не найден' });
-
-    const customerPhone = normalizePhone(customer.phone);
-    const relatedOrders = db.prepare('SELECT id, order_code, status, customer_phone FROM orders').all()
-      .filter((order) => normalizePhone(order.customer_phone) === customerPhone);
-    const paidOrders = relatedOrders.filter((order) => order.status === 'paid');
-    if (paidOrders.length) {
-      return sendJson(res, 409, {
-        error: 'Клиента нельзя удалить: у него есть оплаченные заказы (' +
-          paidOrders.map((order) => order.order_code).join(', ') + '). История продаж должна сохраняться.',
-      });
-    }
-    if (relatedOrders.length) {
-      return sendJson(res, 409, {
-        error: 'Сначала удалите связанные неоплаченные тестовые заказы в разделе «Заказы»: ' +
-          relatedOrders.map((order) => order.order_code).join(', '),
-      });
-    }
-
-    // Таблица подписок осталась в части старых боевых баз. Не удаляем её
-    // записи молча: подписка — отдельное обязательство перед клиентом.
-    const hasSubscriptionsTable = !!db.prepare(
-      "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'subscriptions'"
-    ).get();
-    if (hasSubscriptionsTable) {
-      const subscriptions = db.prepare('SELECT COUNT(*) AS n FROM subscriptions WHERE customer_id = ?').get(customerId).n;
-      if (subscriptions > 0) {
-        return sendJson(res, 409, {
-          error: 'Клиента нельзя удалить: у него есть подписка. Сначала отмените или удалите подписку.',
-        });
-      }
-    }
-
-    const reason = String((ctx.body || {}).reason || '').trim();
-    const fullName = [customer.name, customer.lname].filter(Boolean).join(' ').trim() || null;
-
-    // Часть старых вспомогательных таблиц привязана не FK, а телефоном.
-    // Удаляем только строки с тем же нормализованным номером; для Telegram
-    // дополнительно не затрагиваем входы партнёров и менеджеров.
-    function deletePhoneRows(table, roleCustomerOnly) {
-      const exists = !!db.prepare(
-        "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?"
-      ).get(table);
-      if (!exists) return;
-      const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name);
-      if (!columns.includes('id') || !columns.includes('phone')) return;
-      const selectColumns = roleCustomerOnly && columns.includes('role') ? 'id, phone, role' : 'id, phone';
-      const rows = db.prepare(`SELECT ${selectColumns} FROM ${table}`).all();
-      const remove = db.prepare(`DELETE FROM ${table} WHERE id = ?`);
-      for (const row of rows) {
-        if (normalizePhone(row.phone) !== customerPhone) continue;
-        if (roleCustomerOnly && columns.includes('role') && row.role !== 'customer') continue;
-        remove.run(row.id);
-      }
-    }
-
-    db.exec('BEGIN IMMEDIATE');
-    try {
-      db.prepare(`
-        INSERT INTO customer_deletion_log
-          (customer_id, phone, full_name, orders_count, total_spent, bones_balance, reason, admin_id, admin_login)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        customer.id,
-        customer.phone,
-        fullName,
-        customer.orders_count || 0,
-        customer.total_spent || 0,
-        customer.bones_balance || 0,
-        reason || null,
-        payload.id,
-        payload.login || null
-      );
-
-      db.prepare('DELETE FROM customer_password_reset_tokens WHERE customer_id = ?').run(customerId);
-      db.prepare('UPDATE customers SET referred_by_customer_id = NULL WHERE referred_by_customer_id = ?').run(customerId);
-      deletePhoneRows('telegram_login_tokens', true);
-      deletePhoneRows('max_login_tokens', false);
-      deletePhoneRows('sms_login_codes', false);
-      deletePhoneRows('quiz_prizes', false);
-      deletePhoneRows('quiz_attempts', false);
-      deletePhoneRows('quiz_scores', false);
-      deletePhoneRows('chess_prizes', false);
-      deletePhoneRows('chess_wins', false);
-
-      const deleted = db.prepare('DELETE FROM customers WHERE id = ?').run(customerId);
-      if (!deleted.changes) throw new Error('Клиент уже удалён');
-      db.exec('COMMIT');
-      sendJson(res, 200, { ok: true, deleted_customer_id: customerId });
-    } catch (error) {
-      db.exec('ROLLBACK');
-      console.error('[customers] Не удалось удалить тестового клиента:', error.message);
-      sendJson(res, 500, { error: 'Не удалось удалить клиента. Изменения отменены.' });
-    }
-  });
-
   // ── ЛИЧНЫЙ КАБИНЕТ КЛИЕНТА ─────────────────────────────────────────
   // Строится из тех же настроек (site_settings), что и getLoyaltyPercent выше —
   // раньше здесь были захардкожены отдельные числа, из-за чего бейдж уровня
@@ -227,10 +117,9 @@ function registerCustomerRoutes(router) {
   router.get('/api/customer/me', (req, res, ctx) => {
     const payload = requireAuth(['customer'])(req, res, ctx);
     if (!payload) return;
-    const customer = db.prepare('SELECT id, phone, name, lname, email, pet_name, pet_birthday, pet_breed, pet_size, pet_notes, orders_count, total_spent, first_order_at, bones_balance, telegram_chat_id FROM customers WHERE id = ?').get(payload.id);
+    const customer = db.prepare('SELECT id, phone, name, lname, email, pet_name, pet_birthday, pet_breed, pet_size, pet_notes, orders_count, total_spent, first_order_at, bones_balance FROM customers WHERE id = ?').get(payload.id);
     if (!customer) return sendJson(res, 404, { error: 'Клиент не найден' });
-    const { telegram_chat_id, ...safeCustomer } = customer;
-    sendJson(res, 200, { customer: { ...safeCustomer, telegram_connected: !!telegram_chat_id, tier: getTierInfo(customer.orders_count, customer.phone) } });
+    sendJson(res, 200, { customer: { ...customer, tier: getTierInfo(customer.orders_count, customer.phone) } });
   });
 
   // PUT /api/customer/me — клиент редактирует своё имя/фамилию/email/анкету питомца

@@ -38,14 +38,12 @@ function computePointProfitSoFar(pointId, partnerRate, managerRate) {
   const orderIds = orders.map((o) => o.id);
   const placeholders = orderIds.map(() => '?').join(',');
   const items = db.prepare(`
-    SELECT oi.variant_id, oi.name, oi.weight, oi.qty FROM order_items oi
+    SELECT oi.name, oi.weight, oi.qty FROM order_items oi
     WHERE oi.order_id IN (${placeholders}) AND oi.is_custom = 0
   `).all(...orderIds);
   let cogs = 0;
   for (const item of items) {
-    const variant = item.variant_id
-      ? db.prepare('SELECT cost_price FROM product_variants WHERE id = ?').get(item.variant_id)
-      : db.prepare(`
+    const variant = db.prepare(`
       SELECT v.cost_price FROM product_variants v
       JOIN products p ON p.id = v.product_id
       WHERE p.name = ? AND v.weight = ?
@@ -54,7 +52,7 @@ function computePointProfitSoFar(pointId, partnerRate, managerRate) {
   }
 
   // Комиссия партнёра — по фактической ставке КАЖДОГО заказа (учитывает
-  // ставку 0% для самозаказов грумера, см. routes-payment.js),
+  // пониженную ставку 10% для самозаказов грумера, см. routes-payment.js),
   // а не единым текущим уровнем партнёра на всю выручку.
   const partnerCommission = orders.reduce((s, o) => s + o.total * (o.commission_rate ?? (partnerRate || 0)), 0);
   const managerCommission = revenue * (managerRate || 0);

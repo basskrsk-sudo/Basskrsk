@@ -5,18 +5,11 @@ const db = require('./db');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
-const { requireAuth, tryAuth } = require('./routes-auth');
+const { requireAuth } = require('./routes-auth');
 const { reverseAndDeleteOrdersBy } = require('./order-reversal');
 const { sendTelegram } = require('./telegram');
 const { computeManagerCommissionRate } = require('./routes-managers');
 const { normalizePhone } = require('./routes-customers');
-const { logManagerAction } = require('./audit-log');
-const {
-  createPartnerPayout,
-  getUnpaidSummary,
-  listAllPartnerPayouts,
-  listPartnerPayouts,
-} = require('./partner-payouts');
 
 function nextPartnerCode() {
   const row = db.prepare("SELECT partner_code FROM partners ORDER BY id DESC LIMIT 1").get();
@@ -25,8 +18,8 @@ function nextPartnerCode() {
 }
 
 function safePartner(p) {
-  const { password_hash, telegram_chat_id, ...rest } = p;
-  return { ...rest, telegram_connected: !!telegram_chat_id };
+  const { password_hash, ...rest } = p;
+  return rest;
 }
 
 function registerPartnerRoutes(router) {
@@ -53,10 +46,6 @@ function registerPartnerRoutes(router) {
   });
 
   router.post('/api/partners/register', (req, res, ctx) => {
-    // Регистрация остаётся публичной для обычной формы сайта. Если запрос
-    // пришёл из авторизованного кабинета менеджера, фиксируем именно его как
-    // автора действия, но только когда выбранная точка закреплена за ним.
-    const managerPayload = tryAuth(['manager'])(req);
     const {
       full_name, phone, point_id,
       legal_form, inn, bank_details, manager_code, referral_code,
@@ -172,13 +161,6 @@ function registerPartnerRoutes(router) {
       }
     }
 
-    if (managerPayload && Number(point.manager_id) === Number(managerPayload.id)) {
-      logManagerAction(managerPayload.id, 'Регистрация партнёра', {
-        type: 'partner', id: info.lastInsertRowid, name: full_name,
-        details: partnerCode + ' · точка: ' + point.name,
-      });
-    }
-
     sendJson(res, 201, {
       ok: true,
       partner_code: partnerCode,
@@ -188,7 +170,7 @@ function registerPartnerRoutes(router) {
 
     // Уведомление уходит уже после ответа клиенту — не задерживаем регистрацию
     sendTelegram([
-      '🖊 <b>Новая заявка партнёра — ХвостМаркет</b>',
+      '🖊 <b>Новая заявка партнёра — Тайга</b>',
       '',
       '📋 Код: ' + partnerCode,
       '👤 ' + full_name,
@@ -209,65 +191,8 @@ function registerPartnerRoutes(router) {
   router.get('/api/partners', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    const requestedDays = Number.parseInt(ctx.query && ctx.query.days, 10);
-    const days = Number.isFinite(requestedDays) && requestedDays >= 1 && requestedDays <= 365
-      ? requestedDays
-      : 7;
     const rows = db.prepare('SELECT * FROM partners ORDER BY id DESC').all();
-    // Считаем начисление так же, как в кабинете грумера: только оплаченные
-    // заказы, а процент берём из снимка commission_rate самого заказа.
-    // Округление выполняется по каждому заказу отдельно, поэтому итог в
-    // админке совпадает с суммой строк в партнёрском кабинете.
-    const paidOrders = db.prepare(`
-      SELECT partner_id, total, commission_rate
-      FROM orders
-      WHERE status = 'paid'
-        AND partner_id IS NOT NULL
-        AND created_at >= datetime('now', '-' || ? || ' days')
-    `).all(days);
-    const earningsByPartner = new Map();
-    const orderCountByPartner = new Map();
-    paidOrders.forEach((order) => {
-      const partnerId = Number(order.partner_id);
-      const commission = Math.round(Number(order.total || 0) * Number(order.commission_rate || 0));
-      earningsByPartner.set(partnerId, (earningsByPartner.get(partnerId) || 0) + commission);
-      orderCountByPartner.set(partnerId, (orderCountByPartner.get(partnerId) || 0) + 1);
-    });
-    const partners = rows.map((row) => {
-      const unpaid = getUnpaidSummary(row.id);
-      return {
-        ...safePartner(row),
-        current_earnings: unpaid.amount,
-        unpaid_orders_count: unpaid.orders_count,
-        period_earnings: earningsByPartner.get(Number(row.id)) || 0,
-        period_paid_orders_count: orderCountByPartner.get(Number(row.id)) || 0,
-      };
-    });
-    sendJson(res, 200, { partners, period_days: days });
-  });
-
-  // История всех выплат грумерам для административного кабинета.
-  router.get('/api/partner-payouts', (req, res, ctx) => {
-    const payload = requireAuth(['admin'])(req, res, ctx);
-    if (!payload) return;
-    const limit = Math.max(1, Math.min(500, parseInt(ctx.query.limit, 10) || 100));
-    sendJson(res, 200, { payouts: listAllPartnerPayouts(limit) });
-  });
-
-  // Администратор подтверждает фактическую выплату. В одну транзакцию
-  // записываем саму выплату и все заказы, комиссия по которым в неё вошла.
-  router.post('/api/partners/:id/payouts', (req, res, ctx) => {
-    const payload = requireAuth(['admin'])(req, res, ctx);
-    if (!payload) return;
-    try {
-      const payout = createPartnerPayout(Number(ctx.params.id), payload);
-      sendJson(res, 201, { ok: true, payout });
-    } catch (error) {
-      if (error.code === 'PARTNER_NOT_FOUND') return sendJson(res, 404, { error: error.message });
-      if (error.code === 'NOTHING_TO_PAY') return sendJson(res, 409, { error: error.message });
-      console.error('[partner-payout] Не удалось зафиксировать выплату:', error);
-      sendJson(res, 500, { error: 'Не удалось зафиксировать выплату' });
-    }
+    sendJson(res, 200, { partners: rows.map(safePartner) });
   });
 
   // PUT /api/partners/me — партнёр сам меняет формат размещения на своей точке
@@ -439,7 +364,7 @@ function registerPartnerRoutes(router) {
     for (const item of items) insItem.run(requestId, item.variant_id, item.qty);
 
     sendTelegram([
-      '📦 <b>Грумер запросил пополнение — ХвостМаркет</b>',
+      '📦 <b>Грумер запросил пополнение — Тайга</b>',
       '',
       '👤 ' + partner.full_name + ' (' + partner.partner_code + ')',
       '📍 Точка: ' + partner.point_name,
@@ -530,20 +455,6 @@ function registerPartnerRoutes(router) {
     });
 
     sendJson(res, 200, { orders: result });
-  });
-
-  // Текущий невыплаченный баланс и история фактических выплат для кабинета
-  // самого грумера. Начисления за выбранный период остаются в /me/orders.
-  router.get('/api/partners/me/payouts', (req, res, ctx) => {
-    const payload = requireAuth(['partner'])(req, res, ctx);
-    if (!payload) return;
-    const limit = Math.max(1, Math.min(200, parseInt(ctx.query.limit, 10) || 100));
-    const unpaid = getUnpaidSummary(payload.id);
-    sendJson(res, 200, {
-      unpaid_amount: unpaid.amount,
-      unpaid_orders_count: unpaid.orders_count,
-      payouts: listPartnerPayouts(payload.id, limit),
-    });
   });
 }
 

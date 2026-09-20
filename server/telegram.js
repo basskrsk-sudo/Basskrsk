@@ -102,14 +102,11 @@ function buildOrderMessage(order, items) {
     ? '→ Соберите заказ, передайте курьеру или отвезите по адресу сами, свяжитесь с клиентом для согласования времени.'
     : (order.needs_delivery
       ? '→ Привезите нужный вес на точку и свяжитесь с клиентом по телефону, когда товар будет готов к выдаче.'
-      : ''));
-  const customActionLine = hasCustom
-    ? '→ Товар «не из каталога» — при первой возможности добавьте его в реальный каталог на сайте.'
-    : '';
-  const actionLines = [actionLine, customActionLine].filter(Boolean);
+      : '→ Обновите остатки в Яндекс Таблице и внесите строку в лист «Продажи».'))
+    + (hasCustom ? '\n→ Товар «не из каталога» — при первой возможности добавьте его в реальный каталог на сайте.' : '');
 
   return [
-    deliveryFlag + customFlag + '💰 <b>Новая продажа — ХвостМаркет</b>',
+    deliveryFlag + customFlag + '💰 <b>Новая продажа — Тайга</b>',
     '',
     '📋 Заказ: ' + order.order_code,
     '👤 ' + (order.customer_name + ' ' + (order.customer_lname || '')).trim(),
@@ -121,7 +118,8 @@ function buildOrderMessage(order, items) {
     commentLine + promoLine + bonesLine + deliveryFeeLine + selfOrderLine + '💳 Оплата: ' + (order.payment_method === 'sbp' ? 'СБП' : 'Карта (ЮKassa)'),
     '💵 Сумма: ' + order.total + ' ₽',
     '🕐 ' + new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Krasnoyarsk' }),
-    ...(actionLines.length ? ['', ...actionLines] : []),
+    '',
+    actionLine,
   ].join('\n');
 }
 

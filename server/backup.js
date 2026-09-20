@@ -10,7 +10,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
 const { sendEmail } = require('./email');
-const { getRestorePaths, validateDatabaseFile } = require('./database-restore');
 
 const BACKUP_EMAIL = process.env.BACKUP_EMAIL || process.env.BUSINESS_COPY_EMAIL || '';
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // раз в сутки
@@ -66,7 +65,7 @@ function scheduleBackups() {
 
 function registerBackupRoutes(router) {
   const { sendJson } = require('./http-utils');
-  const { requireAuth, requireSuperAdmin } = require('./routes-auth');
+  const { requireAuth } = require('./routes-auth');
   // POST /api/backup/run — админ может запустить резервное копирование вручную, не дожидаясь суток
   router.post('/api/backup/run', async (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
@@ -106,53 +105,6 @@ function registerBackupRoutes(router) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: 'Не удалось создать бэкап: ' + e.message }));
       }
-    }
-  });
-
-  // POST /api/backup/restore — супер-админ загружает файл SQLite целиком.
-  // Открытую базу здесь не заменяем: проверяем файл, создаём страховочную
-  // копию текущего состояния и кладём загрузку в pending. После ответа
-  // процесс завершается; на следующем запуске database-restore.js установит
-  // pending-файл до открытия основного SQLite-соединения.
-  router.post('/api/backup/restore', (req, res, ctx) => {
-    const payload = ctx.authenticatedPayload || requireSuperAdmin(req, res, ctx);
-    if (!payload) return;
-
-    const contentType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    if (contentType !== 'application/octet-stream' && contentType !== 'application/x-sqlite3') {
-      return sendJson(res, 415, { error: 'Загрузите файл базы данных в формате .db' });
-    }
-    if (!ctx.rawBody || ctx.rawBody.length < 100) {
-      return sendJson(res, 400, { error: 'Файл базы данных пуст или повреждён' });
-    }
-
-    const paths = getRestorePaths();
-    const uploadPath = path.join(paths.dataDir, 'restore-upload-' + Date.now() + '.db');
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const safetyBackupPath = path.join(paths.dataDir, 'taiga-before-restore-' + stamp + '-' + Date.now() + '.db');
-
-    try {
-      fs.mkdirSync(paths.dataDir, { recursive: true });
-      fs.writeFileSync(uploadPath, ctx.rawBody, { mode: 0o600 });
-      validateDatabaseFile(uploadPath);
-
-      db.exec(`VACUUM INTO '${safetyBackupPath.replace(/'/g, "''")}'`);
-      if (fs.existsSync(paths.pending)) fs.unlinkSync(paths.pending);
-      fs.renameSync(uploadPath, paths.pending);
-
-      sendJson(res, 202, {
-        ok: true,
-        message: 'Файл проверен. База будет восстановлена после перезапуска приложения.',
-        safety_backup: path.basename(safetyBackupPath),
-      });
-      res.once('finish', () => {
-        setTimeout(() => process.exit(0), 800);
-      });
-    } catch (e) {
-      console.error('[backup] Не удалось подготовить восстановление:', e.message);
-      try { if (fs.existsSync(uploadPath)) fs.unlinkSync(uploadPath); } catch (_) {}
-      try { if (fs.existsSync(paths.pending)) fs.unlinkSync(paths.pending); } catch (_) {}
-      sendJson(res, 400, { error: 'Не удалось восстановить базу: ' + e.message });
     }
   });
 }
