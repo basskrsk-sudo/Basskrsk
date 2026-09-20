@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Лапка на геоточке ХвостМаркет">
+  <path d="M32 1.5C14.5 1.5 2.5 12.9 2.5 28c0 14.1 12.4 24.2 29.5 34.5C49.1 52.2 61.5 42.1 61.5 28 61.5 12.9 49.5 1.5 32 1.5Z" fill="#FF5A49" stroke="#082B59" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="18" cy="23" r="4.5" fill="#fff"/>
+  <circle cx="27" cy="16.5" r="4.5" fill="#fff"/>
+  <circle cx="37" cy="16.5" r="4.5" fill="#fff"/>
+  <circle cx="46" cy="23" r="4.5" fill="#fff"/>
+  <path d="M19 40.5c0-8 6.7-14 13-14s13 6 13 14c0 5.4-4.2 8-8.3 6a10.5 10.5 0 0 0-9.4 0c-4.1 2-8.3-.6-8.3-6Z" fill="#fff"/>
+</svg>
