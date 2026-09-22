@@ -153,8 +153,29 @@ function registerProductRoutes(router) {
     const rows = db.prepare(
       includeInactive ? 'SELECT * FROM products' : 'SELECT * FROM products WHERE active = 1'
     ).all();
+
+    // Популярность считаем по фактически оплаченным товарам. Возвращённые
+    // заказы не должны продолжать поднимать товар в блоке «Популярно рядом».
+    // Считаем одним запросом для всего каталога, а не отдельным запросом на
+    // каждый товар — это останется быстрым и при расширении ассортимента.
+    const salesRows = db.prepare(`
+      SELECT pv.product_id, COALESCE(SUM(oi.qty), 0) AS sales_count
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      JOIN product_variants pv ON pv.id = oi.variant_id
+      WHERE o.status = 'paid'
+        AND COALESCE(o.refund_status, 'none') != 'refunded'
+        AND oi.is_custom = 0
+      GROUP BY pv.product_id
+    `).all();
+    const salesByProduct = new Map(
+      salesRows.map((row) => [Number(row.product_id), Number(row.sales_count) || 0])
+    );
     const products = rows
-      .map((p) => productWithVariantsAndStock(p, !!adminPayload, includeInactive))
+      .map((p) => Object.assign(
+        productWithVariantsAndStock(p, !!adminPayload, includeInactive),
+        { sales_count: salesByProduct.get(Number(p.id)) || 0 }
+      ))
       .filter((p) => includeInactive || p.variants.length > 0); // товар без единого видимого веса — скрыт целиком
     sendJson(res, 200, { products });
   });
