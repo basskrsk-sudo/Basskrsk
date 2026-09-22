@@ -75,6 +75,9 @@ async function createPayment({ amount, description, orderCode, receiptItems, cus
       : { type: 'embedded' },
     metadata: { order_code: orderCode },
   };
+  // Новые клиенты передают "yookassa": тогда сам виджет/страница ЮKassa
+  // показывает все доступные покупателю способы. Явные значения оставлены
+  // для обратной совместимости со старыми открытыми версиями сайта.
   if (method === 'sbp' || method === 'bank_card') {
     body.payment_method_data = { type: method === 'sbp' ? 'sbp' : 'bank_card' };
   }

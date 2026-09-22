@@ -599,11 +599,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div style="font-weight:600;color:var(--text);margin-bottom:.3rem;">Как создать владельца салона</div>
           <div style="font-size:.78rem;color:var(--muted);">Раздел «Владельцы салонов»</div>
         </a>
-        <a href="docs/Инструкция_QR-коды.pdf" target="_blank" class="card" style="display:block;text-decoration:none;color:inherit;">
-          <div style="font-size:1.6rem;margin-bottom:.5rem;">📱</div>
-          <div style="font-weight:600;color:var(--text);margin-bottom:.3rem;">Как создать QR-код для точки</div>
-          <div style="font-size:.78rem;color:var(--muted);">Раздел «QR-коды для точек»</div>
-        </a>
         <a href="docs/Инструкция_фото_товара.pdf" target="_blank" class="card" style="display:block;text-decoration:none;color:inherit;">
           <div style="font-size:1.6rem;margin-bottom:.5rem;">📸</div>
           <div style="font-weight:600;color:var(--text);margin-bottom:.3rem;">Как добавить фото к товару</div>
@@ -996,8 +991,10 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <textarea id="sm-description" rows="3" maxlength="3000" style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;font-family:inherit;"></textarea>
           </div>
           <div class="admin-field">
-            <label>Ссылка на фото</label>
-            <input type="text" id="sm-photo" placeholder="https://...">
+            <label>Фотографии салона (до 8)</label>
+            <input type="file" id="sm-photo-files" accept="image/jpeg,image/png,image/webp" multiple style="width:100%;padding:.55rem;border:1.5px dashed var(--border);border-radius:8px;background:var(--cream);">
+            <div id="sm-photo-status" style="display:none;font-size:.76rem;color:var(--muted);margin-top:.4rem;"></div>
+            <div id="sm-photo-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.55rem;margin-top:.6rem;"></div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem;margin-bottom:.9rem;">
             <input type="text" id="sm-instagram" placeholder="Instagram" style="padding:.6rem .7rem;border:1.5px solid var(--border);border-radius:8px;font-size:.84rem;">
@@ -1113,12 +1110,19 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <span>Владельцы салонов <span id="owners-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
           <button class="add-product-btn" onclick="openOwnerModal()">+ Добавить владельца</button>
         </div>
-        <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;">У каждого владельца — отдельный вход в кабинет тайга-корм.рф/taiga-owner.html, где видна статистика ровно по его точке: общая выручка, разбивка по каждому грумеру и по менеджеру.</p>
+        <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;">В колонке «К выплате» показано вознаграждение по оплаченным заказам, которые ещё не включались в выплату. После подтверждения выплаты счётчик обнулится, а операция сохранится в реестре.</p>
         <table class="tbl">
           <thead>
-            <tr><th>ФИО</th><th>Логин</th><th>Телефон</th><th>Точка</th><th>Статус</th><th class="r">Действие</th></tr>
+            <tr><th>ФИО</th><th>Логин</th><th>Телефон</th><th>Точка</th><th class="r">К выплате</th><th>Статус</th><th class="r">Действие</th></tr>
           </thead>
           <tbody id="owners-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card" style="margin-top:1rem;overflow-x:auto;">
+        <div class="card-title">История выплат владельцам салонов <span id="owner-payouts-count"></span></div>
+        <table class="tbl">
+          <thead><tr><th>Дата</th><th>Владелец</th><th>Точка</th><th class="r">Заказов</th><th class="r">Сумма</th><th>Подтвердил</th></tr></thead>
+          <tbody id="owner-payouts-tbody"></tbody>
         </table>
       </div>
     </div>
@@ -1126,15 +1130,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
     <!-- ══ QR-КОДЫ ══ -->
     <div id="sec-qr" style="display:none;">
       <div class="card no-print">
-        <div class="card-title">Создайте большой QR для каталога конкретной стойки или отдельные QR для товаров.</div>
+        <div class="card-title">Создайте QR-коды товаров для выбранной точки.</div>
         <div class="qr-controls-row">
-          <div class="qr-ctrl-group">
-            <label>Тип QR</label>
-            <select id="qr-sel-mode" onchange="qrModeChanged()">
-              <option value="stand" selected>Большой QR стойки</option>
-              <option value="product">QR конкретного товара</option>
-            </select>
-          </div>
           <div class="qr-ctrl-group">
             <label>Город</label>
             <select id="qr-sel-city" onchange="qrCityChanged()">
@@ -1147,7 +1144,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="all">Все точки</option>
             </select>
           </div>
-          <div class="qr-ctrl-group" id="qr-product-control" style="display:none;">
+          <div class="qr-ctrl-group" id="qr-product-control">
             <label>Товар</label>
             <select id="qr-sel-product" onchange="qrGenerate()">
               <option value="all">Все товары</option>
@@ -1157,21 +1154,21 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <label>Размер QR</label>
             <select id="qr-sel-size" onchange="qrGenerate()">
               <option value="140">Маленький (для этикетки)</option>
-              <option value="200" selected>Средний (для стойки)</option>
+              <option value="200" selected>Средний</option>
               <option value="280">Крупный (для плаката)</option>
             </select>
           </div>
           <button class="row-btn" style="background:var(--forest,#1C3A2F);color:#fff;" onclick="qrGenerate()">Сгенерировать</button>
           <button class="row-btn" style="background:var(--amber,#D4872A);color:#fff;" onclick="window.print()">🖨 Печать</button>
           <button class="row-btn" onclick="qrDownloadAll()">⬇ Скачать все</button>
-          <div class="qr-ctrl-group" id="qr-label-copy-control" style="display:none;">
+          <div class="qr-ctrl-group" id="qr-label-copy-control">
             <label>Копий каждой этикетки</label>
             <div style="display:flex;gap:.4rem;">
-              <input type="number" id="qr-bulk-qty" min="1" value="1" style="width:60px;padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;">
+              <input type="number" id="qr-bulk-qty" min="0" value="1" style="width:60px;padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;">
               <button class="row-btn" onclick="qrApplyBulkQty()">Применить ко всем</button>
             </div>
           </div>
-          <button id="qr-label-sheet-button" class="row-btn" style="display:none;background:#7C4DFF;color:#fff;" onclick="printLabelSheet()">🏷 Этикетки А4 (18 шт/лист)</button>
+          <button id="qr-label-sheet-button" class="row-btn" style="background:#7C4DFF;color:#fff;" onclick="printLabelSheet()">🏷 Этикетки А4 (18 шт/лист)</button>
         </div>
       </div>
 
@@ -1340,7 +1337,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
         <div style="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;">
           <button class="row-btn" onclick="openCurrentPointPageSettings()">Страница точки</button>
-          <button class="row-btn" onclick="openCurrentPointQr()">QR-коды</button>
+          <button class="row-btn" onclick="openCurrentPointQr()">QR товаров</button>
           <button class="row-btn" onclick="showSection('points')">Управление</button>
           <span class="point-badge badge-active" style="font-size:.75rem;padding:.3rem .8rem;">Активна</span>
         </div>
@@ -1808,6 +1805,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   </div>
 </div>
 
+<script src="salon-photo-gallery.js?v=63"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 // (Старый демонстрационный список точек убран — нигде не использовался,
@@ -2541,7 +2539,7 @@ async function showPoint(idx) {
       '<td>' + o.customer_name + '</td>' +
       '<td style="font-size:.8rem;">' + o.items.map(function(i) { return i.name; }).join(', ') + '</td>' +
       '<td class="r">' + o.total.toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + (o.payment_method === 'sbp' ? 'СБП' : 'Карта') + '</td>' +
+      '<td>' + (o.payment_method === 'sbp' ? 'СБП' : (o.payment_method === 'yookassa' ? 'ЮKassa' : 'Карта')) + '</td>' +
       '<td>' + o.status + '</td></tr>';
   }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1.5rem;">Заказов нет</td></tr>';
 
@@ -3059,7 +3057,7 @@ function renderOrders() {
       '<td>' + (o.partner_name ? escapeOrderCell(o.partner_name) : '<span style="color:var(--muted);">Не выбран</span>') + '</td>' +
       '<td style="font-size:.8rem;max-width:220px;">' + itemsText + '</td>' +
       '<td class="r" style="font-weight:600;">' + o.total.toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + (o.payment_method === 'sbp' ? 'СБП' : 'Карта') + '</td>' +
+      '<td>' + (o.payment_method === 'sbp' ? 'СБП' : (o.payment_method === 'yookassa' ? 'ЮKassa' : 'Карта')) + '</td>' +
       '<td>' + statusCell + '</td>' +
       '<td class="r">' + actionCell + '</td></tr>';
   }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Заказов пока нет</td></tr>';
@@ -3425,6 +3423,11 @@ async function openSalonPageModal(pointId, pointName) {
   document.getElementById('salon-modal-error').style.display = 'none';
   document.getElementById('salon-modal-msg').style.display = 'none';
   document.getElementById('salon-modal-title').textContent = 'Страница салона — ' + (pointName || '');
+  SalonPhotoGallery.init('admin-salon', {
+    inputId: 'sm-photo-files', gridId: 'sm-photo-grid', statusId: 'sm-photo-status',
+    errorId: 'salon-modal-error', getPointId: () => salonModalPointId, authFetch,
+  });
+  SalonPhotoGallery.set('admin-salon', []);
 
   try {
     const res = await authFetch('/api/points/' + pointId + '/salon-page');
@@ -3432,7 +3435,7 @@ async function openSalonPageModal(pointId, pointName) {
     if (res.ok) {
       document.getElementById('sm-tagline').value = data.point.salon_tagline || '';
       document.getElementById('sm-description').value = data.point.salon_description || '';
-      document.getElementById('sm-photo').value = data.point.salon_photo_url || '';
+      SalonPhotoGallery.set('admin-salon', data.point.salon_photo_urls, data.point.salon_photo_url);
       document.getElementById('sm-instagram').value = data.point.salon_instagram || '';
       document.getElementById('sm-vk').value = data.point.salon_vk || '';
       document.getElementById('sm-website').value = data.point.salon_website || '';
@@ -3458,7 +3461,7 @@ async function saveSalonPageModal() {
   const payload = {
     salon_tagline: document.getElementById('sm-tagline').value.trim(),
     salon_description: document.getElementById('sm-description').value.trim(),
-    salon_photo_url: document.getElementById('sm-photo').value.trim(),
+    salon_photo_urls: SalonPhotoGallery.get('admin-salon'),
     salon_instagram: document.getElementById('sm-instagram').value.trim(),
     salon_vk: document.getElementById('sm-vk').value.trim(),
     salon_website: document.getElementById('sm-website').value.trim(),
@@ -3996,22 +3999,73 @@ function renderMgrPointsTable(filterCode) {
 let adminOwners = [];
 
 async function renderOwners() {
-  const res = await authFetch('/api/salon-owners');
-  const data = await res.json();
+  const responses = await Promise.all([
+    authFetch('/api/salon-owners'),
+    authFetch('/api/owner-payouts?limit=100'),
+  ]);
+  const data = await responses[0].json();
+  const payoutData = await responses[1].json();
   adminOwners = data.owners || [];
-  document.getElementById('owners-count').textContent = adminOwners.length + ' чел.';
+  const ownersUnpaidTotal = adminOwners.reduce(function(sum, owner) {
+    return sum + Number(owner.current_earnings || 0);
+  }, 0);
+  document.getElementById('owners-count').textContent = adminOwners.length + ' чел. · к выплате ' + ownersUnpaidTotal.toLocaleString('ru-RU') + ' ₽';
   document.getElementById('owners-tbody').innerHTML = adminOwners.length ? adminOwners.map(function(o) {
+    const commissionPercent = Math.round(Number(o.commission_rate || 0) * 100);
     return '<tr>' +
       '<td style="font-weight:500;">' + o.full_name + '</td>' +
       '<td style="font-family:monospace;font-size:.78rem;">' + o.login + '</td>' +
       '<td>' + o.phone + '</td>' +
       '<td>' + (o.point_name || '<span style="color:var(--muted);">— не назначена —</span>') + '</td>' +
+      '<td class="r" style="white-space:nowrap;"><strong style="color:var(--deep);">' + Number(o.current_earnings || 0).toLocaleString('ru-RU') + ' ₽</strong>' +
+        '<br><span style="font-size:.7rem;color:var(--muted);">' + Number(o.unpaid_orders_count || 0) + ' невыпл. заказов</span>' +
+        '<br><span style="font-size:.7rem;color:var(--muted);">за месяц начислено ' + Number(o.month_earnings || 0).toLocaleString('ru-RU') + ' ₽ · ' + commissionPercent + '%</span></td>' +
       '<td><span class="toggle-pill ' + (o.active ? 'stock-ok' : 'stock-low') + '">' + (o.active ? '🟢 Активен' : '⚪ Отключён') + '</span></td>' +
-      '<td class="r"><button class="row-btn" onclick="toggleOwnerActive(' + o.id + ')">' + (o.active ? 'Отключить' : 'Включить') + '</button> ' +
+      '<td class="r"><button class="row-btn" ' + (Number(o.current_earnings || 0) <= 0 ? 'disabled style="opacity:.45;cursor:not-allowed;"' : '') + ' onclick="markOwnerPayoutPaid(' + o.id + ')">✓ Выплачено</button> ' +
+        '<button class="row-btn" onclick="toggleOwnerActive(' + o.id + ')">' + (o.active ? 'Отключить' : 'Включить') + '</button> ' +
         '<button class="row-btn" onclick="resetPersonPassword(\'salon-owners\', ' + o.id + ', \'' + o.full_name.replace(/'/g, "\\'") + '\')">Сбросить пароль</button> ' +
         '<button class="row-btn danger" onclick="deleteSalonOwner(' + o.id + ', \'' + o.full_name.replace(/'/g, "\\'") + '\')">✕ Удалить</button></td>' +
       '</tr>';
-  }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">Владельцев пока нет</td></tr>';
+  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Владельцев пока нет</td></tr>';
+  renderOwnerPayoutHistory(payoutData.payouts || []);
+}
+
+function renderOwnerPayoutHistory(payouts) {
+  document.getElementById('owner-payouts-count').textContent = payouts.length + ' выплат';
+  document.getElementById('owner-payouts-tbody').innerHTML = payouts.length ? payouts.map(function(payout) {
+    const paidAt = new Date(String(payout.paid_at).replace(' ', 'T') + 'Z').toLocaleString('ru-RU');
+    return '<tr>' +
+      '<td style="white-space:nowrap;color:var(--muted);">' + paidAt + '</td>' +
+      '<td style="font-weight:500;">' + escapeOrderCell(payout.owner_name) +
+        (payout.owner_code ? '<br><span style="font-size:.7rem;color:var(--muted);font-family:monospace;">' + escapeOrderCell(payout.owner_code) + '</span>' : '') + '</td>' +
+      '<td>' + escapeOrderCell(payout.point_name || '—') + '</td>' +
+      '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
+      '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '</td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплат владельцам пока не зафиксировано</td></tr>';
+}
+
+async function markOwnerPayoutPaid(id) {
+  const owner = adminOwners.find(function(o) { return Number(o.id) === Number(id); });
+  if (!owner) return;
+  const amount = Number(owner.current_earnings || 0);
+  if (amount <= 0) {
+    alert('У этого владельца сейчас нет невыплаченного вознаграждения.');
+    return;
+  }
+  if (!confirm(
+    'Подтвердить выплату владельцу «' + owner.full_name + '» на сумму ' + amount.toLocaleString('ru-RU') + ' ₽?\n\n' +
+    'После подтверждения счётчик «К выплате» обнулится, а запись появится в истории.'
+  )) return;
+  const res = await authFetch('/api/salon-owners/' + id + '/payouts', { method: 'POST', body: {} });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Не удалось зафиксировать выплату владельцу.');
+    return;
+  }
+  alert('Выплата ' + Number(data.payout.amount || 0).toLocaleString('ru-RU') + ' ₽ зафиксирована.');
+  await renderOwners();
 }
 
 async function openOwnerModal() {
@@ -4121,7 +4175,8 @@ async function qrInitSection() {
       qrSelectsPopulated = true;
     }
     await qrLoadLibrary();
-    qrModeChanged();
+    document.getElementById('qr-sel-size').value = '140';
+    qrGenerate();
   } catch (e) {
     console.error('Не удалось запустить генератор QR:', e);
     document.getElementById('qr-lib-error').style.display = 'block';
@@ -4150,25 +4205,10 @@ function qrCityChanged() {
   qrGenerate();
 }
 
-function qrModeChanged() {
-  const standMode = document.getElementById('qr-sel-mode').value === 'stand';
-  document.getElementById('qr-product-control').style.display = standMode ? 'none' : 'flex';
-  document.getElementById('qr-label-copy-control').style.display = standMode ? 'none' : 'flex';
-  document.getElementById('qr-label-sheet-button').style.display = standMode ? 'none' : 'inline-block';
-  const sizeSelect = document.getElementById('qr-sel-size');
-  sizeSelect.value = standMode ? '280' : '140';
-  qrGenerate();
-}
-
 function qrBuildURL(pointId, productId, cityId) {
-  // Товарный QR ведёт на лёгкую карточку покупки. QR всей стойки сохраняет
-  // прежний маршрут в каталог с фильтром по точке и городу.
-  if (productId) {
-    return QR_SITE_URL + '/p/' + encodeURIComponent(pointId) + '/' + encodeURIComponent(productId);
-  }
-  let url = QR_SITE_URL + '/?ref=' + pointId;
-  if (cityId) url += '&city=' + cityId;
-  return url;
+  // В админке создаются только товарные QR: каждый сразу открывает лёгкую
+  // карточку покупки конкретного товара на конкретной точке.
+  return QR_SITE_URL + '/p/' + encodeURIComponent(pointId) + '/' + encodeURIComponent(productId);
 }
 function qrToSafeUrl(rawUrl) {
   try { return new URL(rawUrl).href; }
@@ -4179,13 +4219,13 @@ function qrToSafeUrl(rawUrl) {
 // позициям — удобно, когда нужно, например, по 3 экземпляра каждой этикетки,
 // а не подряд менять число в каждой карточке вручную.
 function qrApplyBulkQty() {
-  const qty = Math.max(1, parseInt(document.getElementById('qr-bulk-qty').value, 10) || 1);
+  const parsed = parseInt(document.getElementById('qr-bulk-qty').value, 10);
+  const qty = Number.isFinite(parsed) ? Math.max(0, parsed) : 1;
   qrGenerated.forEach((item) => { item.qty = qty; });
   document.querySelectorAll('.qr-card input[type="number"]').forEach((el) => { el.value = qty; });
 }
 
 function qrGenerate() {
-  const standMode      = document.getElementById('qr-sel-mode').value === 'stand';
   const cityFilter    = document.getElementById('qr-sel-city').value;
   const pointFilter   = document.getElementById('qr-sel-point').value;
   const productFilter = document.getElementById('qr-sel-product').value;
@@ -4196,14 +4236,14 @@ function qrGenerate() {
   // этого города", а не вообще все точки сети.
   const cityPoints = cityFilter ? QR_POINTS.filter(p => p.city_id === cityFilter) : QR_POINTS;
   const points   = pointFilter   === 'all' ? cityPoints   : cityPoints.filter(p => p.id === pointFilter);
-  const products = standMode ? [null] : (productFilter === 'all' ? QR_PRODUCTS : QR_PRODUCTS.filter(p => p.id === productFilter));
+  const products = productFilter === 'all' ? QR_PRODUCTS : QR_PRODUCTS.filter(p => p.id === productFilter);
 
   qrGenerated = [];
   points.forEach(pt => { products.forEach(pr => { qrGenerated.push({ point: pt, product: pr }); }); });
 
   document.getElementById('qr-stats-row').innerHTML =
     `<div class="qr-stat-pill">Точек: <strong>${points.length}</strong></div>` +
-    (standMode ? '<div class="qr-stat-pill"><strong>Большой QR каталога</strong> для каждой точки</div>' : `<div class="qr-stat-pill">Товаров: <strong>${products.length}</strong></div>`) +
+    `<div class="qr-stat-pill">Товаров: <strong>${products.length}</strong></div>` +
     `<div class="qr-stat-pill">QR-кодов: <strong>${qrGenerated.length}</strong></div>`;
 
   const grid = document.getElementById('qr-grid');
@@ -4215,22 +4255,21 @@ function qrGenerate() {
 
   qrGenerated.forEach((item, idx) => {
     item.qty = item.qty || 1; // сколько копий этой этикетки печатать на листе А4
-    const isStand = !item.product;
-    const url = qrBuildURL(item.point.id, isStand ? '' : item.product.id, item.point.city_id);
+    const url = qrBuildURL(item.point.id, item.product.id, item.point.city_id);
     const cardId = 'qr-' + idx;
     const card = document.createElement('div');
     card.className = 'qr-card';
     card.innerHTML = `
       <div class="qr-card-head">
         <span class="qr-card-point">${item.point.icon} ${item.point.name}</span>
-        <span class="qr-card-id">${isStand ? 'СТОЙКА' : item.product.id}</span>
+        <span class="qr-card-id">${item.product.id}</span>
       </div>
       <div class="qr-body">
         <img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" class="qr-logo-full">
-        <div class="qr-caption">${isStand ? 'Сканируйте — выберите товар — оплатите по СБП' : 'Сканируйте для быстрой покупки этого товара'}</div>
+        <div class="qr-caption">Сканируйте для быстрой покупки этого товара</div>
         <div class="qr-box" id="${cardId}"></div>
-        <div class="qr-product">${isStand ? '🛍️ Каталог этой точки' : item.product.icon + ' ' + item.product.name}</div>
-        <div class="qr-price">${isStand ? 'Только товары в наличии' : item.product.price + ' ₽ · ' + item.product.weight}</div>
+        <div class="qr-product">${item.product.icon} ${item.product.name}</div>
+        <div class="qr-price">${item.product.price} ₽ · ${item.product.weight}</div>
         <div class="qr-url">${url}</div>
       </div>
       <div class="qr-actions no-print">
@@ -4239,7 +4278,7 @@ function qrGenerate() {
       </div>
       <div class="no-print" style="display:flex;align-items:center;gap:.4rem;justify-content:center;padding:.5rem 0 0;font-size:.78rem;color:var(--muted);border-top:1px solid var(--border);margin-top:.5rem;">
         <span>Этикеток на листе А4:</span>
-        <input type="number" min="1" value="${item.qty}" style="width:52px;text-align:center;padding:.2rem;border:1px solid var(--border);border-radius:4px;" onchange="qrGenerated[${idx}].qty = Math.max(1, parseInt(this.value,10) || 1); this.value = qrGenerated[${idx}].qty;">
+        <input type="number" min="0" value="${item.qty}" style="width:52px;text-align:center;padding:.2rem;border:1px solid var(--border);border-radius:4px;" onchange="const parsed = parseInt(this.value,10); qrGenerated[${idx}].qty = Number.isFinite(parsed) ? Math.max(0, parsed) : 1; this.value = qrGenerated[${idx}].qty;">
       </div>`;
     grid.appendChild(card);
     setTimeout(() => {
@@ -4320,10 +4359,6 @@ function qrDrawDogLogo(cardId, qrSize) {
 // экране. Печатные QR тоже получают компактный знак с собакой и высокий
 // уровень коррекции ошибок; печать открывается только после его отрисовки.
 async function printLabelSheet() {
-  if (document.getElementById('qr-sel-mode').value === 'stand') {
-    alert('Для большого QR стойки используйте «Печать» или кнопку скачивания на карточке.');
-    return;
-  }
   if (!qrGenerated.length) {
     alert('Сначала сгенерируйте QR-коды — сейчас список пуст.');
     return;
@@ -4336,9 +4371,14 @@ async function printLabelSheet() {
   // напечатать, например, сразу 5 наклеек одного и того же QR для одной точки.
   const expandedItems = [];
   qrGenerated.forEach((item) => {
-    const copies = Math.max(1, item.qty || 1);
+    const copies = Number.isFinite(item.qty) ? Math.max(0, item.qty) : 1;
     for (let i = 0; i < copies; i++) expandedItems.push(item);
   });
+
+  if (!expandedItems.length) {
+    alert('Для печати укажите количество больше 0 хотя бы у одного товара.');
+    return;
+  }
 
   const PER_PAGE = 18;
   const pages = Math.ceil(expandedItems.length / PER_PAGE);
@@ -4428,7 +4468,7 @@ function qrLoadFullLogo() {
   });
 }
 
-async function qrDownloadOne(cardId, name, standMode) {
+async function qrDownloadOne(cardId, name) {
   const box = document.getElementById(cardId);
   const canvas = box.querySelector('canvas');
   if (!canvas) { alert('QR ещё генерируется, подождите секунду'); return; }
@@ -4441,14 +4481,14 @@ async function qrDownloadOne(cardId, name, standMode) {
 
   const measureCtx = document.createElement('canvas').getContext('2d');
   measureCtx.font = 'bold 13px Arial';
-  const titleLines = qrWrapText(measureCtx, standMode ? 'Выберите товар за минуту' : 'Для покупки отсканируйте здесь', sz - pad * 2);
+  const titleLines = qrWrapText(measureCtx, 'Для покупки отсканируйте здесь', sz - pad * 2);
   measureCtx.font = '11px Arial';
-  const subLines = qrWrapText(measureCtx, standMode ? 'QR → товар → СБП → заберите самостоятельно' : 'Карточка товара откроется сразу', sz - pad * 2);
+  const subLines = qrWrapText(measureCtx, 'Карточка товара откроется сразу', sz - pad * 2);
 
   measureCtx.font = 'bold 14px Arial';
   const nameLines = qrWrapText(measureCtx, name.replace('_', ' · '), sz - pad * 2);
   measureCtx.font = '10px Arial';
-  const taglineLines = qrWrapText(measureCtx, standMode ? 'Каталог и актуальные остатки этой точки' : 'Товары для питомцев рядом', sz - pad * 2);
+  const taglineLines = qrWrapText(measureCtx, 'Товары для питомцев рядом', sz - pad * 2);
 
   const headerH = 10 + logoH + 8 + titleLines.length * 17 + subLines.length * 15 + 8;
   const footerH = 10 + nameLines.length * 16 + 20 + taglineLines.length * 13 + 8;
@@ -4489,16 +4529,14 @@ async function qrDownloadAll() {
   for (let idx = 0; idx < qrGenerated.length; idx++) {
     await new Promise(res => setTimeout(res, 150));
     const item = qrGenerated[idx];
-    const standMode = !item.product;
-    await qrDownloadOne('qr-' + idx, item.point.name + (standMode ? '_Стойка' : '_' + item.product.name), standMode);
+    await qrDownloadOne('qr-' + idx, item.point.name + '_' + item.product.name);
   }
 }
 
 async function qrDownloadGenerated(idx) {
   const item = qrGenerated[idx];
   if (!item) return;
-  const standMode = !item.product;
-  await qrDownloadOne('qr-' + idx, item.point.name + (standMode ? '_Стойка' : '_' + item.product.name), standMode);
+  await qrDownloadOne('qr-' + idx, item.point.name + '_' + item.product.name);
 }
 
 function qrCopyURL(url) {

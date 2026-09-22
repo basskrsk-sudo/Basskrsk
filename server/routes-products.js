@@ -12,6 +12,7 @@ const { reverseAndDeleteOrdersBy } = require('./order-reversal');
 const { getReviewSummary } = require('./routes-reviews');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
+const { writeSalonPagesSnapshot } = require('./salon-page-storage');
 
 const PRODUCT_CATEGORIES = new Set(['treats', 'toys', 'accessories', 'care']);
 
@@ -24,6 +25,21 @@ const PRODUCT_CATEGORIES = new Set(['treats', 'toys', 'accessories', 'care']);
 // раньше.
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+const MAX_SALON_PHOTOS = 8;
+
+function normalizeSalonPhotoUrls(value, legacyPhoto) {
+  let values = value;
+  if (typeof values === 'string') {
+    try { values = JSON.parse(values); } catch (e) { values = []; }
+  }
+  if (!Array.isArray(values)) values = [];
+  const normalized = [...new Set(values
+    .map((item) => String(item || '').trim())
+    .filter((item) => /^https?:\/\//i.test(item) || /^\/?images\/uploads\//i.test(item)))].slice(0, MAX_SALON_PHOTOS);
+  const legacy = String(legacyPhoto || '').trim();
+  if (!normalized.length && (/^https?:\/\//i.test(legacy) || /^\/?images\/uploads\//i.test(legacy))) normalized.push(legacy);
+  return normalized;
+}
 
 function productWithVariantsAndStock(product, includeCost, includeInactiveVariants) {
   const variants = db.prepare(
@@ -415,6 +431,11 @@ function registerProductRoutes(router) {
     db.prepare('DELETE FROM restock_deliveries WHERE point_id = ?').run(ctx.params.id);
     db.prepare('UPDATE manager_points SET point_id = NULL WHERE point_id = ?').run(ctx.params.id);
     db.prepare('DELETE FROM points WHERE id = ?').run(ctx.params.id);
+    try {
+      writeSalonPagesSnapshot();
+    } catch (error) {
+      console.error(`Не удалось обновить страховочную копию страниц салонов после удаления точки: ${error.message}`);
+    }
     sendJson(res, 200, { ok: true });
   });
 
@@ -450,18 +471,95 @@ function registerProductRoutes(router) {
     return false;
   }
 
+  // POST /api/points/:id/salon-photos — загрузка одного файла в галерею.
+  // Клиент вызывает маршрут последовательно для каждого выбранного файла;
+  // итоговый порядок и список сохраняются общим PUT страницы салона.
+  router.post('/api/points/:id/salon-photos', (req, res, ctx) => {
+    const payload = requireAuth(['admin', 'manager', 'partner', 'owner'])(req, res, ctx);
+    if (!payload) return;
+    const point = db.prepare('SELECT * FROM points WHERE id = ?').get(ctx.params.id);
+    if (!point) return sendJson(res, 404, { error: 'Точка не найдена' });
+    if (!canEditSalonPage(payload, point)) return sendJson(res, 403, { error: 'Это не ваша точка' });
+    const existingPhotos = normalizeSalonPhotoUrls(point.salon_photo_urls, point.salon_photo_url);
+    if (existingPhotos.length >= MAX_SALON_PHOTOS) {
+      return sendJson(res, 400, { error: `В галерее уже ${MAX_SALON_PHOTOS} фотографий — удалите одну перед загрузкой новой` });
+    }
+
+    const { data } = ctx.body || {};
+    if (!data || typeof data !== 'string') {
+      return sendJson(res, 400, { error: 'Выберите изображение' });
+    }
+    const mimeMatch = data.match(/^data:image\/(jpeg|jpg|png|webp);base64,/i);
+    if (!mimeMatch) {
+      return sendJson(res, 400, { error: 'Поддерживаются изображения JPG, PNG и WebP' });
+    }
+    const srcExt = mimeMatch[1].toLowerCase() === 'jpeg' ? 'jpg' : mimeMatch[1].toLowerCase();
+    let buffer;
+    try {
+      buffer = Buffer.from(data.slice(data.indexOf(',') + 1), 'base64');
+    } catch (e) {
+      return sendJson(res, 400, { error: 'Не удалось прочитать изображение' });
+    }
+    if (!buffer.length || buffer.length > 12 * 1024 * 1024) {
+      return sendJson(res, 400, { error: 'Фото пустое или превышает 12 МБ' });
+    }
+
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    const id = crypto.randomBytes(8).toString('hex');
+    const safePointId = String(point.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'point';
+    const tempPath = path.join(UPLOADS_DIR, `tmp-salon-${id}.${srcExt}`);
+    const finalName = `salon-${safePointId}-${id}.webp`;
+    const finalPath = path.join(UPLOADS_DIR, finalName);
+
+    try {
+      fs.writeFileSync(tempPath, buffer);
+      const args = [tempPath, '-auto-orient', '-resize', '1600x1200>', '-quality', '84', finalPath];
+      try {
+        execFileSync('magick', args);
+      } catch (magickError) {
+        if (magickError.code === 'ENOENT') execFileSync('convert', args);
+        else throw magickError;
+      }
+      fs.unlinkSync(tempPath);
+    } catch (error) {
+      try { fs.unlinkSync(tempPath); } catch (cleanupError) {}
+      try { fs.unlinkSync(finalPath); } catch (cleanupError) {}
+      const rawError = (error.stderr ? error.stderr.toString() : '') || error.message || '';
+      console.error('Ошибка обработки фотографии салона:', rawError);
+      return sendJson(res, 500, {
+        error: 'Не удалось обработать фото. Используйте JPG, PNG или WebP.',
+      });
+    }
+
+    const publicPath = '/images/uploads/' + finalName;
+    const nextPhotos = existingPhotos.concat(publicPath);
+    const updatedAt = new Date().toISOString();
+    try {
+      db.prepare(`
+        UPDATE points SET salon_photo_url = ?, salon_photo_urls = ?, salon_page_updated_at = ?
+        WHERE id = ?
+      `).run(nextPhotos[0], JSON.stringify(nextPhotos), updatedAt, point.id);
+      writeSalonPagesSnapshot();
+    } catch (error) {
+      try { fs.unlinkSync(finalPath); } catch (cleanupError) {}
+      throw error;
+    }
+    sendJson(res, 201, { ok: true, path: publicPath, photos: nextPhotos });
+  });
+
   // GET /api/points/:id/salon-page — текущее содержимое страницы точки (для
   // формы редактирования в личном кабинете любой из четырёх ролей).
   router.get('/api/points/:id/salon-page', (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager', 'partner', 'owner'])(req, res, ctx);
     if (!payload) return;
     const point = db.prepare(`
-      SELECT id, name, addr, manager_id, salon_tagline, salon_description, salon_photo_url,
+      SELECT id, name, addr, manager_id, salon_tagline, salon_description, salon_photo_url, salon_photo_urls,
              salon_instagram, salon_vk, salon_website, salon_page_published
       FROM points WHERE id = ?
     `).get(ctx.params.id);
     if (!point) return sendJson(res, 404, { error: 'Точка не найдена' });
     if (!canEditSalonPage(payload, point)) return sendJson(res, 403, { error: 'Это не ваша точка' });
+    point.salon_photo_urls = normalizeSalonPhotoUrls(point.salon_photo_urls, point.salon_photo_url);
     sendJson(res, 200, { point });
   });
 
@@ -479,7 +577,7 @@ function registerProductRoutes(router) {
     if (!canEditSalonPage(payload, point)) return sendJson(res, 403, { error: 'Это не ваша точка' });
 
     const {
-      salon_tagline, salon_description, salon_photo_url,
+      salon_tagline, salon_description, salon_photo_url, salon_photo_urls,
       salon_instagram, salon_vk, salon_website, salon_page_published,
     } = ctx.body || {};
 
@@ -492,7 +590,17 @@ function registerProductRoutes(router) {
 
     const nextTagline = salon_tagline !== undefined ? String(salon_tagline).trim() || null : point.salon_tagline;
     const nextDescription = salon_description !== undefined ? String(salon_description).trim() || null : point.salon_description;
-    const nextPhoto = salon_photo_url !== undefined ? String(salon_photo_url).trim() || null : point.salon_photo_url;
+    if (salon_photo_urls !== undefined && !Array.isArray(salon_photo_urls)) {
+      return sendJson(res, 400, { error: 'Некорректный список фотографий' });
+    }
+    if (Array.isArray(salon_photo_urls) && salon_photo_urls.length > MAX_SALON_PHOTOS) {
+      return sendJson(res, 400, { error: `Можно загрузить не больше ${MAX_SALON_PHOTOS} фотографий` });
+    }
+    const currentPhotos = normalizeSalonPhotoUrls(point.salon_photo_urls, point.salon_photo_url);
+    const nextPhotos = salon_photo_urls !== undefined
+      ? normalizeSalonPhotoUrls(salon_photo_urls)
+      : (salon_photo_url !== undefined ? normalizeSalonPhotoUrls([salon_photo_url]) : currentPhotos);
+    const nextPhoto = nextPhotos[0] || null;
     const nextInstagram = salon_instagram !== undefined ? String(salon_instagram).trim() || null : point.salon_instagram;
     const nextVk = salon_vk !== undefined ? String(salon_vk).trim() || null : point.salon_vk;
     const nextWebsite = salon_website !== undefined ? String(salon_website).trim() || null : point.salon_website;
@@ -502,12 +610,35 @@ function registerProductRoutes(router) {
       return sendJson(res, 400, { error: 'Чтобы опубликовать страницу, заполните хотя бы слоган и описание' });
     }
 
+    const salonPageUpdatedAt = new Date().toISOString();
     db.prepare(`
       UPDATE points SET
-        salon_tagline = ?, salon_description = ?, salon_photo_url = ?,
-        salon_instagram = ?, salon_vk = ?, salon_website = ?, salon_page_published = ?
+        salon_tagline = ?, salon_description = ?, salon_photo_url = ?, salon_photo_urls = ?,
+        salon_instagram = ?, salon_vk = ?, salon_website = ?, salon_page_published = ?,
+        salon_page_updated_at = ?
       WHERE id = ?
-    `).run(nextTagline, nextDescription, nextPhoto, nextInstagram, nextVk, nextWebsite, nextPublished ? 1 : 0, ctx.params.id);
+    `).run(
+      nextTagline, nextDescription, nextPhoto, JSON.stringify(nextPhotos), nextInstagram, nextVk, nextWebsite,
+      nextPublished ? 1 : 0, salonPageUpdatedAt, ctx.params.id
+    );
+
+    try {
+      writeSalonPagesSnapshot();
+    } catch (error) {
+      // Основная запись уже надёжно сохранена в SQLite. Ошибка дополнительной
+      // копии не должна мешать пользователю, но обязательно видна в логах.
+      console.error(`Не удалось обновить страховочную копию страниц салонов: ${error.message}`);
+    }
+
+    // После успешного сохранения удаляем только собственные, созданные этим
+    // загрузчиком файлы, которые пользователь убрал из галереи. Внешние URL
+    // и старые изображения других подсистем никогда не трогаем.
+    for (const removedUrl of currentPhotos.filter((url) => !nextPhotos.includes(url))) {
+      const fileName = path.basename(removedUrl);
+      if (!/^salon-[a-zA-Z0-9_-]+-[a-f0-9]{16}\.webp$/.test(fileName)) continue;
+      try { fs.unlinkSync(path.join(UPLOADS_DIR, fileName)); }
+      catch (error) { if (error.code !== 'ENOENT') console.error(`Не удалось удалить старое фото салона: ${error.message}`); }
+    }
 
     if (payload.role === 'manager') {
       logManagerAction(payload.id, 'Изменение страницы точки', {
@@ -516,17 +647,18 @@ function registerProductRoutes(router) {
       });
     }
 
-    sendJson(res, 200, { ok: true, published: nextPublished });
+    sendJson(res, 200, { ok: true, published: nextPublished, photos: nextPhotos, updated_at: salonPageUpdatedAt });
   });
 
   // GET /api/salon/:pointId — публичная страница точки (было — по коду
   // партнёра; теперь по id самой точки, раз страница принадлежит ей).
   router.get('/api/salon/:pointId', (req, res, ctx) => {
     const p = db.prepare(`
-      SELECT id, name, addr, salon_tagline, salon_description, salon_photo_url, salon_instagram, salon_vk, salon_website
+      SELECT id, name, addr, salon_tagline, salon_description, salon_photo_url, salon_photo_urls, salon_instagram, salon_vk, salon_website
       FROM points WHERE id = ? AND active = 1 AND salon_page_published = 1
     `).get(ctx.params.pointId);
     if (!p) return sendJson(res, 404, { error: 'Страница салона не найдена' });
+    p.salon_photo_urls = normalizeSalonPhotoUrls(p.salon_photo_urls, p.salon_photo_url);
     sendJson(res, 200, { salon: p });
   });
 
@@ -539,6 +671,33 @@ function registerProductRoutes(router) {
       ORDER BY name
     `).all();
     sendJson(res, 200, { salons: rows });
+  });
+
+  // GET /api/partner-showcase-points — безопасный публичный список реально
+  // работающих точек для раздела «Партнёрам». Не отдаём внутренние id
+  // менеджеров, проценты и прочие служебные поля из общего /api/points.
+  router.get('/api/partner-showcase-points', (req, res) => {
+    const rows = db.prepare(`
+      SELECT p.id, p.name, p.addr, p.icon, p.city_id,
+             p.salon_tagline, p.salon_photo_url, p.salon_photo_urls,
+             p.salon_page_published, c.name AS city_name
+      FROM points p
+      LEFT JOIN cities c ON c.id = p.city_id
+      WHERE p.active = 1
+      ORDER BY COALESCE(c.name, ''), p.name
+    `).all();
+    const points = rows.map((point) => ({
+      id: point.id,
+      name: point.name,
+      addr: point.addr,
+      icon: point.icon,
+      city_id: point.city_id,
+      city_name: point.city_name,
+      tagline: point.salon_tagline,
+      photo: normalizeSalonPhotoUrls(point.salon_photo_urls, point.salon_photo_url)[0] || null,
+      salon_page_published: !!point.salon_page_published,
+    }));
+    sendJson(res, 200, { points });
   });
 
   // PUT /api/products/:id/stock — раньше позволял админу напрямую вписать

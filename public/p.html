@@ -78,9 +78,6 @@
     font-size:16px; font-family:inherit; color:var(--text); background:var(--cream); outline:none;
   }
   input[type=tel]:focus { border-color:var(--deep); }
-  .pay-methods { display:flex; gap:8px; margin:14px 0; }
-  .pm { flex:1; border:1.5px solid var(--deep); border-radius:10px; background:var(--deep); color:#fff; font-size:14px; font-weight:700; padding:11px; cursor:pointer; font-family:inherit; }
-  .pm.off { background:#fff; color:var(--deep); border-color:var(--border); font-weight:600; }
   .err { display:none; color:#B3261E; font-size:13px; margin-top:8px; }
   .note { background:var(--warn-bg); border-radius:10px; padding:10px 12px; font-size:12.5px; color:var(--deep); line-height:1.5; margin-top:12px; display:none; }
   #yk-box { display:none; margin-top:14px; }
@@ -140,7 +137,7 @@ function normPhone(p) {
   return null;
 }
 
-var CTX = { point: null, product: null, variants: [], selVariant: null, method: 'sbp', checkout: null };
+var CTX = { point: null, product: null, variants: [], selVariant: null, checkout: null };
 var YOOKASSA_WIDGET_URL = 'https://yookassa.ru/checkout-widget/v1/checkout-widget.js';
 var widgetLoadPromise = null;
 
@@ -315,21 +312,11 @@ function showPhoneStep() {
     + '<label for="phone">Номер телефона</label>'
     + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="+7">'
     + '<p class="small muted" style="margin-top:6px">Свяжем заказ с вашим номером и начислим косточки-бонусы.</p>'
-    + '<div class="pay-methods">'
-    + '<button class="pm" id="pm-sbp" onclick="setMethod(\'sbp\')">СБП</button>'
-    + '<button class="pm off" id="pm-card" onclick="setMethod(\'bank_card\')">Карта</button>'
-    + '</div>'
     + '<button class="cta" id="payBtn" onclick="startPayment()">Оплатить ' + fmtPrice(v.price) + '</button>'
     + '<div class="err" id="err"></div>'
     + '<button class="link-btn" onclick="renderCard()">← Назад к товару</button></div>');
   var inp = document.getElementById('phone');
   inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
-}
-
-function setMethod(m) {
-  CTX.method = m === 'bank_card' ? 'bank_card' : 'sbp';
-  document.getElementById('pm-sbp').className = 'pm' + (CTX.method === 'sbp' ? '' : ' off');
-  document.getElementById('pm-card').className = 'pm' + (CTX.method === 'bank_card' ? '' : ' off');
 }
 
 function showErr(msg) { var e = document.getElementById('err'); e.textContent = msg; e.style.display = 'block'; }
@@ -354,7 +341,8 @@ async function startPayment() {
       body: JSON.stringify({
         orderId: orderId,
         amount: v.price,
-        method: CTX.method,
+        // Способ оплаты клиент выбирает в защищённой форме ЮKassa.
+        method: 'yookassa',
         customerPhone: phone,
         customerEmail: null,
         customerName: null,

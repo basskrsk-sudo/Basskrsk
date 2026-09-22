@@ -137,7 +137,7 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
       orderData.customerPhone, orderData.customerEmail || null, orderData.pickupPoint,
       orderData.pointId || null, orderData.partnerId || null, orderData.partnerName || null, orderData.comment || null,
       orderData.subtotal, 0, orderData.total, orderData.promoCode || null,
-      orderData.method || 'card', orderData.needsDelivery ? 1 : 0, 0,
+      orderData.method || 'yookassa', orderData.needsDelivery ? 1 : 0, 0,
       orderData.fulfillmentType, orderData.deliveryAddress || null, orderData.deliveryFee,
       orderData.referralCode || null, orderData.bonesUsed, orderData.commissionRate,
       newReservationExpiry(), inventorySource.type, inventorySource.id

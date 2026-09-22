@@ -118,7 +118,11 @@ function buildOrderMessage(order, items) {
     '',
     itemsText,
     '',
-    commentLine + promoLine + bonesLine + deliveryFeeLine + selfOrderLine + '💳 Оплата: ' + (order.payment_method === 'sbp' ? 'СБП' : 'Карта (ЮKassa)'),
+    commentLine + promoLine + bonesLine + deliveryFeeLine + selfOrderLine + '💳 Оплата: ' + (
+      order.payment_method === 'sbp' ? 'СБП'
+        : (order.payment_method === 'bank_card' || order.payment_method === 'card') ? 'Карта (ЮKassa)'
+          : 'ЮKassa'
+    ),
     '💵 Сумма: ' + order.total + ' ₽',
     '🕐 ' + new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Krasnoyarsk' }),
     ...(actionLines.length ? ['', ...actionLines] : []),

@@ -756,7 +756,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <div class="qr-ctrl-group" id="qr-label-copy-control" style="display:none;">
             <label>Копий каждой этикетки</label>
             <div style="display:flex;gap:.4rem;">
-              <input type="number" id="qr-bulk-qty" min="1" value="1" style="width:60px;padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;">
+              <input type="number" id="qr-bulk-qty" min="0" value="1" style="width:60px;padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;">
               <button style="padding:.55rem .9rem;border:none;border-radius:var(--r);font-size:.82rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;background:var(--border);color:var(--text);" onclick="qrApplyBulkQty()">Применить ко всем</button>
             </div>
           </div>
@@ -825,8 +825,10 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       <textarea id="sm-description" rows="3" maxlength="3000" style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;font-family:inherit;"></textarea>
     </div>
     <div style="margin-bottom:.8rem;">
-      <label style="display:block;font-size:.78rem;font-weight:600;margin-bottom:.3rem;">Ссылка на фото</label>
-      <input type="text" id="sm-photo" placeholder="https://..." style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;">
+      <label style="display:block;font-size:.78rem;font-weight:600;margin-bottom:.3rem;">Фотографии салона (до 8)</label>
+      <input type="file" id="sm-photo-files" accept="image/jpeg,image/png,image/webp" multiple style="width:100%;padding:.55rem;border:1.5px dashed var(--border);border-radius:8px;background:var(--cream);">
+      <div id="sm-photo-status" style="display:none;font-size:.76rem;color:var(--muted);margin-top:.4rem;"></div>
+      <div id="sm-photo-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.55rem;margin-top:.6rem;"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem;margin-bottom:.8rem;">
       <input type="text" id="sm-instagram" placeholder="Instagram" style="padding:.6rem .7rem;border:1.5px solid var(--border);border-radius:8px;font-size:.84rem;">
@@ -841,6 +843,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
   </div>
 </div>
 
+<script src="salon-photo-gallery.js?v=63"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 let MY_POINTS = [];
@@ -1500,7 +1503,8 @@ function qrToSafeUrl(rawUrl) {
 // позициям — удобно, когда нужно, например, по 3 экземпляра каждой этикетки,
 // а не подряд менять число в каждой карточке вручную.
 function qrApplyBulkQty() {
-  const qty = Math.max(1, parseInt(document.getElementById('qr-bulk-qty').value, 10) || 1);
+  const parsed = parseInt(document.getElementById('qr-bulk-qty').value, 10);
+  const qty = Number.isFinite(parsed) ? Math.max(0, parsed) : 1;
   qrGenerated.forEach((item) => { item.qty = qty; });
   document.querySelectorAll('.qr-card input[type="number"]').forEach((el) => { el.value = qty; });
 }
@@ -1574,7 +1578,7 @@ function qrGenerate() {
       </div>
       <div class="no-print" style="display:flex;align-items:center;gap:.4rem;justify-content:center;padding:.5rem 0 0;font-size:.78rem;color:var(--muted);border-top:1px solid var(--border);margin-top:.5rem;">
         <span>Этикеток на листе А4:</span>
-        <input type="number" min="1" value="${item.qty}" style="width:52px;text-align:center;padding:.2rem;border:1px solid var(--border);border-radius:4px;" onchange="qrGenerated[${idx}].qty = Math.max(1, parseInt(this.value,10) || 1); this.value = qrGenerated[${idx}].qty;">
+        <input type="number" min="0" value="${item.qty}" style="width:52px;text-align:center;padding:.2rem;border:1px solid var(--border);border-radius:4px;" onchange="const parsed = parseInt(this.value,10); qrGenerated[${idx}].qty = Number.isFinite(parsed) ? Math.max(0, parsed) : 1; this.value = qrGenerated[${idx}].qty;">
       </div>`;
     grid.appendChild(card);
     setTimeout(() => {
@@ -1671,9 +1675,14 @@ async function printLabelSheet() {
   // напечатать, например, сразу 5 наклеек одного и того же QR для одной точки.
   const expandedItems = [];
   qrGenerated.forEach((item) => {
-    const copies = Math.max(1, item.qty || 1);
+    const copies = Number.isFinite(item.qty) ? Math.max(0, item.qty) : 1;
     for (let i = 0; i < copies; i++) expandedItems.push(item);
   });
+
+  if (!expandedItems.length) {
+    alert('Для печати укажите количество больше 0 хотя бы у одного товара.');
+    return;
+  }
 
   const PER_PAGE = 18;
   const pages = Math.ceil(expandedItems.length / PER_PAGE);
@@ -2275,6 +2284,11 @@ async function openSalonPageModal(pointId) {
   document.getElementById('salon-modal-msg').style.display = 'none';
   const point = MY_POINTS.find(function(p) { return p.pointId === pointId; });
   document.getElementById('salon-modal-title').textContent = 'Страница салона — ' + (point ? point.name : '');
+  SalonPhotoGallery.init('manager-salon', {
+    inputId: 'sm-photo-files', gridId: 'sm-photo-grid', statusId: 'sm-photo-status',
+    errorId: 'salon-modal-error', getPointId: () => salonModalPointId, authFetch,
+  });
+  SalonPhotoGallery.set('manager-salon', []);
 
   try {
     const res = await authFetch('/api/points/' + pointId + '/salon-page');
@@ -2282,7 +2296,7 @@ async function openSalonPageModal(pointId) {
     if (res.ok) {
       document.getElementById('sm-tagline').value = data.point.salon_tagline || '';
       document.getElementById('sm-description').value = data.point.salon_description || '';
-      document.getElementById('sm-photo').value = data.point.salon_photo_url || '';
+      SalonPhotoGallery.set('manager-salon', data.point.salon_photo_urls, data.point.salon_photo_url);
       document.getElementById('sm-instagram').value = data.point.salon_instagram || '';
       document.getElementById('sm-vk').value = data.point.salon_vk || '';
       document.getElementById('sm-website').value = data.point.salon_website || '';
@@ -2308,7 +2322,7 @@ async function saveSalonPageModal() {
   const payload = {
     salon_tagline: document.getElementById('sm-tagline').value.trim(),
     salon_description: document.getElementById('sm-description').value.trim(),
-    salon_photo_url: document.getElementById('sm-photo').value.trim(),
+    salon_photo_urls: SalonPhotoGallery.get('manager-salon'),
     salon_instagram: document.getElementById('sm-instagram').value.trim(),
     salon_vk: document.getElementById('sm-vk').value.trim(),
     salon_website: document.getElementById('sm-website').value.trim(),

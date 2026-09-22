@@ -37,6 +37,9 @@ const { registerAuditRoutes } = require('./routes-audit');
 const { registerPublicMessageRoutes } = require('./routes-public-messages');
 
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
+// Страницы партнёрских салонов дополнительно сохраняются отдельным снимком
+// в /data и при необходимости восстанавливаются до запуска HTTP-сервера.
+require('./salon-page-storage').initializeSalonPagePersistence();
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');

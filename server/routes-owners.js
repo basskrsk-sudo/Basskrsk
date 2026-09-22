@@ -11,6 +11,12 @@ const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
+const {
+  createOwnerPayout,
+  getOwnerUnpaidSummary,
+  listAllOwnerPayouts,
+  listOwnerPayouts,
+} = require('./owner-payouts');
 
 function safeOwner(o) {
   const { password_hash, telegram_chat_id, ...rest } = o;
@@ -86,11 +92,61 @@ function registerOwnerRoutes(router) {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
     const rows = db.prepare(`
-      SELECT so.*, p.name AS point_name
-      FROM salon_owners so LEFT JOIN points p ON p.id = so.point_id
+      SELECT
+        so.*,
+        p.name AS point_name,
+        COUNT(o.id) AS paid_orders_count,
+        COALESCE(SUM(o.total), 0) AS paid_revenue,
+        COALESCE(SUM(
+          CASE
+            WHEN o.created_at >= datetime('now', 'start of month') THEN o.total
+            ELSE 0
+          END
+        ), 0) AS month_paid_revenue
+      FROM salon_owners so
+      LEFT JOIN points p ON p.id = so.point_id
+      LEFT JOIN orders o ON o.point_id = so.point_id AND o.status = 'paid'
+      GROUP BY so.id
       ORDER BY so.id DESC
     `).all();
-    sendJson(res, 200, { owners: rows.map(safeOwner) });
+    const owners = rows.map((row) => {
+      const commissionRate = Number(row.commission_rate || 0);
+      const unpaid = getOwnerUnpaidSummary(row.id);
+      return safeOwner({
+        ...row,
+        paid_orders_count: Number(row.paid_orders_count || 0),
+        paid_revenue: Number(row.paid_revenue || 0),
+        accrued_earnings: Math.round(Number(row.paid_revenue || 0) * commissionRate),
+        month_earnings: Math.round(Number(row.month_paid_revenue || 0) * commissionRate),
+        current_earnings: unpaid.amount,
+        unpaid_orders_count: unpaid.orders_count,
+      });
+    });
+    sendJson(res, 200, { owners });
+  });
+
+  // Реестр всех выплат владельцам для административного кабинета.
+  router.get('/api/owner-payouts', (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    const limit = Math.max(1, Math.min(500, parseInt(ctx.query.limit, 10) || 100));
+    sendJson(res, 200, { payouts: listAllOwnerPayouts(limit) });
+  });
+
+  // Администратор подтверждает фактическую выплату владельцу. Запись выплаты
+  // и привязка всех вошедших в неё заказов выполняются одной транзакцией.
+  router.post('/api/salon-owners/:id/payouts', (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    try {
+      const payout = createOwnerPayout(Number(ctx.params.id), payload);
+      sendJson(res, 201, { ok: true, payout });
+    } catch (error) {
+      if (error.code === 'OWNER_NOT_FOUND') return sendJson(res, 404, { error: error.message });
+      if (error.code === 'NOTHING_TO_PAY') return sendJson(res, 409, { error: error.message });
+      console.error('[owner-payout] Не удалось зафиксировать выплату:', error);
+      sendJson(res, 500, { error: 'Не удалось зафиксировать выплату владельцу' });
+    }
   });
 
   // PUT /api/salon-owners/:id — активировать/деактивировать, поменять
@@ -184,10 +240,13 @@ function registerOwnerRoutes(router) {
 
     // Заработок самого владельца — фиксированные 5% с выручки точки,
     // отдельная выплата поверх комиссий грумера и менеджера (не за их счёт).
+    const ownerUnpaid = getOwnerUnpaidSummary(owner.id);
     const ownerEarnings = {
       tier_percent: Math.round(owner.commission_rate * 100),
       total: Math.round(totalRevenue * owner.commission_rate),
       this_month: Math.round(thisMonthRevenue * owner.commission_rate),
+      unpaid: ownerUnpaid.amount,
+      unpaid_orders_count: ownerUnpaid.orders_count,
     };
 
     // Менеджер, курирующий эту точку (если назначен)
@@ -229,6 +288,7 @@ function registerOwnerRoutes(router) {
         this_month_orders: thisMonthOrders.length,
       },
       owner_earnings: ownerEarnings,
+      payouts: listOwnerPayouts(owner.id, 100),
       groomers,
       unassigned_orders_count: unassignedOrdersCount,
       manager,

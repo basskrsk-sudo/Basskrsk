@@ -786,10 +786,12 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
             <input type="text" id="salon-tagline" maxlength="120" placeholder="Например: Грумминг с любовью к каждой собаке" style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.88rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;">
           </div>
           <div>
-            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">Фото салона — ссылка на изображение</div>
-            <input type="text" id="salon-photo-url" placeholder="https://..." style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.88rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;">
+            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">Фотографии салона (до 8)</div>
+            <input type="file" id="salon-photo-files" accept="image/jpeg,image/png,image/webp" multiple style="width:100%;padding:.55rem;border:1.5px dashed var(--border);border-radius:var(--r);background:var(--cream);">
+            <div id="salon-photo-status" style="display:none;font-size:.76rem;color:var(--muted);margin-top:.4rem;"></div>
           </div>
         </div>
+        <div id="salon-photo-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.55rem;margin-bottom:.9rem;"></div>
         <div style="margin-bottom:.9rem;">
           <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">Описание (до 3000 симв.)</div>
           <textarea id="salon-description" rows="4" maxlength="3000" placeholder="Расскажите о вашем салоне: услуги, опыт, чем вы особенны..." style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.88rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;resize:vertical;"></textarea>
@@ -826,6 +828,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 </div><!-- /layout -->
 </div><!-- /app -->
 
+<script src="salon-photo-gallery.js?v=63"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 let PRODUCTS = [];
@@ -1628,6 +1631,10 @@ async function saveDisplayFormat() {
 let currentSalonPage = null;
 async function renderSalonProfile() {
   if (!myPointId) return;
+  SalonPhotoGallery.init('groomer-salon', {
+    inputId: 'salon-photo-files', gridId: 'salon-photo-grid', statusId: 'salon-photo-status',
+    errorId: 'salon-profile-error', getPointId: () => myPointId, authFetch,
+  });
   try {
     const res = await authFetch('/api/points/' + myPointId + '/salon-page');
     const data = await res.json();
@@ -1638,7 +1645,7 @@ async function renderSalonProfile() {
   }
   document.getElementById('salon-tagline').value = currentSalonPage.salon_tagline || '';
   document.getElementById('salon-description').value = currentSalonPage.salon_description || '';
-  document.getElementById('salon-photo-url').value = currentSalonPage.salon_photo_url || '';
+  SalonPhotoGallery.set('groomer-salon', currentSalonPage.salon_photo_urls, currentSalonPage.salon_photo_url);
   document.getElementById('salon-instagram').value = currentSalonPage.salon_instagram || '';
   document.getElementById('salon-vk').value = currentSalonPage.salon_vk || '';
   document.getElementById('salon-website').value = currentSalonPage.salon_website || '';
@@ -1673,7 +1680,7 @@ async function saveSalonPage() {
   const payload = {
     salon_tagline: document.getElementById('salon-tagline').value.trim(),
     salon_description: document.getElementById('salon-description').value.trim(),
-    salon_photo_url: document.getElementById('salon-photo-url').value.trim(),
+    salon_photo_urls: SalonPhotoGallery.get('groomer-salon'),
     salon_instagram: document.getElementById('salon-instagram').value.trim(),
     salon_vk: document.getElementById('salon-vk').value.trim(),
     salon_website: document.getElementById('salon-website').value.trim(),

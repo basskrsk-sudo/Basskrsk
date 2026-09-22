@@ -156,7 +156,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       <div class="owner-panel active" data-owner-panel="overview">
       <div class="card" id="owner-earnings-card" style="background:var(--forest);border:none;margin-bottom:1.2rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
         <div>
-          <div style="font-size:.78rem;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.04em;">Мой заработок (<span id="owner-tier-percent"></span>% с выручки точки)</div>
+          <div style="font-size:.78rem;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.04em;">К выплате (<span id="owner-tier-percent"></span>% с выручки точки)</div>
           <div style="font-size:1.8rem;font-weight:700;color:#fff;margin-top:.2rem;" id="owner-earnings-total"></div>
         </div>
         <div style="text-align:right;">
@@ -172,6 +172,13 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <span class="payout-schedule-countdown" data-next-payout-countdown></span>
           <div class="payout-schedule-rule">Выплаты производятся два раза в месяц: 9-го и 24-го числа.</div>
         </div>
+      </div>
+      <div class="card" style="overflow-x:auto;">
+        <div class="card-title">История выплат <span id="owner-payout-history-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></div>
+        <table class="tbl">
+          <thead><tr><th>Дата</th><th class="r">Заказов</th><th class="r">Сумма</th><th>Статус</th></tr></thead>
+          <tbody id="owner-payout-history-tbody"></tbody>
+        </table>
       </div>
       <div id="owner-telegram-connect"></div>
       <div class="stats-grid">
@@ -244,8 +251,10 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <textarea id="owner-salon-description" rows="3" maxlength="3000" style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;font-family:inherit;"></textarea>
         </div>
         <div style="margin-bottom:.8rem;">
-          <label style="display:block;font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.3rem;">Ссылка на фото</label>
-          <input type="text" id="owner-salon-photo" placeholder="https://..." style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;">
+          <label style="display:block;font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.3rem;">Фотографии салона (до 8)</label>
+          <input type="file" id="owner-salon-photo-files" accept="image/jpeg,image/png,image/webp" multiple style="width:100%;padding:.55rem;border:1.5px dashed var(--border);border-radius:8px;background:var(--cream);">
+          <div id="owner-salon-photo-status" style="display:none;font-size:.76rem;color:var(--muted);margin-top:.4rem;"></div>
+          <div id="owner-salon-photo-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.55rem;margin-top:.6rem;"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem;margin-bottom:.8rem;">
           <input type="text" id="owner-salon-instagram" placeholder="Instagram" style="width:100%;box-sizing:border-box;padding:.6rem .7rem;border:1.5px solid var(--border);border-radius:8px;font-size:.84rem;">
@@ -276,6 +285,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
   </div>
 </div>
 
+<script src="salon-photo-gallery.js?v=63"></script>
 <script>
 const TOKEN_KEY = 'taiga_owner_token';
 
@@ -379,6 +389,10 @@ let currentOwnerSalonPage = null;
 
 async function loadOwnerSalonPage() {
   if (!myOwnerPointId) return;
+  SalonPhotoGallery.init('owner-salon', {
+    inputId: 'owner-salon-photo-files', gridId: 'owner-salon-photo-grid', statusId: 'owner-salon-photo-status',
+    errorId: 'owner-salon-error', getPointId: () => myOwnerPointId, authFetch,
+  });
   try {
     const res = await authFetch('/api/points/' + myOwnerPointId + '/salon-page');
     const data = await res.json();
@@ -389,7 +403,7 @@ async function loadOwnerSalonPage() {
   }
   document.getElementById('owner-salon-tagline').value = currentOwnerSalonPage.salon_tagline || '';
   document.getElementById('owner-salon-description').value = currentOwnerSalonPage.salon_description || '';
-  document.getElementById('owner-salon-photo').value = currentOwnerSalonPage.salon_photo_url || '';
+  SalonPhotoGallery.set('owner-salon', currentOwnerSalonPage.salon_photo_urls, currentOwnerSalonPage.salon_photo_url);
   document.getElementById('owner-salon-instagram').value = currentOwnerSalonPage.salon_instagram || '';
   document.getElementById('owner-salon-vk').value = currentOwnerSalonPage.salon_vk || '';
   document.getElementById('owner-salon-website').value = currentOwnerSalonPage.salon_website || '';
@@ -418,7 +432,7 @@ async function saveOwnerSalonPage() {
   const payload = {
     salon_tagline: document.getElementById('owner-salon-tagline').value.trim(),
     salon_description: document.getElementById('owner-salon-description').value.trim(),
-    salon_photo_url: document.getElementById('owner-salon-photo').value.trim(),
+    salon_photo_urls: SalonPhotoGallery.get('owner-salon'),
     salon_instagram: document.getElementById('owner-salon-instagram').value.trim(),
     salon_vk: document.getElementById('owner-salon-vk').value.trim(),
     salon_website: document.getElementById('owner-salon-website').value.trim(),
@@ -494,8 +508,20 @@ async function loadDashboard() {
     document.getElementById('stat-month-orders').textContent = data.totals.this_month_orders + ' заказ(ов) в этом месяце';
 
     document.getElementById('owner-tier-percent').textContent = data.owner_earnings.tier_percent;
-    document.getElementById('owner-earnings-total').textContent = fmtMoney(data.owner_earnings.total);
+    document.getElementById('owner-earnings-total').textContent = fmtMoney(data.owner_earnings.unpaid);
     document.getElementById('owner-earnings-month').textContent = fmtMoney(data.owner_earnings.this_month);
+
+    const ownerPayouts = data.payouts || [];
+    document.getElementById('owner-payout-history-count').textContent = ownerPayouts.length + ' выплат';
+    document.getElementById('owner-payout-history-tbody').innerHTML = ownerPayouts.length ? ownerPayouts.map(function(payout) {
+      const paidAt = new Date(String(payout.paid_at).replace(' ', 'T') + 'Z').toLocaleString('ru-RU');
+      return '<tr>' +
+        '<td style="white-space:nowrap;color:var(--muted);">' + paidAt + '</td>' +
+        '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
+        '<td class="r" style="font-weight:700;color:var(--deep);">' + fmtMoney(Number(payout.amount || 0)) + '</td>' +
+        '<td><span class="pill pill-ok">Выплачено</span></td>' +
+        '</tr>';
+    }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1.25rem;">Выплат пока не зафиксировано</td></tr>';
 
     document.getElementById('owner-ref-code').textContent = data.owner_code || '—';
     document.getElementById('owner-ref-total').textContent = fmtMoney((data.referral_bonuses && data.referral_bonuses.total) || 0);
@@ -535,7 +561,7 @@ async function loadDashboard() {
       return '<tr>' +
         '<td>' + dateStr + '</td>' +
         '<td class="r" style="font-weight:600;">' + fmtMoney(o.total) + '</td>' +
-        '<td>' + (o.payment_method === 'sbp' ? 'СБП' : 'Карта') + '</td>' +
+        '<td>' + (o.payment_method === 'sbp' ? 'СБП' : (o.payment_method === 'yookassa' ? 'ЮKassa' : 'Карта')) + '</td>' +
         '<td>' + (o.is_self_order ? '<span class="pill pill-self">Самозаказ</span>' : '') + '</td>' +
         '</tr>';
     }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1.5rem;">Заказов пока нет</td></tr>';

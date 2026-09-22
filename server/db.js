@@ -172,7 +172,8 @@ CREATE TABLE IF NOT EXISTS partners (
   referred_by_partner_id INTEGER REFERENCES partners(id),  -- какой грумер привёл этого (реферальная программа)
   salon_tagline          TEXT,     -- короткий слоган для публичной страницы салона
   salon_description      TEXT,     -- свободное описание салона/услуг
-  salon_photo_url        TEXT,     -- ссылка на фото салона (одно, главное)
+  salon_photo_url        TEXT,     -- первое/главное фото (совместимость со старыми версиями)
+  salon_photo_urls       TEXT NOT NULL DEFAULT '[]', -- JSON-массив фотографий галереи
   salon_instagram        TEXT,
   salon_vk                TEXT,
   salon_website           TEXT,
@@ -544,7 +545,7 @@ CREATE TABLE IF NOT EXISTS orders (
   discount         INTEGER NOT NULL DEFAULT 0,
   total            INTEGER NOT NULL,
   promo_code       TEXT,
-  payment_method   TEXT NOT NULL,        -- 'card' | 'sbp'
+  payment_method   TEXT NOT NULL,        -- 'card' | 'bank_card' | 'sbp' | 'yookassa'
   needs_delivery   INTEGER NOT NULL DEFAULT 0,
   fulfillment_type TEXT NOT NULL DEFAULT 'pickup',  -- 'pickup' | 'home_delivery'
   delivery_address TEXT,                 -- адрес для 'home_delivery' (доставка курьером/своими силами)
@@ -606,6 +607,35 @@ CREATE INDEX IF NOT EXISTS idx_partner_payouts_partner
   ON partner_payouts(partner_id, paid_at DESC);
 CREATE INDEX IF NOT EXISTS idx_partner_payouts_manager
   ON partner_payouts(manager_id, paid_at DESC);
+
+-- Реестр выплат владельцам салонов. Как и у грумеров, каждая выплата
+-- связывается с конкретными оплаченными заказами: один заказ нельзя включить
+-- во вторую выплату, а история остаётся даже после удаления заказа/аккаунта.
+CREATE TABLE IF NOT EXISTS owner_payouts (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id             INTEGER REFERENCES salon_owners(id) ON DELETE SET NULL,
+  owner_name           TEXT NOT NULL,
+  owner_code           TEXT,
+  point_id             TEXT REFERENCES points(id) ON DELETE SET NULL,
+  point_name           TEXT,
+  amount               INTEGER NOT NULL,
+  orders_count         INTEGER NOT NULL DEFAULT 0,
+  paid_by_admin_id     INTEGER,
+  paid_by_admin_login  TEXT,
+  paid_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS owner_payout_items (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  payout_id          INTEGER NOT NULL REFERENCES owner_payouts(id) ON DELETE CASCADE,
+  order_id           INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  order_code         TEXT NOT NULL,
+  commission_amount  INTEGER NOT NULL,
+  UNIQUE(order_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_owner_payouts_owner
+  ON owner_payouts(owner_id, paid_at DESC);
 
 -- ── КОСТОЧКИ (внутренняя валюта «Тайги») ────────────────────────────
 -- Полная история начислений/списаний — источник истины. Текущий баланс
@@ -908,10 +938,32 @@ ensureColumn('manager_points', 'bonus_manager_amount', 'INTEGER');
 ensureColumn('points', 'salon_tagline', 'TEXT');
 ensureColumn('points', 'salon_description', 'TEXT');
 ensureColumn('points', 'salon_photo_url', 'TEXT');
+ensureColumn('points', 'salon_photo_urls', "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn('points', 'salon_instagram', 'TEXT');
 ensureColumn('points', 'salon_vk', 'TEXT');
 ensureColumn('points', 'salon_website', 'TEXT');
 ensureColumn('points', 'salon_page_published', 'INTEGER NOT NULL DEFAULT 0');
+// Время последнего изменения нужно страховочной копии страниц салонов:
+// после нового деплоя она восстанавливает только более свежие данные и не
+// перезаписывает правки, уже сделанные в текущей базе.
+ensureColumn('points', 'salon_page_updated_at', 'TEXT');
+
+// Существующую единственную фотографию превращаем в первый кадр новой
+// галереи. Старое поле сохраняется как обложка для обратной совместимости.
+(function migrateSalonPhotoToGallery() {
+  const rows = db.prepare(`
+    SELECT id, salon_photo_url, salon_photo_urls FROM points
+    WHERE salon_photo_url IS NOT NULL AND TRIM(salon_photo_url) != ''
+  `).all();
+  const update = db.prepare('UPDATE points SET salon_photo_urls = ? WHERE id = ?');
+  for (const row of rows) {
+    let photos = [];
+    try { photos = JSON.parse(row.salon_photo_urls || '[]'); } catch (e) { photos = []; }
+    if (!Array.isArray(photos) || !photos.length) {
+      update.run(JSON.stringify([row.salon_photo_url]), row.id);
+    }
+  }
+})();
 
 // Одноразовый перенос уже заполненных страниц с партнёра на его точку —
 // чтобы то, что грумеры уже успели опубликовать, не потерялось при переезде.
@@ -932,15 +984,28 @@ ensureColumn('points', 'salon_page_published', 'INTEGER NOT NULL DEFAULT 0');
     if (alreadyFilled) continue;
     db.prepare(`
       UPDATE points SET salon_tagline = ?, salon_description = ?, salon_photo_url = ?,
-        salon_instagram = ?, salon_vk = ?, salon_website = ?, salon_page_published = ?
+        salon_photo_urls = ?, salon_instagram = ?, salon_vk = ?, salon_website = ?, salon_page_published = ?
       WHERE id = ?
     `).run(
       row.salon_tagline, row.salon_description, row.salon_photo_url,
+      JSON.stringify(row.salon_photo_url ? [row.salon_photo_url] : []),
       row.salon_instagram, row.salon_vk, row.salon_website, row.salon_page_published,
       row.point_id
     );
   }
 })();
+
+// Старые заполненные страницы появились до поля updated_at. Помечаем их
+// стабильной начальной датой: при первом запуске они попадут в снимок, а все
+// последующие изменения получат реальное время из API.
+db.prepare(`
+  UPDATE points SET salon_page_updated_at = '1970-01-01T00:00:00.000Z'
+  WHERE salon_page_updated_at IS NULL AND (
+    salon_tagline IS NOT NULL OR salon_description IS NOT NULL OR
+    salon_photo_url IS NOT NULL OR salon_instagram IS NOT NULL OR
+    salon_vk IS NOT NULL OR salon_website IS NOT NULL OR salon_page_published = 1
+  )
+`).run();
 ensureColumn('manager_points', 'referred_groomer_id', 'INTEGER REFERENCES partners(id)');
 ensureColumn('manager_points', 'referred_groomer_amount', 'INTEGER');
 ensureColumn('product_variants', 'cost_price', 'REAL');

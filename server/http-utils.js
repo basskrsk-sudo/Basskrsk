@@ -6,7 +6,9 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
     let size = 0;
-    const MAX = 15 * 1024 * 1024; // 15 МБ — с запасом под фото товара в base64 (телефонные фото ~3-10 МБ)
+    // Base64 примерно на треть больше исходного файла. 22 МБ позволяют
+    // принять фото до 15 МБ, не ослабляя лимит для произвольных запросов.
+    const MAX = 22 * 1024 * 1024;
     req.on('data', (chunk) => {
       size += chunk.length;
       if (size > MAX) {
