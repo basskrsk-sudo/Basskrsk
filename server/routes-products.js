@@ -504,11 +504,23 @@ function registerProductRoutes(router) {
       return sendJson(res, 400, { error: 'Фото пустое или превышает 12 МБ' });
     }
 
+    // Не доверяем одному только MIME в data URL: проверяем сигнатуру файла.
+    // Это также не позволяет сохранить произвольный файл в публичную папку.
+    const isJpeg = buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    const isPng = buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const isWebp = buffer.length >= 12
+      && buffer.subarray(0, 4).toString('ascii') === 'RIFF'
+      && buffer.subarray(8, 12).toString('ascii') === 'WEBP';
+    const detectedExt = isJpeg ? 'jpg' : (isPng ? 'png' : (isWebp ? 'webp' : null));
+    if (!detectedExt) {
+      return sendJson(res, 400, { error: 'Файл не распознан как JPG, PNG или WebP' });
+    }
+
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     const id = crypto.randomBytes(8).toString('hex');
     const safePointId = String(point.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'point';
     const tempPath = path.join(UPLOADS_DIR, `tmp-salon-${id}.${srcExt}`);
-    const finalName = `salon-${safePointId}-${id}.webp`;
+    let finalName = `salon-${safePointId}-${id}.webp`;
     const finalPath = path.join(UPLOADS_DIR, finalName);
 
     try {
@@ -522,13 +534,23 @@ function registerProductRoutes(router) {
       }
       fs.unlinkSync(tempPath);
     } catch (error) {
-      try { fs.unlinkSync(tempPath); } catch (cleanupError) {}
+      // В некоторых сборках Amvera ImageMagick установлен без рабочего
+      // JPEG/WebP-делегата. Галерея не должна из-за этого переставать работать:
+      // сохраняем уже проверенный исходник (новый клиент предварительно сам
+      // уменьшает его до 1600×1200). Это также поддерживает старую кэшированную
+      // версию кабинета, которая ещё отправляет исходный файл.
       try { fs.unlinkSync(finalPath); } catch (cleanupError) {}
       const rawError = (error.stderr ? error.stderr.toString() : '') || error.message || '';
-      console.error('Ошибка обработки фотографии салона:', rawError);
-      return sendJson(res, 500, {
-        error: 'Не удалось обработать фото. Используйте JPG, PNG или WebP.',
-      });
+      finalName = `salon-${safePointId}-${id}.${detectedExt}`;
+      const fallbackPath = path.join(UPLOADS_DIR, finalName);
+      try {
+        fs.renameSync(tempPath, fallbackPath);
+        console.warn('Фото салона сохранено без серверной конвертации:', rawError.slice(0, 300));
+      } catch (fallbackError) {
+        try { fs.unlinkSync(tempPath); } catch (cleanupError) {}
+        console.error('Ошибка сохранения фотографии салона:', fallbackError.message || fallbackError);
+        return sendJson(res, 500, { error: 'Не удалось сохранить фотографию. Повторите попытку.' });
+      }
     }
 
     const publicPath = '/images/uploads/' + finalName;

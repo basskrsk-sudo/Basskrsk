@@ -6,6 +6,9 @@
 
   const galleries = new Map();
   const MAX_PHOTOS = 8;
+  const MAX_WIDTH = 1600;
+  const MAX_HEIGHT = 1200;
+  const JPEG_QUALITY = 0.84;
 
   function readFile(file) {
     return new Promise((resolve, reject) => {
@@ -14,6 +17,53 @@
       reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
       reader.readAsDataURL(file);
     });
+  }
+
+  function loadImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => resolve({ image, url });
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Браузер не смог открыть выбранную фотографию'));
+      };
+      image.src = url;
+    });
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+  }
+
+  // Уменьшаем фотографию до отправки. Это ускоряет загрузку с телефона и,
+  // главное, не делает работу галереи зависимой от ImageMagick в контейнере.
+  // JPEG поддерживается всеми нужными браузерами, поэтому используем его как
+  // надёжный итоговый формат даже для исходных PNG/WebP.
+  async function prepareImage(file) {
+    const loaded = await loadImage(file);
+    try {
+      const sourceWidth = loaded.image.naturalWidth || loaded.image.width;
+      const sourceHeight = loaded.image.naturalHeight || loaded.image.height;
+      if (!sourceWidth || !sourceHeight) throw new Error('У фотографии не удалось определить размер');
+      const scale = Math.min(1, MAX_WIDTH / sourceWidth, MAX_HEIGHT / sourceHeight);
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Браузер не поддерживает обработку фотографий');
+      // Белый фон исключает чёрный фон у прозрачных PNG после перевода в JPEG.
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, width, height);
+      context.drawImage(loaded.image, 0, 0, width, height);
+      const blob = await canvasToBlob(canvas, 'image/jpeg', JPEG_QUALITY);
+      if (!blob) throw new Error('Браузер не смог подготовить фотографию');
+      return readFile(blob);
+    } finally {
+      URL.revokeObjectURL(loaded.url);
+    }
   }
 
   function showError(config, message) {
@@ -127,7 +177,11 @@
       showError(config, 'Сначала выберите точку.');
       return;
     }
-    const invalid = selected.find((file) => !/^image\/(jpeg|png|webp)$/i.test(file.type));
+    const invalid = selected.find((file) => {
+      const mimeOkay = /^image\/(jpeg|png|webp)$/i.test(file.type || '');
+      const extensionOkay = /\.(jpe?g|png|webp)$/i.test(file.name || '');
+      return !mimeOkay && !extensionOkay;
+    });
     if (invalid) {
       showError(config, 'Поддерживаются фотографии JPG, PNG и WebP.');
       return;
@@ -140,7 +194,7 @@
     try {
       for (let index = 0; index < selected.length; index += 1) {
         showStatus(config, `Загрузка ${index + 1} из ${selected.length}…`);
-        const data = await readFile(selected[index]);
+        const data = await prepareImage(selected[index]);
         const response = await config.authFetch('/api/points/' + encodeURIComponent(pointId) + '/salon-photos', {
           method: 'POST',
           body: { data },
