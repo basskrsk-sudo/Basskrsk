@@ -4161,9 +4161,13 @@ function qrModeChanged() {
 }
 
 function qrBuildURL(pointId, productId, cityId) {
+  // Товарный QR ведёт на лёгкую карточку покупки. QR всей стойки сохраняет
+  // прежний маршрут в каталог с фильтром по точке и городу.
+  if (productId) {
+    return QR_SITE_URL + '/p/' + encodeURIComponent(pointId) + '/' + encodeURIComponent(productId);
+  }
   let url = QR_SITE_URL + '/?ref=' + pointId;
   if (cityId) url += '&city=' + cityId;
-  if (productId) url += '&product=' + productId;
   return url;
 }
 function qrToSafeUrl(rawUrl) {

@@ -43,6 +43,19 @@ function isDemoModeEnabled() {
   return process.env.DEMO_MODE === 'true';
 }
 
+function paymentReturnUrl(req, orderCode) {
+  const configuredBase = String(process.env.PUBLIC_URL || '').trim().replace(/\/$/, '');
+  if (configuredBase) return configuredBase + '/?payment_return=' + encodeURIComponent(orderCode);
+
+  const forwardedHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  const safeHost = /^[a-z0-9.-]+(?::\d+)?$/i.test(forwardedHost) ? forwardedHost : 'xn----7sbal3ajopsm.xn--p1ai';
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  const protocol = forwardedProto === 'http' || forwardedProto === 'https'
+    ? forwardedProto
+    : (safeHost.includes('localhost') || safeHost.startsWith('127.') ? 'http' : 'https');
+  return `${protocol}://${safeHost}/?payment_return=${encodeURIComponent(orderCode)}`;
+}
+
 function phonesMatchLast10(a, b) {
   const da = String(a || '').replace(/\D/g, '').slice(-10);
   const db_ = String(b || '').replace(/\D/g, '').slice(-10);
@@ -269,6 +282,7 @@ function registerPaymentRoutes(router) {
       customerName, customerLname, pickupPoint, pointId, partnerId, comment,
       promoCode, cartItems,
       fulfillmentType, deliveryAddress, cityId, referralCode, bonesUsed,
+      confirmationMode,
     } = ctx.body || {};
 
     if (!orderId || typeof amount !== 'number' || !customerPhone ||
@@ -425,6 +439,8 @@ function registerPaymentRoutes(router) {
         customerPhone,
         customerEmail,
         method,
+        confirmationMode: confirmationMode === 'redirect' ? 'redirect' : 'embedded',
+        returnUrl: paymentReturnUrl(req, orderId),
       });
       console.log(`[create-payment] Заказ ${orderId}: платёж создан, payment_id=${payment.id}`);
       db.prepare('UPDATE orders SET yookassa_payment_id = ? WHERE id = ?').run(payment.id, orderRowId);
@@ -432,6 +448,7 @@ function registerPaymentRoutes(router) {
         order_id: orderRowId,
         payment_id: payment.id,
         confirmation_token: payment.confirmation && payment.confirmation.confirmation_token,
+        confirmation_url: payment.confirmation && payment.confirmation.confirmation_url,
         reservation_expires_at: db.prepare('SELECT reservation_expires_at FROM orders WHERE id = ?').get(orderRowId).reservation_expires_at,
         reservation_minutes: RESERVATION_TTL_MINUTES,
       });
@@ -466,6 +483,33 @@ function registerPaymentRoutes(router) {
         // Временный сбой ЮKassa не превращаем в неуспешную оплату: фронтенд
         // продолжит опрос, а вебхук остаётся вторым независимым каналом.
         console.warn(`[payment-status] Не удалось сверить платёж ${ctx.params.id}: ${e.message}`);
+      }
+    }
+
+    sendJson(res, 200, {
+      paid: order.status === 'paid',
+      status: order.status,
+      order_code: order.order_code,
+    });
+  });
+
+  // Возврат с резервной страницы ЮKassa содержит только код заказа. Не отдаём
+  // публично ни телефон, ни сумму, ни выбранную точку — только результат.
+  router.get('/api/order-payment-status/:orderCode', async (req, res, ctx) => {
+    let order = db.prepare('SELECT * FROM orders WHERE order_code = ?').get(ctx.params.orderCode);
+    if (!order) return sendJson(res, 404, { error: 'Заказ не найден' });
+
+    if (order.status === 'pending' && order.yookassa_payment_id && yookassa.isConfigured()) {
+      try {
+        const payment = await yookassa.getPayment(order.yookassa_payment_id);
+        if (payment.status === 'succeeded') {
+          await finalizePaidOrder(order.id);
+        } else if (payment.status === 'canceled') {
+          releaseOrderReservation(order.id, 'failed', 'Платёж отменён — резерв освобождён');
+        }
+        order = db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id);
+      } catch (e) {
+        console.warn(`[order-payment-status] Не удалось сверить заказ ${order.order_code}: ${e.message}`);
       }
     }
 

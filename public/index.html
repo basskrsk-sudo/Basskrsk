@@ -5,30 +5,33 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=28">
 <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=28">
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#075642">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0A4A38">
 <title>ХвостМаркет — лакомства и товары для питомцев в хвостоматах рядом с вами</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ЮKassa Checkout Widget -->
-<script src="https://yookassa.ru/checkout-widget/v1/checkout-widget.js"></script>
+<!-- Виджет ЮKassa загружается перед оплатой с проверкой и повторной попыткой.
+     Так сбой внешнего скрипта не создаёт заказ, который клиент не может оплатить. -->
+<link rel="preconnect" href="https://yookassa.ru">
 <style>
   :root {
-    --forest:   #075642;
-    --deep:     #138066;
-    --cream:    #F5F7ED;
-    --mint:     #D8EDDF;
-    --amber:    #F2AD3D;
+    --forest:   #0A4A38;
+    --deep:     #0D5C46;
+    --leaf:     #12755A;
+    --cream:    #F7F5EF;
+    --mint:     #DCEDE2;
+    --amber:    #E8A020;
     --amber-lt: #F6C45A;
-    --gold:     #F2AD3D;
-    --muted:    #63766D;
-    --border:   #D8E7DC;
+    --gold:     #E8A020;
+    --gold-soft:#FBEFD4;
+    --muted:    #5F7268;
+    --border:   #DFE8DC;
     --white:    #FFFFFF;
-    --text:     #0D4436;
-    --on-accent:#053F32;
+    --text:     #0D332A;
+    --on-accent:#3A2700;
     --accent-text:#7A4A00;
-    --radius:   12px;
-    --shadow:   0 2px 16px rgba(7,86,66,.11);
+    --radius:   16px;
+    --shadow:   0 2px 16px rgba(10,74,56,.10);
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,6 +41,19 @@
     background: var(--cream);
     color: var(--text);
     min-height: 100vh;
+  }
+
+  /* Мобильная база: без горизонтального сдвига, серой tap-вспышки и
+     задержки после нажатия. hidden — запасной вариант для старых браузеров. */
+  html, body { overflow-x: hidden; overflow-x: clip; }
+  * { -webkit-tap-highlight-color: transparent; }
+  button, a, select, [onclick] { touch-action: manipulation; }
+  @supports (padding: max(0px)) {
+    nav { padding-left: max(3vw, env(safe-area-inset-left)); padding-right: max(3vw, env(safe-area-inset-right)); }
+    .mobile-bottom-nav { padding-left: max(5px, env(safe-area-inset-left)); padding-right: max(5px, env(safe-area-inset-right)); }
+  }
+  @media (pointer: coarse) {
+    input, select, textarea { font-size: 16px; }
   }
 
   h1, h2, h3, h4 { font-family: 'Baloo 2', sans-serif; }
@@ -105,7 +121,7 @@
 
   /* ─── HERO ─── */
   .hero {
-    background: var(--forest);
+    background: linear-gradient(155deg, var(--forest) 0%, var(--deep) 62%, var(--leaf) 130%);
     position: relative; overflow: hidden;
     width: calc(100% - 32px); max-width: 1420px; margin: 24px auto 0;
     padding: 58px 5vw 28px; border-radius: 24px;
@@ -113,7 +129,7 @@
   .hero::before {
     content: '';
     position: absolute; inset: 0;
-    background-image: radial-gradient(ellipse 60% 80% at 75% 50%, rgba(19,128,102,.70) 0%, transparent 70%);
+    background-image: radial-gradient(ellipse 60% 80% at 78% 44%, rgba(232,160,32,.18) 0%, transparent 70%);
   }
   .hero-inner {
     position: relative; max-width: 1180px; margin: 0 auto;
@@ -138,10 +154,11 @@
   }
   .hero-cta { display: flex; gap: 1rem; flex-wrap: wrap; }
   .btn-primary {
-    background: var(--amber); color: var(--on-accent);
+    background: linear-gradient(180deg, var(--amber-lt), var(--amber)); color: var(--on-accent);
     padding: .8rem 1.8rem; border-radius: var(--radius);
     font-size: .95rem; font-weight: 600; cursor: pointer;
     border: none; transition: background .2s, transform .15s;
+    box-shadow: 0 6px 18px rgba(232,160,32,.28);
     font-family: 'Manrope', sans-serif;
   }
   .btn-primary:hover { background: var(--amber-lt); transform: translateY(-1px); }
@@ -172,11 +189,11 @@
   }
   .hero-category-card:first-child {
     grid-row: 1 / 4;
-    background: linear-gradient(150deg, #F2AD3D 0%, #138066 100%);
+    background: linear-gradient(150deg, #E8A020 0%, #0D5C46 100%);
   }
-  .hero-category-card:nth-child(2) { background: linear-gradient(145deg, #249276 0%, #0E6953 100%); }
-  .hero-category-card:nth-child(3) { background: linear-gradient(145deg, #3C9B7F 0%, #13725B 100%); }
-  .hero-category-card:nth-child(4) { background: linear-gradient(145deg, #5A9869 0%, #17624F 100%); }
+  .hero-category-card:nth-child(2) { background: linear-gradient(145deg, #1B6B54 0%, #0A4A38 100%); }
+  .hero-category-card:nth-child(3) { background: linear-gradient(145deg, #24765E 0%, #0D5C46 100%); }
+  .hero-category-card:nth-child(4) { background: linear-gradient(145deg, #3C7D62 0%, #0A4A38 100%); }
   .hero-category-icon {
     position: absolute; top: 1.1rem; right: 1.1rem;
     width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center;
@@ -694,14 +711,28 @@
   @media (max-width: 480px) {
     .hero-cta { display: grid; grid-template-columns: 1fr; }
     .hero-cta button { width: 100%; }
-    .hero-visual { min-height: 455px; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: .55rem; }
+    /* Компактная мобильная витрина из четырёх равноправных категорий.
+       Раньше первая карточка занимала три ряда и растягивала первый экран. */
+    .hero-visual {
+      min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(142px, auto)); gap: .55rem;
+    }
     .hero-category-card { min-height: 0; padding: 1rem; border-radius: 18px; }
     .hero-category-card h2 { font-size: .95rem; }
     .hero-category-card p { font-size: .72rem; }
     .hero-category-icon { top: .85rem; right: .85rem; }
     .hero-category-product { margin-right: 2.1rem; gap: .4rem; }
     .hero-product-thumb { width: 42px; height: 42px; flex-basis: 42px; border-radius: 11px; }
-    .hero-category-card:first-child .hero-product-thumb { width: 118px; height: 118px; flex-basis: 118px; }
+    .hero-category-card:first-child { grid-row: auto; }
+    .hero-category-card:first-child .hero-category-icon {
+      width: 29px; height: 29px; top: .6rem; right: .6rem; border-radius: 10px; font-size: .9rem;
+    }
+    .hero-category-card:first-child .hero-category-product {
+      flex-direction: row; align-items: center; margin-right: 1.75rem; gap: .4rem; padding-bottom: .25rem;
+    }
+    .hero-category-card:first-child .hero-product-thumb { width: 56px; height: 56px; flex-basis: 56px; border-radius: 13px; font-size: 1.55rem; }
+    .hero-category-card:first-child .hero-product-name { font-size: .7rem; }
+    .hero-category-card:first-child .hero-product-price { font-size: .64rem; }
     .hero-category-card:not(:first-child) { padding: .75rem; }
     .hero-category-card:not(:first-child) .hero-category-icon { width: 29px; height: 29px; top: .6rem; right: .6rem; font-size: .9rem; }
     .hero-category-card:not(:first-child) .hero-category-product { margin-right: 1.75rem; padding-bottom: .25rem; }
@@ -711,7 +742,12 @@
     .hero-category-card:not(:first-child) .hero-product-price { font-size: .61rem; }
     .hero-category-card:not(:first-child) h2 { font-size: .8rem; }
     .hero-category-card:not(:first-child) p { display: none; }
-    .hero-benefits { grid-template-columns: 1fr; }
+    .hero-benefits { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+    .hero-benefit { padding: .75rem; }
+    .hero-benefit-head { align-items: flex-start; gap: .4rem; }
+    .hero-benefit-icon { width: 28px; height: 28px; flex-basis: 28px; border-radius: 8px; }
+    .hero-benefit strong { font-size: .74rem; }
+    .hero-benefit p, .hero-bones-rate { font-size: .64rem; }
     .footer-inner { grid-template-columns: 1fr; }
     .tiers-grid { grid-template-columns: 1fr; }
     .cart-item { flex-wrap: wrap; gap: .8rem; padding: 1rem 1.2rem; }
@@ -2755,7 +2791,7 @@ function renderQuizCheckpoints() {
     const tier = QUIZ_TIERS.find((t) => t.minCorrect === i);
     const dot = document.createElement('div');
     dot.title = tier ? `Несгораемая сумма: ${tier.percent}%` : `Вопрос ${i}`;
-    dot.style.cssText = `flex:1;height:6px;border-radius:3px;background:${tier ? '#F2AD3D' : 'var(--border)'};position:relative;`;
+    dot.style.cssText = `flex:1;height:6px;border-radius:3px;background:${tier ? '#E8A020' : 'var(--border)'};position:relative;`;
     dot.dataset.qIndex = i;
     el.appendChild(dot);
   }
@@ -2770,7 +2806,7 @@ function updateQuizCheckpointProgress() {
       const qIndex = Number(dot.dataset.qIndex);
       const passed = qIndex <= quizState.correctCount;
       const isTierMark = QUIZ_TIERS.some((t) => t.minCorrect === qIndex);
-      dot.style.background = passed ? '#2D7D46' : (isTierMark ? '#F2AD3D' : 'var(--border)');
+      dot.style.background = passed ? '#2D7D46' : (isTierMark ? '#E8A020' : 'var(--border)');
     });
   }
   const banner = document.getElementById('quiz-safe-banner');
@@ -4040,13 +4076,13 @@ async function renderPointsMap() {
             balloonContentHeader: escapeHtml(p.name),
             balloonContentBody: '<div style="padding-top:4px;">📍 ' + escapeHtml(p.addr) + '</div>',
             balloonContentFooter: '<a href="' + routeUrl + '" target="_blank" rel="noopener" ' +
-              'style="display:inline-block;margin-top:8px;color:#138066;font-weight:700;">' +
+              'style="display:inline-block;margin-top:8px;color:#0D5C46;font-weight:700;">' +
               'Построить маршрут в Яндекс Картах →</a>',
             hintContent: p.name,
             iconCaption: p.name,
           }, {
             preset: 'islands#redDotIconWithCaption',
-            iconColor: '#F2AD3D',
+            iconColor: '#E8A020',
             iconCaptionMaxWidth: 180,
           });
           map.geoObjects.add(placemark);
@@ -4915,6 +4951,77 @@ function backToStep1() {
 }
 
 let ykCheckoutInstance = null;
+const YOOKASSA_WIDGET_URL = 'https://yookassa.ru/checkout-widget/v1/checkout-widget.js';
+let yookassaWidgetLoadPromise = null;
+
+function isYooKassaWidgetReady() {
+  return typeof window.YooMoneyCheckoutWidget === 'function';
+}
+
+function loadYooKassaWidget(forceReload) {
+  if (isYooKassaWidgetReady()) return Promise.resolve(true);
+
+  if (forceReload) {
+    document.querySelectorAll('script[data-yookassa-widget]').forEach(function(script) {
+      script.remove();
+    });
+    yookassaWidgetLoadPromise = null;
+  }
+  if (yookassaWidgetLoadPromise) return yookassaWidgetLoadPromise;
+
+  yookassaWidgetLoadPromise = new Promise(function(resolve, reject) {
+    const script = document.createElement('script');
+    script.async = true;
+    script.dataset.yookassaWidget = 'true';
+    script.src = YOOKASSA_WIDGET_URL + (forceReload ? '?retry=' + Date.now() : '');
+
+    let settled = false;
+    const finish = function(error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      script.onload = null;
+      script.onerror = null;
+      if (error) reject(error); else resolve(true);
+    };
+    const timer = setTimeout(function() {
+      finish(new Error('Платёжный модуль не ответил вовремя'));
+    }, 10000);
+
+    script.onload = function() {
+      if (isYooKassaWidgetReady()) finish();
+      else finish(new Error('Платёжный модуль загрузился некорректно'));
+    };
+    script.onerror = function() {
+      finish(new Error('Не удалось загрузить платёжный модуль'));
+    };
+    document.head.appendChild(script);
+  }).catch(function(error) {
+    yookassaWidgetLoadPromise = null;
+    throw error;
+  });
+
+  return yookassaWidgetLoadPromise;
+}
+
+// Две попытки загрузки. Если обе неудачны (старый WebView, блокировщик,
+// временный сбой CDN), сервер создаст redirect-платёж и откроет защищённую
+// страницу ЮKassa вместо встроенной формы.
+async function prepareYooKassaWidget() {
+  try {
+    await loadYooKassaWidget(false);
+    return true;
+  } catch (firstError) {
+    console.warn('Первая загрузка виджета ЮKassa не удалась:', firstError);
+    try {
+      await loadYooKassaWidget(true);
+      return true;
+    } catch (secondError) {
+      console.warn('Повторная загрузка виджета ЮKassa не удалась, используем переход на страницу оплаты:', secondError);
+      return false;
+    }
+  }
+}
 
 // Виджет ЮKassa не во всех сценариях сообщает родительской странице событие
 // success: иногда он только рисует внутри себя экран «Успешно» с кнопкой
@@ -4971,6 +5078,11 @@ async function launchYooKassaPayment() {
   payBtn.innerHTML = '<span>Готовим оплату…</span>';
 
   try {
+    // Проверяем внешний JS ДО создания заказа и резерва. Если встроенный
+    // виджет недоступен, просим сервер создать redirect-платёж.
+    const widgetReady = await prepareYooKassaWidget();
+    const confirmationMode = widgetReady ? 'embedded' : 'redirect';
+
     // Заголовок авторизации нужен, только если реально тратим косточки —
     // сервер проверяет, что это тот же клиент, кто вошёл в личный кабинет,
     // и не позволит списать чужой баланс.
@@ -5001,6 +5113,7 @@ async function launchYooKassaPayment() {
         deliveryAddress: isDelivery ? deliveryAddress : null,
         cityId: getCurrentCity(),
         referralCode: referralCodeValid ? document.getElementById('oReferralCode').value.trim().toUpperCase() : null,
+        confirmationMode,
         cartItems: cart.map((i) => ({ variantId: i.variantId, qty: i.qty })),
       }),
     });
@@ -5043,7 +5156,12 @@ async function launchYooKassaPayment() {
       return;
     }
     if (!data.confirmation_token) {
-      throw new Error((data && data.error) || 'Не удалось создать платёж');
+      if (confirmationMode === 'redirect' && data.confirmation_url) {
+        payBtn.innerHTML = '<span>Открываем безопасную оплату…</span>';
+        window.location.assign(data.confirmation_url);
+        return;
+      }
+      throw new Error((data && data.error) || 'Не удалось открыть форму оплаты');
     }
 
     const reservationNote = document.getElementById('payment-reservation-note');
@@ -5149,8 +5267,56 @@ async function launchYooKassaPayment() {
     console.error('Ошибка запуска оплаты:', e);
     payBtn.style.display = 'flex';
     payBtn.disabled = false; payBtn.innerHTML = originalBtnHtml;
-    showToast('⚠️ Не удалось начать оплату: ' + (e.message || 'неизвестная ошибка'));
+    showToast('Не удалось открыть оплату. Проверьте интернет и попробуйте ещё раз.');
   }
+}
+
+async function handleRedirectPaymentReturn() {
+  const url = new URL(window.location.href);
+  const orderCode = url.searchParams.get('payment_return');
+  if (!orderCode) return;
+
+  // Одноразовый служебный параметр не должен оставаться в адресной строке:
+  // иначе обновление страницы снова запустит проверку результата.
+  url.searchParams.delete('payment_return');
+  history.replaceState({}, '', url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '') + url.hash);
+  showToast('Проверяем результат оплаты…');
+
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    try {
+      const res = await fetchWithTimeout(
+        '/api/order-payment-status/' + encodeURIComponent(orderCode),
+        { cache: 'no-store' },
+        8000
+      );
+      const data = await res.json();
+      if (res.ok && data.paid) {
+        document.getElementById('success-subtitle').textContent =
+          'Оплата прошла успешно. Если вы выбрали самовывоз, товар можно забрать с хвостомата самостоятельно — обращаться к сотруднику не обязательно.';
+        document.getElementById('success-banner-icon').textContent = '🛍️';
+        document.getElementById('success-banner-label').textContent = 'Оплата подтверждена';
+        document.getElementById('success-banner-text').textContent = 'Заказ готов к получению';
+        document.getElementById('success-details').innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:.4rem;">
+            <div style="color:#2D7D46;">✅ <strong>Статус:</strong> оплата подтверждена</div>
+            <div>📋 <strong>Заказ:</strong> ${escapeHtml(data.order_code || orderCode)}</div>
+            <div>💬 Подтверждение и сведения о заказе также отправлены в Telegram, если он подключён.</div>
+          </div>`;
+        document.getElementById('loyalty-badge-card').style.display = 'none';
+        showPage('success');
+        return;
+      }
+      if (res.ok && ['failed', 'cancelled', 'canceled'].includes(data.status)) {
+        showToast('Оплата не завершена. Корзина сохранена — можно попробовать ещё раз.');
+        return;
+      }
+    } catch (error) {
+      console.warn('Не удалось проверить redirect-платёж:', error);
+    }
+    await new Promise(function(resolve) { setTimeout(resolve, 2000); });
+  }
+
+  showToast('Платёж ещё обрабатывается. Подтверждение придёт в Telegram.');
 }
 
 function simulatePaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment) {
@@ -5163,14 +5329,14 @@ function simulatePaymentSuccess(orderId, name, lname, phone, pickup, subtotal, c
   box.style.cssText = 'background:#fff;border-radius:16px;padding:2.5rem 2rem;max-width:340px;width:100%;text-align:center;';
 
   const spinner = document.createElement('div');
-  spinner.style.cssText = 'width:48px;height:48px;border:3px solid #FFF3D2;border-top-color:#138066;border-radius:50%;margin:0 auto 1.25rem;animation:spin .8s linear infinite;';
+  spinner.style.cssText = 'width:48px;height:48px;border:3px solid #FFF3D2;border-top-color:#0D5C46;border-radius:50%;margin:0 auto 1.25rem;animation:spin .8s linear infinite;';
 
   const styleEl = document.createElement('style');
   styleEl.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
   document.head.appendChild(styleEl);
 
   const title = document.createElement('div');
-  title.style.cssText = 'font-weight:700;font-size:1.05rem;color:#075642;margin-bottom:.4rem;';
+  title.style.cssText = 'font-weight:700;font-size:1.05rem;color:#0A4A38;margin-bottom:.4rem;';
   title.textContent = 'Обрабатываем оплату...';
 
   const sub = document.createElement('div');
@@ -5227,7 +5393,7 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
       : 'Вы на максимальном уровне — выше пока некуда 🎉';
     badgeCard.style.display = 'block';
     badgeCard.innerHTML = `
-      <div style="background:linear-gradient(135deg,#F5F7ED 0%,#FFF3D2 100%);border:2px solid ${leveledUp ? '#F2AD3D' : 'var(--border)'};border-radius:16px;padding:1.5rem;margin-bottom:1.5rem;text-align:center;">
+      <div style="background:linear-gradient(135deg,#F7F5EF 0%,#FFF3D2 100%);border:2px solid ${leveledUp ? '#E8A020' : 'var(--border)'};border-radius:16px;padding:1.5rem;margin-bottom:1.5rem;text-align:center;">
         ${leveledUp ? '<div style="font-size:.8rem;font-weight:700;color:var(--amber);letter-spacing:.06em;text-transform:uppercase;margin-bottom:.6rem;">🎊 Новый уровень!</div>' : ''}
         <img src="${tierAfter.image}" alt="${tierAfter.name}" style="width:96px;height:96px;margin:0 auto .75rem;display:block;">
         <div style="font-family:'Baloo 2',sans-serif;font-size:1.3rem;color:var(--deep);margin-bottom:.3rem;">${tierAfter.name}</div>
@@ -6306,6 +6472,7 @@ Promise.all([loadProducts(), loadSitePoints(), loadSiteCities()]).then(function(
   renderFeatured();
   renderCatalog(); // на случай, если каталог уже был открыт до того, как товары успели загрузиться
 });
+handleRedirectPaymentReturn();
 loadPublicNews();
 loadDiscountSettings();
 // Если клиент уже входил раньше (токен сохранён в localStorage) — сразу

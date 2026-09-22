@@ -184,11 +184,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // QR на товаре открывает лёгкую карточку покупки. Старые уже напечатанные
+  // QR вида /?ref=X&product=Y продолжают работать через временный редирект.
+  if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/' && query.product && query.ref) {
+    res.writeHead(302, { Location: '/p/' + encodeURIComponent(query.ref) + '/' + encodeURIComponent(query.product) });
+    res.end();
+    return;
+  }
+  if ((req.method === 'GET' || req.method === 'HEAD') && (pathname === '/p' || pathname.startsWith('/p/'))) {
+    return serveStatic(req, res, '/p.html');
+  }
+
   serveStatic(req, res, pathname);
 });
 
 server.listen(PORT, () => {
-  console.log(`Тайга: сервер запущен на порту ${PORT}`);
+  console.log(`Тайга: сервер запущен на порту ${PORT} (Node.js ${process.version})`);
   require('./backup').scheduleBackups();
   require('./telegram-login-poller').startPolling();
   require('./max-bot').startPolling();

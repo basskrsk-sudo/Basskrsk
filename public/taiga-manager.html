@@ -1481,9 +1481,11 @@ function qrBuildURL(pointId, productId, cityId) {
   // Большой QR на табличке ведёт сначала на короткую инструкцию. В ней
   // сохраняются точка и город, поэтому кнопка каталога откроет ассортимент
   // именно этой стойки. QR на товаре по-прежнему открывает его карточку сразу.
-  let url = QR_SITE_URL + (productId ? '/?ref=' : '/purchase-guide.html?ref=') + pointId;
+  if (productId) {
+    return QR_SITE_URL + '/p/' + encodeURIComponent(pointId) + '/' + encodeURIComponent(productId);
+  }
+  let url = QR_SITE_URL + '/purchase-guide.html?ref=' + pointId;
   if (cityId) url += '&city=' + cityId;
-  if (productId) url += '&product=' + productId;
   return url;
 }
 // qrcodejs некорректно считает ёмкость для многобайтных UTF-8 строк

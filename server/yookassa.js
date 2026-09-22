@@ -59,16 +59,20 @@ async function parseJsonSafe(res, context) {
   }
 }
 
-// Создаёт платёж с подтверждением типа "embedded" (для встроенного JS-виджета).
+// Создаёт платёж для встроенного JS-виджета или для резервного перехода на
+// защищённую страницу ЮKassa, если виджет не загрузился в браузере клиента.
 // receiptItems — уже готовый по формату ЮKassa состав чека (собирается на фронтенде
 // с учётом пропорционального распределения скидок по позициям).
-async function createPayment({ amount, description, orderCode, receiptItems, customerPhone, customerEmail, method }) {
+async function createPayment({ amount, description, orderCode, receiptItems, customerPhone, customerEmail, method, confirmationMode, returnUrl }) {
   const idempotenceKey = orderCode + '-' + Date.now();
+  const useRedirect = confirmationMode === 'redirect';
   const body = {
     amount: { value: amount.toFixed(2), currency: 'RUB' },
     capture: true,
     description: description || ('Заказ ' + orderCode),
-    confirmation: { type: 'embedded' },
+    confirmation: useRedirect
+      ? { type: 'redirect', return_url: returnUrl, enforce: true }
+      : { type: 'embedded' },
     metadata: { order_code: orderCode },
   };
   if (method === 'sbp' || method === 'bank_card') {
