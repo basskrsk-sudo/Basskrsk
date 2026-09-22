@@ -33,6 +33,44 @@ async function parseJsonBody(req) {
   }
 }
 
+// Бинарные загрузки читаем отдельно от JSON. Сейчас это используется для
+// восстановления базы из админки. Лимит передаётся вызывающим кодом, чтобы
+// обычные API-запросы не получили неоправданно большой допустимый размер.
+function readBinaryBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const declaredLength = Number(req.headers['content-length'] || 0);
+    if (declaredLength > maxBytes) {
+      const err = new Error('Файл слишком большой');
+      err.statusCode = 413;
+      reject(err);
+      req.resume();
+      return;
+    }
+
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    req.on('data', (chunk) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > maxBytes) {
+        settled = true;
+        const err = new Error('Файл слишком большой');
+        err.statusCode = 413;
+        reject(err);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (!settled) resolve(Buffer.concat(chunks));
+    });
+    req.on('error', (err) => {
+      if (!settled) reject(err);
+    });
+  });
+}
+
 function sendJson(res, statusCode, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(statusCode, {
@@ -86,4 +124,4 @@ class Router {
   }
 }
 
-module.exports = { readBody, parseJsonBody, sendJson, Router };
+module.exports = { readBody, readBinaryBody, parseJsonBody, sendJson, Router };

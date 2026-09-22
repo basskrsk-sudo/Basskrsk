@@ -2,8 +2,8 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<link rel="icon" type="image/x-icon" href="/favicon.ico">
-<link rel="shortcut icon" href="/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=28">
+<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=28">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Тайга — Регистрация партнёра</title>
@@ -23,6 +23,8 @@ nav{background:var(--forest);padding:0 5vw;}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;height:60px;max-width:900px;margin:0 auto;}
 .nav-logo{font-family:'Playfair Display',serif;font-size:1.3rem;color:#fff;cursor:pointer;}
 .nav-logo span{color:var(--amber);}
+.nav-brand-mark{width:54px;height:54px;box-sizing:border-box;flex:0 0 54px;display:flex;align-items:center;justify-content:center;padding:3px;background:#fff;border-radius:13px;box-shadow:0 2px 9px rgba(0,0,0,.2);}
+.nav-brand-mark img{width:48px;height:auto;display:block;image-rendering:auto;}
 .nav-back{font-size:.82rem;color:rgba(255,255,255,.55);text-decoration:none;transition:color .2s;}
 .nav-back:hover{color:rgba(255,255,255,.9);}
 
@@ -192,7 +194,7 @@ canvas#sigCanvas.has-sig{border-color:var(--deep);}
 
 <nav>
   <div class="nav-inner">
-    <div class="nav-logo"><img src="images/taiga-logo.png" alt="Тайга" style="height:30px;width:auto;display:block;"></div>
+    <div class="nav-logo" aria-label="ХвостМаркет" style="display:flex;align-items:center;gap:.5rem;"><span class="nav-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;line-height:.82;font-family:Inter,sans-serif;font-size:.92rem;font-weight:800;"><span style="color:#fff;">Хвост</span><span style="color:#FF5A49;margin-top:.22rem;">Маркет</span></span></div>
     <a href="index.html" class="nav-back">← Вернуться на сайт</a>
   </div>
 </nav>

@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS products (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   slug      TEXT UNIQUE NOT NULL,
   name      TEXT NOT NULL,
-  category  TEXT NOT NULL,        -- 'treats' | 'chews' | 'toys' | 'care'
+  category  TEXT NOT NULL,        -- 'treats' | 'toys' | 'accessories' | 'care'
   icon      TEXT NOT NULL,
   badge     TEXT,
   img       TEXT,
@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS admins (
   login          TEXT UNIQUE NOT NULL,
   password_hash  TEXT NOT NULL,
   full_name      TEXT,
+  telegram_chat_id TEXT,
   role           TEXT NOT NULL DEFAULT 'admin', -- 'super' — может создавать/отключать других админов; 'admin' — обычный, всё остальное
   active         INTEGER NOT NULL DEFAULT 1,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
@@ -155,6 +156,7 @@ CREATE TABLE IF NOT EXISTS partners (
   password_hash          TEXT NOT NULL,
   full_name              TEXT NOT NULL,
   phone                  TEXT NOT NULL,
+  telegram_chat_id       TEXT,                    -- появляется после подтверждённого входа через Telegram
   point_id               TEXT REFERENCES points(id),  -- связь с точкой в общем справочнике (складской учёт)
   point_name             TEXT NOT NULL,
   point_address          TEXT,
@@ -186,6 +188,8 @@ CREATE TABLE IF NOT EXISTS managers (
   password_hash  TEXT NOT NULL,
   full_name      TEXT NOT NULL,
   phone          TEXT NOT NULL,
+  email          TEXT,
+  telegram_chat_id TEXT,                    -- появляется после подтверждённого входа через Telegram
   legal_form     TEXT,                        -- 'npd' | 'ip' | 'ooo' — для договора и налоговых рисков (см. партнёров)
   inn            TEXT,
   bank_details   TEXT,
@@ -238,6 +242,7 @@ CREATE TABLE IF NOT EXISTS salon_owners (
   password_hash  TEXT NOT NULL,
   full_name      TEXT NOT NULL,
   phone          TEXT NOT NULL,
+  telegram_chat_id TEXT,
   point_id       TEXT REFERENCES points(id),
   active         INTEGER NOT NULL DEFAULT 1,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
@@ -252,6 +257,24 @@ CREATE TABLE IF NOT EXISTS warehouse_receipts (
   supplier_note TEXT,                 -- номер накладной/комментарий, например "Счастливый хвостик, накладная №123"
   keeper_id     INTEGER REFERENCES warehouse_keepers(id),
   received_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Ручные удаления и корректировки складских строк администратором.
+-- Название и фасовка сохраняются снимком, поэтому журнал остаётся понятным,
+-- даже если сам товар позднее удалят из каталога.
+CREATE TABLE IF NOT EXISTS warehouse_stock_adjustments (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  city_id       TEXT NOT NULL,
+  variant_id    INTEGER NOT NULL,
+  product_name  TEXT NOT NULL,
+  weight        TEXT NOT NULL,
+  old_qty       INTEGER NOT NULL,
+  new_qty       INTEGER,
+  action        TEXT NOT NULL,
+  reason        TEXT,
+  admin_id      INTEGER,
+  admin_login   TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── ПЕРЕМЕЩЕНИЕ ТОВАРА НА ТОЧКУ (без кладовщика) ───────────────────
@@ -374,7 +397,8 @@ CREATE TABLE IF NOT EXISTS telegram_login_tokens (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   token       TEXT UNIQUE NOT NULL,
   phone       TEXT NOT NULL,
-  role        TEXT NOT NULL DEFAULT 'customer', -- 'customer' | 'partner' | 'manager'
+  role        TEXT NOT NULL DEFAULT 'customer', -- 'customer' | 'partner' | 'manager' | 'owner' | 'admin'
+  account_id  INTEGER,                         -- для привязки из уже открытого кабинета
   chat_id     TEXT,
   verified    INTEGER NOT NULL DEFAULT 0,
   expires_at  TEXT NOT NULL,
@@ -465,6 +489,39 @@ CREATE TABLE IF NOT EXISTS customers (
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Аудит удаления тестовых клиентов администратором. Сам клиент удаляется,
+-- поэтому сохраняем достаточный текстовый снимок, чтобы позже было понятно,
+-- кто, когда и какую запись убрал из базы.
+CREATE TABLE IF NOT EXISTS customer_deletion_log (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id    INTEGER NOT NULL,
+  phone          TEXT NOT NULL,
+  full_name      TEXT,
+  orders_count   INTEGER NOT NULL DEFAULT 0,
+  total_spent    INTEGER NOT NULL DEFAULT 0,
+  bones_balance  INTEGER NOT NULL DEFAULT 0,
+  reason         TEXT,
+  admin_id       INTEGER,
+  admin_login    TEXT,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Операционные действия менеджеров. Храним снимок ФИО/логина и название
+-- объекта, чтобы журнал оставался понятным после изменения или удаления
+-- соответствующего аккаунта, точки или партнёра.
+CREATE TABLE IF NOT EXISTS manager_action_log (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  manager_id     INTEGER NOT NULL,
+  manager_name   TEXT,
+  manager_login  TEXT,
+  action         TEXT NOT NULL,
+  target_type    TEXT,
+  target_id      TEXT,
+  target_name    TEXT,
+  details        TEXT,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS site_settings (
   key         TEXT PRIMARY KEY,
   value       TEXT NOT NULL,  -- JSON
@@ -481,6 +538,7 @@ CREATE TABLE IF NOT EXISTS orders (
   pickup_point     TEXT NOT NULL,          -- человекочитаемый текст для Telegram/чека
   point_id         TEXT,                   -- id любой реальной точки, либо NULL (для "другой точки")
   partner_id       INTEGER REFERENCES partners(id),  -- если на точке несколько грумеров — кого выбрал клиент
+  partner_name     TEXT,                   -- имя выбранного грумера, зафиксированное на момент заказа
   comment          TEXT,
   subtotal         INTEGER NOT NULL,
   discount         INTEGER NOT NULL DEFAULT 0,
@@ -492,9 +550,13 @@ CREATE TABLE IF NOT EXISTS orders (
   delivery_address TEXT,                 -- адрес для 'home_delivery' (доставка курьером/своими силами)
   delivery_fee     INTEGER NOT NULL DEFAULT 0,       -- стоимость доставки, уже включена в total
   has_custom_item  INTEGER NOT NULL DEFAULT 0,
-  commission_rate  REAL,                 -- ставка партнёра, зафиксированная НА МОМЕНТ этого заказа (обычный уровень грумера, либо 10% для самозаказа — см. routes-payment.js). NULL у старых заказов — тогда используется текущая ставка партнёра как раньше.
+  commission_rate  REAL,                 -- ставка партнёра, зафиксированная НА МОМЕНТ этого заказа (обычный уровень грумера, либо 0% для самозаказа — см. routes-payment.js). NULL у старых заказов — тогда используется текущая ставка партнёра как раньше.
   status           TEXT NOT NULL DEFAULT 'pending', -- 'pending'|'paid'|'failed'|'cancelled'
   yookassa_payment_id TEXT,
+  reservation_status TEXT NOT NULL DEFAULT 'none', -- 'none'|'active'|'consumed'|'released'
+  reservation_expires_at TEXT,
+  inventory_source_type TEXT,                    -- 'point' | 'warehouse'
+  inventory_source_id TEXT,                      -- point_id либо city_id
   refund_status    TEXT NOT NULL DEFAULT 'none',  -- 'none' | 'refunded'
   refunded_amount  INTEGER,
   refund_reason    TEXT,
@@ -506,12 +568,44 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE TABLE IF NOT EXISTS order_items (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   order_id    INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  variant_id  INTEGER REFERENCES product_variants(id),
   name        TEXT NOT NULL,
   weight      TEXT NOT NULL,
   price       INTEGER NOT NULL,
   qty         INTEGER NOT NULL,
   is_custom   INTEGER NOT NULL DEFAULT 0
 );
+
+-- Реестр фактически выплаченных комиссий грумерам. Отдельная таблица
+-- partner_payout_items связывает выплату с конкретными заказами и не даёт
+-- повторно включить один и тот же заказ в следующую выплату.
+CREATE TABLE IF NOT EXISTS partner_payouts (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  partner_id           INTEGER REFERENCES partners(id) ON DELETE SET NULL,
+  partner_name         TEXT NOT NULL,
+  partner_code         TEXT,
+  manager_id           INTEGER REFERENCES managers(id) ON DELETE SET NULL,
+  manager_name         TEXT,
+  amount               INTEGER NOT NULL,
+  orders_count         INTEGER NOT NULL DEFAULT 0,
+  paid_by_admin_id     INTEGER,
+  paid_by_admin_login  TEXT,
+  paid_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS partner_payout_items (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  payout_id          INTEGER NOT NULL REFERENCES partner_payouts(id) ON DELETE CASCADE,
+  order_id           INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  order_code         TEXT NOT NULL,
+  commission_amount  INTEGER NOT NULL,
+  UNIQUE(order_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_partner_payouts_partner
+  ON partner_payouts(partner_id, paid_at DESC);
+CREATE INDEX IF NOT EXISTS idx_partner_payouts_manager
+  ON partner_payouts(manager_id, paid_at DESC);
 
 -- ── КОСТОЧКИ (внутренняя валюта «Тайги») ────────────────────────────
 -- Полная история начислений/списаний — источник истины. Текущий баланс
@@ -521,7 +615,7 @@ CREATE TABLE IF NOT EXISTS bone_transactions (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id   INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   amount        INTEGER NOT NULL,   -- положительное — начисление, отрицательное — списание
-  type          TEXT NOT NULL,      -- 'referral' | 'gift' | 'spend' | 'refund'
+  type          TEXT NOT NULL,      -- 'referral' | 'gift' | 'reserve' | 'spend' | 'release' | 'refund'
   description   TEXT,
   order_id      INTEGER REFERENCES orders(id),
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -605,22 +699,6 @@ if (!db.prepare("SELECT value FROM site_settings WHERE key = 'manager_flat_7pct_
 ensureColumn('restock_requests', 'point_id', 'TEXT REFERENCES points(id)');
 ensureColumn('restock_requests', 'initiated_by', "TEXT NOT NULL DEFAULT 'manager'");
 
-// Разовый сброс пароля администратора 'admin' обратно на исходный
-// (taiga2025#) — по просьбе владельца бизнеса, который сменил пароль и
-// забыл новый. Срабатывает ОДИН РАЗ на ближайшем деплое (флаг в
-// site_settings не даёт запускать это повторно при каждом рестарте —
-// иначе любая последующая смена пароля тоже откатывалась бы обратно).
-if (!db.prepare("SELECT value FROM site_settings WHERE key = 'admin_password_reset_to_default'").get()) {
-  const { hashPassword } = require('./auth');
-  const info = db.prepare("UPDATE admins SET password_hash = ? WHERE login = 'admin'").run(hashPassword('taiga2025#'));
-  if (info.changes > 0) {
-    console.log('Пароль администратора admin сброшен на исходный (taiga2025#) — смените его после входа.');
-  }
-  db.prepare(`
-    INSERT INTO site_settings (key, value, updated_at) VALUES ('admin_password_reset_to_default', '1', datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  `).run();
-}
 ensureColumn('restock_requests', 'fulfilled_by', 'INTEGER REFERENCES warehouse_keepers(id)');
 
 // Разовая полная замена каталога — по просьбе владельца бизнеса, реальный
@@ -696,17 +774,42 @@ if (!hasSuperAdmin) {
 ensureColumn('product_variants', 'active', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('points', 'lat', 'REAL');
 ensureColumn('points', 'lng', 'REAL');
+
+// Координаты двух действующих хвостоматов сверены по карточкам и маршрутам
+// 2ГИС. Заполняем только пустые значения: если администратор позднее вручную
+// уточнит положение входа, его координаты при следующем запуске не затрутся.
+db.prepare(`
+  UPDATE points SET lat = ?, lng = ?
+  WHERE id = ? AND (lat IS NULL OR lng IS NULL)
+`).run(56.024484, 92.819061, 'sir-barsik');
+db.prepare(`
+  UPDATE points SET lat = ?, lng = ?
+  WHERE id = ? AND (lat IS NULL OR lng IS NULL)
+`).run(55.994955, 92.931145, 'zveryuga');
 ensureColumn('orders', 'refund_status', "TEXT NOT NULL DEFAULT 'none'");
 ensureColumn('orders', 'refunded_amount', 'INTEGER');
 ensureColumn('orders', 'refund_reason', 'TEXT');
 ensureColumn('orders', 'refunded_at', 'TEXT');
 ensureColumn('orders', 'yookassa_refund_id', 'TEXT');
 ensureColumn('orders', 'partner_id', 'INTEGER');
+ensureColumn('orders', 'partner_name', 'TEXT');
+// Для уже существующих заказов сохраняем текущее имя связанного грумера.
+// В дальнейшем заказ использует снимок имени и не зависит от изменений профиля.
+db.exec(`
+  UPDATE orders
+  SET partner_name = (SELECT full_name FROM partners WHERE partners.id = orders.partner_id)
+  WHERE partner_name IS NULL AND partner_id IS NOT NULL
+`);
 ensureColumn('orders', 'fulfillment_type', "TEXT NOT NULL DEFAULT 'pickup'");
+ensureColumn('order_items', 'variant_id', 'INTEGER REFERENCES product_variants(id)');
 ensureColumn('orders', 'delivery_address', 'TEXT');
 ensureColumn('orders', 'delivery_fee', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'referral_code', 'TEXT');
 ensureColumn('partners', 'tier_confirmed_month', 'TEXT');
+ensureColumn('partners', 'telegram_chat_id', 'TEXT');
+ensureColumn('managers', 'telegram_chat_id', 'TEXT');
+ensureColumn('salon_owners', 'telegram_chat_id', 'TEXT');
+ensureColumn('admins', 'telegram_chat_id', 'TEXT');
 // Формат размещения на точке — раньше был только один вариант (полноценная
 // стойка), поэтому у уже существующих партнёров по умолчанию включаем именно
 // её, а два новых формата (постер, корзинка) — выключены, пока партнёр или
@@ -715,11 +818,65 @@ ensureColumn('partners', 'display_stand', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('partners', 'display_poster', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('partners', 'display_basket', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('telegram_login_tokens', 'role', "TEXT NOT NULL DEFAULT 'customer'");
+ensureColumn('telegram_login_tokens', 'account_id', 'INTEGER');
 // Короткий числовой код — запасной способ входа, если фронтенд не подхватил
 // подтверждение автоматически (опрос /telegram/check). Бот присылает его в
 // сообщении вместе с обычным подтверждением; пользователь может ввести его
 // на сайте вручную, не имея больше доступа к исходному длинному token.
 ensureColumn('telegram_login_tokens', 'code', 'TEXT');
+
+// Единая структура каталога: лакомства, игрушки, аксессуары и уход.
+// Старую категорию chews объединяем с лакомствами. Несколько аксессуаров
+// исторически были заведены как toys/treats, поэтому переносим их по названию.
+// Миграция идемпотентна и безопасно выполняется при каждом запуске.
+function migrateProductCategories() {
+  const accessoryWords = /миска|поилк|пакет|диспенсер|ошейн|повод|шле|щ[её]тк|расч[её]с|когтерез|одежд|дождевик|аксессуар/i;
+  const rows = db.prepare('SELECT id, name, category FROM products').all();
+  const update = db.prepare('UPDATE products SET category = ? WHERE id = ?');
+  let changed = 0;
+  db.exec('BEGIN');
+  try {
+    for (const product of rows) {
+      let category = product.category;
+      if (category === 'chews') category = 'treats';
+      if (category === 'walk') category = 'accessories';
+      if (accessoryWords.test(product.name || '')) category = 'accessories';
+      if (category !== product.category) {
+        update.run(category, product.id);
+        changed += 1;
+      }
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+  if (changed) console.log('Миграция каталога: товары распределены по 4 категориям (' + changed + ' изм.)');
+}
+migrateProductCategories();
+
+// В старых версиях chat_id партнёра и менеджера сохранялся только в
+// telegram_login_tokens. Переносим последнюю подтверждённую связь в профиль,
+// чтобы уведомления о новых продажах не зависели от срока жизни токена входа.
+function backfillTelegramChatIds(table, role) {
+  const accounts = db.prepare(`SELECT id, phone FROM ${table} WHERE telegram_chat_id IS NULL`).all();
+  const tokens = db.prepare(`
+    SELECT phone, chat_id FROM telegram_login_tokens
+    WHERE role = ? AND verified = 1 AND chat_id IS NOT NULL
+    ORDER BY id DESC
+  `).all(role);
+  const last10 = (value) => String(value || '').replace(/\D/g, '').slice(-10);
+  const update = db.prepare(`UPDATE ${table} SET telegram_chat_id = ? WHERE id = ?`);
+  for (const account of accounts) {
+    const phone = last10(account.phone);
+    if (!phone) continue;
+    const token = tokens.find((row) => last10(row.phone) === phone);
+    if (token) update.run(String(token.chat_id), account.id);
+  }
+}
+backfillTelegramChatIds('partners', 'partner');
+backfillTelegramChatIds('managers', 'manager');
+
 ensureColumn('points', 'active', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('partners', 'referred_by_partner_id', 'INTEGER REFERENCES partners(id)');
 // Забыли при переименовании амбассадор→менеджер: manager_code уже был в
@@ -793,6 +950,7 @@ ensureColumn('product_variants', 'cost_price', 'REAL');
 ensureColumn('managers', 'legal_form', 'TEXT');
 ensureColumn('managers', 'inn', 'TEXT');
 ensureColumn('managers', 'bank_details', 'TEXT');
+ensureColumn('managers', 'email', 'TEXT');
 // Внутренняя валюта «Тайги» — 1 косточка = 1 ₽ при оплате (см. server/bones.js).
 ensureColumn('customers', 'bones_balance', 'INTEGER NOT NULL DEFAULT 0');
 // Не даём начислить бонус за анкету питомца дважды одному клиенту (при
@@ -800,6 +958,13 @@ ensureColumn('customers', 'bones_balance', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('customers', 'profile_bones_awarded', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'bones_used', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'commission_rate', 'REAL');
+// Резерв товара и косточек на время оплаты. Старые заказы получают 'none' и
+// не затрагиваются; новые pending-заказы держат резерв до оплаты/отмены.
+ensureColumn('orders', 'reservation_status', "TEXT NOT NULL DEFAULT 'none'");
+ensureColumn('orders', 'reservation_expires_at', 'TEXT');
+ensureColumn('orders', 'inventory_source_type', 'TEXT');
+ensureColumn('orders', 'inventory_source_id', 'TEXT');
+db.exec('CREATE INDEX IF NOT EXISTS idx_orders_active_reservations ON orders(reservation_status, reservation_expires_at)');
 
 // Игра «Поймай косточку» заменена викториной о собаках — старые таблицы
 // на уже развёрнутых серверах больше не используются нигде в коде, чистим их.

@@ -8,8 +8,9 @@
 
 const db = require('./db');
 const { sendJson } = require('./http-utils');
-const { requireAuth } = require('./routes-auth');
+const { requireAuth, requireSuperAdmin } = require('./routes-auth');
 const { reverseOrderSideEffects } = require('./order-reversal');
+const { releaseOrderReservation, restorePaidOrderInventory } = require('./reservations');
 
 function registerOrderRoutes(router) {
   // GET /api/orders — список заказов для админки (последние сверху)
@@ -19,9 +20,17 @@ function registerOrderRoutes(router) {
     const limit = Math.min(parseInt(ctx.query.limit, 10) || 100, 500);
     const status = ctx.query.status; // необязательный фильтр: 'paid'|'pending'|'failed'
     const orders = status
-      ? db.prepare('SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT ?').all(status, limit)
-      : db.prepare('SELECT * FROM orders ORDER BY id DESC LIMIT ?').all(limit);
-    const getItems = db.prepare('SELECT name, weight, price, qty, is_custom FROM order_items WHERE order_id = ?');
+      ? db.prepare(`
+          SELECT o.*, COALESCE(o.partner_name, p.full_name) AS partner_name
+          FROM orders o LEFT JOIN partners p ON p.id = o.partner_id
+          WHERE o.status = ? ORDER BY o.id DESC LIMIT ?
+        `).all(status, limit)
+      : db.prepare(`
+          SELECT o.*, COALESCE(o.partner_name, p.full_name) AS partner_name
+          FROM orders o LEFT JOIN partners p ON p.id = o.partner_id
+          ORDER BY o.id DESC LIMIT ?
+        `).all(limit);
+    const getItems = db.prepare('SELECT variant_id, name, weight, price, qty, is_custom FROM order_items WHERE order_id = ?');
     sendJson(res, 200, {
       orders: orders.map((o) => ({ ...o, items: getItems.all(o.id) })),
     });
@@ -31,15 +40,22 @@ function registerOrderRoutes(router) {
   router.get('/api/orders/:id', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(ctx.params.id);
+    const order = db.prepare(`
+      SELECT o.*, COALESCE(o.partner_name, p.full_name) AS partner_name
+      FROM orders o LEFT JOIN partners p ON p.id = o.partner_id
+      WHERE o.id = ?
+    `).get(ctx.params.id);
     if (!order) return sendJson(res, 404, { error: 'Заказ не найден' });
-    const items = db.prepare('SELECT name, weight, price, qty, is_custom FROM order_items WHERE order_id = ?').all(order.id);
+    const items = db.prepare('SELECT variant_id, name, weight, price, qty, is_custom FROM order_items WHERE order_id = ?').all(order.id);
     sendJson(res, 200, { order: { ...order, items } });
   });
 
   // POST /api/orders/:id/refund — оформление возврата (полного или частичного)
   router.post('/api/orders/:id/refund', async (req, res, ctx) => {
-    const payload = requireAuth(['admin'])(req, res, ctx);
+    // Денежный возврат через ЮKassa — критичное действие. Одного наличия
+    // админского токена недостаточно: сервер проверяет роль супер-админа,
+    // поэтому ограничение нельзя обойти ручным запросом к API.
+    const payload = requireSuperAdmin(req, res, ctx);
     if (!payload) return;
     const yookassa = require('./yookassa');
     const { sendTelegram, buildOrderMessage } = require('./telegram');
@@ -92,24 +108,13 @@ function registerOrderRoutes(router) {
       refundBones(customer.id, order.bones_used, order.id, 'Возврат косточек по заказу ' + order.order_code);
     }
 
-    // Восстановление остатка — по желанию (галочка), подбор по названию+весу
-    // товара (order_items не хранит variant_id напрямую) — best-effort, если
-    // товар с тех пор переименовали или удалили, просто пропускается молча.
+    // Восстановление остатка — по желанию (галочка), по сохранённому variant_id.
+    // Для заказов, созданных до появления этого поля, оставлен безопасный
+    // best-effort поиск по названию и весу.
     let restoredCount = 0;
-    if (restore_stock && order.point_id) {
+    if (restore_stock) {
       const items = db.prepare('SELECT * FROM order_items WHERE order_id = ? AND is_custom = 0').all(order.id);
-      for (const item of items) {
-        const variant = db.prepare(`
-          SELECT pv.id FROM product_variants pv
-          JOIN products p ON p.id = pv.product_id
-          WHERE p.name = ? AND pv.weight = ?
-        `).get(item.name, item.weight);
-        if (!variant) continue;
-        const stockRow = db.prepare('SELECT qty FROM stock WHERE variant_id = ? AND point_id = ?').get(variant.id, order.point_id);
-        const newQty = (stockRow ? stockRow.qty : 0) + item.qty;
-        db.prepare('INSERT OR REPLACE INTO stock (variant_id, point_id, qty) VALUES (?, ?, ?)').run(variant.id, order.point_id, newQty);
-        restoredCount++;
-      }
+      restoredCount = restorePaidOrderInventory(order, items);
     }
 
     const updatedOrder = db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id);
@@ -137,16 +142,37 @@ function registerOrderRoutes(router) {
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(ctx.params.id);
     if (!order) return sendJson(res, 404, { error: 'Заказ не найден' });
     const { force, restore_stock } = ctx.body || {};
+    // Возвращённый заказ содержит финансовую историю и связанные операции
+    // косточек. Удалять его как тестовый может только супер-администратор.
+    if (order.refund_status === 'refunded' && payload.adminRole !== 'super') {
+      return sendJson(res, 403, { error: 'Удалять возвращённые заказы может только супер-администратор' });
+    }
     if (order.status === 'paid' && !force) {
       return sendJson(res, 400, {
         error: 'Заказ оплачен — по нему уже могла пройти выплата грумеру или менеджеру. Сначала оформите возврат, если заказ нужно аннулировать.',
         paid: true,
       });
     }
-    if (order.status === 'paid' && force) {
-      reverseOrderSideEffects(order, !!restore_stock);
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      if (order.status === 'paid' && force) {
+        reverseOrderSideEffects(order, !!restore_stock);
+      } else if (order.reservation_status === 'active') {
+        releaseOrderReservation(order.id, null, 'Заказ удалён — резерв освобождён');
+      }
+      // bone_transactions намеренно не имеет ON DELETE CASCADE: обычное
+      // удаление заказа не должно бесследно стирать историю лояльности.
+      // Здесь удаление уже явно подтверждено как очистка тестовых данных.
+      // Для возвращённого заказа связанные списание и возврат имеют нулевой
+      // суммарный эффект, поэтому баланс клиента повторно не корректируем.
+      db.prepare('DELETE FROM bone_transactions WHERE order_id = ?').run(order.id);
+      db.prepare('DELETE FROM orders WHERE id = ?').run(order.id);
+      db.exec('COMMIT');
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch (_) {}
+      console.error('[orders] Не удалось удалить заказ и связанные записи:', error.message);
+      return sendJson(res, 500, { error: 'Не удалось удалить заказ. Изменения отменены.' });
     }
-    db.prepare('DELETE FROM orders WHERE id = ?').run(ctx.params.id);
     sendJson(res, 200, { ok: true });
   });
 
@@ -159,17 +185,34 @@ function registerOrderRoutes(router) {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
     const { force, restore_stock } = ctx.body || {};
+    // Полная очистка захватывает в том числе оплаченные и возвращённые
+    // заказы, поэтому она также доступна только супер-администратору.
+    if (force && payload.adminRole !== 'super') {
+      return sendJson(res, 403, { error: 'Полностью удалять оплаченные и возвращённые заказы может только супер-администратор' });
+    }
     if (!force) {
       const paidCount = db.prepare("SELECT COUNT(*) AS c FROM orders WHERE status = 'paid'").get().c;
+      const active = db.prepare("SELECT id FROM orders WHERE status != 'paid' AND reservation_status = 'active'").all();
+      for (const order of active) releaseOrderReservation(order.id, null, 'Заказ удалён — резерв освобождён');
       const info = db.prepare("DELETE FROM orders WHERE status != 'paid'").run();
       return sendJson(res, 200, { ok: true, deleted: info.changes, skipped_paid: paidCount });
     }
-    const paidOrders = db.prepare("SELECT * FROM orders WHERE status = 'paid'").all();
-    for (const order of paidOrders) {
-      reverseOrderSideEffects(order, !!restore_stock);
+    const allOrders = db.prepare('SELECT * FROM orders').all();
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      for (const order of allOrders) {
+        if (order.status === 'paid') reverseOrderSideEffects(order, !!restore_stock);
+        else if (order.reservation_status === 'active') releaseOrderReservation(order.id, null, 'Заказ удалён — резерв освобождён');
+        db.prepare('DELETE FROM bone_transactions WHERE order_id = ?').run(order.id);
+      }
+      const info = db.prepare('DELETE FROM orders').run();
+      db.exec('COMMIT');
+      return sendJson(res, 200, { ok: true, deleted: info.changes, skipped_paid: 0 });
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch (_) {}
+      console.error('[orders] Не удалось выполнить полную очистку заказов:', error.message);
+      return sendJson(res, 500, { error: 'Не удалось удалить заказы. Изменения отменены.' });
     }
-    const info = db.prepare('DELETE FROM orders').run();
-    sendJson(res, 200, { ok: true, deleted: info.changes, skipped_paid: 0 });
   });
 }
 

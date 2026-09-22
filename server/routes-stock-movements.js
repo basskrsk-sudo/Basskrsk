@@ -11,6 +11,7 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
+const { logManagerAction } = require('./audit-log');
 
 function registerStockMovementRoutes(router) {
   // POST /api/stock-movements — менеджер отчитывается о том, что уже физически
@@ -50,6 +51,12 @@ function registerStockMovementRoutes(router) {
       (comment ? '\n\n💬 ' + comment : '') +
       '\n\n→ Проверьте и согласуйте в панели администратора, раздел «Перемещения товара».'
     ).catch(() => {});
+
+    const totalQty = cleanItems.reduce((sum, item) => sum + Math.round(Number(item.qty)), 0);
+    logManagerAction(payload.id, 'Отчёт о перемещении товара', {
+      type: 'stock_movement', id: movementId, name: point.name,
+      details: cleanItems.length + ' поз. · ' + totalQty + ' шт.' + (comment ? ' · ' + String(comment).trim() : ''),
+    }, manager);
 
     sendJson(res, 201, { ok: true, movement_id: movementId });
   });

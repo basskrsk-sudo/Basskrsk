@@ -1,0 +1,53 @@
+.payout-schedule-card {
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  padding: 1rem 1.15rem;
+  margin-bottom: 1.25rem;
+  background: linear-gradient(135deg, #fffaf2 0%, #fff 100%);
+  border: 1px solid rgba(212, 135, 42, .32);
+  border-radius: 12px;
+  box-shadow: 0 1px 8px rgba(28, 58, 47, .06);
+}
+.payout-schedule-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #fff0d9;
+  font-size: 1.35rem;
+}
+.payout-schedule-content { min-width: 0; }
+.payout-schedule-title {
+  margin-bottom: .22rem;
+  color: var(--text, #2a2218);
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+.payout-schedule-date {
+  color: var(--forest, #1c3a2f);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.payout-schedule-countdown {
+  margin-left: .35rem;
+  color: var(--amber, #d4872a);
+  font-size: .82rem;
+  font-weight: 600;
+}
+.payout-schedule-rule {
+  margin-top: .25rem;
+  color: var(--muted, #8a7d6b);
+  font-size: .76rem;
+  line-height: 1.45;
+}
+@media (max-width: 520px) {
+  .payout-schedule-card { align-items: flex-start; padding: .9rem; }
+  .payout-schedule-date { display: block; }
+  .payout-schedule-countdown { display: block; margin: .15rem 0 0; }
+}

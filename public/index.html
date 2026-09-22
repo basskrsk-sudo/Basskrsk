@@ -2,29 +2,33 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<link rel="icon" type="image/x-icon" href="/favicon.ico">
-<link rel="shortcut icon" href="/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=28">
+<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=28">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Хвостомаркет — лакомства и товары для питомцев в хвостоматах рядом с вами</title>
+<meta name="theme-color" content="#075642">
+<title>ХвостМаркет — лакомства и товары для питомцев в хвостоматах рядом с вами</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- ЮKassa Checkout Widget -->
 <script src="https://yookassa.ru/checkout-widget/v1/checkout-widget.js"></script>
 <style>
   :root {
-    --forest:   #1B2340;
-    --deep:     #2A3563;
-    --cream:    #FBF7F2;
-    --amber:    #E85D4A;
-    --amber-lt: #F0806D;
-    --gold:     #F5B942;
-    --muted:    #7A7286;
-    --border:   #E5DFE8;
+    --forest:   #075642;
+    --deep:     #138066;
+    --cream:    #F5F7ED;
+    --mint:     #D8EDDF;
+    --amber:    #F2AD3D;
+    --amber-lt: #F6C45A;
+    --gold:     #F2AD3D;
+    --muted:    #63766D;
+    --border:   #D8E7DC;
     --white:    #FFFFFF;
-    --text:     #1B2340;
+    --text:     #0D4436;
+    --on-accent:#053F32;
+    --accent-text:#7A4A00;
     --radius:   12px;
-    --shadow:   0 2px 16px rgba(27,35,64,.10);
+    --shadow:   0 2px 16px rgba(7,86,66,.11);
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -50,7 +54,7 @@
   }
   .nav-inner {
     display: flex; align-items: center; justify-content: space-between;
-    height: 64px; max-width: 1180px; margin: 0 auto;
+    height: 82px; max-width: 1220px; margin: 0 auto;
   }
   .nav-logo {
     font-family: 'Baloo 2', sans-serif;
@@ -58,6 +62,13 @@
     color: var(--white); letter-spacing: .04em;
   }
   .nav-logo span { color: var(--amber); }
+  .nav-logo-mark { width: 64px; height: 64px; box-sizing: border-box; overflow: hidden; flex: 0 0 64px; display:flex; align-items:center; justify-content:center; }
+  .nav-logo-image { width: 60px; height: 60px; object-fit: contain; display: block; image-rendering:auto; }
+  .nav-logo-word {
+    display: flex; flex-direction: column; justify-content: center;
+    font-size: 1.18rem; font-weight: 800; line-height: .88; letter-spacing: .01em;
+  }
+  .nav-logo-word span { display: block; margin-top: .22rem; }
   .nav-links { display: flex; gap: 2rem; list-style: none; }
   .nav-links a {
     color: rgba(255,255,255,.80); font-size: .875rem; font-weight: 500;
@@ -73,7 +84,7 @@
   }
   .nav-cart {
     display: flex; align-items: center; gap: .5rem;
-    background: var(--amber); color: var(--white);
+    background: var(--amber); color: var(--on-accent);
     padding: .45rem 1rem; border-radius: var(--radius);
     font-size: .875rem; font-weight: 600; cursor: pointer;
     border: none; transition: background .2s;
@@ -96,41 +107,38 @@
   .hero {
     background: var(--forest);
     position: relative; overflow: hidden;
-    max-width: 1600px; margin: 0 auto;
-    padding: 100px 5vw 80px;
-  }
-  @media (min-width: 1660px) {
-    .hero { margin-top: 1.5rem; border-radius: 24px; }
+    width: calc(100% - 32px); max-width: 1420px; margin: 24px auto 0;
+    padding: 58px 5vw 28px; border-radius: 24px;
   }
   .hero::before {
     content: '';
     position: absolute; inset: 0;
-    background-image: radial-gradient(ellipse 60% 80% at 75% 50%, rgba(42,53,99,.55) 0%, transparent 70%);
+    background-image: radial-gradient(ellipse 60% 80% at 75% 50%, rgba(19,128,102,.70) 0%, transparent 70%);
   }
   .hero-inner {
     position: relative; max-width: 1180px; margin: 0 auto;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center;
+    display: grid; grid-template-columns: minmax(0, .95fr) minmax(420px, 1.05fr); gap: 3rem; align-items: center;
   }
   .hero-tag {
     display: inline-block;
-    background: rgba(232,93,74,.2); color: var(--amber);
-    border: 1px solid rgba(232,93,74,.4);
+    background: rgba(242,173,61,.18); color: var(--amber);
+    border: 1px solid rgba(242,173,61,.45);
     padding: .3rem .8rem; border-radius: 50px;
     font-size: .8rem; font-weight: 600; letter-spacing: .06em;
-    text-transform: uppercase; margin-bottom: 1.5rem;
+    text-transform: uppercase; margin-bottom: 1.15rem;
   }
   .hero h1 {
-    color: var(--white); font-size: clamp(2rem, 4vw, 3.2rem);
-    line-height: 1.18; margin-bottom: 1.25rem;
+    color: var(--white); font-size: clamp(2rem, 4vw, 3.15rem);
+    line-height: 1.12; margin-bottom: 1.1rem;
   }
   .hero h1 em { color: var(--amber); font-style: normal; }
   .hero p {
-    color: rgba(255,255,255,.72); font-size: 1.05rem; line-height: 1.7;
-    margin-bottom: 2rem; max-width: 460px;
+    color: rgba(255,255,255,.76); font-size: 1rem; line-height: 1.65;
+    margin-bottom: 1.6rem; max-width: 520px;
   }
   .hero-cta { display: flex; gap: 1rem; flex-wrap: wrap; }
   .btn-primary {
-    background: var(--amber); color: var(--white);
+    background: var(--amber); color: var(--on-accent);
     padding: .8rem 1.8rem; border-radius: var(--radius);
     font-size: .95rem; font-weight: 600; cursor: pointer;
     border: none; transition: background .2s, transform .15s;
@@ -146,15 +154,102 @@
   }
   .btn-outline:hover { border-color: var(--amber); color: var(--amber); }
   .hero-visual {
-    display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center;
+    position: relative; min-height: 432px;
+    display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+    grid-template-rows: repeat(3, minmax(0, 1fr)); gap: .7rem;
   }
-  .hero-card {
-    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
-    border-radius: 12px; padding: 1.5rem 1.2rem; text-align: center; width: 130px;
-    backdrop-filter: blur(6px);
+  .hero-category-card {
+    position: relative; min-width: 0; min-height: 174px; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 1.25rem; border: 1px solid rgba(255,255,255,.12); border-radius: 22px;
+    color: #fff; background: rgba(255,255,255,.08);
+    transition: transform .2s, border-color .2s, box-shadow .2s;
   }
-  .hero-card .ic { font-size: 2rem; margin-bottom: .5rem; }
-  .hero-card p { color: rgba(255,255,255,.75); font-size: .8rem; line-height: 1.4; }
+  .hero-category-card.is-product-ready { cursor: pointer; }
+  .hero-category-card.is-product-ready:hover {
+    transform: translateY(-2px); border-color: rgba(255,255,255,.28);
+    box-shadow: 0 12px 28px rgba(4,55,42,.22);
+  }
+  .hero-category-card:first-child {
+    grid-row: 1 / 4;
+    background: linear-gradient(150deg, #F2AD3D 0%, #138066 100%);
+  }
+  .hero-category-card:nth-child(2) { background: linear-gradient(145deg, #249276 0%, #0E6953 100%); }
+  .hero-category-card:nth-child(3) { background: linear-gradient(145deg, #3C9B7F 0%, #13725B 100%); }
+  .hero-category-card:nth-child(4) { background: linear-gradient(145deg, #5A9869 0%, #17624F 100%); }
+  .hero-category-icon {
+    position: absolute; top: 1.1rem; right: 1.1rem;
+    width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 13px; color: #fff; background: rgba(255,255,255,.14); font-size: 1.35rem;
+  }
+  .hero-category-card:first-child .hero-category-icon { width: 52px; height: 52px; font-size: 1.65rem; }
+  .hero-category-card h2 {
+    position: relative; z-index: 1; margin: 0 0 .35rem; color: #fff;
+    font-family: 'Manrope', sans-serif; font-size: 1.05rem; line-height: 1.25; font-weight: 700;
+  }
+  .hero-category-card p {
+    position: relative; z-index: 1; max-width: 230px; margin: 0;
+    color: rgba(255,255,255,.78); font-size: .78rem; line-height: 1.5;
+  }
+  .hero-category-product {
+    position: relative; z-index: 1; display: flex; align-items: center; gap: .7rem;
+    min-width: 0; margin: 0 2.7rem auto 0; padding-bottom: .65rem;
+  }
+  .hero-product-thumb {
+    width: 58px; height: 58px; flex: 0 0 58px; display: flex; align-items: center; justify-content: center;
+    overflow: hidden; border-radius: 15px; background: rgba(255,255,255,.92);
+    box-shadow: 0 6px 18px rgba(7,86,66,.18); color: var(--forest); font-size: 1.75rem;
+  }
+  .hero-product-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .hero-product-meta { min-width: 0; display: flex; flex-direction: column; gap: .13rem; }
+  .hero-product-meta small { color: rgba(255,255,255,.62); font-size: .62rem; text-transform: uppercase; letter-spacing: .05em; }
+  .hero-product-name {
+    color: #fff; font-size: .74rem; font-weight: 700; line-height: 1.28;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .hero-product-price { color: rgba(255,255,255,.84); font-size: .69rem; font-weight: 600; }
+  .hero-category-card:first-child .hero-category-product {
+    align-items: flex-start; flex-direction: column; gap: .6rem; margin-right: 3.25rem;
+  }
+  .hero-category-card:first-child .hero-product-thumb { width: 138px; height: 138px; flex-basis: 138px; border-radius: 22px; font-size: 3rem; }
+  .hero-category-card:first-child .hero-product-name { font-size: .84rem; }
+  .hero-category-card:first-child .hero-product-price { font-size: .75rem; }
+  .hero-category-card:not(:first-child) { min-height: 0; padding: .9rem 1rem; }
+  .hero-category-card:not(:first-child) .hero-category-icon {
+    width: 34px; height: 34px; top: .75rem; right: .75rem; border-radius: 10px; font-size: 1.05rem;
+  }
+  .hero-category-card:not(:first-child) .hero-category-product { padding-bottom: .35rem; }
+  .hero-category-card:not(:first-child) .hero-product-thumb { width: 46px; height: 46px; flex-basis: 46px; border-radius: 12px; font-size: 1.4rem; }
+  .hero-category-card:not(:first-child) h2 { margin-bottom: .15rem; font-size: .95rem; }
+  .hero-category-card:not(:first-child) p { font-size: .68rem; line-height: 1.3; }
+  .hero-category-empty {
+    color: rgba(255,255,255,.7); font-size: .72rem; font-weight: 600;
+    align-self: center; padding: .45rem .65rem; border-radius: 9px; background: rgba(255,255,255,.09);
+  }
+  .hero-category-card::after {
+    content: ''; position: absolute; width: 150px; height: 150px; top: -85px; left: -70px;
+    border-radius: 50%; background: rgba(255,255,255,.06);
+  }
+  .hero-benefits {
+    position: relative; max-width: 1180px; margin: 34px auto 0; padding-top: 22px;
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem;
+    border-top: 1px solid rgba(255,255,255,.14);
+  }
+  .hero-benefit {
+    min-width: 0; padding: 1rem; border-radius: 14px;
+    color: #fff; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.10);
+  }
+  .hero-benefit-head { display: flex; align-items: center; gap: .55rem; margin-bottom: .45rem; }
+  .hero-benefit-icon {
+    width: 32px; height: 32px; flex: 0 0 32px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 10px; background: rgba(242,173,61,.88); color: var(--forest); font-size: 1rem;
+  }
+  .hero-benefit strong { font-size: .84rem; line-height: 1.25; }
+  .hero-benefit p { max-width: none; margin: 0; color: rgba(255,255,255,.7); font-size: .72rem; line-height: 1.45; }
+  .hero-benefit-bones { color: #174D38; background: #D9F0E5; border-color: transparent; }
+  .hero-benefit-bones .hero-benefit-icon { background: rgba(23,77,56,.12); }
+  .hero-benefit-bones p { color: #275D49; }
+  .hero-bones-rate { display: block; margin-top: .4rem; color: #174D38; font-size: .72rem; font-weight: 700; }
 
   /* ─── SECTION HEADER ─── */
   .sec { padding: 72px 5vw; max-width: 1180px; margin: 0 auto; }
@@ -200,16 +295,16 @@
     box-shadow: var(--shadow); overflow: hidden;
     cursor: pointer; transition: transform .2s, box-shadow .2s;
   }
-  .product-card:hover { transform: translateY(-4px); box-shadow: 0 8px 28px rgba(27,35,64,.15); }
+  .product-card:hover { transform: translateY(-4px); box-shadow: 0 8px 28px rgba(7,86,66,.16); }
   .product-thumb {
     height: 180px; display: flex; align-items: center; justify-content: center;
-    font-size: 4.5rem; background: linear-gradient(135deg, #FDF3DC 0%, #FBE0DA 100%);
+    font-size: 4.5rem; background: linear-gradient(135deg, #FFF3D2 0%, #D8EDDF 100%);
     position: relative; overflow: hidden;
   }
   .product-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .product-badge {
     position: absolute; top: 10px; left: 10px;
-    background: var(--amber); color: var(--white);
+    background: var(--amber); color: var(--on-accent);
     font-size: .7rem; font-weight: 700; padding: .2rem .6rem;
     border-radius: 50px; text-transform: uppercase; letter-spacing: .05em;
   }
@@ -217,7 +312,7 @@
   .product-body h3 { font-family: 'Manrope', sans-serif; font-weight: 600; font-size: .95rem; margin-bottom: .3rem; color: var(--deep); }
   .product-body .weight { font-size: .8rem; color: var(--muted); margin-bottom: .7rem; }
   .product-footer { display: flex; align-items: center; justify-content: space-between; margin-top: .9rem; }
-  .price { font-size: 1.15rem; font-weight: 700; color: var(--amber); font-family: 'Baloo 2', sans-serif; }
+  .price { font-size: 1.15rem; font-weight: 700; color: var(--accent-text); font-family: 'Baloo 2', sans-serif; }
   .add-btn {
     background: var(--deep); color: var(--white);
     border: none; border-radius: var(--radius);
@@ -235,7 +330,7 @@
     height: 380px; border-radius: 16px; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
     font-size: 8rem;
-    background: linear-gradient(135deg, #FDF3DC 0%, #F6C9BE 100%);
+    background: linear-gradient(135deg, #FFF3D2 0%, #D8EDDF 100%);
   }
   .detail-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .back-btn {
@@ -252,7 +347,7 @@
     font-size: .78rem; font-weight: 600; padding: .25rem .7rem;
     border-radius: 50px;
   }
-  .detail-price { font-size: 2rem; color: var(--amber); font-weight: 700; margin: 1.2rem 0; }
+  .detail-price { font-size: 2rem; color: var(--accent-text); font-weight: 700; margin: 1.2rem 0; }
   .detail-desc { font-size: .95rem; color: var(--text); line-height: 1.75; margin-bottom: 1.5rem; }
   .qty-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
   .qty-ctrl { display: flex; align-items: center; gap: .5rem; }
@@ -265,7 +360,7 @@
   .qty-btn:hover { border-color: var(--deep); }
   .qty-val { font-size: 1.1rem; font-weight: 600; min-width: 24px; text-align: center; }
   .detail-add {
-    background: var(--amber); color: var(--white);
+    background: var(--amber); color: var(--on-accent);
     border: none; border-radius: var(--radius);
     padding: .85rem 2rem; font-size: 1rem; font-weight: 600;
     cursor: pointer; transition: background .2s; font-family: 'Manrope', sans-serif;
@@ -279,7 +374,7 @@
     cursor: pointer; transition: all .2s; font-family: 'Manrope', sans-serif;
   }
   .variant-btn:hover { border-color: var(--amber); }
-  .variant-btn.active { background: var(--amber); border-color: var(--amber); color: #fff; }
+  .variant-btn.active { background: var(--amber); border-color: var(--amber); color: var(--on-accent); }
   .comp-list { margin-top: 1.5rem; }
   .comp-list h4 { font-size: .9rem; font-weight: 600; color: var(--deep); margin-bottom: .6rem; font-family: 'Manrope', sans-serif; }
   .comp-list ul { list-style: none; }
@@ -303,7 +398,7 @@
   .cart-item-info span { font-size: .82rem; color: var(--muted); }
   .cart-item-qty { display: flex; align-items: center; gap: .5rem; }
   .cart-item-controls { display: flex; align-items: center; gap: 1.5rem; }
-  .cart-item-price { font-weight: 700; color: var(--amber); font-size: 1.05rem; min-width: 80px; text-align: right; }
+  .cart-item-price { font-weight: 700; color: var(--accent-text); font-size: 1.05rem; min-width: 80px; text-align: right; }
   .cart-item-del { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 1.1rem; transition: color .2s; }
   .cart-item-del:hover { color: #C0392B; }
   .cart-summary {
@@ -313,7 +408,7 @@
   .cart-summary-row { display: flex; justify-content: space-between; margin-bottom: .75rem; font-size: .9rem; }
   .cart-summary-row.total { font-size: 1.15rem; font-weight: 700; border-top: 1px solid rgba(255,255,255,.2); padding-top: .75rem; margin-top: .75rem; }
   .checkout-btn {
-    width: 100%; background: var(--amber); color: var(--white);
+    width: 100%; background: var(--amber); color: var(--on-accent);
     border: none; border-radius: var(--radius);
     padding: 1rem; font-size: 1.05rem; font-weight: 600;
     cursor: pointer; margin-top: 1.2rem; transition: background .2s;
@@ -346,7 +441,7 @@
   .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--deep); }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   .submit-btn {
-    width: 100%; background: var(--amber); color: var(--white);
+    width: 100%; background: var(--amber); color: var(--on-accent);
     border: none; border-radius: var(--radius);
     padding: .9rem; font-size: 1rem; font-weight: 600;
     cursor: pointer; margin-top: .5rem; font-family: 'Manrope', sans-serif;
@@ -373,7 +468,7 @@
   .about-text h2 { font-size: 1.8rem; color: var(--deep); margin-bottom: 1rem; }
   .about-text p { color: var(--muted); line-height: 1.8; margin-bottom: 1rem; }
   .about-visual {
-    background: linear-gradient(135deg, #FDF3DC 0%, #F6C9BE 100%);
+    background: linear-gradient(135deg, #FFF3D2 0%, #D8EDDF 100%);
     border-radius: 16px; height: 320px;
     display: flex; align-items: center; justify-content: center;
     font-size: 7rem;
@@ -412,7 +507,7 @@
     font-size: .75rem; font-weight: 700; padding: .25rem .75rem;
     border-radius: 50px; margin-bottom: 1rem; text-transform: uppercase;
   }
-  .tier-card.featured .tier-badge { background: rgba(232,93,74,.15); color: var(--amber); }
+  .tier-card.featured .tier-badge { background: rgba(242,173,61,.20); color: var(--accent-text); }
   .tier-pct { font-family: 'Baloo 2', sans-serif; font-size: 3rem; color: var(--deep); line-height: 1; margin: .5rem 0; }
   .tier-pct span { font-size: 1.2rem; }
   .tier-card h3 { font-size: 1.1rem; color: var(--deep); margin-bottom: 1rem; }
@@ -439,6 +534,27 @@
   .contact-card h3 { font-size: 1rem; font-weight: 600; color: var(--deep); margin-bottom: .4rem; font-family: 'Manrope', sans-serif; }
   .contact-card p { font-size: .9rem; color: var(--muted); line-height: 1.6; }
   .contact-card a { color: var(--amber); font-weight: 500; }
+
+  /* ─── ХВОСТМАРКЕТ MASCOT ─── */
+  .mascot-catalog-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) 210px;
+    align-items: center; gap: 1.5rem; max-width: 760px; margin: 0 auto 1rem;
+  }
+  .mascot-catalog-row .sec-head { margin-bottom: 0; text-align: left; }
+  .mascot-catalog { width: 190px; justify-self: end; }
+  .mascot-product { float: right; width: 175px; margin: -1rem 0 1rem 1.25rem; }
+  .mascot-empty { width: min(310px, 86vw); margin: 0 auto 1.2rem; }
+  .cart-summary.has-mascot { position: relative; overflow: hidden; padding-right: 215px; min-height: 260px; }
+  .cart-summary-mascot { position: absolute; right: 1rem; bottom: .3rem; width: 190px; pointer-events: none; }
+  .checkout-mascot-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
+  .checkout-mascot-row h2 { margin: 0 !important; }
+  .mascot-checkout { width: 165px; flex: 0 0 auto; }
+  .mascot-success { width: min(360px, 90vw); margin: 0 auto 1rem; }
+  .map-mascot-wrap { position: relative; }
+  .map-mascot { position: absolute; left: .75rem; bottom: .65rem; z-index: 3; width: 245px; pointer-events: none; filter: drop-shadow(0 8px 14px rgba(27,36,69,.12)); }
+  .bones-hero-inner { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: minmax(0,1fr) 320px; align-items: center; gap: 2rem; text-align: left; }
+  .bones-hero-inner p { margin-bottom: 0; }
+  .mascot-bones { width: 310px; justify-self: end; }
 
   /* ─── TOAST ─── */
   .toast {
@@ -476,6 +592,39 @@
   .footer-logo { font-family: 'Baloo 2', sans-serif; font-size: 1.4rem; color: var(--white); margin-bottom: .75rem; }
   .footer-logo span { color: var(--amber); }
 
+  /* Основная мобильная навигация всегда остаётся под большим пальцем.
+     На десктопе она скрыта: там те же действия доступны в верхней шапке. */
+  .mobile-bottom-nav { display: none; }
+
+  .quick-buy-strip {
+    max-width: 1180px; margin: 0 auto; padding: 30px 5vw 0;
+  }
+  .quick-buy-card {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 1.25rem; align-items: center;
+    padding: 1.35rem 1.55rem; border: 1px solid var(--border); border-radius: 16px;
+    background: var(--white); box-shadow: var(--shadow);
+  }
+  .quick-buy-icon {
+    width: 48px; height: 48px; display: grid; place-items: center;
+    border-radius: 14px; background: var(--amber); color: var(--on-accent); font-size: 1.35rem;
+  }
+  .quick-buy-card h2 { margin-bottom: .15rem; color: var(--forest); font-size: 1.15rem; }
+  .quick-buy-card p { color: var(--muted); font-size: .86rem; line-height: 1.55; }
+  .home-actions-grid {
+    max-width: 1180px; margin: 0 auto; padding: 0 5vw 64px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+  }
+  .home-action-card {
+    min-width: 0; padding: 1.7rem; border-radius: 18px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; align-items: flex-start;
+  }
+  .home-action-card h2 { margin-bottom: .45rem; font-size: 1.35rem; }
+  .home-action-card p { margin-bottom: 1.2rem; font-size: .88rem; line-height: 1.65; }
+  .home-location-card { background: var(--mint, #D8EDDF); color: var(--text); }
+  .home-location-card p { color: var(--muted); }
+  .home-bones-card { background: linear-gradient(135deg, var(--forest), var(--deep)); color: var(--white); }
+  .home-bones-card p { color: rgba(255,255,255,.78); }
+
   /* Мобильный переключатель города живёт внутри .nav-links (гамбургер-меню) —
      на десктопе .nav-links сам по себе виден (скрывается только на мобильном),
      поэтому без этого правила JS покажет два переключателя одновременно. */
@@ -483,25 +632,86 @@
     #citySwitcherMobileWrap { display: none !important; }
   }
 
+  @media (max-width: 1020px) {
+    .hero-benefits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
   /* ─── RESPONSIVE ─── */
   @media (max-width: 768px) {
+    body { padding-bottom: 70px; }
     .nav-links { display: none; }
     #citySwitcher { display: none !important; }
-    .nav-logo { font-size: 1.05rem; }
-    .nav-logo svg { width: 22px !important; height: 22px !important; }
+    .nav-inner { height: 64px; }
+    .nav-logo-mark { width: 48px; height: 48px; flex-basis: 48px; }
+    .nav-logo-image { width: 46px; height: 46px; }
+    .nav-logo-word { font-size: .78rem; line-height: .84; }
+    .nav-logo-word span { margin-top: .18rem; }
     nav { padding: 0 3vw; }
     .nav-cart { padding: .4rem .6rem; font-size: .76rem; gap: .3rem; }
-    #nav-account-btn { margin-right: .3rem !important; }
+    #nav-account-btn { display: none !important; }
     .hamburger { display: flex; }
-    .hero-inner { grid-template-columns: 1fr; gap: 2.5rem; }
-    .hero-visual { display: none; }
+    .mobile-bottom-nav {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 240;
+      display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+      min-height: 64px; padding: 6px 5px max(6px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border); background: rgba(255,255,255,.97);
+      box-shadow: 0 -8px 24px rgba(7,86,66,.10);
+    }
+    .mobile-nav-link {
+      min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; border: 0; border-radius: 9px; background: transparent;
+      color: var(--muted); font: 600 .61rem 'Manrope', sans-serif; cursor: pointer;
+    }
+    .mobile-nav-link .mobile-nav-icon { font-size: 1.15rem; line-height: 1; }
+    .mobile-nav-link.active { color: var(--forest); background: rgba(216,237,223,.7); }
+    .quick-buy-strip { padding: 20px 10px 0; }
+    .quick-buy-card { grid-template-columns: auto 1fr; gap: .85rem; padding: 1rem; }
+    .quick-buy-card .btn-primary { grid-column: 1 / -1; width: 100%; }
+    .home-actions-grid { grid-template-columns: 1fr; padding: 0 10px 42px; }
+    .home-action-card { padding: 1.35rem; }
+    .hero { width: calc(100% - 20px); margin-top: 10px; padding: 38px 5vw 22px; border-radius: 20px; }
+    .hero-inner { grid-template-columns: 1fr; gap: 1.75rem; }
+    .hero-visual { min-height: 432px; }
+    .hero-category-card { min-height: 0; }
+    .hero-benefits { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 24px; }
     .detail-wrap { grid-template-columns: 1fr; gap: 2rem; }
     .about-grid { grid-template-columns: 1fr; gap: 2rem; }
     .contacts-grid { grid-template-columns: 1fr; }
     .footer-inner { grid-template-columns: 1fr 1fr; gap: 1.5rem; }
     .form-row { grid-template-columns: 1fr; }
+    .mascot-catalog-row { grid-template-columns: 1fr; text-align: center; }
+    .mascot-catalog-row .sec-head { text-align: center; }
+    .mascot-catalog { width: 170px; justify-self: center; order: -1; }
+    .mascot-product { width: 135px; margin: -.5rem 0 .75rem .75rem; }
+    .cart-summary.has-mascot { padding: 1.8rem; padding-top: 205px; }
+    .cart-summary-mascot { width: 185px; right: 50%; transform: translateX(50%); top: .65rem; bottom: auto; }
+    .checkout-mascot-row { align-items: flex-start; }
+    .mascot-checkout { width: 120px; }
+    .map-mascot { width: 175px; left: .35rem; bottom: .35rem; }
+    .bones-hero-inner { grid-template-columns: 1fr; text-align: center; gap: 1rem; }
+    .mascot-bones { width: 260px; justify-self: center; order: -1; }
   }
   @media (max-width: 480px) {
+    .hero-cta { display: grid; grid-template-columns: 1fr; }
+    .hero-cta button { width: 100%; }
+    .hero-visual { min-height: 455px; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: .55rem; }
+    .hero-category-card { min-height: 0; padding: 1rem; border-radius: 18px; }
+    .hero-category-card h2 { font-size: .95rem; }
+    .hero-category-card p { font-size: .72rem; }
+    .hero-category-icon { top: .85rem; right: .85rem; }
+    .hero-category-product { margin-right: 2.1rem; gap: .4rem; }
+    .hero-product-thumb { width: 42px; height: 42px; flex-basis: 42px; border-radius: 11px; }
+    .hero-category-card:first-child .hero-product-thumb { width: 118px; height: 118px; flex-basis: 118px; }
+    .hero-category-card:not(:first-child) { padding: .75rem; }
+    .hero-category-card:not(:first-child) .hero-category-icon { width: 29px; height: 29px; top: .6rem; right: .6rem; font-size: .9rem; }
+    .hero-category-card:not(:first-child) .hero-category-product { margin-right: 1.75rem; padding-bottom: .25rem; }
+    .hero-category-card:not(:first-child) .hero-product-thumb { width: 38px; height: 38px; flex-basis: 38px; border-radius: 10px; }
+    .hero-category-card:not(:first-child) .hero-product-meta small { display: none; }
+    .hero-category-card:not(:first-child) .hero-product-name { font-size: .64rem; }
+    .hero-category-card:not(:first-child) .hero-product-price { font-size: .61rem; }
+    .hero-category-card:not(:first-child) h2 { font-size: .8rem; }
+    .hero-category-card:not(:first-child) p { display: none; }
+    .hero-benefits { grid-template-columns: 1fr; }
     .footer-inner { grid-template-columns: 1fr; }
     .tiers-grid { grid-template-columns: 1fr; }
     .cart-item { flex-wrap: wrap; gap: .8rem; padding: 1rem 1.2rem; }
@@ -509,6 +719,10 @@
     .cart-item-controls { flex: 1 1 100%; justify-content: space-between; gap: 1rem; }
     .cart-item-price { min-width: auto; }
   }
+.account-tabs{display:flex;gap:.35rem;margin-bottom:1rem;padding:.3rem;background:rgba(255,255,255,.65);border:1px solid var(--border);border-radius:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.account-tab{flex:0 0 auto;padding:.55rem .8rem;border:0;border-radius:7px;background:transparent;color:var(--muted);font:600 .8rem 'Inter',sans-serif;cursor:pointer;white-space:nowrap}
+.account-tab.active{background:var(--deep);color:#fff}
+.account-panel{display:none}.account-panel.active{display:block}
 </style>
 <script src="config.js"></script>
 <script>
@@ -541,18 +755,14 @@
 <nav>
   <div class="nav-inner">
     <div class="nav-logo" onclick="showPage('home')" style="cursor:pointer;display:flex;align-items:center;">
-      <svg width="30" height="30" viewBox="0 0 64 64" fill="none" style="flex-shrink:0;margin-right:.5rem;">
-        <path d="M14 50C14 50 12 32 22 22C30 14 42 14 46 22C49.5 29 44 34 38 32C33 30.5 33 24 38 22" stroke="var(--amber)" stroke-width="8" stroke-linecap="round"/>
-        <circle cx="40" cy="20" r="5" fill="var(--gold)"/>
-      </svg>
-      Хвосто<span>маркет</span>
+      <span class="nav-logo-mark"><img class="nav-logo-image" src="/images/hvostmarket-primary-logo.png?v=35" alt="Собака с геоточкой — логотип ХвостМаркет"></span>
+      <span class="nav-logo-word"><span style="color:var(--white);margin-top:0;">Хвост</span><span>Маркет</span></span>
     </div>
     <ul class="nav-links" id="navLinks">
       <li><a href="#" onclick="showPage('catalog')" class="nav-link" data-page="catalog">Каталог</a></li>
-      <li><a href="#" onclick="showPage('about')" class="nav-link" data-page="about">О бренде</a></li>
-      <li><a href="#" onclick="showPage('partners')" class="nav-link" data-page="partners">Партнёрам</a></li>
-      <li><a href="#" onclick="showPage('contacts')" class="nav-link" data-page="contacts">Контакты</a></li>
-      <li><a href="#" onclick="showPage('investors')" class="nav-link" data-page="investors">Инвесторам</a></li>
+      <li><a href="purchase-guide.html" class="nav-link">Как купить</a></li>
+      <li><a href="#" onclick="showPage('contacts')" class="nav-link" data-page="contacts">Где забрать</a></li>
+      <li><a href="#" onclick="showPage('bones')" class="nav-link" data-page="bones">Бонусы</a></li>
       <li id="citySwitcherMobileWrap" style="display:none;padding-top:.5rem;">
         <select id="citySwitcherMobile" onchange="setCurrentCity(this.value)" style="width:100%;background:rgba(255,255,255,.1);color:#fff;border:1.5px solid rgba(255,255,255,.25);border-radius:8px;padding:.5rem .6rem;font-size:.9rem;font-family:'Manrope',sans-serif;"></select>
       </li>
@@ -571,97 +781,86 @@
 </nav>
 <div id="navBackdrop" onclick="closeMenu()" style="display:none;position:fixed;inset:64px 0 0 0;background:rgba(0,0,0,.4);z-index:99;"></div>
 
+<nav class="mobile-bottom-nav" aria-label="Основная навигация">
+  <button class="mobile-nav-link active" data-page="home" onclick="showPage('home')"><span class="mobile-nav-icon">⌂</span><span>Главная</span></button>
+  <button class="mobile-nav-link" data-page="catalog" onclick="showPage('catalog')"><span class="mobile-nav-icon">▦</span><span>Каталог</span></button>
+  <button class="mobile-nav-link" data-page="contacts" onclick="showPage('contacts')"><span class="mobile-nav-icon">📍</span><span>Точки</span></button>
+  <button class="mobile-nav-link" data-page="bones" onclick="showPage('bones')"><span class="mobile-nav-icon">🦴</span><span>Бонусы</span></button>
+  <button class="mobile-nav-link" data-page="account" onclick="showPage('account')"><span class="mobile-nav-icon">●</span><span>Кабинет</span></button>
+</nav>
+
 <!-- ═══════════════ HOME ═══════════════ -->
 <div class="page active" id="page-home">
 
   <section class="hero">
     <div class="hero-inner">
-      <div>
-        <div class="hero-tag">🐾 Уже в 2 городах — и растём</div>
-        <h1>Всё для питомца,<br><em>рядом с вами</em></h1>
-        <p>Забирайте лакомства и аксессуары в хвостоматах у грумеров и ветклиник вашего города — без доставки, без ожидания. Сейчас в каталоге — бренд «Тайга», натуральные продукты из Сибири.</p>
+      <div class="hero-copy">
+        <div class="hero-tag">Хвостоматы в груминг-салонах и ветклиниках</div>
+        <h1>Товары для питомцев <em>рядом</em></h1>
+        <p>Лакомства, игрушки, аксессуары и товары для ухода — ассортимент формируется вместе с грумерами и развивается вместе с сетью.</p>
         <div class="hero-cta">
-          <button class="btn-primary" onclick="showPage('catalog')">Смотреть каталог</button>
-          <button class="btn-outline" onclick="showPage('about')">О нас</button>
-        </div>
-        <div style="display:flex;gap:.6rem;margin-top:1.6rem;flex-wrap:wrap;">
-          <span style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;padding:.45rem .9rem;border-radius:10px;font-size:.82rem;font-weight:600;display:inline-flex;align-items:center;gap:.4rem;">🌲 Тайга</span>
-          <span style="background:transparent;border:1px dashed rgba(255,255,255,.25);color:rgba(255,255,255,.5);padding:.45rem .9rem;border-radius:10px;font-size:.82rem;font-weight:600;">+ скоро другие бренды</span>
+          <button class="btn-primary" onclick="showPage('catalog')">🛍️ Смотреть каталог</button>
+          <button class="btn-outline" onclick="showPage('contacts')">Найти хвостомат 📍</button>
         </div>
       </div>
       <div class="hero-visual">
-        <div class="hero-card"><div class="ic">📍</div><p>Хвостоматы рядом</p></div>
-        <div class="hero-card"><div class="ic">⚡</div><p>Без доставки — сразу</p></div>
-        <div class="hero-card"><div class="ic">🏷️</div><p>Проверенные бренды</p></div>
-        <div class="hero-card"><div class="ic">🦴</div><p>Скидка косточками</p></div>
+        <article class="hero-category-card" data-hero-category="treats">
+          <span class="hero-category-icon" aria-hidden="true">🦴</span>
+          <div class="hero-category-product" aria-live="polite"></div>
+          <h2>Лакомства</h2>
+          <p>Для поощрения, занятий и заботы каждый день</p>
+        </article>
+        <article class="hero-category-card" data-hero-category="toys">
+          <span class="hero-category-icon" aria-hidden="true">🎾</span>
+          <div class="hero-category-product" aria-live="polite"></div>
+          <h2>Игрушки</h2>
+          <p>Для игр дома и на прогулке</p>
+        </article>
+        <article class="hero-category-card" data-hero-category="accessories">
+          <span class="hero-category-icon" aria-hidden="true">🦮</span>
+          <div class="hero-category-product" aria-live="polite"></div>
+          <h2>Аксессуары</h2>
+          <p>Полезные вещи на каждый день</p>
+        </article>
+        <article class="hero-category-card" data-hero-category="care">
+          <span class="hero-category-icon" aria-hidden="true">✨</span>
+          <div class="hero-category-product" aria-live="polite"></div>
+          <h2>Уход</h2>
+          <p>Для шерсти, лап и гигиены</p>
+        </article>
+      </div>
+    </div>
+    <div class="hero-benefits">
+      <div class="hero-benefit">
+        <div class="hero-benefit-head"><span class="hero-benefit-icon">⏱️</span><strong>Покупка за 1 минуту</strong></div>
+        <p>QR → оплата → можно забирать</p>
+      </div>
+      <div class="hero-benefit hero-benefit-bones">
+        <div class="hero-benefit-head"><span class="hero-benefit-icon">🦴</span><strong>Косточки за покупки</strong></div>
+        <p>Возвращаем часть суммы бонусами</p>
+        <span class="hero-bones-rate">1 косточка = 1 ₽ в следующем заказе</span>
+      </div>
+      <div class="hero-benefit">
+        <div class="hero-benefit-head"><span class="hero-benefit-icon">✂️</span><strong>Товары, подобранные вместе с грумерами</strong></div>
+        <p>Полезные товары без случайного ассортимента</p>
+      </div>
+      <div class="hero-benefit">
+        <div class="hero-benefit-head"><span class="hero-benefit-icon">📦</span><strong>Товар уже рядом</strong></div>
+        <p>Без доставки и ожидания курьера</p>
       </div>
     </div>
   </section>
 
-  <!-- Баннер для владельцев салонов/клиник — без него предложение партнёрства
-       нигде не видно на главной странице, только в подвале меню -->
-  <div class="sec" style="max-width: 1180px; padding-top: 32px; padding-bottom: 0;">
-    <div onclick="showPage('partners')" style="cursor:pointer; background: linear-gradient(90deg, var(--amber) 0%, var(--amber-lt) 100%); border-radius: 12px; padding: 1.1rem 1.6rem; display: flex; gap: 1.2rem; align-items: center; justify-content: space-between; flex-wrap: wrap; box-shadow: 0 4px 16px rgba(232,93,74,.25);">
-      <div style="display:flex; gap:.9rem; align-items:center;">
-        <span style="font-size:1.6rem;">🤝</span>
-        <span style="color:#fff; font-size:.98rem; font-weight:600; line-height:1.4;">Держите груминг-салон или вет.клинику? Хвостомат с товарами «Тайга» — без вложений, доход с каждой продажи.</span>
+  <!-- Короткий клиентский сценарий; подробности открываются на отдельной
+       странице, на которую ведёт и большой QR-код стойки. -->
+  <div class="quick-buy-strip">
+    <div class="quick-buy-card">
+      <div class="quick-buy-icon">⚡</div>
+      <div>
+        <h2>Как купить за минуту</h2>
+        <p>Выберите товар → отсканируйте QR на упаковке → оплатите → заберите самостоятельно.</p>
       </div>
-      <span style="background:#fff; color:var(--amber); padding:.55rem 1.3rem; border-radius:8px; font-size:.88rem; font-weight:700; white-space:nowrap;">Узнать подробнее →</span>
-    </div>
-  </div>
-
-  <!-- Регистрация -->
-  <div class="sec" style="max-width: 1180px;">
-    <div style="background: linear-gradient(135deg, var(--forest) 0%, var(--deep) 100%); border-radius: 16px; padding: 2.5rem 3rem; display: flex; gap: 2rem; align-items: center; flex-wrap: wrap; justify-content: space-between;">
-      <div style="flex: 1; min-width: 240px;">
-        <h2 style="color: var(--white); font-size: 1.6rem; margin-bottom: .5rem;">📝 Зарегистрируйтесь — получите 150 🦴</h2>
-        <p style="color: rgba(255,255,255,.85); line-height: 1.6;">Подтвердите телефон и заполните кличку и породу питомца — 150 косточек придут сразу, потратить можно хоть на первом заказе (1 косточка = 1 ₽).</p>
-      </div>
-      <button class="btn-primary" onclick="showPage('register')">Зарегистрироваться →</button>
-    </div>
-  </div>
-
-  <!-- Викторина о собаках -->
-  <div class="sec" style="max-width: 1180px;">
-    <div style="background: linear-gradient(135deg, var(--amber) 0%, var(--amber-lt) 100%); border-radius: 16px; padding: 2.5rem 3rem; display: flex; gap: 2rem; align-items: center; flex-wrap: wrap; justify-content: space-between;">
-      <div style="flex: 1; min-width: 240px;">
-        <h2 style="color: var(--white); font-size: 1.6rem; margin-bottom: .5rem;">🐕 Викторина о собаках — выиграй косточки!</h2>
-        <p style="color: rgba(255,255,255,.9); line-height: 1.6;">10 вопросов о собаках по возрастающей сложности — как в «Кто хочет стать миллионером». Несгораемые суммы и подсказка 50/50. Дойдёте до 6-го вопроса — 10 🦴 уже ваши.</p>
-      </div>
-      <button class="btn-primary" style="background:var(--forest);" onclick="showPage('quiz')">Играть →</button>
-    </div>
-  </div>
-
-
-  <div class="sec" id="news-section" style="display:none;">
-    <div class="sec-head">
-      <h2>Новости «Тайги»</h2>
-      <p>Новинки ассортимента, акции и другие обновления</p>
-    </div>
-    <div id="news-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem;"></div>
-  </div>
-
-  <div class="sec">
-    <div class="sec-head">
-      <h2>Почему «Тайга»?</h2>
-      <p>Натурально, полезно, рядом — три причины выбрать нас</p>
-    </div>
-    <div class="benefits-grid">
-      <div class="benefit-card">
-        <div class="ic">🌿</div>
-        <h3>Натурально</h3>
-        <p>Только проверенные ингредиенты из Сибири. Никаких искусственных добавок и консервантов.</p>
-      </div>
-      <div class="benefit-card">
-        <div class="ic">🦴</div>
-        <h3>Полезно</h3>
-        <p>Делаем лакомства из тех частей мяса, которые редко идут в пищу человеку, но отлично подходят собаке — для жевания и питания.</p>
-      </div>
-      <div class="benefit-card">
-        <div class="ic">📦</div>
-        <h3>Рядом</h3>
-        <p>Забирайте заказ в удобном грумминг-салоне или вет. клинике рядом с домом — без ожидания курьера.</p>
-      </div>
+      <a class="btn-primary" href="purchase-guide.html">Показать инструкцию →</a>
     </div>
   </div>
 
@@ -669,8 +868,8 @@
   <div style="background: var(--white); padding: 1px 0;">
   <div class="sec">
     <div class="sec-head">
-      <h2>Популярные лакомства</h2>
-      <p>Самые любимые угощения от наших хвостатых покупателей</p>
+      <h2>Популярно рядом</h2>
+      <p>Товары, которые чаще всего выбирают для своих питомцев</p>
     </div>
     <div class="products-grid" id="featuredGrid"></div>
     <div style="text-align:center; margin-top: 2.5rem;">
@@ -679,39 +878,35 @@
   </div>
   </div>
 
-  <!-- QR point promo -->
-  <div class="sec" style="max-width: 1180px;">
-    <div style="background: linear-gradient(135deg, var(--forest) 0%, var(--deep) 100%); border-radius: 16px; padding: 3rem; display: flex; gap: 3rem; align-items: center; flex-wrap: wrap;">
-      <div style="flex: 1; min-width: 240px;">
-        <div style="color: var(--amber); font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 1rem;">🗺️ Где нас найти</div>
-        <h2 style="color: var(--white); margin-bottom: 1rem; font-size: 1.6rem;">Хвостоматы<br>в вашем районе</h2>
-        <p style="color: rgba(255,255,255,.72); line-height: 1.75; margin-bottom: 1.5rem;" id="whereToFindText">Наши фирменные хвостоматы с товарами для питомцев расположены в лучших грумминг-салонах и ветеринарных клиниках. Попробуйте перед покупкой!</p>
-        <button class="btn-primary" onclick="showPage('contacts')">Найти точку рядом</button>
-      </div>
-      <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-        <div style="background: rgba(255,255,255,.1); border-radius: 12px; padding: 1.5rem; text-align: center; min-width: 120px;">
-          <div style="font-size: 2rem; margin-bottom: .5rem;">✂️</div>
-          <div style="color: rgba(255,255,255,.85); font-size: .85rem; font-weight: 500;">Грумминг-<br>салоны</div>
-        </div>
-        <div style="background: rgba(255,255,255,.1); border-radius: 12px; padding: 1.5rem; text-align: center; min-width: 120px;">
-          <div style="font-size: 2rem; margin-bottom: .5rem;">🏥</div>
-          <div style="color: rgba(255,255,255,.85); font-size: .85rem; font-weight: 500;">Вет.<br>клиники</div>
-        </div>
-        <div style="background: rgba(255,255,255,.1); border-radius: 12px; padding: 1.5rem; text-align: center; min-width: 120px;">
-          <div style="font-size: 2rem; margin-bottom: .5rem;">🐕</div>
-          <div style="color: rgba(255,255,255,.85); font-size: .85rem; font-weight: 500;">Кинологи-<br>ческие клубы</div>
-        </div>
-      </div>
-    </div>
+  <div class="home-actions-grid">
+    <section class="home-action-card home-location-card">
+      <div style="font-size:1.55rem;margin-bottom:.65rem;">📍</div>
+      <h2>Найдите хвостомат рядом</h2>
+      <p id="whereToFindText">Выберите ближайшую точку, посмотрите адрес и товары, которые сейчас можно забрать.</p>
+      <button class="btn-primary" onclick="showPage('contacts')">Открыть карту точек →</button>
+    </section>
+    <section class="home-action-card home-bones-card">
+      <div style="font-size:1.55rem;margin-bottom:.65rem;">🦴</div>
+      <h2>Получите 150 косточек</h2>
+      <p>Заполните короткую анкету питомца. 1 косточка = 1 ₽, бонус можно использовать уже в первом заказе.</p>
+      <button class="btn-primary" onclick="showPage('register')">Получить бонус →</button>
+    </section>
   </div>
 </div>
 
 <!-- ═══════════════ CATALOG ═══════════════ -->
 <div class="page" id="page-catalog">
   <div class="sec" style="max-width:1180px;">
-    <div class="sec-head">
-      <h2>Каталог «Тайга»</h2>
-      <p>Натуральные лакомства из Сибири и аксессуары для собак</p>
+    <div id="catalogPointBanner" style="display:none;max-width:720px;margin:0 auto 1.5rem;padding:1rem 1.15rem;background:linear-gradient(135deg,#EEF6FF,#F7F3EC);border:1.5px solid var(--border);border-radius:14px;text-align:center;">
+      <div style="font-weight:800;color:var(--deep);margin-bottom:.25rem;">📍 Каталог этого хвостомата</div>
+      <div id="catalogPointBannerText" style="font-size:.84rem;color:var(--muted);line-height:1.5;"></div>
+    </div>
+    <div class="mascot-catalog-row">
+      <div class="sec-head">
+        <h2>Каталог «Тайга»</h2>
+        <p>Лакомства, игрушки, аксессуары и товары для ухода</p>
+      </div>
+      <img class="mascot-catalog" src="images/mascot/catalog-v2.png" alt="" loading="lazy">
     </div>
     <div style="max-width:420px;margin:0 auto 1rem;position:relative;">
       <input type="text" id="catalogSearch" placeholder="Поиск по каталогу..." oninput="renderCatalog()"
@@ -729,8 +924,8 @@
     <div class="filter-bar">
       <button class="filter-btn active" onclick="filterProducts('all', this)">Всё</button>
       <button class="filter-btn" onclick="filterProducts('treats', this)">🦴 Лакомства</button>
-      <button class="filter-btn" onclick="filterProducts('chews', this)">🐾 Жевательные</button>
       <button class="filter-btn" onclick="filterProducts('toys', this)">🪀 Игрушки</button>
+      <button class="filter-btn" onclick="filterProducts('accessories', this)">🦮 Аксессуары</button>
       <button class="filter-btn" onclick="filterProducts('care', this)">✨ Уход</button>
     </div>
     <div class="products-grid" id="catalogGrid"></div>
@@ -881,16 +1076,26 @@
         <button class="btn-outline" style="border-color:var(--border);color:var(--muted);padding:.5rem 1rem;" onclick="logoutAccount()">Выйти</button>
       </div>
 
+      <div class="account-tabs" aria-label="Разделы личного кабинета">
+        <button class="account-tab active" type="button" data-account-tab="overview" onclick="showAccountTab('overview')">Обзор</button>
+        <button class="account-tab" type="button" data-account-tab="profile" onclick="showAccountTab('profile')">Мои данные</button>
+        <button class="account-tab" type="button" data-account-tab="bonuses" onclick="showAccountTab('bonuses')">Бонусы</button>
+        <button class="account-tab" type="button" data-account-tab="orders" onclick="showAccountTab('orders')">Заказы</button>
+      </div>
+
+      <div class="account-panel active" data-account-panel="overview">
       <div id="account-tier-card" style="background:var(--white);border-radius:12px;padding:1.5rem;box-shadow:var(--shadow);margin-bottom:1.5rem;text-align:center;"></div>
 
       <div style="background:linear-gradient(135deg, #7A4A00 0%, var(--amber) 100%);border-radius:12px;padding:1.5rem;box-shadow:var(--shadow);margin-bottom:1.5rem;color:#fff;text-align:center;">
         <div style="font-size:2rem;margin-bottom:.3rem;">🦴</div>
-        <div style="font-size:.82rem;color:rgba(255,255,255,.85);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.3rem;">Косточки Хвостомаркета</div>
+        <div style="font-size:.82rem;color:rgba(255,255,255,.85);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.3rem;">Косточки ХвостМаркета</div>
         <div style="font-family:'Baloo 2',sans-serif;font-size:2rem;font-weight:700;" id="account-bones-balance">0 ₽</div>
         <div style="font-size:.8rem;color:rgba(255,255,255,.8);margin-top:.4rem;">1 косточка = 1 ₽ при оплате заказа</div>
         <a onclick="showPage('bones')" style="display:inline-block;margin-top:.7rem;font-size:.8rem;color:#fff;text-decoration:underline;cursor:pointer;">Как ещё заработать →</a>
       </div>
+      </div>
 
+      <div class="account-panel" data-account-panel="profile">
       <div style="background:var(--white);border-radius:12px;padding:1.5rem;box-shadow:var(--shadow);margin-bottom:1.5rem;">
         <h3 style="font-size:1.05rem;color:var(--deep);margin-bottom:1rem;">Мои данные</h3>
         <div id="account-profile-msg" style="font-size:.82rem;margin-bottom:.8rem;min-height:1.1em;"></div>
@@ -930,7 +1135,9 @@
         <div class="form-group"><label>Новый пароль</label><input type="password" id="acc-new-password" placeholder="Не короче 6 символов"></div>
         <button class="btn-outline" style="background:var(--deep);color:#fff;border:none;" onclick="saveAccountPassword()">Сохранить пароль</button>
       </div>
+      </div>
 
+      <div class="account-panel" data-account-panel="bonuses">
       <div style="background:linear-gradient(135deg, var(--forest) 0%, var(--deep) 100%);border-radius:12px;padding:1.5rem;box-shadow:var(--shadow);margin-bottom:1.5rem;color:#fff;">
         <h3 style="font-size:1.05rem;margin-bottom:.5rem;">🎁 Приведи друга</h3>
         <p style="font-size:.85rem;color:rgba(255,255,255,.8);margin-bottom:1rem;line-height:1.6;">Поделитесь кодом с другом — как только он оплатит первый заказ, вам обоим начислят по 🦴 100 косточек на баланс.</p>
@@ -941,9 +1148,12 @@
         <div style="font-size:.85rem;color:rgba(255,255,255,.85);">Приведено друзей: <strong id="account-referral-count">0</strong></div>
         <div id="account-referral-copy-msg" style="font-size:.8rem;color:#8FD9A8;margin-top:.5rem;min-height:1.1em;"></div>
       </div>
+      </div>
 
+      <div class="account-panel" data-account-panel="orders">
       <h3 style="font-size:1.05rem;color:var(--deep);margin-bottom:1rem;">История заказов</h3>
       <div id="account-orders-list"></div>
+      </div>
     </div>
 
   </div>
@@ -955,7 +1165,7 @@
     <div class="sec-head">
       <h2>🐕 Викторина о собаках — выиграй косточки!</h2>
       <p>Ошиблись — раунд сразу заканчивается, но косточки с последней пройденной несгораемой суммы остаются у вас. Раз в игру можно убрать 2 неверных варианта подсказкой 50/50.</p>
-      <p style="margin-top:.6rem;">🦴 Косточки — внутренняя валюта «Хвостомаркета»: 1 косточка = 1 ₽, тратьте их на оплату <strong>любого будущего заказа</strong> — хоть полностью, хоть частично, вместе с обычной оплатой картой или СБП. Начисляются постоянным клиентам, которые уже оформили хотя бы один заказ. <a onclick="showPage('bones')" style="color:var(--amber);text-decoration:underline;cursor:pointer;">Подробнее о косточках →</a></p>
+      <p style="margin-top:.6rem;">🦴 Косточки — внутренняя валюта «ХвостМаркета»: 1 косточка = 1 ₽, тратьте их на оплату <strong>любого будущего заказа</strong> — хоть полностью, хоть частично, вместе с обычной оплатой картой или СБП. Начисляются постоянным клиентам, которые уже оформили хотя бы один заказ. <a onclick="showPage('bones')" style="color:var(--amber);text-decoration:underline;cursor:pointer;">Подробнее о косточках →</a></p>
     </div>
 
     <div id="quiz-intro">
@@ -1007,17 +1217,31 @@
   </div>
 </div>
 
-<!-- ═══════════════ КОСТОЧКИ ХВОСТОМАРКЕТА (внутренняя валюта) ═══════════════ -->
+<!-- ═══════════════ КОСТОЧКИ ХВОСТМАРКЕТА (внутренняя валюта) ═══════════════ -->
 <div class="page" id="page-bones">
   <div class="about-hero">
-    <h1>🦴 Косточки Хвостомаркета</h1>
-    <p>Внутренняя валюта «Хвостомаркета» — 1 косточка = 1 ₽ при оплате любого заказа. Зарабатывайте их, оставаясь с нами, и тратьте, когда захотите.</p>
+    <div class="bones-hero-inner">
+      <div>
+        <h1>🦴 Косточки ХвостМаркета</h1>
+        <p>Внутренняя валюта «ХвостМаркета» — 1 косточка = 1 ₽ при оплате любого заказа. Зарабатывайте их, оставаясь с нами, и тратьте, когда захотите.</p>
+      </div>
+      <img class="mascot-bones" src="images/mascot/bones.png" alt="" loading="lazy">
+    </div>
   </div>
 
   <div class="sec" style="max-width:760px;">
     <div style="background:linear-gradient(135deg, #7A4A00 0%, var(--amber) 100%);border-radius:16px;padding:2rem;color:#fff;text-align:center;margin-bottom:2.5rem;">
       <div style="font-size:2.5rem;margin-bottom:.4rem;">🦴 = 1 ₽</div>
       <p style="color:rgba(255,255,255,.9);line-height:1.7;max-width:480px;margin:0 auto;">Списывайте косточки на любой заказ в один клик на шаге оформления. Чем больше заказ — тем больше можно списать: до 300 ₽ — 10%, 300–800 ₽ — 20%, от 800 ₽ — 30%. Остальное оплачивается деньгами (картой/СБП).</p>
+    </div>
+
+    <!-- Промо викторины перенесено с главной в тематический раздел бонусов. -->
+    <div style="background:linear-gradient(135deg, var(--forest) 0%, var(--deep) 100%);border-radius:16px;padding:2rem 2.2rem;display:flex;gap:1.5rem;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:2.5rem;box-shadow:var(--shadow);">
+      <div style="flex:1;min-width:230px;">
+        <h2 style="color:var(--white);font-size:1.45rem;margin-bottom:.45rem;">🐕 Викторина о собаках</h2>
+        <p style="color:rgba(255,255,255,.82);line-height:1.6;">Ответьте на 10 вопросов, используйте подсказку 50/50 и выиграйте до 50 🦴. Несгораемый приз начинается с шестого вопроса.</p>
+      </div>
+      <button class="btn-primary" onclick="showPage('quiz')">Играть и выиграть косточки →</button>
     </div>
 
     <div class="sec-head" style="margin-bottom:2rem;">
@@ -1053,7 +1277,7 @@
       </div>
       <div class="value-card">
         <div class="ic">🦴</div>
-        <h3>Подарки от «Хвостомаркета»</h3>
+        <h3>Подарки от «ХвостМаркета»</h3>
         <p>Иногда просто дарим косточки — к праздникам или в знак благодарности за то, что вы с нами. Следите за Telegram-ботом и личным кабинетом.</p>
       </div>
     </div>
@@ -1063,7 +1287,7 @@
     </div>
     <div style="background:var(--white);border-radius:12px;padding:1.8rem;box-shadow:var(--shadow);margin-bottom:2.5rem;">
       <ul style="list-style:none;">
-        <li style="font-size:.92rem;color:var(--text);padding:.5rem 0;border-bottom:1px solid var(--border);display:flex;gap:.6rem;"><span>1️⃣</span><span>На шаге оформления заказа появится блок «Косточки Хвостомаркета» — если баланс не пустой.</span></li>
+        <li style="font-size:.92rem;color:var(--text);padding:.5rem 0;border-bottom:1px solid var(--border);display:flex;gap:.6rem;"><span>1️⃣</span><span>На шаге оформления заказа появится блок «Косточки ХвостМаркета» — если баланс не пустой.</span></li>
         <li style="font-size:.92rem;color:var(--text);padding:.5rem 0;border-bottom:1px solid var(--border);display:flex;gap:.6rem;"><span>2️⃣</span><span>Укажите, сколько списать — от нуля до максимума, который сайт посчитает сам.</span></li>
         <li style="font-size:.92rem;color:var(--text);padding:.5rem 0;display:flex;gap:.6rem;"><span>3️⃣</span><span>Списанная сумма сразу уменьшает то, что нужно оплатить онлайн. Чем больше заказ — тем больше можно списать (см. правило выше), остальное оплачивается деньгами.</span></li>
       </ul>
@@ -1186,6 +1410,7 @@
     </div>
     <div>
       <button class="back-btn" onclick="showPage('catalog')">← Назад к каталогу</button>
+      <img class="mascot-product" src="images/mascot/product.png" alt="" loading="lazy">
       <h1 id="detailName">Название</h1>
       <div id="detailRatingBadge" style="font-size:.9rem;color:var(--muted);margin-bottom:.4rem;cursor:pointer;"></div>
       <div class="detail-meta" id="detailMeta"></div>
@@ -1199,6 +1424,7 @@
           <button class="qty-btn" onclick="changeDetailQty(1)">+</button>
         </div>
         <button class="detail-add" onclick="addDetailToCart()">Добавить в корзину</button>
+        <button class="detail-add" style="background:var(--amber);" onclick="buyDetailNow()">Купить сейчас</button>
       </div>
       <div style="display:flex; align-items:center; gap:.5rem; font-size:.83rem; color:var(--muted); margin-bottom:1.2rem;">
         <span>↩️</span>
@@ -1257,11 +1483,46 @@
     </div>
     <div class="about-visual">🌲</div>
   </div>
+
+  <!-- Преимущества бренда перенесены сюда с главной: они раскрывают
+       философию «Тайги», не отвлекая покупателя от каталога на первом экране. -->
+  <div class="sec" style="padding-top:0;">
+    <div class="sec-head">
+      <h2>Почему «Тайга»?</h2>
+      <p>Натурально, полезно, рядом — три причины выбрать нас</p>
+    </div>
+    <div class="benefits-grid">
+      <div class="benefit-card">
+        <div class="ic">🌿</div>
+        <h3>Натурально</h3>
+        <p>Только проверенные ингредиенты из Сибири. Никаких искусственных добавок и консервантов.</p>
+      </div>
+      <div class="benefit-card">
+        <div class="ic">🦴</div>
+        <h3>Полезно</h3>
+        <p>Делаем лакомства из тех частей мяса, которые редко идут в пищу человеку, но отлично подходят собаке — для жевания и питания.</p>
+      </div>
+      <div class="benefit-card">
+        <div class="ic">📦</div>
+        <h3>Рядом</h3>
+        <p>Забирайте заказ в удобном груминг-салоне или ветклинике рядом с домом — без ожидания курьера.</p>
+      </div>
+    </div>
+  </div>
+
   <div class="values-grid">
     <div class="value-card"><div class="ic">🌿</div><h3>Честный состав</h3><p>Публикуем полный состав каждого продукта. Никаких скрытых добавок.</p></div>
     <div class="value-card"><div class="ic">🤝</div><h3>Партнёрская сеть</h3><p>Продаём через грумеров и ветеринаров — тех, кто разбирается в здоровье питомцев.</p></div>
     <div class="value-card"><div class="ic">📍</div><h3>Сибирское производство</h3><p>Лакомства производятся в Сибири, у проверенного партнёра — под нашим контролем на каждом этапе.</p></div>
     <div class="value-card"><div class="ic">📋</div><h3>Регистрация в «Меркурии»</h3><p>Каждая партия лакомств регистрируется в федеральной системе «Меркурий» — государственном контроле прослеживаемости продукции животного происхождения.</p></div>
+  </div>
+
+  <div class="sec" id="news-section" style="display:none;padding-top:0;">
+    <div class="sec-head">
+      <h2>Новости «Тайги»</h2>
+      <p>Новинки ассортимента, акции и другие обновления бренда</p>
+    </div>
+    <div id="news-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem;"></div>
   </div>
 
   <div style="text-align:center; padding: 0 5vw 4rem;">
@@ -1323,11 +1584,11 @@
         <h3 style="color:var(--deep);font-size:1.15rem;margin-bottom:.5rem;">Роль владельца точки не предполагает личного участия в обслуживании стойки</h3>
         <p style="color:var(--muted);line-height:1.7;">Владелец точки получает <strong style="color:var(--text);">5% от суммы каждой продажи автоматически</strong> — на основании самого факта размещения стойки, вне зависимости от того, кто осуществляет её обслуживание. Обслуживанием (пополнением, консультированием клиентов) вправе заниматься иное лицо — сотрудник заведения, зарегистрированный отдельно как партнёр на тарифах, указанных выше. Начисления по обеим ролям производятся одновременно и независимо друг от друга.</p>
         <ul style="margin-top:1rem;padding-left:0;list-style:none;">
-          <li style="display:flex;gap:.5rem;margin-bottom:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Финансовые вложения не требуются — стойка и стартовая партия товара предоставляются компанией «Хвостомаркет»</li>
-          <li style="display:flex;gap:.5rem;margin-bottom:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Финансовые риски отсутствуют — товар остаётся собственностью компании «Хвостомаркет» до момента продажи</li>
+          <li style="display:flex;gap:.5rem;margin-bottom:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Финансовые вложения не требуются — стойка и стартовая партия товара предоставляются компанией «ХвостМаркет»</li>
+          <li style="display:flex;gap:.5rem;margin-bottom:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Финансовые риски отсутствуют — товар остаётся собственностью компании «ХвостМаркет» до момента продажи</li>
           <li style="display:flex;gap:.5rem;margin-bottom:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Подключение эквайринга не требуется — приём оплаты осуществляется через QR-код и мобильное устройство покупателя, минуя кассовое оборудование точки</li>
-          <li style="display:flex;gap:.5rem;margin-bottom:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Дополнительный бухгалтерский учёт не требуется — учёт продаж и отчётность по данному товару ведутся компанией «Хвостомаркет»</li>
-          <li style="display:flex;gap:.5rem;margin-bottom:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Организация логистики не требуется — доставку, пополнение и контроль остатков обеспечивает компания «Хвостомаркет»</li>
+          <li style="display:flex;gap:.5rem;margin-bottom:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Дополнительный бухгалтерский учёт не требуется — учёт продаж и отчётность по данному товару ведутся компанией «ХвостМаркет»</li>
+          <li style="display:flex;gap:.5rem;margin-bottom:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Организация логистики не требуется — доставку, пополнение и контроль остатков обеспечивает компания «ХвостМаркет»</li>
           <li style="display:flex;gap:.5rem;margin-bottom:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Дополнительная площадь не требуется — компактная конструкция стойки (сопоставима по размеру с обувной коробкой) размещается на имеющейся поверхности</li>
           <li style="display:flex;gap:.5rem;color:var(--muted);"><span style="color:var(--amber);flex-shrink:0;">✓</span> Привлечение персонала не требуется — обслуживание клиентов происходит в формате самообслуживания через QR-код</li>
         </ul>
@@ -1346,7 +1607,7 @@
   </div>
 
   <div class="partners-hero">
-    <h2 style="color:var(--white);font-size:clamp(1.8rem, 3.5vw, 2.8rem);margin-bottom:1rem;">Присоединяйтесь к команде «Хвостомаркета»</h2>
+    <h2 style="color:var(--white);font-size:clamp(1.8rem, 3.5vw, 2.8rem);margin-bottom:1rem;">Присоединяйтесь к команде «ХвостМаркета»</h2>
     <p>Два способа зарабатывать вместе с нами: разместите стойку у себя (грумеры, ветклиники, заводчики) или помогайте нам находить новые точки (менеджеры). Ноль вложений, дополнительный доход с минимальными трудозатратами.</p>
     <div style="display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;">
       <button class="btn-primary" onclick="document.getElementById('partnerFormAnchor').scrollIntoView({behavior:'smooth'})">Оставить заявку на стойку</button>
@@ -1357,7 +1618,7 @@
 
   <div class="sec" style="max-width:1180px;">
     <div class="sec-head">
-      <h2>🌟 Станьте менеджером «Хвостомаркета»</h2>
+      <h2>🌟 Станьте менеджером «ХвостМаркета»</h2>
       <p>Находите новые точки для стоек — грумминг-салоны, ветклиники, кинологические центры — и получайте с них доход, пока точка работает</p>
     </div>
     <div class="values-grid" style="padding:0;margin-bottom:2rem;">
@@ -1453,7 +1714,7 @@
           <input type="tel" id="cb-phone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this)"
             style="flex:1;min-width:180px;padding:.7rem .9rem;border:1.5px solid var(--border);border-radius:var(--radius);font-size:.9rem;font-family:'Manrope',sans-serif;color:var(--text);">
           <button onclick="submitCallbackRequest()"
-            style="background:var(--amber);color:#fff;border:none;border-radius:var(--radius);padding:.7rem 1.5rem;font-size:.9rem;font-weight:600;cursor:pointer;font-family:'Manrope',sans-serif;white-space:nowrap;">Перезвоните мне</button>
+            style="background:var(--amber);color:var(--on-accent);border:none;border-radius:var(--radius);padding:.7rem 1.5rem;font-size:.9rem;font-weight:600;cursor:pointer;font-family:'Manrope',sans-serif;white-space:nowrap;">Перезвоните мне</button>
         </div>
       </div>
 
@@ -1502,7 +1763,7 @@
   <div class="sec" style="max-width:1180px;">
     <div class="sec-head">
       <h2>Наши салоны-партнёры</h2>
-      <p>Грумеры, ветклиники и питомники, у которых стоят хвостоматы «Хвостомаркета» — со своими страницами и рекламой</p>
+      <p>Грумеры, ветклиники и питомники, у которых стоят хвостоматы «ХвостМаркета» — со своими страницами и рекламой</p>
     </div>
     <div id="salons-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.5rem;"></div>
     <div id="salons-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--muted);">Пока ни один партнёр не опубликовал страницу своего салона.</div>
@@ -1520,14 +1781,14 @@
       <p style="color:var(--muted);">Возможно, партнёр ещё не опубликовал свою страницу, или ссылка устарела.</p>
     </div>
     <div id="salon-body" style="display:none;">
-      <div id="salon-photo" style="height:280px;border-radius:16px;overflow:hidden;margin-bottom:1.5rem;background:linear-gradient(135deg,#FDF3DC 0%,#F6C9BE 100%);display:flex;align-items:center;justify-content:center;font-size:5rem;"></div>
+      <div id="salon-photo" style="height:280px;border-radius:16px;overflow:hidden;margin-bottom:1.5rem;background:linear-gradient(135deg,#FFF3D2 0%,#D8EDDF 100%);display:flex;align-items:center;justify-content:center;font-size:5rem;"></div>
       <h1 id="salon-name" style="color:var(--deep);font-size:1.9rem;margin-bottom:.4rem;"></h1>
       <p id="salon-tagline" style="color:var(--amber);font-size:1.1rem;font-weight:600;margin-bottom:1.2rem;"></p>
       <p id="salon-description" style="color:var(--text);line-height:1.8;font-size:.98rem;margin-bottom:1.5rem;white-space:pre-line;"></p>
       <div id="salon-address" style="display:flex;align-items:center;gap:.6rem;color:var(--muted);font-size:.92rem;margin-bottom:1.2rem;"></div>
       <div id="salon-links" style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:2rem;"></div>
       <div style="background:var(--cream);border-radius:12px;padding:1.5rem;text-align:center;">
-        <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem;">У этого салона стоит фирменный хвостомат «Хвостомаркета» — забрать заказ можно прямо там</p>
+        <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem;">У этого салона стоит фирменный хвостомат «ХвостМаркета» — забрать заказ можно прямо там</p>
         <button class="btn-primary" onclick="showPage('catalog')">Смотреть каталог «Тайги» →</button>
       </div>
     </div>
@@ -1549,7 +1810,7 @@
           <div style="flex-shrink:0; width:32px; height:32px; border-radius:50%; background:var(--deep); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.9rem;">1</div>
           <div>
             <strong style="color:var(--deep);">Напишите нам</strong>
-            <p style="color:var(--muted); font-size:.9rem; margin-top:.2rem; line-height:1.6;">В Telegram <a href="https://t.me/taiga_dog_bot" target="_blank" style="color:var(--amber);font-weight:600;">@taiga_dog_bot</a> или на <a href="mailto:taiga-feed@yandex.com" style="color:var(--amber);font-weight:600;">taiga-feed@yandex.com</a> — укажите номер заказа и что хотите вернуть.</p>
+            <p style="color:var(--muted); font-size:.9rem; margin-top:.2rem; line-height:1.6;">В <a href="https://t.me/taiga_dog_bot" target="_blank" style="color:var(--amber);font-weight:600;">Telegram-бот ХвостМаркета</a> или на <a href="mailto:taiga-feed@yandex.com" style="color:var(--amber);font-weight:600;">taiga-feed@yandex.com</a> — укажите номер заказа и что хотите вернуть.</p>
           </div>
         </div>
         <div style="display:flex; gap:1rem; align-items:flex-start;">
@@ -1583,12 +1844,16 @@
 <!-- ═══════════════ CONTACTS ═══════════════ -->
 <div class="page" id="page-contacts">
   <div class="contacts-wrap">
-    <h1>Контакты</h1>
+    <h1>Где забрать</h1>
+    <p style="color:var(--muted);margin:-.5rem 0 2rem;line-height:1.6;">Выберите удобный хвостомат на карте. В каталоге можно посмотреть товары, доступные в каждой точке.</p>
 
     <div style="margin-bottom:2rem;">
       <h3 style="font-size:1.1rem;color:var(--deep);margin-bottom:.75rem;">Наши точки на карте</h3>
-      <div id="points-map" style="width:100%;height:360px;border-radius:12px;background:var(--cream);display:flex;align-items:center;justify-content:center;overflow:hidden;">
-        <span style="color:var(--muted);font-size:.85rem;">Загружаем карту…</span>
+      <div class="map-mascot-wrap">
+        <div id="points-map" style="width:100%;height:360px;border-radius:12px;background:var(--cream);display:flex;align-items:center;justify-content:center;overflow:hidden;">
+          <span style="color:var(--muted);font-size:.85rem;">Загружаем карту…</span>
+        </div>
+        <img class="map-mascot" src="images/mascot/locations.png" alt="" loading="lazy">
       </div>
     </div>
 
@@ -1613,7 +1878,7 @@
       <div class="contact-card">
         <div class="ic">✈️</div>
         <h3>Telegram</h3>
-        <p><a href="https://t.me/taiga_dog_bot">@taiga_dog_bot</a></p>
+        <p><a href="https://t.me/taiga_dog_bot">Telegram-бот ХвостМаркета</a></p>
         <p style="margin-top:.4rem;font-size:.82rem;">Ответим в течение часа в рабочее время</p>
       </div>
     </div>
@@ -1623,7 +1888,7 @@
       <p style="font-size:.85rem;color:var(--deep);line-height:1.7;">
         Вопросы из формы ниже отправляются одновременно на почту
         <a href="mailto:taiga-feed@yandex.com" style="color:var(--amber);font-weight:600;">taiga-feed@yandex.com</a>
-        и в Telegram <a href="https://t.me/taiga_dog_bot" target="_blank" style="color:var(--amber);font-weight:600;">@taiga_dog_bot</a> —
+        и в <a href="https://t.me/taiga_dog_bot" target="_blank" style="color:var(--amber);font-weight:600;">Telegram-бот ХвостМаркета</a> —
         ответим там, где удобнее вам.
       </p>
     </div>
@@ -1680,13 +1945,13 @@
 <!-- ═══════════════ INVESTORS ═══════════════ -->
 <div class="page" id="page-investors">
   <div class="about-hero">
-    <h1>Инвестируйте в рост «Хвостомаркета»</h1>
+    <h1>Инвестируйте в рост «ХвостМаркета»</h1>
     <p>Растущая платформа хвостоматов с уже готовой технологией, работающей партнёрской сетью и первым брендом лакомств «Тайга» на борту — параллельно развиваем несколько городов, ищем партнёров для масштабирования.</p>
   </div>
 
   <div class="sec">
     <div class="sec-head">
-      <h2>Почему «Хвостомаркет»</h2>
+      <h2>Почему «ХвостМаркет»</h2>
       <p>Модель, построенная с расчётом на рост без лишних затрат</p>
     </div>
     <div class="values-grid" style="padding:0;">
@@ -1723,7 +1988,7 @@
       <div class="value-card">
         <div class="ic">📈</div>
         <h3>Растущий рынок, дешевле входа</h3>
-        <p>Вендинг для животных — один из самых быстрорастущих сегментов зообизнеса (~10% в год). У конкурентов — полноценные автоматы от 300 000 ₽; у «Хвостомаркета» — QR-код и смартфон покупателя, в разы дешевле.</p>
+        <p>Вендинг для животных — один из самых быстрорастущих сегментов зообизнеса (~10% в год). У конкурентов — полноценные автоматы от 300 000 ₽; у «ХвостМаркета» — QR-код и смартфон покупателя, в разы дешевле.</p>
       </div>
       <div class="value-card">
         <div class="ic">🎯</div>
@@ -1742,7 +2007,7 @@
         <p style="font-size:.82rem;color:rgba(255,255,255,.55);">Это предложение носит информационный характер и не является публичной офертой. Финальные условия закрепляются отдельным договором после обсуждения.</p>
       </div>
       <div style="text-align:center;">
-        <a href="mailto:taiga-feed@yandex.com?subject=Хочу обсудить инвестиции в Хвостомаркет" class="btn-primary" style="display:inline-block;text-decoration:none;">Написать нам</a>
+        <a href="mailto:taiga-feed@yandex.com?subject=Хочу обсудить инвестиции в ХвостМаркет" class="btn-primary" style="display:inline-block;text-decoration:none;">Написать нам</a>
       </div>
     </div>
   </div>
@@ -1784,31 +2049,6 @@
   </div>
 </div>
 
-<!-- CUSTOM ITEM MODAL — товар, которого ещё нет в каталоге -->
-<div class="modal-overlay" id="customItemModal">
-  <div class="modal" style="position:relative;max-width:420px;">
-    <button class="modal-close" onclick="closeCustomItemModal()">×</button>
-    <h2>Товар не из каталога</h2>
-    <p style="font-size:.85rem;color:var(--muted);margin-bottom:1.2rem;line-height:1.6;">
-      Если на хвостомате появилось что-то новое, чего ещё нет на сайте, — впишите название и цену прямо с ценника на хвостомате. Сотрудник сверит всё при выдаче.
-    </p>
-    <div class="form-group">
-      <label>Название товара *</label>
-      <input type="text" id="ciName" placeholder="Например, Уши кроличьи">
-    </div>
-    <div class="form-group">
-      <label>Цена за штуку, ₽ *</label>
-      <input type="number" id="ciPrice" placeholder="350" min="1" step="1">
-    </div>
-    <div class="form-group">
-      <label>Количество</label>
-      <input type="number" id="ciQty" value="1" min="1" step="1">
-    </div>
-    <div id="ci-error" style="display:none;color:#9B2335;font-size:.82rem;margin-bottom:.8rem;"></div>
-    <button class="checkout-btn" style="width:100%;" onclick="addCustomItemToCart()">Добавить в корзину</button>
-  </div>
-</div>
-
 <!-- CHECKOUT MODAL — шаг 1: данные и точка самовывоза -->
 <div class="modal-overlay" id="checkoutModal">
   <div class="modal" style="position:relative;">
@@ -1823,31 +2063,32 @@
 
     <!-- ШАГ 1: контакты + точка -->
     <div id="modal-step-1">
-      <h2 style="margin-bottom:1.25rem;">Ваши данные</h2>
-      <div class="form-group"><label>Телефон *</label><input type="tel" id="oPhone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this)" onblur="liveValidatePhone(this); checkLoyaltyByPhone(); checkSelfOrderWarning();" autocomplete="new-password"></div>
+      <div class="checkout-mascot-row">
+        <h2>Покупка за минуту</h2>
+        <img class="mascot-checkout" src="images/mascot/checkout.png" alt="">
+      </div>
+      <p style="font-size:.84rem;color:var(--muted);line-height:1.5;margin:-.35rem 0 1rem;">Из персональных данных нужен только номер телефона.</p>
+      <div class="form-group"><label>Телефон *</label><input type="tel" id="oPhone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this); scheduleCheckoutTelegramOffer();" onblur="liveValidatePhone(this); checkLoyaltyByPhone(); checkSelfOrderWarning(); showCheckoutTelegramOffer();" autocomplete="new-password"></div>
       <div id="loyalty-msg" style="font-size:.82rem;margin:-.6rem 0 1rem;min-height:1.1em;color:#2D7D46;"></div>
-      <div class="form-row">
-        <div class="form-group"><label>Имя *</label><input type="text" id="oName" placeholder="Иван" autocomplete="new-password"></div>
-        <div class="form-group"><label>Фамилия</label><input type="text" id="oLname" placeholder="Иванов" autocomplete="new-password"></div>
-      </div>
-      <div class="form-group">
-        <label style="display:flex;align-items:center;gap:.5rem;font-weight:400;cursor:pointer;">
-          <input type="checkbox" id="oWantReceipt" onchange="onWantReceiptChange()" style="width:16px;height:16px;flex-shrink:0;">
-          Отправить чек на почту
-        </label>
-        <div id="oEmailWrap" style="display:none;margin-top:.5rem;">
-          <input type="email" id="oEmail" placeholder="ivan@example.ru" autocomplete="email">
-          <div style="font-size:.76rem;color:var(--muted,#8A7D6B);margin-top:.3rem;">По SMS чек по закону не отправляется — только на почту.</div>
-        </div>
-      </div>
+      <input type="hidden" id="oName" value="">
+      <input type="hidden" id="oLname" value="">
+      <input type="hidden" id="oEmail" value="">
+      <input type="hidden" id="oWantReceipt" value="">
       <div class="form-group" id="bones-field-wrap" style="display:none;">
-        <label>🦴 Косточки Хвостомаркета</label>
+        <label>🦴 Косточки ХвостМаркета</label>
         <div id="bones-block"></div>
       </div>
-      <div class="form-group" id="referral-field-wrap">
-        <label>Код друга (если вас пригласили)</label>
-        <input type="text" id="oReferralCode" placeholder="Например, A3F9C1" style="text-transform:uppercase;" onblur="checkReferralCode()">
-        <div id="referral-msg" style="font-size:.8rem;margin-top:.4rem;min-height:1.1em;"></div>
+      <div id="referral-field-wrap" style="display:none;">
+        <input type="hidden" id="oReferralCode">
+        <div id="referral-msg"></div>
+      </div>
+      <div class="form-group">
+        <label>Способ оплаты</label>
+        <div style="display:flex;gap:.6rem;">
+          <button type="button" id="payment-method-sbp" onclick="setCheckoutPaymentMethod('sbp')" style="flex:1;padding:.72rem .5rem;border-radius:var(--radius);border:1.5px solid var(--deep);background:var(--deep);color:#fff;font-size:.86rem;font-weight:700;cursor:pointer;font-family:'Manrope',sans-serif;">СБП</button>
+          <button type="button" id="payment-method-card" onclick="setCheckoutPaymentMethod('bank_card')" style="flex:1;padding:.72rem .5rem;border-radius:var(--radius);border:1.5px solid var(--border);background:transparent;color:var(--text);font-size:.86rem;font-weight:700;cursor:pointer;font-family:'Manrope',sans-serif;">Банковская карта</button>
+        </div>
+        <div id="payment-method-hint" style="font-size:.76rem;color:var(--muted);margin-top:.4rem;">СБП выбран — оплата откроется сразу по QR-коду или через приложение банка.</div>
       </div>
       <div class="form-group">
         <label>Способ получения</label>
@@ -1862,11 +2103,10 @@
           <label>Точка самовывоза *</label>
           <select id="oPickupSelect" onchange="onPickupSelectChange()">
             <option value="">— Выберите точку —</option>
-            <option value="other">📍 Другая точка (стойки ещё нет в списке)</option>
           </select>
           <input type="text" id="oPickupOther" placeholder="Название и адрес точки" style="display:none;margin-top:.6rem;" oninput="syncPickupHiddenField()" autocomplete="new-password">
           <div id="pickup-hint" style="font-size:.78rem;color:var(--muted);margin-top:.4rem;display:none;">
-            Если сотрудник на хвостомате не найдёт ваш заказ по названию точки — просто покажите этот экран с оплатой, этого достаточно.
+            После успешной оплаты товар можно самостоятельно забрать с хвостомата.
           </div>
           <input type="hidden" id="oPickup">
         </div>
@@ -1885,17 +2125,8 @@
         <div id="oSelfOrderBanner" style="display:none;background:#FFF4E5;border-radius:8px;padding:.7rem .9rem;margin-bottom:.9rem;font-size:.82rem;color:#7A4A00;line-height:1.5;">
           🐾 Похоже, вы оформляете заказ сами себе (телефон совпадает с вашим как партнёра точки) — комиссия на этот заказ не начислится, а кэшбэк как клиенту вы получите как обычно.
         </div>
-        <div class="form-group" style="margin-bottom:.9rem;">
-          <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-weight:500;color:var(--text);font-size:.88rem;">
-            <input type="checkbox" id="oNeedDelivery" onchange="onNeedDeliveryChange()" autocomplete="off" style="margin-top:.15rem;width:16px;height:16px;flex-shrink:0;">
-            <span>Нужного веса нет на хвостомате — привезите его в салон</span>
-          </label>
-        </div>
         <div id="pickup-instant-note" style="background:#FDF3DC;border-radius:var(--radius);padding:.9rem 1rem;margin-bottom:1.2rem;font-size:.85rem;color:var(--deep);line-height:1.6;">
-          ✅ Товар уже стоит на хвостомате — после оплаты покажите подтверждение сотруднику и сразу заберите.
-        </div>
-        <div id="pickup-delivery-note" style="display:none;background:#FFF4E5;border-radius:var(--radius);padding:.9rem 1rem;margin-bottom:1.2rem;font-size:.85rem;color:#7A4A00;line-height:1.6;">
-          🚚 Оплатите сейчас — сотрудник привезёт нужный вес в выбранную точку и свяжется с вами по телефону, когда можно будет забрать. Обычно это занимает несколько дней.
+          ✅ Товар уже находится на хвостомате. После оплаты заберите его самостоятельно — обращаться к сотруднику не обязательно.
         </div>
       </div>
 
@@ -1907,10 +2138,7 @@
         <div id="delivery-fee-note" style="background:#FDF3DC;border-radius:var(--radius);padding:.9rem 1rem;margin-bottom:1.2rem;font-size:.85rem;color:var(--deep);line-height:1.6;"></div>
       </div>
 
-      <div class="form-group">
-        <label>Комментарий</label>
-        <textarea id="oComment" rows="2" placeholder="Пожелания к заказу..." autocomplete="new-password"></textarea>
-      </div>
+      <input type="hidden" id="oComment" value="">
       <div class="form-group" style="margin-bottom:.9rem;">
         <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-weight:400;color:var(--text);font-size:.82rem;">
           <input type="checkbox" id="oConsentPD" style="margin-top:.15rem;width:16px;height:16px;flex-shrink:0;">
@@ -1926,12 +2154,13 @@
       <div id="order-summary-modal" style="background:var(--cream);border-radius:var(--radius);padding:1rem;margin-bottom:1.2rem;font-size:.88rem;line-height:1.8;"></div>
       <div style="background:#FDF3DC;border-radius:var(--radius);padding:.9rem 1rem;margin-bottom:1.4rem;font-size:.83rem;color:var(--deep);display:flex;gap:.7rem;align-items:flex-start;">
         <span style="font-size:1.1rem;flex-shrink:0;">🔒</span>
-        <span>Оплата через ЮKassa — деньги проходят напрямую через платёжный сервис, данные карты не передаются на наш сервер.</span>
+        <span>Оплата через ЮKassa — по СБП или банковской картой. Платёжные данные не передаются на наш сервер.</span>
       </div>
       <button class="submit-btn" id="pay-btn" onclick="launchYooKassaPayment()" style="display:flex;align-items:center;justify-content:center;gap:.6rem;">
         <span>Оплатить</span><span id="pay-amount" style="opacity:.85;font-weight:400;font-size:.9rem;"></span>
       </button>
       <div id="yk-payment-element" style="display:none;margin-top:1rem;"></div>
+      <div id="payment-reservation-note" style="display:none;background:#FDF3DC;border-radius:var(--radius);padding:.75rem .9rem;margin-top:.8rem;font-size:.82rem;color:var(--deep);line-height:1.5;"></div>
       <div style="background:var(--cream);border-radius:var(--radius);padding:.8rem 1rem;margin-top:1rem;font-size:.82rem;color:var(--muted);display:flex;gap:.6rem;align-items:flex-start;">
         <span style="font-size:1.05rem;flex-shrink:0;">🙋</span>
         <span>Не получается оплатить? Обратитесь к грумеру на хвостомате — он поможет.</span>
@@ -1944,13 +2173,24 @@
 <!-- СТРАНИЦА УСПЕШНОЙ ОПЛАТЫ -->
 <div class="page" id="page-success">
   <div style="max-width:560px;margin:0 auto;padding:80px 5vw;text-align:center;">
-    <div style="font-size:4rem;margin-bottom:1.5rem;">✅</div>
+    <img class="mascot-success" src="images/mascot/order-success.png" alt="Радостный хаски рядом с готовым заказом">
     <h1 style="color:var(--deep);margin-bottom:1rem;">Оплата прошла!</h1>
-    <p id="success-subtitle" style="color:var(--muted);line-height:1.8;margin-bottom:2rem;">Покажите этот экран сотруднику на хвостомате — и забирайте покупку прямо сейчас.</p>
-    <div style="background:#1B2340;border-radius:16px;padding:1.75rem;margin-bottom:1.5rem;text-align:center;">
+    <p id="success-subtitle" style="color:var(--muted);line-height:1.8;margin-bottom:2rem;">Товар оплачен — заберите его с хвостомата самостоятельно.</p>
+    <div style="background:var(--forest);border-radius:16px;padding:1.75rem;margin-bottom:1.5rem;text-align:center;">
       <div style="font-size:2.5rem;margin-bottom:.5rem;" id="success-banner-icon">📲</div>
-      <div style="color:rgba(255,255,255,.6);font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.4rem;" id="success-banner-label">Покажите этот экран сотруднику</div>
-      <div style="color:#fff;font-size:1.05rem;font-weight:600;line-height:1.5;" id="success-banner-text">Товар оплачен — заберите сразу</div>
+      <div style="color:rgba(255,255,255,.6);font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.4rem;" id="success-banner-label">Можно забирать</div>
+      <div style="color:#fff;font-size:1.05rem;font-weight:600;line-height:1.5;" id="success-banner-text">Возьмите оплаченный товар с хвостомата</div>
+    </div>
+    <div id="checkout-tg-offer" style="display:none;margin:0 0 1.5rem;padding:1rem;border:1.5px solid #B8D8F8;border-radius:12px;background:#EEF6FF;text-align:left;">
+      <div style="display:flex;gap:.75rem;align-items:flex-start;">
+        <img src="images/icons/icon-192.png" alt="" style="width:42px;height:42px;object-fit:contain;flex:0 0 auto;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.9rem;font-weight:700;color:var(--deep);margin-bottom:.2rem;">Получать уведомления в Telegram</div>
+          <div style="font-size:.78rem;line-height:1.45;color:var(--muted);">Подключите бота после покупки — в него будут приходить статусы и подтверждения следующих заказов.</div>
+          <button type="button" id="checkout-tg-button" onclick="connectCheckoutTelegram()" style="margin-top:.65rem;padding:.55rem .85rem;border:0;border-radius:9px;background:#229ED9;color:#fff;font:600 .82rem 'Manrope',sans-serif;cursor:pointer;">✈️ Подключить Telegram</button>
+          <div id="checkout-tg-status" style="font-size:.76rem;line-height:1.4;margin-top:.45rem;color:var(--muted);"></div>
+        </div>
+      </div>
     </div>
     <div id="loyalty-badge-card" style="display:none;"></div>
     <div id="success-details" style="background:var(--white);border-radius:12px;padding:1.5rem;box-shadow:var(--shadow);text-align:left;margin-bottom:2rem;font-size:.9rem;line-height:1.9;"></div>
@@ -1975,53 +2215,50 @@
           <path d="M14 50C14 50 12 32 22 22C30 14 42 14 46 22C49.5 29 44 34 38 32C33 30.5 33 24 38 22" stroke="var(--amber)" stroke-width="8" stroke-linecap="round"/>
           <circle cx="40" cy="20" r="5" fill="var(--gold)"/>
         </svg>
-        Хвосто<span>маркет</span>
+        Хвост<span>Маркет</span>
       </div>
       <p>Лакомства и аксессуары для питомцев — в удобных хвостоматах рядом с вами. Сейчас в каталоге бренд «Тайга», скоро — больше брендов.</p>
     </div>
     <div>
-      <h4>Каталог</h4>
+      <h4>Покупателям</h4>
       <ul>
-        <li><a onclick="filterProducts('treats', null); showPage('catalog')">Лакомства</a></li>
-        <li><a onclick="filterProducts('chews', null); showPage('catalog')">Жевательные</a></li>
-        <li><a onclick="filterProducts('toys', null); showPage('catalog')">Игрушки</a></li>
-        <li><a onclick="filterProducts('care', null); showPage('catalog')">Уход</a></li>
+        <li><a onclick="showPage('catalog')">Каталог</a></li>
+        <li><a href="purchase-guide.html">Как купить</a></li>
+        <li><a onclick="showPage('contacts')">Где забрать</a></li>
+        <li><a onclick="showPage('returns')">Возврат</a></li>
+        <li><a onclick="showPage('feedback')">Оставить отзыв</a></li>
       </ul>
     </div>
     <div>
-      <h4>Компания</h4>
+      <h4>ХвостМаркет</h4>
       <ul>
         <li><a onclick="showPage('about')">О бренде</a></li>
-        <li><a onclick="showPage('partners')">Партнёрам</a></li>
-        <li><a onclick="showPage('salons')">Наши салоны-партнёры</a></li>
+        <li><a onclick="showPage('salons')">Наши партнёры</a></li>
         <li><a onclick="showPage('contacts')">Контакты</a></li>
-        <li><a onclick="showPage('feedback')">💬 Оставить отзыв</a></li>
+        <li><a href="privacy-policy.html">Конфиденциальность</a></li>
       </ul>
     </div>
     <div>
-      <h4>Помощь</h4>
+      <h4>Бонусы</h4>
       <ul>
-        <li><a href="#">Самовывоз и оплата</a></li>
-        <li><a onclick="showPage('returns')">Возврат</a></li>
-        <li><a onclick="showPage('quiz')">🐕 Выиграй косточки</a></li>
-        <li><a onclick="showPage('chess')">♟️ Шахматы</a></li>
-        <li><a onclick="showPage('bones')">🦴 Косточки Хвостомаркета</a></li>
-        <li><a onclick="showPage('register')">📝 Регистрация</a></li>
-        <li><a href="privacy-policy.html">Политика конфиденциальности</a></li>
+        <li><a onclick="showPage('bones')">Косточки</a></li>
+        <li><a onclick="showPage('quiz')">Викторина</a></li>
+        <li><a onclick="showPage('chess')">Шахматы</a></li>
+        <li><a onclick="showPage('register')">Получить 150 косточек</a></li>
+        <li><a onclick="showPage('account')">Личный кабинет</a></li>
       </ul>
     </div>
     <div>
-      <h4>Порталы</h4>
+      <h4>Для бизнеса</h4>
       <ul>
-        <li><a href="taiga-register.html">✍️ Стать партнёром</a></li>
-        <li><a href="taiga-groomer.html">✂️ Кабинет партнёра</a></li>
-        <li><a href="taiga-owner.html">🏠 Кабинет владельца салона</a></li>
-        <li><a href="taiga-manager.html">🌟 Кабинет менеджера</a></li>
-        <li><a href="taiga-admin.html">⚙️ Панель администратора</a></li>
+        <li><a onclick="showPage('partners')">Разместить хвостомат</a></li>
+        <li><a href="taiga-register.html">Стать партнёром</a></li>
+        <li><a onclick="showPage('investors')">Инвесторам</a></li>
+        <li><a href="taiga-groomer.html">Вход для партнёров</a></li>
+        <li><a href="taiga-manager.html">Вход для менеджеров</a></li>
+        <li><a href="taiga-owner.html">Вход для владельцев</a></li>
+        <li><a href="taiga-admin.html">Служебный вход</a></li>
       </ul>
-      <div style="margin-top:1rem;padding:.65rem .8rem;background:rgba(255,255,255,.06);border-radius:6px;font-size:.75rem;color:rgba(255,255,255,.35);line-height:1.6;">
-        Доступ только для сотрудников и партнёров «Хвостомаркета»
-      </div>
     </div>
   </div>
   <div class="footer-bottom">
@@ -2036,6 +2273,14 @@
 // ── DATA ──────────────────────────────────────────────
 let products = [];
 let accountOrdersCache = []; // заказы клиента из личного кабинета — нужны для кнопки "Заказать снова"
+function showAccountTab(id) {
+  document.querySelectorAll('[data-account-panel]').forEach(function(panel) {
+    panel.classList.toggle('active', panel.dataset.accountPanel === id);
+  });
+  document.querySelectorAll('[data-account-tab]').forEach(function(button) {
+    button.classList.toggle('active', button.dataset.accountTab === id);
+  });
+}
 
 // Загружает каталог из базы данных (было — захардкоженный массив).
 // Возвращает Promise, чтобы дождаться данных перед первой отрисовкой.
@@ -2055,12 +2300,84 @@ async function loadProducts() {
       comp: p.comp,
       review_count: p.review_count || 0,
       review_avg: p.review_avg || null,
-      variants: p.variants.map((v) => ({ weight: v.weight, price: v.price, stock: v.stock || {} })),
+      variants: p.variants.map((v) => ({ id: v.id, weight: v.weight, price: v.price, stock: v.stock || {} })),
     }));
   } catch (e) {
     console.error('Не удалось загрузить каталог с сервера:', e);
     products = [];
   }
+}
+
+// На первом экране показываем не абстрактные иллюстрации, а реальные товары
+// из действующего каталога. Пример выбирается заново при каждой загрузке
+// страницы. Категории уже нормализованы миграцией базы, поэтому каждый блок
+// берёт товары только из своей настоящей категории.
+function renderHeroProductExamples() {
+  document.querySelectorAll('[data-hero-category]').forEach(function (card) {
+    const group = card.dataset.heroCategory;
+    card.classList.remove('is-product-ready');
+    card.removeAttribute('tabindex');
+    card.removeAttribute('role');
+    card.removeAttribute('aria-label');
+    card.onclick = null;
+    card.onkeydown = null;
+    const candidates = products.filter(function (p) {
+      return p.variants && p.variants.length && p.cat === group;
+    });
+    const preview = card.querySelector('.hero-category-product');
+    if (!preview || !candidates.length) {
+      if (preview) {
+        preview.replaceChildren();
+        const empty = document.createElement('span');
+        empty.className = 'hero-category-empty';
+        empty.textContent = 'Скоро пополнение';
+        preview.appendChild(empty);
+      }
+      return;
+    }
+
+    const product = candidates[Math.floor(Math.random() * candidates.length)];
+    const minPrice = Math.min.apply(null, product.variants.map(function (v) { return Number(v.price) || 0; }));
+    const thumb = document.createElement('span');
+    thumb.className = 'hero-product-thumb';
+    if (product.img) {
+      const img = document.createElement('img');
+      img.src = product.img;
+      img.alt = product.name;
+      img.loading = 'eager';
+      img.addEventListener('error', function () {
+        thumb.textContent = product.icon || '🐾';
+      }, { once: true });
+      thumb.appendChild(img);
+    } else {
+      thumb.textContent = product.icon || '🐾';
+    }
+
+    const meta = document.createElement('span');
+    meta.className = 'hero-product-meta';
+    const label = document.createElement('small');
+    label.textContent = 'Пример из каталога';
+    const name = document.createElement('span');
+    name.className = 'hero-product-name';
+    name.textContent = product.name;
+    const price = document.createElement('span');
+    price.className = 'hero-product-price';
+    price.textContent = (product.variants.length > 1 ? 'от ' : '') + minPrice.toLocaleString('ru-RU') + ' ₽';
+    meta.append(label, name, price);
+    preview.replaceChildren(thumb, meta);
+
+    card.classList.add('is-product-ready');
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', 'Открыть товар «' + product.name + '»');
+    card.onclick = function () { openDetail(product.id); };
+    card.onkeydown = function (event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openDetail(product.id);
+      }
+    };
+  });
 }
 
 // ── WISHLIST ("Хочу такое") ────────────────────────────────────────
@@ -2166,21 +2483,11 @@ let referralBonesAwarded = 0; // сколько косточек начисля�
 let referralCodeValid = false;
 let referralReferrerName = '';
 
-// Клиент сам отмечает, что нужного веса нет на хвостомате — сайт не знает реальных
-// остатков на конкретной точке (это отдельная система в админке), поэтому это
-// честный самоотчёт, а не автоматическая проверка.
-let needsDelivery = false;
-
 function onWantReceiptChange() {
   const checked = document.getElementById('oWantReceipt').checked;
-  document.getElementById('oEmailWrap').style.display = checked ? 'block' : 'none';
+  const wrap = document.getElementById('oEmailWrap');
+  if (wrap) wrap.style.display = checked ? 'block' : 'none';
   if (!checked) document.getElementById('oEmail').value = '';
-}
-
-function onNeedDeliveryChange() {
-  needsDelivery = document.getElementById('oNeedDelivery').checked;
-  document.getElementById('pickup-instant-note').style.display  = needsDelivery ? 'none'  : 'block';
-  document.getElementById('pickup-delivery-note').style.display = needsDelivery ? 'block' : 'none';
 }
 
 function getCartSubtotal() {
@@ -2448,7 +2755,7 @@ function renderQuizCheckpoints() {
     const tier = QUIZ_TIERS.find((t) => t.minCorrect === i);
     const dot = document.createElement('div');
     dot.title = tier ? `Несгораемая сумма: ${tier.percent}%` : `Вопрос ${i}`;
-    dot.style.cssText = `flex:1;height:6px;border-radius:3px;background:${tier ? '#E85D4A' : 'var(--border)'};position:relative;`;
+    dot.style.cssText = `flex:1;height:6px;border-radius:3px;background:${tier ? '#F2AD3D' : 'var(--border)'};position:relative;`;
     dot.dataset.qIndex = i;
     el.appendChild(dot);
   }
@@ -2463,7 +2770,7 @@ function updateQuizCheckpointProgress() {
       const qIndex = Number(dot.dataset.qIndex);
       const passed = qIndex <= quizState.correctCount;
       const isTierMark = QUIZ_TIERS.some((t) => t.minCorrect === qIndex);
-      dot.style.background = passed ? '#2D7D46' : (isTierMark ? '#E85D4A' : 'var(--border)');
+      dot.style.background = passed ? '#2D7D46' : (isTierMark ? '#F2AD3D' : 'var(--border)');
     });
   }
   const banner = document.getElementById('quiz-safe-banner');
@@ -3096,7 +3403,7 @@ function updateAccountNavButton(customer) {
   const displayName = customer.name || ('Клиент ···' + customer.phone.slice(-4));
   label.textContent = '👤 ' + displayName;
   btn.style.borderColor = 'var(--amber)';
-  btn.style.background = 'rgba(232,93,74,.15)';
+  btn.style.background = 'rgba(242,173,61,.18)';
 }
 
 async function renderAccountPage() {
@@ -3302,11 +3609,9 @@ async function checkReferralCode() {
   }
 }
 
-// Скидка за СБП убрана вместе с самим выбором способа оплаты — СБП как
-// отдельный метод не работал (ЮKassa требует отдельного подключения этой
-// функции у эквайера), поэтому оставлен один способ оплаты — картой, тот,
-// что реально работает. Функция оставлена (всегда 0), чтобы не переписывать
-// все места, где считается итоговая сумма.
+// СБП снова доступна отдельным способом оплаты, но дополнительную скидку
+// за выбор СБП пока не применяем. Функция остаётся единым местом расчёта,
+// если такая скидка появится позднее.
 function getSbpDiscountAmount() {
   return 0;
 }
@@ -3460,7 +3765,7 @@ function renderBonesBlock() {
       <div style="display:flex;justify-content:space-between;align-items:center;background:#FFF8EC;border:1px solid #F0DDB8;border-radius:6px;padding:.6rem .8rem;font-size:.84rem;">
         <span>🦴 Доступно: <strong>${customerBonesBalance.toLocaleString('ru-RU')} ₽</strong></span>
         ${maxUsable > 0
-          ? `<button type="button" onclick="toggleUseBones(true)" style="background:var(--amber);color:#fff;border:none;border-radius:6px;padding:.4rem .8rem;font-size:.82rem;font-weight:600;cursor:pointer;font-family:'Manrope',sans-serif;">Списать</button>`
+          ? `<button type="button" onclick="toggleUseBones(true)" style="background:var(--amber);color:var(--on-accent);border:none;border-radius:6px;padding:.4rem .8rem;font-size:.82rem;font-weight:600;cursor:pointer;font-family:'Manrope',sans-serif;">Списать</button>`
           : `<span style="color:var(--muted);font-size:.78rem;">заказ уже минимален</span>`}
       </div>`;
   } else {
@@ -3506,6 +3811,9 @@ function showPage(id) {
   document.getElementById('page-' + id).classList.add('active');
   document.querySelectorAll('.nav-link').forEach(a => {
     a.classList.toggle('active', a.dataset.page === id);
+  });
+  document.querySelectorAll('.mobile-nav-link').forEach(function(button) {
+    button.classList.toggle('active', button.dataset.page === id);
   });
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (id === 'catalog') renderCatalog();
@@ -3579,12 +3887,17 @@ function onCatalogPointFilterChange() {
   const sel = document.getElementById('catalogPointFilter');
   currentCatalogPointFilter = sel.value;
   const hint = document.getElementById('catalogPointHint');
+  const banner = document.getElementById('catalogPointBanner');
+  const bannerText = document.getElementById('catalogPointBannerText');
   if (currentCatalogPointFilter) {
     const point = SITE_POINTS.find((p) => p.id === currentCatalogPointFilter);
     hint.style.display = 'block';
     hint.textContent = 'Показаны только товары, которые реально есть на хвостомате «' + (point ? point.name : currentCatalogPointFilter) + '» прямо сейчас.';
+    if (banner) banner.style.display = 'block';
+    if (bannerText) bannerText.textContent = '«' + (point ? point.name : currentCatalogPointFilter) + '»: выберите категорию, оплатите онлайн и заберите товар самостоятельно.';
   } else {
     hint.style.display = 'none';
+    if (banner) banner.style.display = 'none';
   }
   renderCatalog();
 }
@@ -3619,7 +3932,7 @@ function renderProductCard(p) {
         ${ratingHtml}
         <div class="product-footer">
           <span class="price">${priceLabel}</span>
-          <button class="add-btn" onclick="event.stopPropagation(); addToCart(${p.id})">В корзину</button>
+          <button class="add-btn" onclick="event.stopPropagation(); buyProductNow(${p.id})">Купить сейчас</button>
         </div>
       </div>
     </div>`;
@@ -3719,11 +4032,23 @@ async function renderPointsMap() {
         });
         pointsMapInstance = map;
         points.forEach(function(p) {
+          const lat = Number(p.lat);
+          const lng = Number(p.lng);
+          const routeUrl = 'https://yandex.ru/maps/?rtext=~' +
+            encodeURIComponent(lat + ',' + lng) + '&rtt=auto';
           const placemark = new window.ymaps.Placemark([p.lat, p.lng], {
-            balloonContentHeader: p.name,
-            balloonContentBody: p.addr,
+            balloonContentHeader: escapeHtml(p.name),
+            balloonContentBody: '<div style="padding-top:4px;">📍 ' + escapeHtml(p.addr) + '</div>',
+            balloonContentFooter: '<a href="' + routeUrl + '" target="_blank" rel="noopener" ' +
+              'style="display:inline-block;margin-top:8px;color:#138066;font-weight:700;">' +
+              'Построить маршрут в Яндекс Картах →</a>',
             hintContent: p.name,
-          }, { preset: 'islands#greenDotIcon' });
+            iconCaption: p.name,
+          }, {
+            preset: 'islands#redDotIconWithCaption',
+            iconColor: '#F2AD3D',
+            iconCaptionMaxWidth: 180,
+          });
           map.geoObjects.add(placemark);
         });
         if (points.length > 1) {
@@ -3773,7 +4098,7 @@ function openDetail(id) {
   document.getElementById('detailMeta').innerHTML =
     (variants.length <= 1 ? `<span class="tag">${variants[0].weight}</span>` : '') +
     `<span class="tag">${catLabel(p.cat)}</span>` +
-    (p.badge ? `<span class="tag" style="background:rgba(232,93,74,.15);color:var(--amber)">${p.badge}</span>` : '');
+    (p.badge ? `<span class="tag" style="background:rgba(242,173,61,.18);color:var(--accent-text)">${p.badge}</span>` : '');
   document.getElementById('detailComp').innerHTML =
     `<h4>Состав / особенности</h4><ul>${p.comp.map(c => `<li>${c}</li>`).join('')}</ul>`;
   renderVariantPicker(variants);
@@ -3817,7 +4142,7 @@ function updateDetailPrice() {
 }
 
 function catLabel(c) {
-  return {treats:'Лакомство',chews:'Жевательное',toys:'Игрушка',care:'Уход',test:'Служебный'}[c] || c;
+  return {treats:'Лакомство',toys:'Игрушка',accessories:'Аксессуар',care:'Уход',test:'Служебный'}[c] || c;
 }
 
 function changeDetailQty(d) {
@@ -3830,6 +4155,13 @@ function addDetailToCart() {
   const v = detailVariantsFor(p)[currentVariantIdx];
   addToCartQty(p, detailQty, v);
   showToast(`${p.icon} «${p.name}» (${v.weight}) добавлено в корзину`);
+}
+
+function buyDetailNow() {
+  const p = products.find(x => x.id === currentDetailId);
+  const v = detailVariantsFor(p)[currentVariantIdx];
+  addToCartQty(p, detailQty, v);
+  openModal();
 }
 
 // ── ОТЗЫВЫ И ЗВЁЗДНЫЙ РЕЙТИНГ ──────────────────────────────────────────
@@ -3987,50 +4319,9 @@ function addToCart(id) {
   showToast(`${p.icon} «${p.name}» (${v.weight}) добавлено в корзину`);
 }
 
-// ── ТОВАР НЕ ИЗ КАТАЛОГА (менеджер/грумер выставил что-то новое на стойку,
-// а в систему это ещё не завели) — клиент вбивает данные с ценника сам.
-// Такие позиции помечаются флагом custom:true и явно выделяются в
-// Telegram-уведомлении и на чеке, чтобы при выдаче их сверили вручную.
-function openCustomItemModal() {
-  document.getElementById('ciName').value = '';
-  document.getElementById('ciPrice').value = '';
-  document.getElementById('ciQty').value = 1;
-  document.getElementById('ci-error').style.display = 'none';
-  document.getElementById('customItemModal').classList.add('open');
-}
-
-function closeCustomItemModal() {
-  document.getElementById('customItemModal').classList.remove('open');
-}
-
-function addCustomItemToCart() {
-  const name  = document.getElementById('ciName').value.trim();
-  const price = parseFloat(document.getElementById('ciPrice').value);
-  const qty   = parseInt(document.getElementById('ciQty').value) || 1;
-  const errEl = document.getElementById('ci-error');
-
-  if (!name) {
-    errEl.textContent = 'Укажите название товара.';
-    errEl.style.display = 'block';
-    return;
-  }
-  if (isNaN(price) || price <= 0) {
-    errEl.textContent = 'Укажите цену больше нуля.';
-    errEl.style.display = 'block';
-    return;
-  }
-  if (qty < 1) {
-    errEl.textContent = 'Количество должно быть не меньше 1.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  const cartKey = 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-  cart.push({ id: null, cartKey, name, icon: '✏️', weight: 'не из каталога', price, qty, custom: true });
-  updateCartCount();
-  closeCustomItemModal();
-  renderCart();
-  showToast(`✏️ «${name}» добавлено в корзину вручную`);
+function buyProductNow(id) {
+  addToCart(id);
+  openModal();
 }
 
 function addToCartQty(p, qty, variant) {
@@ -4038,7 +4329,7 @@ function addToCartQty(p, qty, variant) {
   const cartKey = p.id + '::' + v.weight;
   const existing = cart.find(x => x.cartKey === cartKey);
   if (existing) existing.qty += qty;
-  else cart.push({ id: p.id, cartKey, name: p.name, icon: p.icon, weight: v.weight, price: v.price, qty });
+  else cart.push({ id: p.id, variantId: v.id, cartKey, name: p.name, icon: p.icon, weight: v.weight, price: v.price, qty });
   updateCartCount();
   trackGoal('add_to_cart', { product_name: p.name, price: v.price });
 }
@@ -4096,9 +4387,9 @@ function changeCartQty(cartKey, d) {
 function renderCart() {
   const c = document.getElementById('cartContent');
   if (cart.length === 0) {
-    c.innerHTML = `<div class="cart-empty"><div class="ic">🛒</div><p>Ваша корзина пуста</p><button class="btn-primary" onclick="showPage('catalog')">Перейти в каталог</button>
+    c.innerHTML = `<div class="cart-empty"><img class="mascot-empty" src="images/mascot/cart-empty.png" alt="Хаски заглядывает в пустую корзину"><p>Ваша корзина пуста</p><button class="btn-primary" onclick="showPage('catalog')">Перейти в каталог</button>
       <div style="margin-top:1rem;">
-        <button onclick="openCustomItemModal()" style="background:none;border:none;color:var(--muted);font-size:.85rem;text-decoration:underline;cursor:pointer;font-family:'Manrope',sans-serif;">✏️ Нет в каталоге? Добавить товар вручную</button>
+        <button onclick="showPage('wishlist')" style="background:none;border:none;color:var(--muted);font-size:.85rem;text-decoration:underline;cursor:pointer;font-family:'Manrope',sans-serif;">Не нашли товар? Оставить заявку</button>
       </div></div>`;
     return;
   }
@@ -4126,7 +4417,8 @@ function renderCart() {
         <button class="cart-item-del" onclick="removeFromCart('${item.cartKey}')">🗑</button>
       </div>
     </div>`).join('') + `
-    <div class="cart-summary">
+    <div class="cart-summary has-mascot">
+      <img class="cart-summary-mascot" src="images/mascot/cart-full.png" alt="">
       <div class="cart-summary-row"><span>Товаров</span><span>${cart.reduce((s,x)=>s+x.qty,0)} шт.</span></div>
 
       <div style="background:rgba(45,125,70,.18);border-radius:6px;padding:.5rem .7rem;margin:.6rem 0;font-size:.82rem;color:#8FD9A8;">
@@ -4136,15 +4428,143 @@ function renderCart() {
       <div class="cart-summary-row total"><span>К оплате</span><span>${total} ₽</span></div>
       <div style="font-size:.74rem;color:rgba(255,255,255,.55);margin-top:-.3rem;">Окончательная сумма будет показана на шаге оформления заказа.</div>
       <div style="display:flex;align-items:center;gap:.5rem;margin:1rem 0 1.2rem;font-size:.79rem;color:rgba(255,255,255,.5);">
-        <span>🔒</span><span>Оплата картой через ЮKassa</span>
+        <span>🔒</span><span>Оплата по СБП или картой через ЮKassa</span>
       </div>
-      <button onclick="openCustomItemModal()" style="width:100%;margin-bottom:.9rem;padding:.6rem;border-radius:var(--radius);border:1.5px dashed rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.75);font-size:.82rem;font-weight:500;cursor:pointer;font-family:'Manrope',sans-serif;">✏️ Нет в каталоге? Добавить товар вручную</button>
-      <button class="checkout-btn" onclick="openModal()">Оформить и оплатить →</button>
+      <button onclick="showPage('wishlist')" style="width:100%;margin-bottom:.9rem;padding:.6rem;border-radius:var(--radius);border:1.5px dashed rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.75);font-size:.82rem;font-weight:500;cursor:pointer;font-family:'Manrope',sans-serif;">Не нашли товар? Оставить заявку</button>
+      <button class="checkout-btn" onclick="openModal()">Купить сейчас →</button>
     </div>`;
 }
 
 // ── MODAL ─────────────────────────────────────────────
+const CHECKOUT_TG_CONNECTED_KEY = 'hvostmarket_tg_connected_phone';
+let checkoutTelegramOfferTimer = null;
+let checkoutTelegramPollTimer = null;
+let checkoutTelegramToken = '';
+let checkoutTelegramPhone = '';
+let lastPaidCheckoutPhone = '';
+let checkoutPaymentMethod = 'sbp';
+
+function phoneLast10(value) {
+  return String(value || '').replace(/\D/g, '').slice(-10);
+}
+
+function setCheckoutTelegramConnected(phone) {
+  const digits = phoneLast10(phone);
+  if (digits) localStorage.setItem(CHECKOUT_TG_CONNECTED_KEY, digits);
+  const offer = document.getElementById('checkout-tg-offer');
+  const button = document.getElementById('checkout-tg-button');
+  const status = document.getElementById('checkout-tg-status');
+  if (offer) offer.style.display = 'block';
+  if (button) button.style.display = 'none';
+  if (status) {
+    status.textContent = '✅ Telegram подключён — уведомления о следующих заказах будут приходить в бот.';
+    status.style.color = '#2D7D46';
+    status.style.fontWeight = '600';
+  }
+}
+
+function showCheckoutTelegramOffer() {
+  const phone = lastPaidCheckoutPhone;
+  const digits = phoneLast10(phone);
+  const offer = document.getElementById('checkout-tg-offer');
+  const button = document.getElementById('checkout-tg-button');
+  const status = document.getElementById('checkout-tg-status');
+  if (!offer) return;
+  if (digits.length < 10) {
+    offer.style.display = 'none';
+    return;
+  }
+  offer.style.display = 'block';
+  if (localStorage.getItem(CHECKOUT_TG_CONNECTED_KEY) === digits) {
+    setCheckoutTelegramConnected(digits);
+    return;
+  }
+  if (button) {
+    button.style.display = 'inline-block';
+    button.disabled = false;
+    button.textContent = '✈️ Запустить бота';
+    button.style.opacity = '1';
+  }
+  if (status && digits !== phoneLast10(checkoutTelegramPhone)) {
+    status.textContent = '';
+    status.style.color = 'var(--muted)';
+    status.style.fontWeight = '400';
+  }
+}
+
+function scheduleCheckoutTelegramOffer() {
+  clearTimeout(checkoutTelegramOfferTimer);
+  checkoutTelegramOfferTimer = setTimeout(showCheckoutTelegramOffer, 250);
+}
+
+async function pollCheckoutTelegramConnection(token, phone) {
+  if (checkoutTelegramPollTimer) clearInterval(checkoutTelegramPollTimer);
+  let attempts = 0;
+  const check = async () => {
+    attempts++;
+    try {
+      const res = await fetch('/api/customer/telegram/check?token=' + encodeURIComponent(token));
+      const data = await res.json();
+      if (data.verified && data.token) {
+        clearInterval(checkoutTelegramPollTimer);
+        checkoutTelegramPollTimer = null;
+        localStorage.setItem(ACCOUNT_TOKEN_KEY, data.token);
+        setCheckoutTelegramConnected(phone);
+        return true;
+      } else if (attempts >= 150) {
+        clearInterval(checkoutTelegramPollTimer);
+        checkoutTelegramPollTimer = null;
+        const status = document.getElementById('checkout-tg-status');
+        const button = document.getElementById('checkout-tg-button');
+        if (status) status.textContent = 'Не увидели подтверждение. Нажмите кнопку и запустите бота ещё раз.';
+        if (button) { button.disabled = false; button.style.opacity = '1'; button.textContent = '✈️ Запустить бота снова'; }
+        return true;
+      }
+    } catch (e) { /* временный сетевой сбой — повторим */ }
+    return false;
+  };
+  const finished = await check();
+  if (!finished) {
+    checkoutTelegramPollTimer = setInterval(check, 2000);
+  }
+}
+
+async function connectCheckoutTelegram() {
+  const phone = lastPaidCheckoutPhone || document.getElementById('oPhone')?.value.trim() || '';
+  const button = document.getElementById('checkout-tg-button');
+  const status = document.getElementById('checkout-tg-status');
+  if (!validatePhone(phone)) {
+    setFieldError('oPhone', 'Формат: +7 (900) 000-00-00');
+    return;
+  }
+  if (button) { button.disabled = true; button.style.opacity = '.65'; button.textContent = 'Создаём ссылку…'; }
+  if (status) { status.textContent = ''; status.style.color = 'var(--muted)'; }
+  const botWindow = window.open('', '_blank');
+  try {
+    const res = await fetch('/api/customer/telegram/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось запустить Telegram-бота');
+    checkoutTelegramToken = data.token;
+    checkoutTelegramPhone = phone;
+    rememberPhone(phone);
+    if (status) status.textContent = 'Откройте Telegram, нажмите «Запустить» и вернитесь на страницу заказа.';
+    if (button) button.textContent = 'Ожидаем подтверждение…';
+    if (botWindow) botWindow.location.href = data.deep_link;
+    else window.location.href = data.deep_link;
+    pollCheckoutTelegramConnection(data.token, phone);
+  } catch (e) {
+    if (botWindow) botWindow.close();
+    if (status) { status.textContent = '⚠️ ' + e.message; status.style.color = '#9B2335'; }
+    if (button) { button.disabled = false; button.style.opacity = '1'; button.textContent = '✈️ Попробовать снова'; }
+  }
+}
+
 async function openModal() {
+  lastPaidCheckoutPhone = '';
   document.getElementById('checkoutModal').classList.add('open');
   trackGoal('checkout_started', { cart_total: getCartSubtotal(), items_count: cart.reduce((s,x)=>s+x.qty,0) });
   backToStep1();          // всегда открываем со свежего шага 1, а не с прошлого состояния
@@ -4161,6 +4581,7 @@ async function openModal() {
   customerBonesBalance = 0;
   useBones = false;
   bonesToUse = 0;
+  setCheckoutPaymentMethod('sbp');
   const refInput = document.getElementById('oReferralCode');
   if (refInput) refInput.value = window._referralCodeFromLink || '';
   const refMsg = document.getElementById('referral-msg');
@@ -4169,7 +4590,11 @@ async function openModal() {
   renderBonesBlock();
   await prefillCheckoutFromAccount();
 }
-function closeModal() { document.getElementById('checkoutModal').classList.remove('open'); }
+function closeModal() {
+  document.getElementById('checkoutModal').classList.remove('open');
+  const reservationNote = document.getElementById('payment-reservation-note');
+  if (reservationNote) reservationNote.style.display = 'none';
+}
 
 // Если клиент уже вошёл в личный кабинет (по Telegram/MAX/паролю — не важно
 // как именно), незачем заставлять его заново вбивать имя и телефон в чекауте —
@@ -4201,6 +4626,9 @@ async function prefillCheckoutFromAccount() {
           emailEl.value = c.email;
           if (wantReceiptEl) { wantReceiptEl.checked = true; onWantReceiptChange(); }
         }
+        if (c.telegram_connected && c.phone) {
+          localStorage.setItem(CHECKOUT_TG_CONNECTED_KEY, phoneLast10(c.phone));
+        }
       }
     } catch (e) {
       // Не критично — ниже всё равно попробуем хотя бы запомненный телефон.
@@ -4214,6 +4642,7 @@ async function prefillCheckoutFromAccount() {
   // Телефон уже известен (из аккаунта или просто запомнен) — сразу проверяем
   // лояльность/ДР питомца/реферала, не дожидаясь, пока клиент кликнет мимо поля.
   if (phoneEl && phoneEl.value.trim()) await checkLoyaltyByPhone();
+  showCheckoutTelegramOffer();
   renderBonesBlock();
 }
 
@@ -4383,12 +4812,28 @@ function setFieldError(id, msg) {
   }
 }
 function clearFieldErrors() {
-  ['oName','oPhone','oPickupSelect','oPickupOther','oConsentPD','oDeliveryAddress'].forEach(id => setFieldError(id, ''));
+  ['oPhone','oPickupSelect','oPickupOther','oConsentPD','oDeliveryAddress'].forEach(id => setFieldError(id, ''));
+}
+
+function setCheckoutPaymentMethod(method) {
+  checkoutPaymentMethod = method === 'bank_card' ? 'bank_card' : 'sbp';
+  const sbp = document.getElementById('payment-method-sbp');
+  const card = document.getElementById('payment-method-card');
+  const hint = document.getElementById('payment-method-hint');
+  [[sbp, checkoutPaymentMethod === 'sbp'], [card, checkoutPaymentMethod === 'bank_card']].forEach(function(item) {
+    if (!item[0]) return;
+    item[0].style.background = item[1] ? 'var(--deep)' : 'transparent';
+    item[0].style.color = item[1] ? '#fff' : 'var(--text)';
+    item[0].style.borderColor = item[1] ? 'var(--deep)' : 'var(--border)';
+  });
+  if (hint) hint.textContent = checkoutPaymentMethod === 'sbp'
+    ? 'СБП выбран — оплата откроется сразу по QR-коду или через приложение банка.'
+    : 'Оплата банковской картой в защищённом окне ЮKassa.';
 }
 
 async function goToPayment() {
   clearFieldErrors();
-  const name       = document.getElementById('oName').value.trim();
+  const name       = document.getElementById('oName').value.trim() || 'Клиент';
   const phone      = document.getElementById('oPhone').value.trim();
   const email      = document.getElementById('oEmail').value.trim();
   const pickupSel  = document.getElementById('oPickupSelect').value;
@@ -4396,7 +4841,6 @@ async function goToPayment() {
   const isDelivery = fulfillmentType === 'home_delivery';
   const deliveryAddress = document.getElementById('oDeliveryAddress').value.trim();
   let ok = true;
-  if (!name)  { setFieldError('oName',  'Введите имя'); ok = false; }
   if (!phone) { setFieldError('oPhone', 'Введите телефон'); ok = false; }
   else if (!validatePhone(phone)) { setFieldError('oPhone', 'Формат: +7 (900) 000-00-00'); ok = false; }
   if (email && !validateEmail(email)) { setFieldError('oEmail', 'Проверьте правильность email'); ok = false; }
@@ -4448,12 +4892,11 @@ async function goToPayment() {
       <span>Итого</span><span style="color:var(--amber);">${total} ₽</span>
     </div>
     <div style="margin-top:.75rem;font-size:.83rem;color:var(--muted);">
-      👤 ${name} · 📞 ${phone}<br>
+      📞 ${phone}<br>
       📍 ${pickupText}<br>
-      💳 Картой<br>
-      ${isDelivery ? '🚚 Привезём по адресу, свяжемся для согласования времени' : (needsDelivery ? '🚚 С довозом нужного веса на точку' : '✅ Забрать сразу со стойки')}
-    </div>
-    <div style="margin-top:.6rem;background:#FDF3DC;border-radius:6px;padding:.6rem .8rem;font-size:.83rem;color:#2A3563;display:flex;align-items:center;gap:.5rem;"><span>🧾</span><span>Чек в SMS на номер ${phone}</span></div>`;
+      💳 ${checkoutPaymentMethod === 'sbp' ? 'СБП' : 'Банковская карта'}<br>
+      ${isDelivery ? '🚚 Привезём по адресу, свяжемся для согласования времени' : '✅ Забрать сразу со стойки'}
+    </div>`;
 
   document.getElementById('pay-amount').textContent = `— ${total} ₽`;
   document.getElementById('modal-step-1').style.display = 'none';
@@ -4471,42 +4914,29 @@ function backToStep1() {
   document.getElementById('step-line').style.width = '0%';
 }
 
-// Раньше сюда же распределялась скидка по промокоду пропорционально по
-// позициям чека (в фискальном чеке нельзя использовать отрицательные суммы
-// отдельной строкой) — теперь скидок по промокоду нет вообще, остаётся
-// только пропорциональное распределение скидки за СБП, если она применима.
-function buildReceiptItems(cartItems, total) {
-  const lines = cartItems.map((i) => ({ item: i, afterDiscount: i.price * i.qty }));
-  // Скидка за СБП (если применима) общая на весь заказ — растягиваем её
-  // пропорционально по суммам позиций.
-  const afterDiscountTotal = lines.reduce((s, l) => s + l.afterDiscount, 0);
-  const sbpRatio = afterDiscountTotal > 0 ? total / afterDiscountTotal : 1;
-
-  let allocated = 0;
-  return lines.map((l, idx) => {
-    const isLast = idx === lines.length - 1;
-    let lineTotal;
-    if (isLast) {
-      lineTotal = Math.round((total - allocated) * 100) / 100;
-    } else {
-      lineTotal = Math.round(l.afterDiscount * sbpRatio * 100) / 100;
-      allocated += lineTotal;
-    }
-    return {
-      description: ((l.item.custom ? '✏️ ' : '') + l.item.name + ' (' + l.item.weight + ')').slice(0, 128),
-      amount: { value: lineTotal.toFixed(2), currency: 'RUB' },
-      vat_code: 1, // без НДС (УСН)
-      quantity: String(l.item.qty),
-      payment_subject: 'commodity',
-      payment_mode: 'full_payment',
-    };
-  });
-}
-
 let ykCheckoutInstance = null;
 
+// Виджет ЮKassa не во всех сценариях сообщает родительской странице событие
+// success: иногда он только рисует внутри себя экран «Успешно» с кнопкой
+// «Закрыть». Поэтому статус платежа проверяем независимо от событий виджета.
+async function checkConfirmedPayment(paymentId) {
+  try {
+    const res = await fetchWithTimeout(
+      '/api/payment-status/' + encodeURIComponent(paymentId),
+      { cache: 'no-store' },
+      8000
+    );
+    if (!res.ok) return { paid: false, status: 'pending' };
+    const data = await res.json();
+    if (data.paid) return { paid: true, status: 'paid' };
+    return { paid: false, status: data.status || 'pending' };
+  } catch (e) {
+    return { paid: false, status: 'pending' };
+  }
+}
+
 async function launchYooKassaPayment() {
-  const name    = document.getElementById('oName').value.trim();
+  const name    = document.getElementById('oName').value.trim() || 'Клиент';
   const lname   = document.getElementById('oLname').value.trim();
   const phone   = document.getElementById('oPhone').value.trim();
   const email   = document.getElementById('oEmail').value.trim();
@@ -4534,18 +4964,6 @@ async function launchYooKassaPayment() {
   const total = adjustedGoodsTotal + adjustedDeliveryFee;
 
   const orderId  = 'TG-' + Date.now();
-  const receiptItems = buildReceiptItems(cart, adjustedGoodsTotal);
-  if (adjustedDeliveryFee > 0) {
-    receiptItems.push({
-      description: 'Доставка',
-      amount: { value: adjustedDeliveryFee.toFixed(2), currency: 'RUB' },
-      vat_code: 1, // без НДС (УСН)
-      quantity: '1',
-      payment_subject: 'service',
-      payment_mode: 'full_payment',
-    });
-  }
-
   const payBtn = document.getElementById('pay-btn');
   const widgetBox = document.getElementById('yk-payment-element');
   const originalBtnHtml = payBtn.innerHTML;
@@ -4564,17 +4982,12 @@ async function launchYooKassaPayment() {
       headers: { 'Content-Type': 'application/json', ...bonesHeaders },
       body: JSON.stringify({
         amount: total,
-        description: 'Заказ Хвостомаркет ' + orderId,
         orderId,
-        // method не передаём намеренно — СБП как отдельный способ убран (не
-        // работал, требует отдельного подключения у эквайера), остаётся
-        // единственный работающий способ — карта, без принудительного
-        // ограничения метода на стороне ЮKassa.
-        receiptItems,
+        method: checkoutPaymentMethod,
         customerPhone: phone,
         customerEmail: email,
-        // Дополнительные поля для записи заказа и списания остатков на сервере —
-        // сам чек ЮKassa строится из receiptItems выше, это отдельно для БД.
+        // Дополнительные поля для записи заказа и списания остатков на сервере.
+        // Состав и чек ЮKassa сервер строит сам по актуальному каталогу.
         customerName: name,
         customerLname: lname,
         pickupPoint: pickup,
@@ -4583,35 +4996,60 @@ async function launchYooKassaPayment() {
           : null),
         partnerId: isDelivery ? null : getGroomerPartnerId(),
         comment,
-        subtotal,
-        discount: sbpDiscount,
         bonesUsed: bonesToUse,
-        needsDelivery: !!needsDelivery,
         fulfillmentType,
         deliveryAddress: isDelivery ? deliveryAddress : null,
-        deliveryFee,
+        cityId: getCurrentCity(),
         referralCode: referralCodeValid ? document.getElementById('oReferralCode').value.trim().toUpperCase() : null,
-        cartItems: cart.map((i) => ({
-          name: i.name, weight: i.weight, price: i.price, qty: i.qty, isCustom: !!i.custom,
-        })),
+        cartItems: cart.map((i) => ({ variantId: i.variantId, qty: i.qty })),
       }),
     });
     const data = await res.json();
 
     if (!res.ok) {
+      if (data && data.code === 'ORDER_TOTAL_CHANGED' && data.pricing && Array.isArray(data.pricing.items)) {
+        const currentByVariant = new Map(cart.map((item) => [item.variantId, item]));
+        cart = data.pricing.items.map((item) => {
+          const current = currentByVariant.get(item.variantId) || {};
+          return {
+            ...current,
+            id: item.productId,
+            variantId: item.variantId,
+            cartKey: item.productId + '::' + item.weight,
+            name: item.name,
+            weight: item.weight,
+            price: item.price,
+            qty: item.qty,
+            custom: false,
+          };
+        });
+        updateCartCount();
+        renderCart();
+        renderBonesBlock();
+        backToStep1();
+        payBtn.disabled = false;
+        payBtn.innerHTML = originalBtnHtml;
+        showToast('Цена изменилась — корзина обновлена. Проверьте новый итог.');
+        return;
+      }
       throw new Error((data && data.error) || 'Не удалось создать заказ');
     }
 
     if (data.demo === true) {
-      // Демо-режим — ЮKassa ещё не настроена на сервере (нет переменных окружения).
-      // Заказ уже реально записан на сервере (см. /api/create-payment) — здесь только
-      // показываем клиенту привычную анимацию "обрабатываем оплату".
+      // Явный тестовый режим сервера (DEMO_MODE=true). В обычной среде без
+      // настроенной ЮKassa этот ответ никогда не возвращается.
       payBtn.disabled = false; payBtn.innerHTML = originalBtnHtml;
       simulatePaymentSuccess(orderId, name, lname, phone, pickup, total, comment);
       return;
     }
     if (!data.confirmation_token) {
       throw new Error((data && data.error) || 'Не удалось создать платёж');
+    }
+
+    const reservationNote = document.getElementById('payment-reservation-note');
+    if (reservationNote) {
+      reservationNote.textContent = `🔒 Товары и косточки зарезервированы на ${data.reservation_minutes || 15} минут. Завершите оплату в этом окне.`;
+      reservationNote.style.display = 'block';
     }
 
     payBtn.style.display = 'none';
@@ -4631,30 +5069,82 @@ async function launchYooKassaPayment() {
     });
     ykCheckoutInstance = checkout;
 
-    checkout.on('success', async function() {
-      // Дополнительно подтверждаем статус напрямую у своего сервера — не доверяем
-      // только клиентскому событию (тот же принцип надёжности, что и с Telegram).
-      try {
-        const statusRes = await fetch('/api/payment-status/' + encodeURIComponent(data.payment_id));
-        const statusData = await statusRes.json();
-        if (!statusData.paid) console.warn('Виджет сообщил об успехе, но сервер пока не подтвердил оплату:', statusData);
-      } catch (e) {
-        console.warn('Не удалось подтвердить статус платежа на сервере:', e);
-      }
-      checkout.destroy();
+    let paymentUiFinished = false;
+    let paymentStatusTimer = null;
+    let paymentStatusCheckRunning = false;
+
+    const stopPaymentStatusPolling = function() {
+      if (paymentStatusTimer) clearInterval(paymentStatusTimer);
+      paymentStatusTimer = null;
+    };
+
+    const restorePayButton = function() {
+      payBtn.style.display = 'flex';
+      payBtn.disabled = false;
+      payBtn.innerHTML = originalBtnHtml;
+      payBtn.onclick = launchYooKassaPayment;
+    };
+
+    const showConfirmedPayment = function() {
+      if (paymentUiFinished) return;
+      paymentUiFinished = true;
+      stopPaymentStatusPolling();
+      try { checkout.destroy(); } catch (e) { /* виджет уже мог закрыться сам */ }
       widgetBox.style.display = 'none';
+      restorePayButton();
+      if (reservationNote) reservationNote.style.display = 'none';
       onPaymentSuccess(orderId, name, lname, phone, pickup, total, comment);
+    };
+
+    const showFailedPayment = function() {
+      if (paymentUiFinished) return;
+      paymentUiFinished = true;
+      stopPaymentStatusPolling();
+      try { checkout.destroy(); } catch (e) { /* виджет уже мог закрыться сам */ }
+      widgetBox.style.display = 'none';
+      restorePayButton();
+      if (reservationNote) {
+        reservationNote.textContent = 'Оплата не прошла. Можно безопасно попробовать оплатить заказ заново.';
+        reservationNote.style.display = 'block';
+      }
+    };
+
+    const refreshPaymentStatus = async function() {
+      if (paymentUiFinished || paymentStatusCheckRunning) return;
+      paymentStatusCheckRunning = true;
+      const confirmed = await checkConfirmedPayment(data.payment_id);
+      paymentStatusCheckRunning = false;
+      if (confirmed.paid) showConfirmedPayment();
+      else if (confirmed.status === 'failed' || confirmed.status === 'canceled') showFailedPayment();
+    };
+
+    checkout.on('success', async function() {
+      if (reservationNote) {
+        reservationNote.textContent = '⏳ Подтверждаем успешную оплату на сервере. Не закрывайте страницу…';
+        reservationNote.style.display = 'block';
+      }
+      await refreshPaymentStatus();
     });
 
     checkout.on('fail', function() {
-      checkout.destroy();
-      widgetBox.style.display = 'none';
-      payBtn.style.display = 'flex';
-      payBtn.disabled = false; payBtn.innerHTML = originalBtnHtml;
+      showFailedPayment();
       showToast('⚠️ Оплата не прошла. Попробуйте ещё раз.');
     });
 
     await checkout.render('yk-payment-element');
+
+    // Основной канал показа результата: опрашиваем наш сервер независимо от
+    // того, прислал ли iframe ЮKassa событие success. Сервер, в свою очередь,
+    // сверяет платёж непосредственно с ЮKassa и только после этого отвечает paid.
+    await refreshPaymentStatus();
+    if (!paymentUiFinished) {
+      paymentStatusTimer = setInterval(refreshPaymentStatus, 2500);
+
+      // После срока резерва бессрочный опрос не нужен. Если платёж всё ещё в
+      // обработке, пользователь сможет обновить страницу или проверить заказ.
+      const pollingLifetime = Math.max(15, Number(data.reservation_minutes) || 15) * 60 * 1000;
+      setTimeout(stopPaymentStatusPolling, pollingLifetime);
+    }
   } catch (e) {
     console.error('Ошибка запуска оплаты:', e);
     payBtn.style.display = 'flex';
@@ -4673,14 +5163,14 @@ function simulatePaymentSuccess(orderId, name, lname, phone, pickup, subtotal, c
   box.style.cssText = 'background:#fff;border-radius:16px;padding:2.5rem 2rem;max-width:340px;width:100%;text-align:center;';
 
   const spinner = document.createElement('div');
-  spinner.style.cssText = 'width:48px;height:48px;border:3px solid #FDF3DC;border-top-color:#2A3563;border-radius:50%;margin:0 auto 1.25rem;animation:spin .8s linear infinite;';
+  spinner.style.cssText = 'width:48px;height:48px;border:3px solid #FFF3D2;border-top-color:#138066;border-radius:50%;margin:0 auto 1.25rem;animation:spin .8s linear infinite;';
 
   const styleEl = document.createElement('style');
   styleEl.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
   document.head.appendChild(styleEl);
 
   const title = document.createElement('div');
-  title.style.cssText = 'font-weight:700;font-size:1.05rem;color:#1B2340;margin-bottom:.4rem;';
+  title.style.cssText = 'font-weight:700;font-size:1.05rem;color:#075642;margin-bottom:.4rem;';
   title.textContent = 'Обрабатываем оплату...';
 
   const sub = document.createElement('div');
@@ -4700,9 +5190,13 @@ function simulatePaymentSuccess(orderId, name, lname, phone, pickup, subtotal, c
 }
 
 function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment) {
-  trackGoal('purchase', { order_id: orderId, revenue: subtotal, payment_method: 'card' });
-  // Уведомление о продаже в Telegram теперь отправляется СЕРВЕРОМ — и в демо-режиме,
-  // и по подтверждению реального платежа через вебхук ЮKassa (см. routes-payment.js).
+  // Экран результата расположен за модальным окном оплаты. Обязательно
+  // закрываем модальное окно, иначе подтверждение будет отрисовано, но клиент
+  // его не увидит.
+  closeModal();
+  trackGoal('purchase', { order_id: orderId, revenue: subtotal, payment_method: checkoutPaymentMethod });
+  // Уведомление о продаже в Telegram теперь отправляется СЕРВЕРОМ — в явно
+  // включённом демо-режиме или после вебхука ЮKassa (см. routes-payment.js).
   // Раньше клиент тоже слал уведомление сам — это дублировало сообщения, убрано.
 
   if (fulfillmentType === 'home_delivery') {
@@ -4711,18 +5205,12 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
     document.getElementById('success-banner-icon').textContent = '🚚';
     document.getElementById('success-banner-label').textContent = 'Ожидайте звонка курьера';
     document.getElementById('success-banner-text').textContent = 'Оплачено — привезём по адресу';
-  } else if (needsDelivery) {
-    document.getElementById('success-subtitle').textContent =
-      'Стойка пополнится нужным весом в ближайшие дни — сотрудник свяжется с вами по телефону, когда товар будет готов к выдаче.';
-    document.getElementById('success-banner-icon').textContent = '🚚';
-    document.getElementById('success-banner-label').textContent = 'Требуется небольшой довоз';
-    document.getElementById('success-banner-text').textContent = 'Оплачено — привезём и позвоним вам';
   } else {
     document.getElementById('success-subtitle').textContent =
-      'Покажите этот экран сотруднику на хвостомате — и забирайте покупку прямо сейчас.';
-    document.getElementById('success-banner-icon').textContent = '📲';
-    document.getElementById('success-banner-label').textContent = 'Покажите этот экран сотруднику';
-    document.getElementById('success-banner-text').textContent = 'Товар оплачен — заберите сразу';
+      'Оплата прошла успешно. Заберите товар с хвостомата самостоятельно — обращаться к сотруднику не обязательно.';
+    document.getElementById('success-banner-icon').textContent = '🛍️';
+    document.getElementById('success-banner-label').textContent = 'Можно забирать';
+    document.getElementById('success-banner-text').textContent = 'Возьмите оплаченный товар с хвостомата';
   }
 
   // ── Гейміфикация: бейдж уровня лояльности ──────────────────────────
@@ -4739,7 +5227,7 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
       : 'Вы на максимальном уровне — выше пока некуда 🎉';
     badgeCard.style.display = 'block';
     badgeCard.innerHTML = `
-      <div style="background:linear-gradient(135deg,#F7F3EC 0%,#FDF3DC 100%);border:2px solid ${leveledUp ? '#E85D4A' : 'var(--border)'};border-radius:16px;padding:1.5rem;margin-bottom:1.5rem;text-align:center;">
+      <div style="background:linear-gradient(135deg,#F5F7ED 0%,#FFF3D2 100%);border:2px solid ${leveledUp ? '#F2AD3D' : 'var(--border)'};border-radius:16px;padding:1.5rem;margin-bottom:1.5rem;text-align:center;">
         ${leveledUp ? '<div style="font-size:.8rem;font-weight:700;color:var(--amber);letter-spacing:.06em;text-transform:uppercase;margin-bottom:.6rem;">🎊 Новый уровень!</div>' : ''}
         <img src="${tierAfter.image}" alt="${tierAfter.name}" style="width:96px;height:96px;margin:0 auto .75rem;display:block;">
         <div style="font-family:'Baloo 2',sans-serif;font-size:1.3rem;color:var(--deep);margin-bottom:.3rem;">${tierAfter.name}</div>
@@ -4753,17 +5241,16 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
 
   document.getElementById('success-details').innerHTML = `
     <div style="display:flex;flex-direction:column;gap:.4rem;">
+      <div style="color:#2D7D46;">✅ <strong>Статус:</strong> оплата подтверждена</div>
       <div>📋 <strong>Заказ:</strong> ${orderId}</div>
-      <div>👤 <strong>Имя:</strong> ${name} ${lname}</div>
       <div>📞 <strong>Телефон:</strong> ${phone}</div>
       <div>📍 <strong>${fulfillmentType === 'home_delivery' ? 'Доставка' : 'Точка'}:</strong> ${pickup}</div>
       ${comment && comment.trim() ? `<div>💬 <strong>Пожелание:</strong> ${comment.trim()}</div>` : ''}
       ${referralCodeValid ? `<div>🎁 <strong>Код друга (${referralReferrerName}):</strong> +${referralBonesAwarded} 🦴 начислим на баланс</div>` : ''}
       ${getLoyaltyCashbackAmount(subtotal) > 0 ? `<div>${isPetBirthdayCheckout ? '🎂' : '🎉'} <strong>Кэшбэк ${loyaltyPercent}%:</strong> +${getLoyaltyCashbackAmount(subtotal)} 🦴 начислим на баланс</div>` : ''}
       ${bonesToUse > 0 ? `<div>🦴 <strong>Оплачено косточками:</strong> −${bonesToUse} ₽</div>` : ''}
-      ${needsDelivery ? `<div>🚚 <strong>Выдача:</strong> с довозом нужного веса</div>` : ''}
       <div style="border-top:1px solid var(--border);margin-top:.5rem;padding-top:.5rem;">
-        💳 <strong>Оплачено:</strong> <span style="color:var(--amber);font-weight:700;">${subtotal} ₽</span>
+        💳 <strong>${checkoutPaymentMethod === 'sbp' ? 'Оплачено по СБП' : 'Оплачено картой'}:</strong> <span style="color:var(--amber);font-weight:700;">${subtotal} ₽</span>
       </div>
     </div>`;
 
@@ -4780,13 +5267,6 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
   customerBonesBalance = 0;
   useBones = false;
   bonesToUse = 0;
-  needsDelivery = false;
-  const needDeliveryCheckbox = document.getElementById('oNeedDelivery');
-  if (needDeliveryCheckbox) needDeliveryCheckbox.checked = false;
-  const instantNote = document.getElementById('pickup-instant-note');
-  const deliveryNote = document.getElementById('pickup-delivery-note');
-  if (instantNote)  instantNote.style.display  = 'block';
-  if (deliveryNote) deliveryNote.style.display = 'none';
   const deliveryAddrField = document.getElementById('oDeliveryAddress');
   if (deliveryAddrField) deliveryAddrField.value = '';
   setFulfillmentType('pickup');
@@ -4795,6 +5275,8 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
   updateCartCount();
   resetCheckoutForm();
   showPage('success');
+  lastPaidCheckoutPhone = phone;
+  showCheckoutTelegramOffer();
 }
 
 // Полностью очищает форму оформления заказа — вызывается после успешной оплаты,
@@ -4805,6 +5287,17 @@ function resetCheckoutForm() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  const telegramOffer = document.getElementById('checkout-tg-offer');
+  const telegramButton = document.getElementById('checkout-tg-button');
+  const telegramStatus = document.getElementById('checkout-tg-status');
+  if (telegramOffer) telegramOffer.style.display = 'none';
+  if (telegramButton) {
+    telegramButton.style.display = 'inline-block';
+    telegramButton.disabled = false;
+    telegramButton.style.opacity = '1';
+    telegramButton.textContent = '✈️ Запустить бота';
+  }
+  if (telegramStatus) telegramStatus.textContent = '';
   const wantReceipt = document.getElementById('oWantReceipt');
   if (wantReceipt) wantReceipt.checked = false;
   const emailWrap = document.getElementById('oEmailWrap');
@@ -4827,14 +5320,8 @@ function resetCheckoutForm() {
   clearFieldErrors();
 }
 
-// ── TELEGRAM CONFIG ─────────────────────────────────────────────────
-// Замените на реальные значения после создания бота (см. DEPLOY.md)
-const TG_TOKEN   = window.TAIGA_CONFIG?.TG_TOKEN   || '';
-const TG_CHAT_ID = window.TAIGA_CONFIG?.TG_CHAT_ID || '';
-
-// Выполняет запрос с жёстким тайм-аутом — без этого fetch может зависнуть
-// навсегда, если соединение до сервера молча обрывается на уровне сети/оператора
-// (частая история с мобильными сетями), а не выдаёт явную ошибку.
+// Публичные формы отправляют обращения через наш сервер. Секретный токен
+// Telegram-бота никогда не передаётся в браузер и хранится только в Amvera.
 async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -4854,52 +5341,17 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 }
 
 async function sendTelegram(text) {
-  if (!TG_TOKEN || TG_TOKEN === 'ВАШ_ТОКЕН_СЮДА') {
-    // Режим демо — Telegram не настроен
-    return { ok: true, skipped: true };
-  }
-
-  const params = new URLSearchParams({
-    chat_id: TG_CHAT_ID,
-    text: text,
-    parse_mode: 'HTML'
-  });
-
-  // Сначала GET — этот способ уже подтверждён рабочим на проблемной мобильной сети
-  // (в отличие от POST, который у части пользователей зависал без ошибки).
-  const getUrl = `https://api.telegram.org/bot${TG_TOKEN}/sendMessage?${params.toString()}`;
-  if (getUrl.length < 3800) {
-    const startedAt = Date.now();
-    const getResult = await fetchWithTimeout(getUrl, { method: 'GET', keepalive: true }, 10000);
-    const elapsedMs = Date.now() - startedAt;
-    getResult.method = 'GET';
-    // Если сервер вообще ответил (даже с ошибкой) — это окончательный результат,
-    // повторять запрос другим способом не нужно.
-    if (!getResult.error) return getResult;
-
-    // GET не дошёл до сервера. Повторяем через POST только если сбой случился
-    // БЫСТРО (запрос почти наверняка не успел уйти в сеть) — если же GET упал
-    // почти на пределе тайм-аута, сообщение могло реально дойти до Telegram,
-    // а мы просто не увидели ответ; повтор в этом случае рискует задвоением
-    // уведомления, поэтому не повторяем и честно сообщаем об этом.
-    if (elapsedMs > 7000) {
-      getResult.method = 'GET (сбой ближе к тайм-ауту — POST не повторяли, чтобы не задвоить)';
-      return getResult;
-    }
-  }
-
-  const postResult = await fetchWithTimeout(
-    `https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,
+  const result = await fetchWithTimeout(
+    '/api/public/message',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      keepalive: true,
-      body: params.toString()
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
     },
     10000
   );
-  postResult.method = 'POST (резерв после быстрого сбоя GET)';
-  return postResult;
+  result.method = 'POST через сервер ХвостМаркета';
+  return result;
 }
 
 // ── ПУБЛИЧНЫЙ КАЛЬКУЛЯТОР ДОХОДА (страница «Партнёрам», без входа в кабинет) ──
@@ -5134,7 +5586,10 @@ function initFromQR() {
     const catalogSel = document.getElementById('catalogPointFilter');
     if (catalogSel && SITE_POINTS.some(function(p) { return p.id === ref; })) {
       catalogSel.value = ref;
-      currentCatalogPointFilter = ref;
+      onCatalogPointFilterChange();
+      // Большой QR стойки не содержит product=: клиент сразу попадает в
+      // короткий каталог этой точки с четырьмя быстрыми фильтрами.
+      if (!product) showPage('catalog');
     }
   }
 
@@ -5153,7 +5608,7 @@ function initFromQR() {
       if (found) {
         openDetail(found.id);
       } else {
-        console.warn('Хвостомаркет QR: товар не найден для slug =', product);
+        console.warn('ХвостМаркет QR: товар не найден для slug =', product);
       }
     }, 300);
   }
@@ -5692,8 +6147,8 @@ function renderChessBoard() {
       if (isLegalTarget) {
         const dot = document.createElement('div');
         dot.style.cssText = piece
-          ? 'position:absolute;inset:3px;border-radius:50%;box-shadow:inset 0 0 0 3px rgba(232,93,74,.75);'
-          : 'position:absolute;width:22%;height:22%;border-radius:50%;background:rgba(232,93,74,.65);';
+          ? 'position:absolute;inset:3px;border-radius:50%;box-shadow:inset 0 0 0 3px rgba(242,173,61,.78);'
+          : 'position:absolute;width:22%;height:22%;border-radius:50%;background:rgba(242,173,61,.68);';
         sq.appendChild(dot);
       }
       sq.onclick = () => onChessSquareClick(r, c);
@@ -5847,6 +6302,7 @@ async function claimChessWinPrize() {
 
 Promise.all([loadProducts(), loadSitePoints(), loadSiteCities()]).then(function() {
   initFromQR();
+  renderHeroProductExamples();
   renderFeatured();
   renderCatalog(); // на случай, если каталог уже был открыт до того, как товары успели загрузиться
 });

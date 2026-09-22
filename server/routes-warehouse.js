@@ -12,6 +12,7 @@
 const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
+const { logManagerAction } = require('./audit-log');
 
 function slugify(str) {
   const map = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
@@ -80,6 +81,91 @@ function registerWarehouseRoutes(router) {
 
     db.prepare('INSERT OR REPLACE INTO warehouse_stock (city_id, variant_id, qty) VALUES (?, ?, ?)').run(cityId, variant_id, qty);
     sendJson(res, 200, { ok: true });
+  });
+
+  // DELETE /api/warehouse/stock/:variantId — убрать лишнюю позицию именно
+  // со склада выбранного города. Каталожный товар и остатки на точках не
+  // затрагиваются. Операция доступна только администраторам и сохраняется
+  // в отдельном журнале складских корректировок.
+  router.delete('/api/warehouse/stock/:variantId', (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+
+    const variantId = Number(ctx.params.variantId);
+    const { city_id, reason } = ctx.body || {};
+    const cityId = resolveCityId(payload, city_id);
+    if (!Number.isInteger(variantId) || variantId <= 0 || !cityId) {
+      return sendJson(res, 400, { error: 'Укажите товар и город склада' });
+    }
+
+    const row = db.prepare(`
+      SELECT ws.qty, p.name AS product_name, v.weight
+      FROM warehouse_stock ws
+      JOIN product_variants v ON v.id = ws.variant_id
+      JOIN products p ON p.id = v.product_id
+      WHERE ws.city_id = ? AND ws.variant_id = ?
+    `).get(cityId, variantId);
+    if (!row) return sendJson(res, 404, { error: 'Этой позиции уже нет на складе выбранного города' });
+
+    const activeReservation = db.prepare(`
+      SELECT o.order_code
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.reservation_status = 'active'
+        AND o.inventory_source_type = 'warehouse'
+        AND o.inventory_source_id = ?
+        AND oi.variant_id = ?
+      LIMIT 1
+    `).get(cityId, variantId);
+    if (activeReservation) {
+      return sendJson(res, 409, {
+        error: 'Позицию нельзя удалить: товар зарезервирован в заказе ' + activeReservation.order_code,
+      });
+    }
+
+    const pendingMovement = db.prepare(`
+      SELECT sm.id
+      FROM stock_movements sm
+      JOIN stock_movement_items smi ON smi.movement_id = sm.id
+      WHERE sm.status = 'pending' AND sm.city_id = ? AND smi.variant_id = ?
+      LIMIT 1
+    `).get(cityId, variantId);
+    if (pendingMovement) {
+      return sendJson(res, 409, {
+        error: 'Позицию нельзя удалить: товар указан в перемещении №' + pendingMovement.id + ', ожидающем проверки',
+      });
+    }
+
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare(`
+        INSERT INTO warehouse_stock_adjustments
+          (city_id, variant_id, product_name, weight, old_qty, new_qty, action, reason, admin_id, admin_login)
+        VALUES (?, ?, ?, ?, ?, NULL, 'delete', ?, ?, ?)
+      `).run(
+        cityId,
+        variantId,
+        row.product_name,
+        row.weight,
+        row.qty,
+        String(reason || '').trim() || null,
+        payload.id,
+        payload.login || null
+      );
+      const deleted = db.prepare('DELETE FROM warehouse_stock WHERE city_id = ? AND variant_id = ?')
+        .run(cityId, variantId);
+      if (deleted.changes !== 1) throw new Error('Складской остаток изменился во время удаления');
+      db.exec('COMMIT');
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch (_) { /* сохраняем исходную ошибку */ }
+      console.error('Не удалось удалить позицию со склада:', error);
+      return sendJson(res, 500, { error: 'Не удалось удалить позицию со склада' });
+    }
+
+    sendJson(res, 200, {
+      ok: true,
+      deleted: { variant_id: variantId, city_id: cityId, qty: row.qty, product_name: row.product_name, weight: row.weight },
+    });
   });
 
   // POST /api/warehouse/receipts — приход товара от поставщика (кладовщик или админ)
@@ -258,6 +344,16 @@ function registerWarehouseRoutes(router) {
     const movementId = info.lastInsertRowid;
     const insItem = db.prepare('INSERT INTO stock_movement_items (movement_id, variant_id, qty) VALUES (?, ?, ?)');
     for (const item of items) insItem.run(movementId, item.variant_id, item.qty);
+
+    const manager = db.prepare('SELECT id, full_name, login FROM managers WHERE id = ?').get(payload.id);
+    const totalQty = items.reduce((sum, item) => sum + Math.round(Number(item.qty)), 0);
+    logManagerAction(payload.id, 'Отчёт о перемещении товара', {
+      type: 'stock_movement',
+      id: movementId,
+      name: point.name,
+      details: items.length + ' поз. · ' + totalQty + ' шт.' + (comment ? ' · ' + String(comment).trim() : ''),
+    }, manager);
+
     sendJson(res, 201, { ok: true, movement_id: movementId });
   });
 

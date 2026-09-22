@@ -2,18 +2,20 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<link rel="icon" type="image/x-icon" href="/favicon.ico">
-<link rel="shortcut icon" href="/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=28">
+<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=28">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Тайга — Панель администратора</title>
 <link rel="manifest" href="manifest-admin.json">
 <meta name="theme-color" content="#1C3A2F">
-<link rel="apple-touch-icon" href="images/icons/icon-180-apple.png">
+<link rel="apple-touch-icon" href="images/icons/icon-180-apple.png?v=20">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Тайга Админ">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="payout-schedule.css">
+<link rel="stylesheet" href="telegram-connect.css?v=38">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 html { font-size: 16px; }
@@ -40,6 +42,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 .sidebar {
   width: 220px; flex-shrink: 0; background: var(--forest);
   display: flex; flex-direction: column; padding: 0;
+  height:100vh; position:sticky; top:0; overflow-y:auto;
 }
 .sidebar-logo {
   padding: 1.5rem 1.25rem 1rem;
@@ -48,6 +51,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   border-bottom: 1px solid rgba(255,255,255,.1);
 }
 .sidebar-logo span { color: var(--amber); }
+.sidebar-brand-mark{width:66px;height:66px;box-sizing:border-box;flex:0 0 66px;display:flex;align-items:center;justify-content:center;padding:4px;background:#fff;border-radius:16px;box-shadow:0 3px 12px rgba(0,0,0,.22);}
+.sidebar-brand-mark img{width:58px;height:auto;display:block;image-rendering:auto;}
 .sidebar-label {
   padding: .75rem 1.25rem .4rem;
   font-size: .7rem; font-weight: 600; letter-spacing: .08em;
@@ -67,6 +72,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   font-size: .78rem; color: rgba(255,255,255,.3);
   border-top: 1px solid rgba(255,255,255,.08);
 }
+.topbar-title-wrap { display:flex; align-items:center; gap:.7rem; min-width:0; }
+.mobile-menu-btn, .mobile-menu-close, .sidebar-overlay { display:none; }
 
 /* ── MAIN ── */
 .main { flex: 1; overflow: auto; }
@@ -76,6 +83,18 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 }
 .topbar h1 { font-size: 1rem; font-weight: 600; color: var(--text); }
 .topbar-right { display: flex; align-items: center; gap: .75rem; }
+.admin-user-badge {
+  display:flex; align-items:center; gap:.5rem; padding:.3rem .7rem;
+  border:1px solid var(--border); border-radius:50px; background:var(--cream);
+  color:var(--text); min-width:0;
+}
+.admin-user-avatar {
+  width:25px; height:25px; flex:0 0 25px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--forest); color:#fff; font-size:.72rem; font-weight:700;
+}
+.admin-user-name { font-size:.75rem; font-weight:600; line-height:1.15; white-space:nowrap; }
+.admin-user-role { font-size:.62rem; color:var(--muted); line-height:1.15; white-space:nowrap; }
 .period-btn {
   padding: .35rem .85rem; border-radius: 50px; border: 1px solid var(--border);
   background: var(--white); font-size: .78rem; font-weight: 500; cursor: pointer;
@@ -91,6 +110,18 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 }
 .refresh-btn:hover { border-color: var(--deep); color: var(--deep); }
 .content { padding: 1.5rem 2rem; }
+.section-context-tabs {
+  display:flex; gap:.35rem; margin-bottom:1rem; padding:.3rem;
+  border:1px solid var(--border); border-radius:10px; background:rgba(255,255,255,.55);
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+.section-context-tab {
+  flex:0 0 auto; padding:.48rem .8rem; border:0; border-radius:7px;
+  background:transparent; color:var(--muted); font:600 .78rem 'Inter',sans-serif;
+  cursor:pointer; white-space:nowrap;
+}
+.section-context-tab:hover { color:var(--forest); background:rgba(255,255,255,.75); }
+.section-context-tab.active { color:#fff; background:var(--forest); }
 
 /* ── KPI CARDS ── */
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
@@ -261,6 +292,28 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 .row-btn:hover { border-color: var(--deep); color: var(--deep); }
 .row-btn.danger { color: var(--red-text); border-color: #F0C9C9; }
 .row-btn.danger:hover { background: var(--red-bg); border-color: var(--red-text); }
+.partner-actions-toggle {
+  width: 34px; height: 30px; padding: 0; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--white); color: var(--text);
+  font: 700 1.15rem/1 'Inter', sans-serif; cursor: pointer;
+}
+.partner-actions-toggle:hover, .partner-actions-toggle[aria-expanded="true"] {
+  border-color: var(--deep); color: var(--deep); background: #F7F8F4;
+}
+.partner-actions-popover {
+  position: fixed; z-index: 700; display: none; width: 210px;
+  padding: .35rem; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--white); box-shadow: 0 12px 34px rgba(28,58,47,.2);
+}
+.partner-actions-item {
+  display: block; width: 100%; padding: .58rem .7rem; border: 0;
+  border-radius: 7px; background: transparent; color: var(--text);
+  text-align: left; font: 500 .78rem/1.25 'Inter', sans-serif; cursor: pointer;
+}
+.partner-actions-item:hover { background: #F4F2EC; color: var(--deep); }
+.partner-actions-item:disabled { color: #B8B0A4; cursor: not-allowed; background: transparent; }
+.partner-actions-item.danger { color: var(--red-text); }
+.partner-actions-item.danger:hover { background: var(--red-bg); }
 .toggle-pill {
   border: none; cursor: pointer; font-family: 'Inter', sans-serif;
   padding: .18rem .6rem; border-radius: 50px; font-size: .72rem; font-weight: 600;
@@ -351,20 +404,46 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
 /* ══ MOBILE (≤768px) — сайдбар сворачивается в горизontal-scroll меню сверху ══ */
 @media (max-width: 768px) {
-  .layout { flex-direction: column; }
+  .layout { display:block; }
   .sidebar {
-    width: 100%; min-width: 0; flex-direction: row; overflow-x: auto;
-    -webkit-overflow-scrolling: touch; flex-shrink: 0;
+    position:fixed; inset:0 auto 0 0; z-index:310;
+    width:min(82vw, 310px); min-width:0; overflow-y:auto;
+    transform:translateX(-105%); transition:transform .22s ease;
+    box-shadow:8px 0 24px rgba(0,0,0,.2);
   }
-  .sidebar-logo, .sidebar-user, .sidebar-label, .sidebar-footer { display: none; }
+  .sidebar.mobile-open { transform:translateX(0); }
+  .sidebar-logo { display:flex; padding:.8rem 1rem; }
+  .sidebar-brand-mark { width:48px; height:48px; flex-basis:48px; border-radius:12px; }
+  .sidebar-brand-mark img { width:42px; }
+  .sidebar-label { display:block; padding:.7rem 1.1rem .3rem; }
+  .sidebar-footer { display:block; }
   .nav-item {
-    width: auto; flex-shrink: 0; white-space: nowrap;
-    padding: .7rem .9rem; font-size: .78rem;
+    width:100%; flex-shrink:0; white-space:nowrap;
+    padding:.68rem 1.1rem; font-size:.82rem;
   }
+  .mobile-menu-btn {
+    display:flex; align-items:center; justify-content:center; flex:0 0 36px;
+    width:36px; height:36px; border:1px solid var(--border); border-radius:8px;
+    background:var(--white); color:var(--forest); font-size:1.15rem; cursor:pointer;
+  }
+  .mobile-menu-close {
+    display:flex; align-items:center; justify-content:center; margin-left:auto;
+    width:34px; height:34px; border:1px solid rgba(255,255,255,.25);
+    border-radius:8px; background:transparent; color:#fff; font-size:1.35rem; cursor:pointer;
+  }
+  .sidebar-overlay.mobile-open {
+    display:block; position:fixed; inset:0; z-index:300;
+    background:rgba(20,30,26,.48); backdrop-filter:blur(1px);
+  }
+  body.admin-menu-open { overflow:hidden; }
   .main { overflow: visible; min-width: 0; }
   .content { padding: .85rem; }
+  .section-context-tabs { margin-bottom:.75rem; }
   .topbar { padding: .65rem .9rem; }
   .topbar h1 { font-size: .9rem; }
+  .topbar-right { gap:.35rem; }
+  .admin-user-badge { padding:.25rem; }
+  .admin-user-name, .admin-user-role { display:none; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .card { padding: .9rem; overflow-x: auto; }
@@ -373,12 +452,14 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
 </style>
 <script src="config.js"></script>
+<script src="payout-schedule.js"></script>
+<script src="telegram-connect.js?v=38"></script>
 </head>
 <body>
 <!-- ADMIN LOGIN SCREEN -->
 <div id="admin-login">
   <div class="admin-login-card">
-    <div class="admin-login-logo"><img src="images/taiga-logo.png" alt="Тайга" style="height:38px;width:auto;display:block;margin:0 auto;"></div>
+    <div class="admin-login-logo"><img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" style="height:132px;width:auto;display:block;margin:0 auto;"></div>
     <div class="admin-login-sub">⚙️ Панель администратора</div>
     <div class="admin-login-error" id="admin-error">Неверный логин или пароль</div>
     <div class="admin-field">
@@ -397,7 +478,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       <a onclick="toggleForgotPassword()" style="font-size:.8rem;color:var(--muted);cursor:pointer;text-decoration:underline;">Забыли пароль?</a>
     </div>
     <div id="forgot-password-block" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
-      <p style="font-size:.78rem;color:var(--muted);margin-bottom:.7rem;">Укажите логин — если он существует, ссылка для восстановления придёт в Telegram-бот «Тайги» и/или на почту администратора.</p>
+      <p style="font-size:.78rem;color:var(--muted);margin-bottom:.7rem;">Укажите логин — если он существует, ссылка для восстановления придёт в Telegram-бот «ХвостМаркета» и/или на почту администратора.</p>
       <input type="text" id="forgot-login-input" placeholder="Логин" style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;margin-bottom:.6rem;">
       <button class="admin-login-btn" style="background:var(--muted);" onclick="submitForgotPassword()">Отправить ссылку</button>
       <div id="forgot-password-msg" style="font-size:.8rem;margin-top:.6rem;text-align:center;"></div>
@@ -411,7 +492,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <!-- Форма сброса пароля по ссылке из письма (?reset_token=...) -->
 <div id="reset-password-screen" style="display:none;">
   <div class="admin-login-card">
-    <div class="admin-login-logo"><img src="images/taiga-logo.png" alt="Тайга" style="height:38px;width:auto;display:block;margin:0 auto;"></div>
+    <div class="admin-login-logo"><img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" style="height:132px;width:auto;display:block;margin:0 auto;"></div>
     <div class="admin-login-sub">🔑 Новый пароль</div>
     <div class="admin-login-error" id="reset-password-error"></div>
     <div class="admin-field">
@@ -428,79 +509,16 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <div class="layout" id="admin-app" style="display:none;">
 
 <!-- SIDEBAR -->
-<aside class="sidebar">
-  <div class="sidebar-logo"><img src="images/taiga-logo.png" alt="Тайга" style="height:26px;width:auto;display:block;"></div>
-  <button class="nav-item" onclick="showSection('launch')" style="margin-bottom:.5rem;">
-    <span class="nav-dot"></span> 🚀 План запуска
-  </button>
-  <button class="nav-item" onclick="showSection('guides')" style="margin-bottom:.5rem;">
-    <span class="nav-dot"></span> 📄 Инструкции
-  </button>
-  <div class="sidebar-label">Аналитика</div>
-  <button class="nav-item active" onclick="showSection('dashboard')">
-    <span class="nav-dot"></span> Дашборд
-  </button>
-  <button class="nav-item" onclick="showSection('economics')">
-    <span class="nav-dot"></span> 💰 Экономика проекта
-  </button>
-  <button class="nav-item" onclick="showSection('orders')">
-    <span class="nav-dot"></span> Заказы
-  </button>
-  <button class="nav-item" onclick="showSection('customers')">
-    <span class="nav-dot"></span> Клиенты
-  </button>
-  <button class="nav-item" onclick="showSection('stock')">
-    <span class="nav-dot"></span> Остатки
-  </button>
-  <div class="sidebar-label">Каталог</div>
-  <button class="nav-item" onclick="showSection('products')">
-    <span class="nav-dot"></span> Товары
-  </button>
-  <button class="nav-item" onclick="showSection('reviews')">
-    <span class="nav-dot"></span> Отзывы <span id="reviews-pending-badge" style="display:none;background:var(--amber);color:#fff;border-radius:50px;font-size:.68rem;padding:.05rem .45rem;margin-left:.3rem;"></span>
-  </button>
-  <div class="sidebar-label">Маркетинг</div>
-  <button class="nav-item" onclick="showSection('news')">
-    <span class="nav-dot"></span> Новости
-  </button>
-  <div class="sidebar-label">Партнёры</div>
-  <button class="nav-item" onclick="showSection('partners')">
-    <span class="nav-dot"></span> Все партнёры
-  </button>
-  <div class="sidebar-label">Менеджеры</div>
-  <button class="nav-item" onclick="showSection('managers')">
-    <span class="nav-dot"></span> Все менеджеры
-  </button>
-  <div class="sidebar-label">Точки</div>
-  <button class="nav-item" onclick="showSection('points')">
-    <span class="nav-dot"></span> Все точки
-  </button>
-  <button class="nav-item" onclick="showSection('owners')">
-    <span class="nav-dot"></span> Владельцы салонов
-  </button>
-  <button class="nav-item" onclick="showSection('qr')">
-    <span class="nav-dot"></span> QR-коды для точек
-  </button>
-  <div class="sidebar-label">Склад</div>
-  <button class="nav-item" onclick="showSection('warehouse')">
-    <span class="nav-dot"></span> Остаток склада
-  </button>
-  <button class="nav-item" onclick="showSection('restock')">
-    <span class="nav-dot"></span> Перемещения товара
-  </button>
-  <div class="sidebar-label" id="admins-nav-label" style="display:none;">Система</div>
-  <button class="nav-item" onclick="showSection('admins')" id="admins-nav-btn" style="display:none;">
-    <span class="nav-dot"></span> Администраторы
-  </button>
-  <button class="nav-item" onclick="showPoint(0)" id="nav-point-0">
-    <span class="nav-dot" style="background:#2D5A3F"></span> Грумминг «Лапки»
-  </button>
-  <button class="nav-item" onclick="showPoint(1)" id="nav-point-1">
-    <span class="nav-dot" style="background:#D4872A"></span> Вет. клиника «Айболит»
-  </button>
-  <button class="nav-item" onclick="showPoint(2)" id="nav-point-2">
-    <span class="nav-dot" style="background:#5B8DB8"></span> Кинологический «Берег»
-  </button>
+<aside class="sidebar" id="admin-sidebar">
+  <div class="sidebar-logo" style="display:flex;align-items:center;gap:.6rem;"><span class="sidebar-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;line-height:.88;font-family:'Inter',sans-serif;font-size:1rem;font-weight:800;letter-spacing:0;"><span style="color:#fff;">Хвост</span><span style="color:#FF5A49;margin-top:.2rem;">Маркет</span></span><button class="mobile-menu-close" type="button" onclick="closeAdminMenu()" aria-label="Закрыть меню">×</button></div>
+  <div class="sidebar-label">Разделы</div>
+  <button class="nav-item active" data-group="home" onclick="showSection('dashboard')"><span class="nav-dot"></span> Главная</button>
+  <button class="nav-item" data-group="sales" onclick="showSection('orders')"><span class="nav-dot"></span> Продажи</button>
+  <button class="nav-item" data-group="inventory" onclick="showSection('products')"><span class="nav-dot"></span> Товары и склад</button>
+  <button class="nav-item" data-group="network" onclick="showSection('points')"><span class="nav-dot"></span> Сеть</button>
+  <button class="nav-item" data-group="promotion" onclick="showSection('news')"><span class="nav-dot"></span> Продвижение <span id="reviews-pending-badge" style="display:none;background:var(--amber);color:#fff;border-radius:50px;font-size:.68rem;padding:.05rem .45rem;margin-left:.3rem;"></span></button>
+  <button class="nav-item" data-group="finance" onclick="showSection('economics')"><span class="nav-dot"></span> Финансы</button>
+  <button class="nav-item" data-group="system" onclick="showSection('launch')"><span class="nav-dot"></span> Система</button>
   <div class="sidebar-footer">
     <span>ИП Соколов В.П.</span>
     <div style="display:flex;gap:.6rem;align-items:center;">
@@ -510,12 +528,23 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
     </div>
   </div>
 </aside>
+<div class="sidebar-overlay" id="admin-sidebar-overlay" onclick="closeAdminMenu()"></div>
 
 <!-- MAIN -->
 <div class="main">
   <div class="topbar">
-    <h1 id="section-title">Дашборд</h1>
+    <div class="topbar-title-wrap">
+      <button class="mobile-menu-btn" type="button" onclick="toggleAdminMenu()" aria-label="Открыть меню" aria-controls="admin-sidebar" aria-expanded="false">☰</button>
+      <h1 id="section-title">Дашборд</h1>
+    </div>
     <div class="topbar-right">
+      <div class="admin-user-badge" id="current-admin-badge" title="Текущий администратор">
+        <span class="admin-user-avatar" id="current-admin-avatar">А</span>
+        <span>
+          <span class="admin-user-name" id="current-admin-name">Администратор</span><br>
+          <span class="admin-user-role" id="current-admin-role">загрузка…</span>
+        </span>
+      </div>
       <button class="period-btn active" onclick="setPeriod('7d', this)">7 дней</button>
       <button class="period-btn" onclick="setPeriod('30d', this)">30 дней</button>
       <button class="period-btn" onclick="setPeriod('90d', this)">90 дней</button>
@@ -524,6 +553,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   </div>
 
   <div class="content">
+    <div class="section-context-tabs" id="section-context-tabs" aria-label="Подразделы"></div>
 
     <!-- ══ DASHBOARD ══ -->
     <!-- ══ LAUNCH PLAN ══ -->
@@ -604,6 +634,18 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     <div id="sec-dashboard">
 
+      <div class="payout-schedule-card">
+        <div class="payout-schedule-icon">📅</div>
+        <div class="payout-schedule-content">
+          <div class="payout-schedule-title">Ближайшая выплата вознаграждений</div>
+          <span class="payout-schedule-date" data-next-payout-date>—</span>
+          <span class="payout-schedule-countdown" data-next-payout-countdown></span>
+          <div class="payout-schedule-rule">Партнёрам, менеджерам и владельцам салонов. График: 9-го и 24-го числа каждого месяца.</div>
+        </div>
+      </div>
+
+      <div id="admin-telegram-connect"></div>
+
       <div class="card" style="margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.8rem;">
         <div>
           <div style="font-weight:600;font-size:.85rem;color:var(--text);">💾 Резервная копия базы данных</div>
@@ -613,6 +655,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <span id="backup-msg" style="font-size:.8rem;"></span>
           <a href="#" onclick="downloadBackupNow(event)" class="row-btn" style="text-decoration:none;">⬇️ Скачать бэкап сейчас</a>
           <button class="row-btn" onclick="runBackupNow()">Отправить на почту сейчас</button>
+          <input type="file" id="restore-backup-file" accept=".db,application/x-sqlite3,application/octet-stream" style="display:none;" onchange="restoreBackupNow(this)">
+          <button id="restore-backup-btn" class="row-btn" style="display:none;border-color:#9B2335;color:#9B2335;" onclick="document.getElementById('restore-backup-file').click()">↥ Восстановить из файла</button>
         </div>
       </div>
 
@@ -760,6 +804,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <th>Дата</th>
               <th>Покупатель</th>
               <th>Точка / доставка</th>
+              <th>Грумер</th>
               <th>Состав</th>
               <th class="r">Сумма</th>
               <th>Оплата</th>
@@ -779,17 +824,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="kpi-card"><div class="kpi-label">Повторные покупки</div><div class="kpi-value" id="cust-repeat">—</div></div>
         <div class="kpi-card"><div class="kpi-label">Средний чек по всем заказам</div><div class="kpi-value" id="cust-avg">—</div></div>
       </div>
-      <div class="card" style="margin-bottom:1.5rem;">
-        <div class="card-title">
-          <span>🔔 Win-back — возврат неактивных клиентов</span>
-          <button class="row-btn" onclick="runWinbackNow()" id="winback-run-btn">Запустить сейчас</button>
-        </div>
-        <p style="font-size:.82rem;color:var(--muted);margin-bottom:.8rem;line-height:1.5;">
-          Раз в сутки клиентам без заказов 30+ дней, которые хотя бы раз входили в кабинет через Telegram, автоматически начисляются косточки на возврат. Работает только для тех, у кого известен Telegram — для остальных сейчас связаться не можем.
-        </p>
-        <div id="winback-status" style="font-size:.85rem;color:var(--text);"></div>
-        <div id="winback-candidates" style="margin-top:.8rem;font-size:.82rem;color:var(--muted);"></div>
-      </div>
       <div class="card">
         <div class="card-title">
           <span>База клиентов <span id="customers-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
@@ -800,7 +834,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <tr>
               <th>Телефон</th><th>Имя</th><th>Email</th><th>Питомец</th>
               <th class="r">Заказов</th><th class="r">Всего потрачено</th>
-              <th>Лояльность</th><th class="r">🦴 Косточки</th><th>Первый заказ</th><th></th>
+              <th>Лояльность</th><th class="r">🦴 Косточки</th><th>Первый заказ</th><th class="r">Действия</th>
             </tr>
           </thead>
           <tbody id="customers-tbody"></tbody>
@@ -1065,6 +1099,15 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     <!-- ══ ВЛАДЕЛЬЦЫ САЛОНОВ ══ -->
     <div id="sec-owners" style="display:none;">
+      <div class="payout-schedule-card">
+        <div class="payout-schedule-icon">📅</div>
+        <div class="payout-schedule-content">
+          <div class="payout-schedule-title">Следующая выплата владельцам салонов</div>
+          <span class="payout-schedule-date" data-next-payout-date>—</span>
+          <span class="payout-schedule-countdown" data-next-payout-countdown></span>
+          <div class="payout-schedule-rule">График выплат: 9-го и 24-го числа каждого месяца.</div>
+        </div>
+      </div>
       <div class="card">
         <div class="card-title">
           <span>Владельцы салонов <span id="owners-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
@@ -1083,8 +1126,15 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
     <!-- ══ QR-КОДЫ ══ -->
     <div id="sec-qr" style="display:none;">
       <div class="card no-print">
-        <div class="card-title">QR-код ведёт клиента на нужную стойку и (по желанию) сразу открывает конкретный товар — распечатайте и наклейте рядом со стойкой.</div>
+        <div class="card-title">Создайте большой QR для каталога конкретной стойки или отдельные QR для товаров.</div>
         <div class="qr-controls-row">
+          <div class="qr-ctrl-group">
+            <label>Тип QR</label>
+            <select id="qr-sel-mode" onchange="qrModeChanged()">
+              <option value="stand" selected>Большой QR стойки</option>
+              <option value="product">QR конкретного товара</option>
+            </select>
+          </div>
           <div class="qr-ctrl-group">
             <label>Город</label>
             <select id="qr-sel-city" onchange="qrCityChanged()">
@@ -1097,7 +1147,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="all">Все точки</option>
             </select>
           </div>
-          <div class="qr-ctrl-group">
+          <div class="qr-ctrl-group" id="qr-product-control" style="display:none;">
             <label>Товар</label>
             <select id="qr-sel-product" onchange="qrGenerate()">
               <option value="all">Все товары</option>
@@ -1114,14 +1164,14 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <button class="row-btn" style="background:var(--forest,#1C3A2F);color:#fff;" onclick="qrGenerate()">Сгенерировать</button>
           <button class="row-btn" style="background:var(--amber,#D4872A);color:#fff;" onclick="window.print()">🖨 Печать</button>
           <button class="row-btn" onclick="qrDownloadAll()">⬇ Скачать все</button>
-          <div class="qr-ctrl-group">
+          <div class="qr-ctrl-group" id="qr-label-copy-control" style="display:none;">
             <label>Копий каждой этикетки</label>
             <div style="display:flex;gap:.4rem;">
               <input type="number" id="qr-bulk-qty" min="1" value="1" style="width:60px;padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;">
               <button class="row-btn" onclick="qrApplyBulkQty()">Применить ко всем</button>
             </div>
           </div>
-          <button class="row-btn" style="background:#7C4DFF;color:#fff;" onclick="printLabelSheet()">🏷 Этикетки А4 (18 шт/лист)</button>
+          <button id="qr-label-sheet-button" class="row-btn" style="display:none;background:#7C4DFF;color:#fff;" onclick="printLabelSheet()">🏷 Этикетки А4 (18 шт/лист)</button>
         </div>
       </div>
 
@@ -1139,6 +1189,33 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div class="ic">📱</div>
           <p>Нажмите «Сгенерировать» для создания QR-кодов</p>
         </div>
+      </div>
+    </div>
+
+    <!-- ══ ADMINS (только супер-админ) ══ -->
+    <div id="sec-audit" style="display:none;">
+      <div class="card">
+        <div class="card-title">
+          <span>Журнал действий <span id="audit-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
+          <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+            <select id="audit-type-filter" onchange="renderAuditLog()" class="pm-select" style="max-width:230px;">
+              <option value="">Все действия</option>
+              <option value="customer_delete">Удаление клиентов</option>
+              <option value="warehouse_delete">Удаление со склада</option>
+              <option value="manager_action">Действия менеджеров</option>
+            </select>
+            <button class="row-btn" onclick="renderAuditLog()">↻ Обновить</button>
+          </div>
+        </div>
+        <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
+          История удаления клиентов и складских позиций, а также операционных действий менеджеров. Доступна только супер-администраторам.
+        </p>
+        <table class="tbl">
+          <thead>
+            <tr><th>Дата</th><th>Действие</th><th>Объект</th><th>Подробности</th><th>Администратор</th><th>Причина</th></tr>
+          </thead>
+          <tbody id="audit-tbody"></tbody>
+        </table>
       </div>
     </div>
 
@@ -1261,7 +1338,12 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <div style="font-size:.8rem;color:var(--muted);margin-top:.15rem;" id="point-header-addr"></div>
           </div>
         </div>
-        <span class="point-badge badge-active" style="font-size:.75rem;padding:.3rem .8rem;">Активна</span>
+        <div style="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;">
+          <button class="row-btn" onclick="openCurrentPointPageSettings()">Страница точки</button>
+          <button class="row-btn" onclick="openCurrentPointQr()">QR-коды</button>
+          <button class="row-btn" onclick="showSection('points')">Управление</button>
+          <span class="point-badge badge-active" style="font-size:.75rem;padding:.3rem .8rem;">Активна</span>
+        </div>
       </div>
 
       <!-- Координаты для Яндекс.Карт -->
@@ -1363,8 +1445,21 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     </div>
 
-    <!-- ══ MANAGERS ══ -->
-    <!-- ══ PROMO CODES ══ -->
+    <!-- ══ WIN-BACK ══ -->
+    <div id="sec-winback" style="display:none;">
+      <div class="card">
+        <div class="card-title">
+          <span>🔔 Возврат неактивных клиентов</span>
+          <button class="row-btn" onclick="runWinbackNow()" id="winback-run-btn">Запустить сейчас</button>
+        </div>
+        <p style="font-size:.82rem;color:var(--muted);margin-bottom:.8rem;line-height:1.5;">
+          Раз в сутки клиентам без заказов 30+ дней, которые подключили Telegram, автоматически начисляются косточки и отправляется приглашение вернуться.
+        </p>
+        <div id="winback-status" style="font-size:.85rem;color:var(--text);"></div>
+        <div id="winback-candidates" style="margin-top:.8rem;font-size:.82rem;color:var(--muted);"></div>
+      </div>
+    </div>
+
     <!-- ══ NEWS ══ -->
     <div id="sec-news" style="display:none;">
       <div class="card">
@@ -1526,6 +1621,15 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
     <!-- ══ PARTNERS ══ -->
 
     <div id="sec-partners" style="display:none;">
+      <div class="payout-schedule-card">
+        <div class="payout-schedule-icon">📅</div>
+        <div class="payout-schedule-content">
+          <div class="payout-schedule-title">Следующая выплата партнёрам</div>
+          <span class="payout-schedule-date" data-next-payout-date>—</span>
+          <span class="payout-schedule-countdown" data-next-payout-countdown></span>
+          <div class="payout-schedule-rule">График выплат: 9-го и 24-го числа каждого месяца.</div>
+        </div>
+      </div>
       <div id="partners-risk-banner" style="display:none;background:#FFF4E5;border:1px solid #F0DDB8;border-radius:8px;padding:.9rem 1.1rem;margin-bottom:1rem;font-size:.85rem;color:#7A4A00;line-height:1.6;"></div>
       <div class="card">
         <div class="card-title">
@@ -1535,15 +1639,32 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <thead>
             <tr>
               <th>Партнёр</th><th>Точка</th><th class="r">Тариф</th><th>Формат</th>
-              <th>Приведён грумером</th><th>Статус</th><th class="r">Действие</th>
+              <th>Приведён грумером</th><th class="r" id="partners-earnings-heading">К выплате</th><th>Статус</th><th class="r">Действия</th>
             </tr>
           </thead>
           <tbody id="partners-tbody"></tbody>
         </table>
       </div>
+      <div class="card" style="margin-top:1rem;overflow-x:auto;">
+        <div class="card-title">История выплат грумерам <span id="partner-payouts-count"></span></div>
+        <table class="tbl">
+          <thead><tr><th>Дата</th><th>Грумер</th><th>Менеджер</th><th class="r">Заказов</th><th class="r">Сумма</th><th>Подтвердил</th></tr></thead>
+          <tbody id="partner-payouts-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div id="sec-managers" style="display:none;">
+
+      <div class="payout-schedule-card">
+        <div class="payout-schedule-icon">📅</div>
+        <div class="payout-schedule-content">
+          <div class="payout-schedule-title">Следующая выплата менеджерам</div>
+          <span class="payout-schedule-date" data-next-payout-date>—</span>
+          <span class="payout-schedule-countdown" data-next-payout-countdown></span>
+          <div class="payout-schedule-rule">График выплат: 9-го и 24-го числа каждого месяца.</div>
+        </div>
+      </div>
 
       <!-- KPI -->
       <div class="kpi-grid" style="margin-bottom:1rem;">
@@ -1654,9 +1775,9 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       <label>Категория</label>
       <select id="pm-category" class="pm-select">
         <option>Лакомства</option>
-        <option>Жевательное</option>
+        <option>Игрушки</option>
         <option>Аксессуары</option>
-        <option>Корм</option>
+        <option>Уход</option>
       </select>
     </div>
 
@@ -1689,7 +1810,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
-// (Старый захардкоженный список трёх точек убран — нигде не использовался,
+// (Старый демонстрационный список точек убран — нигде не использовался,
 // реальный список точек везде теперь берётся динамически, см. STOCK_TABLE_POINTS,
 // POINTS_INFO, adminAllPoints, QR_POINTS — каждый грузится из /api/points.)
 
@@ -1716,7 +1837,7 @@ async function loadAdminProducts() {
 }
 
 // Список точек для таблиц "Остатки" и "Каталог товаров" — раньше был жёстко
-// зашит как ['lapki','aibolit','bereg'], из-за чего любая новая точка (через
+// был зашит вручную, из-за чего любая новая точка (через
 // форму менеджера, другой город и т.п.) просто не показывалась в остатках,
 // хотя данные на сервере были корректны. Теперь список точек — реальный,
 // подгружается заново перед каждым рендером этих двух разделов.
@@ -1800,7 +1921,7 @@ function renderProducts() {
       rows.push(`<tr>
         <td style="font-weight:500;">${p.name}<br><span style="font-size:.7rem;color:var(--muted);font-family:monospace;">${p.slug}</span></td>
         <td>${v.weight}</td>
-        <td>${p.category}</td>
+        <td>${productCategoryLabel(p.category)}</td>
         <td class="r">${v.price.toLocaleString('ru-RU')} ₽</td>
         ${stockCells}
         <td><button class="toggle-pill ${v.active ? 'stock-ok' : 'stock-low'}" onclick="toggleVariantActive(${p.id}, ${v.id})" title="${v.active ? 'Скрыть этот вес с сайта' : 'Показать этот вес на сайте'}">${v.active ? '🟢 Активен' : '⚪ Скрыт'}</button></td>
@@ -1954,7 +2075,7 @@ function openProductModal(id, variantId) {
     : 'Новый товар';
   document.getElementById('pm-name').value     = p ? p.name : '';
   document.getElementById('pm-weight').value   = v ? v.weight : '';
-  document.getElementById('pm-category').value = p ? {treats:'Лакомства',chews:'Жевательное',toys:'Аксессуары',care:'Аксессуары'}[p.category] || 'Лакомства' : 'Лакомства';
+  document.getElementById('pm-category').value = p ? productCategoryLabel(p.category) : 'Лакомства';
   document.getElementById('pm-price').value    = v ? v.price : '';
   document.getElementById('pm-cost-price').value = v && v.cost_price ? v.cost_price : '';
   document.getElementById('pm-active').checked = p ? !!p.active : true;
@@ -1974,7 +2095,10 @@ function closeProductModal() {
   editingVariantId = null;
 }
 
-const CATEGORY_TO_CODE = { 'Лакомства':'treats', 'Жевательное':'chews', 'Аксессуары':'toys' };
+const CATEGORY_TO_CODE = { 'Лакомства':'treats', 'Игрушки':'toys', 'Аксессуары':'accessories', 'Уход':'care' };
+function productCategoryLabel(code) {
+  return { treats:'Лакомства', toys:'Игрушки', accessories:'Аксессуары', care:'Уход' }[code] || 'Лакомства';
+}
 
 async function saveProductForm() {
   const name       = document.getElementById('pm-name').value.trim();
@@ -2071,15 +2195,18 @@ async function loadOrders() {
 
 function periodDays() { return currentPeriod; }
 
-function setPeriod(code, btn) {
+async function setPeriod(code, btn) {
   currentPeriod = code === '7d' ? 7 : code === '90d' ? 90 : 30;
   document.querySelectorAll('.period-btn').forEach(function(b) { b.classList.remove('active'); });
   if (btn) btn.classList.add('active');
-  renderDashboard();
+  const partnersSection = document.getElementById('sec-partners');
+  if (partnersSection && partnersSection.style.display !== 'none') await renderPartners();
+  else if (document.getElementById('sec-points').style.display !== 'none') renderPointsOverview();
+  else if (document.getElementById('sec-point').style.display !== 'none') await showPoint(currentPointIdx);
+  else renderDashboard();
 }
 
 async function refreshData() {
-  await loadOrders();
   const active = sections.find(function(s) {
     const el = document.getElementById('sec-' + s);
     return el && el.style.display !== 'none';
@@ -2212,41 +2339,120 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
 }
 
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'guides', 'dashboard', 'economics', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'partners', 'managers', 'points', 'owners', 'qr', 'warehouse', 'restock', 'admins', 'point'];
-const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', economics: 'Экономика проекта', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки', products: 'Товары', reviews: 'Отзывы', news: 'Новости', partners: 'Партнёры', managers: 'Менеджеры', points: 'Точки продаж', owners: 'Владельцы салонов', qr: 'QR-коды для точек', warehouse: 'Остаток склада', restock: 'Перемещения товара', admins: 'Администраторы', point: '' };
+const sections = ['launch', 'guides', 'dashboard', 'economics', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'warehouse', 'restock', 'audit', 'admins', 'point'];
+const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', economics: 'Экономика проекта', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
+const sectionGroups = {
+  dashboard:'home', orders:'sales', customers:'sales',
+  products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
+  points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network',
+  news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance',
+  launch:'system', guides:'system', audit:'system', admins:'system',
+};
+const contextTabs = {
+  sales: [['orders','Заказы'], ['customers','Клиенты']],
+  inventory: [['products','Каталог'], ['stock','На точках'], ['warehouse','Центральный склад'], ['restock','Перемещения']],
+  network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды']],
+  promotion: [['news','Новости'], ['reviews','Отзывы'], ['winback','Возврат клиентов']],
+  system: [['launch','План запуска'], ['guides','Инструкции'], ['audit','Журнал действий',true], ['admins','Администраторы',true]],
+};
+
+function renderContextTabs(sectionId) {
+  const holder = document.getElementById('section-context-tabs');
+  if (!holder) return;
+  const group = sectionGroups[sectionId];
+  const tabs = (contextTabs[group] || []).filter(function(tab) {
+    return !tab[2] || currentAdminRole === 'super';
+  });
+  holder.style.display = tabs.length > 1 ? 'flex' : 'none';
+  const activeId = sectionId === 'point' ? 'points' : sectionId;
+  holder.innerHTML = tabs.map(function(tab) {
+    const reviewCount = tab[0] === 'reviews' ? (document.getElementById('reviews-pending-badge')?.textContent || '') : '';
+    return '<button class="section-context-tab ' + (tab[0] === activeId ? 'active' : '') + '" onclick="showSection(\'' + tab[0] + '\')">' + tab[1] + (reviewCount ? ' · ' + reviewCount : '') + '</button>';
+  }).join('');
+}
+
+function setAdminMenuOpen(open) {
+  const sidebar = document.getElementById('admin-sidebar');
+  const overlay = document.getElementById('admin-sidebar-overlay');
+  const button = document.querySelector('.mobile-menu-btn');
+  if (sidebar) sidebar.classList.toggle('mobile-open', open);
+  if (overlay) overlay.classList.toggle('mobile-open', open);
+  document.body.classList.toggle('admin-menu-open', open);
+  if (button) button.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function toggleAdminMenu() {
+  const sidebar = document.getElementById('admin-sidebar');
+  setAdminMenuOpen(!(sidebar && sidebar.classList.contains('mobile-open')));
+}
+
+function closeAdminMenu() { setAdminMenuOpen(false); }
+
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') closeAdminMenu();
+});
+window.addEventListener('resize', function() {
+  if (window.innerWidth > 768) closeAdminMenu();
+});
 
 async function showSection(id) {
   sections.forEach(function(s) {
     const el = document.getElementById('sec-' + s);
     if (el) el.style.display = (s === id) ? 'block' : 'none';
   });
-  const navIdx = sections.indexOf(id);
-  document.querySelectorAll('.nav-item').forEach(function(el, i) { el.classList.toggle('active', i === navIdx); });
+  document.querySelectorAll('.nav-item[data-group]').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.group === sectionGroups[id]);
+  });
+  closeAdminMenu();
+  renderContextTabs(id);
   const titleEl = document.getElementById('section-title');
   if (titleEl && titles[id]) titleEl.textContent = titles[id];
 
-  await loadOrders();
-  if (!POINTS_INFO.length) await loadPointsInfo();
+  const showGlobalPeriod = ['dashboard', 'points', 'partners'].includes(id);
+  document.querySelectorAll('.topbar-right > .period-btn').forEach(function(btn) {
+    btn.style.display = showGlobalPeriod ? '' : 'none';
+  });
+
   if (id === 'launch')      await renderLaunchTasks();
-  if (id === 'dashboard')   renderDashboard();
+  if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo()]); renderDashboard(); }
   if (id === 'economics')   await renderEconomics();
-  if (id === 'orders')      renderOrders();
-  if (id === 'customers')   { await loadCustomers(); renderCustomers(); await loadWinbackCandidates(); }
+  if (id === 'orders')      { await loadOrders(); renderOrders(); }
+  if (id === 'customers')   { await loadCustomers(); renderCustomers(); }
   if (id === 'stock')       { await loadStockTablePoints(); await loadAdminProducts(); renderStock(); }
   if (id === 'products')    { await loadStockTablePoints(); await loadAdminProducts(); renderProducts(); }
   if (id === 'reviews')     await renderReviews();
   if (id === 'news')        await renderNews();
+  if (id === 'winback')     await loadWinbackCandidates();
   if (id === 'partners')    await renderPartners();
   if (id === 'managers') await renderManagers();
-  if (id === 'points')      { renderPointsOverview(); await renderPointsManagement(); }
+  if (id === 'points')      { await Promise.all([loadOrders(), loadPointsInfo()]); renderPointsOverview(); await renderPointsManagement(); }
   if (id === 'owners')      await renderOwners();
   if (id === 'qr')          await qrInitSection();
   if (id === 'warehouse')   { await loadAdminProducts(); await populateReceiptForm(); await renderWarehouse(); }
   if (id === 'restock')     await renderStockMovements();
+  if (id === 'audit')       await renderAuditLog();
   if (id === 'admins')      await renderAdmins();
 }
 
 let currentPointIdx = 0;
+
+function openCurrentPointPageSettings() {
+  const point = POINTS_INFO[currentPointIdx];
+  if (point) openSalonPageModal(point.id, point.name);
+}
+
+async function openCurrentPointQr() {
+  const point = POINTS_INFO[currentPointIdx];
+  if (!point) return;
+  await showSection('qr');
+  const fullPoint = QR_POINTS.find(function(item) { return item.id === point.id; });
+  const citySelect = document.getElementById('qr-sel-city');
+  const pointSelect = document.getElementById('qr-sel-point');
+  if (fullPoint && citySelect) citySelect.value = fullPoint.city_id || '';
+  qrRenderPointOptions();
+  if (pointSelect) pointSelect.value = point.id;
+  qrGenerate();
+}
 
 async function savePointLocation() {
   const p = POINTS_INFO[currentPointIdx];
@@ -2275,9 +2481,11 @@ async function showPoint(idx) {
     const el = document.getElementById('sec-' + s);
     if (el) el.style.display = (s === 'point') ? 'block' : 'none';
   });
-  document.querySelectorAll('.nav-item').forEach(function(el) { el.classList.remove('active'); });
-  const navEl = document.getElementById('nav-point-' + idx);
-  if (navEl) navEl.classList.add('active');
+  document.querySelectorAll('.nav-item[data-group]').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.group === 'network');
+  });
+  renderContextTabs('point');
+  document.querySelectorAll('.topbar-right > .period-btn').forEach(function(btn) { btn.style.display = ''; });
 
   const p = POINTS_INFO[idx];
   document.getElementById('section-title').textContent = p.name;
@@ -2483,6 +2691,73 @@ async function downloadBackupNow(event) {
     msgEl.textContent = '⚠ Ошибка: ' + e.message;
     msgEl.style.color = '#9B2335';
   }
+}
+
+async function restoreBackupNow(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+
+  const msgEl = document.getElementById('backup-msg');
+  if (!/\.db$/i.test(file.name)) {
+    msgEl.textContent = '⚠ Выберите файл с расширением .db';
+    msgEl.style.color = '#9B2335';
+    return;
+  }
+  if (file.size > 100 * 1024 * 1024) {
+    msgEl.textContent = '⚠ Файл больше допустимых 100 МБ';
+    msgEl.style.color = '#9B2335';
+    return;
+  }
+
+  const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+  const confirmed = confirm(
+    'Восстановить базу из файла «' + file.name + '» (' + sizeMb + ' МБ)?\n\n' +
+    'Текущая база будет автоматически сохранена отдельной страховочной копией. ' +
+    'После проверки файла приложение перезапустится, и все текущие данные заменятся данными из выбранной копии.'
+  );
+  if (!confirmed) return;
+
+  msgEl.textContent = 'Проверяем файл и сохраняем текущую базу...';
+  msgEl.style.color = 'var(--muted)';
+  try {
+    const res = await authFetch('/api/backup/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      msgEl.textContent = '⚠ ' + (data.error || 'Не удалось восстановить базу');
+      msgEl.style.color = '#9B2335';
+      return;
+    }
+    msgEl.textContent = '✅ Файл проверен. Приложение перезапускается...';
+    msgEl.style.color = '#2D7D46';
+    waitForServerAfterRestore();
+  } catch (e) {
+    msgEl.textContent = 'Сервер перезапускается...';
+    msgEl.style.color = 'var(--muted)';
+    waitForServerAfterRestore();
+  }
+}
+
+async function waitForServerAfterRestore() {
+  const msgEl = document.getElementById('backup-msg');
+  await new Promise(function(resolve) { setTimeout(resolve, 1800); });
+  for (let attempt = 0; attempt < 40; attempt++) {
+    try {
+      const res = await fetch('/api/cities?after_restore=' + Date.now(), { cache: 'no-store' });
+      if (res.ok) {
+        msgEl.textContent = '✅ База восстановлена. Обновляем страницу...';
+        setTimeout(function() { location.reload(); }, 700);
+        return;
+      }
+    } catch (e) {}
+    await new Promise(function(resolve) { setTimeout(resolve, 1000); });
+  }
+  msgEl.textContent = '⚠ Перезапуск занимает больше обычного. Обновите страницу через минуту.';
+  msgEl.style.color = '#9B2335';
 }
 
 // ── WIN-BACK — возврат неактивных клиентов ──────────────────────────
@@ -2734,8 +3009,7 @@ function renderDashboard() {
   document.getElementById('point-cards-dash').innerHTML = POINTS_INFO.map(function(p, idx) {
     const pOrders = orders.filter(function(o) { return o.point_id === p.id; });
     const rev = pOrders.reduce(function(s, o) { return s + o.total; }, 0);
-    const hasDetailPage = idx < 3; // отдельная страница с картой пока только для первых трёх точек
-    return '<div class="card"' + (hasDetailPage ? ' style="cursor:pointer;" onclick="showPoint(' + idx + ')"' : '') + '>' +
+    return '<div class="card" style="cursor:pointer;" onclick="showPoint(' + idx + ')">' +
       '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;">' +
       '<span style="width:10px;height:10px;border-radius:50%;background:' + p.color + ';display:inline-block;"></span>' +
       '<strong>' + p.name + '</strong></div>' +
@@ -2745,6 +3019,12 @@ function renderDashboard() {
 }
 
 // ── ЗАКАЗЫ ─────────────────────────────────────────────────────────
+function escapeOrderCell(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
+  });
+}
+
 function renderOrders() {
   document.getElementById('orders-count').textContent = allOrders.length + ' шт.';
   const statusMap = { paid: ['✓ Оплачен', 'stock-ok'], pending: ['⏳ Ожидание', 'stock-low'], failed: ['✕ Не оплачен', 'stock-out'] };
@@ -2755,8 +3035,12 @@ function renderOrders() {
     const statusCell = isRefunded
       ? '<span class="stock-pill stock-out">↩️ Возврат ' + o.refunded_amount + ' ₽</span>'
       : '<span class="stock-pill ' + st[1] + '">' + st[0] + '</span>';
-    const deleteBtn = '<button class="row-btn danger" onclick="deleteOrder(' + o.id + ', \'' + o.order_code + '\')">✕ Удалить</button>';
-    const actionCell = (o.status === 'paid' && !isRefunded)
+    const deleteBtn = isRefunded
+      ? (currentAdminRole === 'super'
+          ? '<button class="row-btn danger" onclick="deleteRefundedTestOrder(' + o.id + ', \'' + o.order_code + '\')">✕ Удалить тестовый</button>'
+          : '')
+      : '<button class="row-btn danger" onclick="deleteOrder(' + o.id + ', \'' + o.order_code + '\')">✕ Удалить</button>';
+    const actionCell = (o.status === 'paid' && !isRefunded && currentAdminRole === 'super')
       ? '<button class="row-btn" onclick="openRefundModal(' + o.id + ')">Возврат</button> ' + deleteBtn
       : deleteBtn;
     // Самозаказ грумера — ставка комиссии на заказе зафиксирована ровно 0
@@ -2772,12 +3056,13 @@ function renderOrders() {
       '<td style="font-size:.8rem;color:var(--muted);">' + parseOrderDate(o.created_at).toLocaleString('ru-RU') + '</td>' +
       '<td>' + customerCell + '</td>' +
       '<td>' + o.pickup_point + '</td>' +
+      '<td>' + (o.partner_name ? escapeOrderCell(o.partner_name) : '<span style="color:var(--muted);">Не выбран</span>') + '</td>' +
       '<td style="font-size:.8rem;max-width:220px;">' + itemsText + '</td>' +
       '<td class="r" style="font-weight:600;">' + o.total.toLocaleString('ru-RU') + ' ₽</td>' +
       '<td>' + (o.payment_method === 'sbp' ? 'СБП' : 'Карта') + '</td>' +
       '<td>' + statusCell + '</td>' +
       '<td class="r">' + actionCell + '</td></tr>';
-  }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem;">Заказов пока нет</td></tr>';
+  }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Заказов пока нет</td></tr>';
 }
 
 // ── УДАЛЕНИЕ ЗАКАЗОВ (для очистки тестовых данных) ──────────────────
@@ -2814,6 +3099,31 @@ async function deleteOrder(id, code) {
   renderOrders();
 }
 
+// Возвращённый заказ уже откатил статистику, косточки и (если это выбрали
+// при возврате) остаток. Поэтому здесь ничего не возвращаем повторно — только
+// удаляем тестовый заказ вместе с его парными операциями косточек.
+async function deleteRefundedTestOrder(id, code) {
+  if (currentAdminRole !== 'super') {
+    alert('Удалять возвращённые заказы может только супер-администратор.');
+    return;
+  }
+  if (!confirm(
+    'Удалить возвращённый тестовый заказ ' + code + ' безвозвратно?\n\n' +
+    'Будут удалены сам заказ и связанные с ним операции косточек. Остатки и баланс клиента повторно изменяться не будут.'
+  )) return;
+  const res = await authFetch('/api/orders/' + id, {
+    method: 'DELETE',
+    body: { force: true, restore_stock: false },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Не удалось удалить возвращённый заказ.');
+    return;
+  }
+  await loadOrders();
+  renderOrders();
+}
+
 async function bulkDeleteOrders() {
   if (!confirm('Удалить ВСЕ неоплаченные заказы (в ожидании / не оплачен) безвозвратно? Оплаченные заказы это не затронет.')) return;
   const res = await authFetch('/api/orders/bulk-delete', { method: 'POST' });
@@ -2823,7 +3133,7 @@ async function bulkDeleteOrders() {
     return;
   }
   let msg = 'Удалено: ' + data.deleted + '. Пропущено оплаченных: ' + data.skipped_paid + '.';
-  if (data.skipped_paid > 0) {
+  if (data.skipped_paid > 0 && currentAdminRole === 'super') {
     const wipeAll = confirm(
       msg + '\n\nЕсть ещё ' + data.skipped_paid + ' оплаченных заказов — если это тоже тестовые данные, ' +
       'можно удалить их тоже целиком (с откатом статистики клиентов, косточек и остатков). ' +
@@ -2850,6 +3160,10 @@ async function bulkDeleteOrders() {
 let refundingOrderId = null;
 
 function openRefundModal(orderId) {
+  if (currentAdminRole !== 'super') {
+    alert('Оформлять возвраты может только супер-администратор.');
+    return;
+  }
   const order = allOrders.find(function(o) { return o.id === orderId; });
   if (!order) return;
   refundingOrderId = orderId;
@@ -2864,6 +3178,11 @@ function openRefundModal(orderId) {
 function closeRefundModal() { document.getElementById('refund-modal').style.display = 'none'; }
 
 async function submitRefund() {
+  if (currentAdminRole !== 'super') {
+    closeRefundModal();
+    alert('Оформлять возвраты может только супер-администратор.');
+    return;
+  }
   const amount = parseFloat(document.getElementById('rf-amount').value);
   const reason = document.getElementById('rf-reason').value.trim();
   const restore_stock = document.getElementById('rf-restore-stock').checked;
@@ -2892,47 +3211,6 @@ async function submitRefund() {
 
 // ── КЛИЕНТЫ ────────────────────────────────────────────────────────
 let adminCustomers = [];
-
-async function loadWinbackCandidates() {
-  const statusEl = document.getElementById('winback-status');
-  const listEl = document.getElementById('winback-candidates');
-  try {
-    const res = await authFetch('/api/admin/winback/candidates');
-    const data = await res.json();
-    statusEl.innerHTML = `Клиентов без заказов ${data.inactive_days}+ дней с известным Telegram: <strong>${data.candidates.length}</strong> · подарок при отправке — <strong>${data.bones} 🦴</strong>`;
-    listEl.innerHTML = data.candidates.length
-      ? data.candidates.map(function(c) {
-          return (c.pet_name ? c.pet_name + ' · ' : '') + (c.name || c.phone) + ' (' + c.phone + ')';
-        }).join('<br>')
-      : 'Сейчас никого нет в очереди на win-back.';
-  } catch (e) {
-    statusEl.textContent = 'Не удалось загрузить данные win-back.';
-  }
-}
-
-async function runWinbackNow() {
-  const btn = document.getElementById('winback-run-btn');
-  const statusEl = document.getElementById('winback-status');
-  btn.disabled = true;
-  const original = btn.textContent;
-  btn.textContent = 'Отправляем…';
-  try {
-    const res = await authFetch('/api/admin/winback/run', { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) {
-      statusEl.innerHTML = '⚠ ' + (data.error || 'Не удалось запустить рассылку.');
-    } else {
-      statusEl.innerHTML = `✅ Проверено: ${data.checked} · отправлено: <strong>${data.sent}</strong>` +
-        (data.errors.length ? ` · ошибок: ${data.errors.length}` : '');
-      await loadWinbackCandidates();
-    }
-  } catch (e) {
-    statusEl.textContent = '⚠ Ошибка сети.';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = original;
-  }
-}
 
 async function loadCustomers() {
   const res = await authFetch('/api/customers');
@@ -2979,9 +3257,44 @@ function renderCustomers() {
       '<td>' + (loyaltyPct > 0 ? '<span class="toggle-pill stock-ok">' + loyaltyPct + '%</span>' : '<span style="color:var(--muted);font-size:.78rem;">—</span>') + '</td>' +
       '<td class="r" style="font-weight:600;color:var(--amber);">' + (c.bones_balance || 0).toLocaleString('ru-RU') + ' ₽</td>' +
       '<td style="font-size:.8rem;color:var(--muted);">' + (c.first_order_at ? new Date(c.first_order_at.replace(' ', 'T') + 'Z').toLocaleDateString('ru-RU') : '—') + '</td>' +
-      '<td><button class="row-btn" onclick="openBonesModal(' + c.id + ')">🦴 Косточки</button></td>' +
+      '<td class="r"><div style="display:flex;justify-content:flex-end;gap:.4rem;flex-wrap:wrap;">' +
+        '<button class="row-btn" onclick="openBonesModal(' + c.id + ')">🦴 Косточки</button>' +
+        '<button class="row-btn" style="color:#9B2335;border-color:#E9B8BF;" onclick="deleteCustomer(' + c.id + ')">Удалить</button>' +
+      '</div></td>' +
       '</tr>';
   }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">' + (rawQuery ? 'Ничего не найдено' : 'Клиентов пока нет') + '</td></tr>';
+}
+
+async function deleteCustomer(customerId) {
+  const customer = adminCustomers.find(function(c) { return c.id === customerId; });
+  if (!customer) return;
+  const fullName = ((customer.name || '') + ' ' + (customer.lname || '')).trim() || 'Без имени';
+  const details = fullName + '\n' + customer.phone + '\nЗаказов: ' + customer.orders_count +
+    ' · Косточек: ' + (customer.bones_balance || 0);
+  if (!confirm(
+    'Удалить тестового клиента?\n\n' + details + '\n\n' +
+    'Профиль, косточки, отзывы и тестовые игровые результаты будут удалены. Действие нельзя отменить.'
+  )) return;
+
+  const reason = prompt('Причина удаления:', 'Тестовый клиент');
+  if (reason === null) return;
+
+  try {
+    const res = await authFetch('/api/customers/' + customerId, {
+      method: 'DELETE',
+      body: { reason: reason.trim() || 'Тестовый клиент' },
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Не удалось удалить клиента.');
+      return;
+    }
+    await loadCustomers();
+    renderCustomers();
+    await loadWinbackCandidates();
+  } catch (error) {
+    alert('Ошибка сети. Попробуйте ещё раз.');
+  }
 }
 
 // ── КОСТОЧКИ ─────────────────────────────────────────────────────────
@@ -3334,8 +3647,7 @@ function renderPointsOverview() {
   document.getElementById('point-cards-full').innerHTML = POINTS_INFO.map(function(p, idx) {
     const pOrders = orders.filter(function(o) { return o.point_id === p.id; });
     const rev = pOrders.reduce(function(s, o) { return s + o.total; }, 0);
-    const hasDetailPage = idx < 3;
-    return '<div class="card"' + (hasDetailPage ? ' style="cursor:pointer;" onclick="showPoint(' + idx + ')"' : '') + '>' +
+    return '<div class="card" style="cursor:pointer;" onclick="showPoint(' + idx + ')">' +
       '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;">' +
       '<span style="width:10px;height:10px;border-radius:50%;background:' + p.color + ';display:inline-block;"></span>' +
       '<strong>' + p.name + '</strong></div>' +
@@ -3477,7 +3789,10 @@ async function renderWarehouse() {
       '<td>' + r.weight + '</td>' +
       '<td class="r"><input type="number" min="0" value="' + r.qty + '" style="width:70px;text-align:right;" ' +
         'onchange="updateWarehouseStock(' + r.variant_id + ', this.value)"></td>' +
-      '<td class="r" style="color:var(--muted);font-size:.78rem;">склад → менеджер → точка</td>' +
+      '<td class="r"><button class="row-btn" style="color:#9B2335;border-color:#E9B8BF;" ' +
+        'data-variant-id="' + r.variant_id + '" data-product="' + encodeURIComponent(r.product_name) + '" ' +
+        'data-weight="' + encodeURIComponent(r.weight) + '" data-qty="' + r.qty + '" ' +
+        'onclick="deleteWarehouseStock(this)">Удалить</button></td>' +
       '</tr>';
   }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:2rem;">Склад этого города пуст</td></tr>';
 }
@@ -3487,6 +3802,41 @@ async function updateWarehouseStock(variantId, value) {
   const cityId = document.getElementById('warehouse-city-filter').value;
   await authFetch('/api/warehouse/stock', { method: 'PUT', body: { variant_id: variantId, qty, city_id: cityId } });
   await renderWarehouse();
+}
+
+async function deleteWarehouseStock(button) {
+  const variantId = parseInt(button.dataset.variantId, 10);
+  const productName = decodeURIComponent(button.dataset.product || '');
+  const weight = decodeURIComponent(button.dataset.weight || '');
+  const qty = parseInt(button.dataset.qty, 10) || 0;
+  const cityId = document.getElementById('warehouse-city-filter').value;
+  if (!cityId || !variantId) return;
+
+  if (!confirm(
+    'Удалить «' + productName + ' (' + weight + ')» со склада выбранного города?\n\n' +
+    'Будет удалён остаток: ' + qty + ' шт. Товар в каталоге и остатки на точках сохранятся.'
+  )) return;
+
+  const reason = prompt('Причина удаления (необязательно):', 'Лишняя позиция на складе');
+  if (reason === null) return;
+
+  button.disabled = true;
+  try {
+    const res = await authFetch('/api/warehouse/stock/' + variantId, {
+      method: 'DELETE',
+      body: { city_id: cityId, reason: reason.trim() || null },
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Не удалось удалить позицию со склада.');
+      button.disabled = false;
+      return;
+    }
+    await renderWarehouse();
+  } catch (error) {
+    alert('Ошибка сети. Попробуйте ещё раз.');
+    button.disabled = false;
+  }
 }
 
 // ── ЗАЯВКИ НА ПОПОЛНЕНИЕ ──────────────────────────────────────────────
@@ -3771,7 +4121,7 @@ async function qrInitSection() {
       qrSelectsPopulated = true;
     }
     await qrLoadLibrary();
-    qrGenerate();
+    qrModeChanged();
   } catch (e) {
     console.error('Не удалось запустить генератор QR:', e);
     document.getElementById('qr-lib-error').style.display = 'block';
@@ -3800,6 +4150,16 @@ function qrCityChanged() {
   qrGenerate();
 }
 
+function qrModeChanged() {
+  const standMode = document.getElementById('qr-sel-mode').value === 'stand';
+  document.getElementById('qr-product-control').style.display = standMode ? 'none' : 'flex';
+  document.getElementById('qr-label-copy-control').style.display = standMode ? 'none' : 'flex';
+  document.getElementById('qr-label-sheet-button').style.display = standMode ? 'none' : 'inline-block';
+  const sizeSelect = document.getElementById('qr-sel-size');
+  sizeSelect.value = standMode ? '280' : '140';
+  qrGenerate();
+}
+
 function qrBuildURL(pointId, productId, cityId) {
   let url = QR_SITE_URL + '/?ref=' + pointId;
   if (cityId) url += '&city=' + cityId;
@@ -3821,6 +4181,7 @@ function qrApplyBulkQty() {
 }
 
 function qrGenerate() {
+  const standMode      = document.getElementById('qr-sel-mode').value === 'stand';
   const cityFilter    = document.getElementById('qr-sel-city').value;
   const pointFilter   = document.getElementById('qr-sel-point').value;
   const productFilter = document.getElementById('qr-sel-product').value;
@@ -3831,14 +4192,14 @@ function qrGenerate() {
   // этого города", а не вообще все точки сети.
   const cityPoints = cityFilter ? QR_POINTS.filter(p => p.city_id === cityFilter) : QR_POINTS;
   const points   = pointFilter   === 'all' ? cityPoints   : cityPoints.filter(p => p.id === pointFilter);
-  const products = productFilter === 'all' ? QR_PRODUCTS : QR_PRODUCTS.filter(p => p.id === productFilter);
+  const products = standMode ? [null] : (productFilter === 'all' ? QR_PRODUCTS : QR_PRODUCTS.filter(p => p.id === productFilter));
 
   qrGenerated = [];
   points.forEach(pt => { products.forEach(pr => { qrGenerated.push({ point: pt, product: pr }); }); });
 
   document.getElementById('qr-stats-row').innerHTML =
     `<div class="qr-stat-pill">Точек: <strong>${points.length}</strong></div>` +
-    `<div class="qr-stat-pill">Товаров: <strong>${products.length}</strong></div>` +
+    (standMode ? '<div class="qr-stat-pill"><strong>Большой QR каталога</strong> для каждой точки</div>' : `<div class="qr-stat-pill">Товаров: <strong>${products.length}</strong></div>`) +
     `<div class="qr-stat-pill">QR-кодов: <strong>${qrGenerated.length}</strong></div>`;
 
   const grid = document.getElementById('qr-grid');
@@ -3850,25 +4211,26 @@ function qrGenerate() {
 
   qrGenerated.forEach((item, idx) => {
     item.qty = item.qty || 1; // сколько копий этой этикетки печатать на листе А4
-    const url = qrBuildURL(item.point.id, item.product.id, item.point.city_id);
+    const isStand = !item.product;
+    const url = qrBuildURL(item.point.id, isStand ? '' : item.product.id, item.point.city_id);
     const cardId = 'qr-' + idx;
     const card = document.createElement('div');
     card.className = 'qr-card';
     card.innerHTML = `
       <div class="qr-card-head">
         <span class="qr-card-point">${item.point.icon} ${item.point.name}</span>
-        <span class="qr-card-id">${item.product.id}</span>
+        <span class="qr-card-id">${isStand ? 'СТОЙКА' : item.product.id}</span>
       </div>
       <div class="qr-body">
-        <img src="images/taiga-logo.png" alt="Тайга" class="qr-logo-full">
-        <div class="qr-caption">Для покупки отсканируйте здесь<br>или обратитесь к грумеру</div>
+        <img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" class="qr-logo-full">
+        <div class="qr-caption">${isStand ? 'Сканируйте — выберите товар — оплатите по СБП' : 'Сканируйте для быстрой покупки этого товара'}</div>
         <div class="qr-box" id="${cardId}"></div>
-        <div class="qr-product">${item.product.icon} ${item.product.name}</div>
-        <div class="qr-price">${item.product.price} ₽ · ${item.product.weight}</div>
+        <div class="qr-product">${isStand ? '🛍️ Каталог этой точки' : item.product.icon + ' ' + item.product.name}</div>
+        <div class="qr-price">${isStand ? 'Только товары в наличии' : item.product.price + ' ₽ · ' + item.product.weight}</div>
         <div class="qr-url">${url}</div>
       </div>
       <div class="qr-actions no-print">
-        <button class="qr-btn primary" onclick="qrDownloadOne('${cardId}','${item.point.name}_${item.product.name}')">⬇</button>
+        <button class="qr-btn primary" onclick="qrDownloadGenerated(${idx})">⬇</button>
         <button class="qr-btn" onclick="qrCopyURL('${url}')">🔗 Ссылка</button>
       </div>
       <div class="no-print" style="display:flex;align-items:center;gap:.4rem;justify-content:center;padding:.5rem 0 0;font-size:.78rem;color:var(--muted);border-top:1px solid var(--border);margin-top:.5rem;">
@@ -3882,7 +4244,7 @@ function qrGenerate() {
           text: qrToSafeUrl(url), width: qrSize, height: qrSize,
           colorDark: '#1C3A2F', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H,
         });
-        qrDrawPawLogo(cardId, qrSize);
+        qrDrawDogLogo(cardId, qrSize);
       } catch (e) {
         const box = document.getElementById(cardId);
         if (box) box.innerHTML = '<div style="color:#9B2335;font-size:.7rem;text-align:center;padding:.5rem;">⚠ Ошибка генерации</div>';
@@ -3891,55 +4253,73 @@ function qrGenerate() {
   });
 }
 
-// Рисует лапку «Тайги» поверх центра готового QR-кода — код специально
+// Рисует компактный знак «ХвостМаркет» с собакой поверх центра QR-кода.
 // генерируется с высоким уровнем коррекции ошибок (H, до 30% повреждений),
 // поэтому логотип в центре не мешает сканированию. Белая подложка под
-// лапкой держит контраст и не даёт QR-паттерну «просвечивать» под ней.
+// знаком держит контраст и не даёт QR-паттерну «просвечивать» под ним.
 //
 // Кэшируем именно ПРОМИС загрузки, а не просто готовую картинку — карточки
 // генерируются почти одновременно (со сдвигом по 20мс), и раньше каждая из
 // них, видя пустой кэш, запускала СВОЮ отдельную загрузку картинки, что
-// приводило к гонке и лапка прорисовывалась не на всех карточках. Теперь
+// приводило к гонке и знак прорисовывался не на всех карточках. Теперь
 // все вызовы дожидаются одной и той же загрузки.
-let qrPawLogoPromise = null;
-function qrGetPawLogo() {
-  if (!qrPawLogoPromise) {
-    qrPawLogoPromise = new Promise((resolve, reject) => {
+let qrDogLogoPromise = null;
+function qrGetDogLogo() {
+  if (!qrDogLogoPromise) {
+    qrDogLogoPromise = new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
       img.onerror = reject;
-      img.src = 'images/taiga-paw-icon.png';
+      img.src = 'images/hvostmarket-mark-v3-transparent.png';
     });
   }
-  return qrPawLogoPromise;
+  return qrDogLogoPromise;
 }
-function qrDrawPawLogo(cardId, qrSize) {
+function qrDrawDogLogo(cardId, qrSize) {
   const box = document.getElementById(cardId);
   const canvas = box && box.querySelector('canvas');
-  if (!canvas) return;
+  if (!canvas) return Promise.resolve(false);
   const ctx = canvas.getContext('2d');
-  const draw = (img) => {
-    const logoSize = Math.round(qrSize * 0.22);
+  return qrGetDogLogo().then((img) => {
+    const logoWidth = Math.round(qrSize * 0.19);
+    const logoHeight = Math.round(logoWidth * img.naturalHeight / img.naturalWidth);
     const cx = qrSize / 2, cy = qrSize / 2;
-    const padR = logoSize / 2 + 5;
+    const pad = Math.max(3, Math.round(qrSize * 0.018));
+    const plateWidth = logoWidth + pad * 2;
+    const plateHeight = logoHeight + pad * 2;
+    const plateX = cx - plateWidth / 2;
+    const plateY = cy - plateHeight / 2;
+    const radius = Math.max(4, Math.round(qrSize * 0.025));
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, padR, 0, Math.PI * 2);
+    ctx.moveTo(plateX + radius, plateY);
+    ctx.lineTo(plateX + plateWidth - radius, plateY);
+    ctx.quadraticCurveTo(plateX + plateWidth, plateY, plateX + plateWidth, plateY + radius);
+    ctx.lineTo(plateX + plateWidth, plateY + plateHeight - radius);
+    ctx.quadraticCurveTo(plateX + plateWidth, plateY + plateHeight, plateX + plateWidth - radius, plateY + plateHeight);
+    ctx.lineTo(plateX + radius, plateY + plateHeight);
+    ctx.quadraticCurveTo(plateX, plateY + plateHeight, plateX, plateY + plateHeight - radius);
+    ctx.lineTo(plateX, plateY + radius);
+    ctx.quadraticCurveTo(plateX, plateY, plateX + radius, plateY);
+    ctx.closePath();
     ctx.fillStyle = '#ffffff';
     ctx.fill();
+    ctx.drawImage(img, cx - logoWidth / 2, cy - logoHeight / 2, logoWidth, logoHeight);
     ctx.restore();
-    ctx.drawImage(img, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize);
-  };
-  qrGetPawLogo().then(draw).catch(() => {});
+    return true;
+  }).catch(() => false);
 }
 
 // Печать на листах самоклеящихся этикеток А4 — 18 шт/лист (3×6), 66,7×46мм
 // каждая. Использует тот же набор qrGenerated, что уже отфильтрован текущими
 // настройками (город/точка/товар) — то есть печатает ровно то, что видно на
-// экране. QR здесь заметно меньше и без лапки-логотипа поверх — при таком
-// небольшом физическом размере наклейки лишний элемент в центре может
-// затруднить считывание, а места на 66,7×46мм и так немного.
-function printLabelSheet() {
+// экране. Печатные QR тоже получают компактный знак с собакой и высокий
+// уровень коррекции ошибок; печать открывается только после его отрисовки.
+async function printLabelSheet() {
+  if (document.getElementById('qr-sel-mode').value === 'stand') {
+    alert('Для большого QR стойки используйте «Печать» или кнопку скачивания на карточке.');
+    return;
+  }
   if (!qrGenerated.length) {
     alert('Сначала сгенерируйте QR-коды — сейчас список пуст.');
     return;
@@ -3986,17 +4366,19 @@ function printLabelSheet() {
   // поэтому рисуем их сразу все — задержка между кадрами тут не нужна, как
   // в основной сетке (там она была нужна из-за одновременной прорисовки
   // видимых canvas-элементов на слабых устройствах).
-  let done = 0;
+  const logoDraws = [];
   qrBoxIds.forEach(({ boxId, item }) => {
     const url = qrBuildURL(item.point.id, item.product.id, item.point.city_id);
     try {
       new QRCode(document.getElementById(boxId), {
         text: qrToSafeUrl(url), width: 320, height: 320,
-        colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M,
+        colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H,
       });
+      logoDraws.push(qrDrawDogLogo(boxId, 320));
     } catch (e) { /* пропускаем нечитаемую ячейку, остальные лист не портят */ }
-    done++;
   });
+
+  await Promise.all(logoDraws);
 
   // Даём браузеру кадр на отрисовку canvas-ов перед вызовом печати.
   requestAnimationFrame(() => {
@@ -4038,11 +4420,11 @@ function qrLoadFullLogo() {
     const img = new Image();
     img.onload = () => { qrFullLogoImg = img; resolve(img); };
     img.onerror = reject;
-    img.src = 'images/taiga-logo.png';
+    img.src = 'images/hvostmarket-logo-v3-transparent.png';
   });
 }
 
-async function qrDownloadOne(cardId, name) {
+async function qrDownloadOne(cardId, name, standMode) {
   const box = document.getElementById(cardId);
   const canvas = box.querySelector('canvas');
   if (!canvas) { alert('QR ещё генерируется, подождите секунду'); return; }
@@ -4055,14 +4437,14 @@ async function qrDownloadOne(cardId, name) {
 
   const measureCtx = document.createElement('canvas').getContext('2d');
   measureCtx.font = 'bold 13px Arial';
-  const titleLines = qrWrapText(measureCtx, 'Для покупки отсканируйте здесь', sz - pad * 2);
+  const titleLines = qrWrapText(measureCtx, standMode ? 'Выберите товар за минуту' : 'Для покупки отсканируйте здесь', sz - pad * 2);
   measureCtx.font = '11px Arial';
-  const subLines = qrWrapText(measureCtx, 'или обратитесь к грумеру', sz - pad * 2);
+  const subLines = qrWrapText(measureCtx, standMode ? 'QR → товар → СБП → заберите самостоятельно' : 'Карточка товара откроется сразу', sz - pad * 2);
 
   measureCtx.font = 'bold 14px Arial';
   const nameLines = qrWrapText(measureCtx, name.replace('_', ' · '), sz - pad * 2);
   measureCtx.font = '10px Arial';
-  const taglineLines = qrWrapText(measureCtx, 'Натуральные лакомства для собак', sz - pad * 2);
+  const taglineLines = qrWrapText(measureCtx, standMode ? 'Каталог и актуальные остатки этой точки' : 'Товары для питомцев рядом', sz - pad * 2);
 
   const headerH = 10 + logoH + 8 + titleLines.length * 17 + subLines.length * 15 + 8;
   const footerH = 10 + nameLines.length * 16 + 20 + taglineLines.length * 13 + 8;
@@ -4102,8 +4484,17 @@ async function qrDownloadAll() {
   if (!qrGenerated.length) { alert('Сначала нажмите «Сгенерировать»'); return; }
   for (let idx = 0; idx < qrGenerated.length; idx++) {
     await new Promise(res => setTimeout(res, 150));
-    await qrDownloadOne('qr-' + idx, qrGenerated[idx].point.name + '_' + qrGenerated[idx].product.name);
+    const item = qrGenerated[idx];
+    const standMode = !item.product;
+    await qrDownloadOne('qr-' + idx, item.point.name + (standMode ? '_Стойка' : '_' + item.product.name), standMode);
   }
+}
+
+async function qrDownloadGenerated(idx) {
+  const item = qrGenerated[idx];
+  if (!item) return;
+  const standMode = !item.product;
+  await qrDownloadOne('qr-' + idx, item.point.name + (standMode ? '_Стойка' : '_' + item.product.name), standMode);
 }
 
 function qrCopyURL(url) {
@@ -4119,10 +4510,17 @@ function qrCopyURL(url) {
 let adminPartners = [];
 
 async function renderPartners() {
-  const res = await authFetch('/api/partners');
-  const data = await res.json();
+  closePartnerActions();
+  const days = periodDays();
+  const responses = await Promise.all([
+    authFetch('/api/partners?days=' + days),
+    authFetch('/api/partner-payouts?limit=100'),
+  ]);
+  const data = await responses[0].json();
+  const payoutData = await responses[1].json();
   adminPartners = data.partners || [];
   document.getElementById('partners-count').textContent = adminPartners.length + ' шт.';
+  document.getElementById('partners-earnings-heading').textContent = 'К выплате';
 
   const byId = {};
   adminPartners.forEach(function(p) { byId[p.id] = p; });
@@ -4156,15 +4554,120 @@ async function renderPartners() {
       '<td class="r" style="font-weight:600;' + (isRisky ? 'color:#7A4A00;' : '') + '">' + Math.round(p.commission_rate * 100) + '%' + (isRisky ? ' ⚠️' : '') + '</td>' +
       '<td style="font-size:.78rem;">' + formatIcons + '</td>' +
       '<td style="font-size:.8rem;">' + (referrer ? referrer.full_name + ' (' + referrer.partner_code + ')' : '—') + '</td>' +
+      '<td class="r" style="white-space:nowrap;"><strong style="color:var(--deep);">' + Number(p.current_earnings || 0).toLocaleString('ru-RU') + ' ₽</strong>' +
+        '<br><span style="font-size:.7rem;color:var(--muted);">' + Number(p.unpaid_orders_count || 0) + ' невыпл. заказов</span>' +
+        '<br><span style="font-size:.7rem;color:var(--muted);">за ' + days + ' дней начислено ' + Number(p.period_earnings || 0).toLocaleString('ru-RU') + ' ₽</span></td>' +
       '<td><span class="toggle-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '🟢 Активен' : '⏳ Ожидает') + '</span></td>' +
-      '<td class="r"><button class="row-btn" onclick="togglePartnerActive(' + p.id + ')">' + (p.active ? 'Отключить' : 'Активировать') + '</button> ' +
-        '<button class="row-btn" onclick="openLinkPointModal(' + p.id + ')">Точка</button> ' +
-        '<button class="row-btn" onclick="openDisplayFormatModal(' + p.id + ')">Формат</button> ' +
-        '<button class="row-btn" onclick="openTierModal(' + p.id + ')">Тариф</button> ' +
-        '<button class="row-btn" onclick="resetPersonPassword(\'partners\', ' + p.id + ', \'' + p.full_name.replace(/'/g, "\\'") + '\')">Сбросить пароль</button> ' +
-        '<button class="row-btn danger" onclick="deletePartner(' + p.id + ', \'' + p.full_name.replace(/'/g, "\\'") + '\')">✕ Удалить</button></td>' +
+      '<td class="r"><button class="partner-actions-toggle" aria-label="Действия с партнёром" aria-expanded="false" onclick="openPartnerActions(' + p.id + ', this, event)">⋯</button></td>' +
       '</tr>';
-  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Партнёров пока нет</td></tr>';
+  }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">Партнёров пока нет</td></tr>';
+
+  renderPartnerPayoutHistory(payoutData.payouts || []);
+}
+
+function renderPartnerPayoutHistory(payouts) {
+  document.getElementById('partner-payouts-count').textContent = payouts.length + ' выплат';
+  document.getElementById('partner-payouts-tbody').innerHTML = payouts.length ? payouts.map(function(payout) {
+    const paidAt = new Date(String(payout.paid_at).replace(' ', 'T') + 'Z').toLocaleString('ru-RU');
+    return '<tr>' +
+      '<td style="white-space:nowrap;color:var(--muted);">' + paidAt + '</td>' +
+      '<td style="font-weight:500;">' + escapeOrderCell(payout.partner_name) +
+        (payout.partner_code ? '<br><span style="font-size:.7rem;color:var(--muted);font-family:monospace;">' + escapeOrderCell(payout.partner_code) + '</span>' : '') + '</td>' +
+      '<td>' + (payout.manager_name ? escapeOrderCell(payout.manager_name) : '—') + '</td>' +
+      '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
+      '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '</td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплат пока не зафиксировано</td></tr>';
+}
+
+let partnerActionsPopover = null;
+let partnerActionsTrigger = null;
+
+function closePartnerActions() {
+  if (partnerActionsTrigger) partnerActionsTrigger.setAttribute('aria-expanded', 'false');
+  if (partnerActionsPopover) partnerActionsPopover.remove();
+  partnerActionsPopover = null;
+  partnerActionsTrigger = null;
+}
+
+function openPartnerActions(id, trigger, event) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (partnerActionsTrigger === trigger) {
+    closePartnerActions();
+    return;
+  }
+  closePartnerActions();
+  const partner = adminPartners.find(function(p) { return Number(p.id) === Number(id); });
+  if (!partner) return;
+
+  const actions = [
+    { label: '✓ Вознаграждение выплачено', disabled: Number(partner.current_earnings || 0) <= 0, run: function() { markPartnerPayoutPaid(id); } },
+    { label: partner.active ? 'Отключить партнёра' : 'Активировать партнёра', run: function() { togglePartnerActive(id); } },
+    { label: 'Изменить точку', run: function() { openLinkPointModal(id); } },
+    { label: 'Изменить формат', run: function() { openDisplayFormatModal(id); } },
+    { label: 'Изменить тариф', run: function() { openTierModal(id); } },
+    { label: 'Сбросить пароль', run: function() { resetPersonPassword('partners', id, partner.full_name); } },
+    { label: 'Удалить партнёра', danger: true, run: function() { deletePartner(id, partner.full_name); } },
+  ];
+  const popover = document.createElement('div');
+  popover.className = 'partner-actions-popover';
+  popover.setAttribute('role', 'menu');
+  actions.forEach(function(action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'partner-actions-item' + (action.danger ? ' danger' : '');
+    button.textContent = action.label;
+    button.disabled = !!action.disabled;
+    button.onclick = function(e) {
+      e.stopPropagation();
+      closePartnerActions();
+      action.run();
+    };
+    popover.appendChild(button);
+  });
+  document.body.appendChild(popover);
+  partnerActionsPopover = popover;
+  partnerActionsTrigger = trigger;
+  trigger.setAttribute('aria-expanded', 'true');
+  popover.style.display = 'block';
+
+  const triggerRect = trigger.getBoundingClientRect();
+  const popoverRect = popover.getBoundingClientRect();
+  const left = Math.max(10, Math.min(window.innerWidth - popoverRect.width - 10, triggerRect.right - popoverRect.width));
+  const roomBelow = window.innerHeight - triggerRect.bottom;
+  const top = roomBelow >= popoverRect.height + 8
+    ? triggerRect.bottom + 5
+    : Math.max(10, triggerRect.top - popoverRect.height - 5);
+  popover.style.left = left + 'px';
+  popover.style.top = top + 'px';
+}
+
+document.addEventListener('click', closePartnerActions);
+window.addEventListener('resize', closePartnerActions);
+document.querySelector('.main').addEventListener('scroll', closePartnerActions);
+
+async function markPartnerPayoutPaid(id) {
+  const partner = adminPartners.find(function(p) { return Number(p.id) === Number(id); });
+  if (!partner) return;
+  const amount = Number(partner.current_earnings || 0);
+  if (amount <= 0) {
+    alert('У этого грумера сейчас нет невыплаченного вознаграждения.');
+    return;
+  }
+  if (!confirm(
+    'Подтвердить выплату грумеру «' + partner.full_name + '» на сумму ' + amount.toLocaleString('ru-RU') + ' ₽?\n\n' +
+    'После подтверждения счётчик «К выплате» обнулится, а запись появится в истории.'
+  )) return;
+  const res = await authFetch('/api/partners/' + id + '/payouts', { method: 'POST', body: {} });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Не удалось зафиксировать выплату.');
+    return;
+  }
+  alert('Выплата ' + Number(data.payout.amount || 0).toLocaleString('ru-RU') + ' ₽ зафиксирована.');
+  await renderPartners();
 }
 
 async function deletePartner(id, name) {
@@ -4379,10 +4882,75 @@ async function resetPersonPassword(entityPath, id, name) {
 // ── АДМИНИСТРАТОРЫ (видно и доступно только супер-админу) ────────────
 function updateAdminsNavVisibility() {
   const show = currentAdminRole === 'super';
-  const label = document.getElementById('admins-nav-label');
-  const btn = document.getElementById('admins-nav-btn');
-  if (label) label.style.display = show ? 'block' : 'none';
-  if (btn) btn.style.display = show ? 'flex' : 'none';
+  const restoreBtn = document.getElementById('restore-backup-btn');
+  if (restoreBtn) restoreBtn.style.display = show ? 'inline-block' : 'none';
+  const active = sections.find(function(section) {
+    const el = document.getElementById('sec-' + section);
+    return el && el.style.display !== 'none';
+  });
+  if (active && sectionGroups[active] === 'system') renderContextTabs(active);
+}
+
+function auditEscape(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+async function renderAuditLog() {
+  const tbody = document.getElementById('audit-tbody');
+  const count = document.getElementById('audit-count');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">Загрузка…</td></tr>';
+  const filter = document.getElementById('audit-type-filter');
+  const type = filter ? filter.value : '';
+  const url = '/api/admin/audit-log?limit=200' + (type ? '&type=' + encodeURIComponent(type) : '');
+  const res = await authFetch(url);
+  if (!res.ok) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9B2335;padding:2rem;">Доступно только супер-администратору</td></tr>';
+    if (count) count.textContent = '';
+    return;
+  }
+  const data = await res.json();
+  const events = data.events || [];
+  if (count) count.textContent = events.length + ' записей';
+  tbody.innerHTML = events.length ? events.map(function(event) {
+    const date = event.created_at
+      ? new Date(event.created_at.replace(' ', 'T') + 'Z').toLocaleString('ru-RU')
+      : '—';
+    let action = '';
+    let target = '';
+    let details = '';
+    if (event.type === 'customer_delete') {
+      action = 'Удаление клиента';
+      target = (event.full_name || 'Без имени') + '<br><span style="font-family:monospace;font-size:.75rem;">' + auditEscape(event.phone) + '</span>';
+      details = 'ID: ' + event.customer_id + ' · заказов: ' + event.orders_count +
+        ' · потрачено: ' + Number(event.total_spent || 0).toLocaleString('ru-RU') + ' ₽' +
+        ' · косточек: ' + Number(event.bones_balance || 0).toLocaleString('ru-RU');
+    } else if (event.type === 'warehouse_delete') {
+      action = 'Удаление со склада';
+      target = auditEscape(event.product_name) + ' <span style="color:var(--muted);">(' + auditEscape(event.weight) + ')</span>';
+      details = 'Склад: ' + auditEscape(event.city_name || event.city_id) + ' · удалено: ' + Number(event.old_qty || 0) + ' шт.';
+    } else {
+      action = event.action || 'Действие менеджера';
+      target = auditEscape(event.target_name || event.target_id || '—');
+      details = auditEscape(event.details || '—');
+    }
+    const actor = event.type === 'manager_action'
+      ? auditEscape(event.manager_name || 'Менеджер') + '<br><span style="font-family:monospace;font-size:.72rem;color:var(--muted);">' + auditEscape(event.manager_login || ('ID ' + event.manager_id)) + '</span>'
+      : auditEscape(event.admin_login || ('ID ' + (event.admin_id || '—')));
+    return '<tr>' +
+      '<td style="white-space:nowrap;">' + auditEscape(date) + '</td>' +
+      '<td><span class="toggle-pill ' + (event.type === 'customer_delete' ? 'stock-out' : event.type === 'manager_action' ? 'stock-ok' : 'stock-low') + '">' + auditEscape(action) + '</span></td>' +
+      '<td style="font-weight:500;">' + (event.type === 'customer_delete' ? auditEscape(event.full_name || 'Без имени') + '<br><span style="font-family:monospace;font-size:.75rem;">' + auditEscape(event.phone) + '</span>' : target) + '</td>' +
+      '<td style="font-size:.78rem;color:var(--muted);">' + details + '</td>' +
+      '<td>' + actor + '</td>' +
+      '<td>' + auditEscape(event.type === 'manager_action' ? '—' : (event.reason || '—')) + '</td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">В журнале пока нет записей</td></tr>';
 }
 
 let adminsList = [];
@@ -4701,13 +5269,42 @@ async function deleteNews(id) {
 let adminToken = localStorage.getItem('taiga_admin_token') || null;
 let currentAdminRole = localStorage.getItem('taiga_admin_role') || 'admin';
 
+function showCurrentAdmin(admin) {
+  if (!admin) return;
+  currentAdminRole = admin.role || 'admin';
+  localStorage.setItem('taiga_admin_role', currentAdminRole);
+  const name = String(admin.full_name || admin.login || 'Администратор').trim();
+  const login = String(admin.login || '').trim();
+  const role = currentAdminRole === 'super' ? 'Супер-администратор' : 'Администратор';
+  document.getElementById('current-admin-name').textContent = name;
+  document.getElementById('current-admin-role').textContent = login ? '@' + login + ' · ' + role : role;
+  document.getElementById('current-admin-avatar').textContent = (name.charAt(0) || 'А').toUpperCase();
+  document.getElementById('current-admin-badge').title = 'Выполнен вход: ' + name + (login ? ' (@' + login + ')' : '') + ' — ' + role;
+  updateAdminsNavVisibility();
+  HvostTelegramConnect.mount({
+    containerId: 'admin-telegram-connect',
+    role: 'admin',
+    tokenGetter: function () { return adminToken; },
+    connected: !!admin.telegram_connected,
+  });
+}
+
+async function loadCurrentAdmin() {
+  const res = await authFetch('/api/admin/me');
+  if (!res.ok) return;
+  const data = await res.json();
+  showCurrentAdmin(data.admin);
+}
+
 // Обёртка над fetch, которая сама добавляет токен авторизации
 async function authFetch(url, options) {
   options = options || {};
   options.headers = Object.assign({}, options.headers, {
     'Authorization': 'Bearer ' + adminToken,
   });
-  if (options.body && typeof options.body !== 'string') {
+  if (options.body && typeof options.body !== 'string' &&
+      !(options.body instanceof Blob) && !(options.body instanceof FormData) &&
+      !(options.body instanceof ArrayBuffer)) {
     options.body = JSON.stringify(options.body);
     options.headers['Content-Type'] = 'application/json';
   }
@@ -4829,6 +5426,7 @@ async function doAdminLogin() {
     currentAdminRole = data.user.role || 'admin';
     localStorage.setItem('taiga_admin_token', adminToken);
     localStorage.setItem('taiga_admin_role', currentAdminRole);
+    showCurrentAdmin(data.user);
     document.getElementById('admin-login').style.display  = 'none';
     document.getElementById('admin-app').style.display    = 'flex';
     document.getElementById('admin-error').style.display  = 'none';
@@ -4849,6 +5447,7 @@ if (adminToken) {
     document.getElementById('admin-login').style.display = 'none';
     document.getElementById('admin-app').style.display = 'flex';
     updateAdminsNavVisibility();
+    loadCurrentAdmin();
     showSection("dashboard");
     refreshReviewsBadge();
   });

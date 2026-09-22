@@ -8,6 +8,7 @@
 'use strict';
 
 const db = require('./db');
+const { releaseOrderReservation, restorePaidOrderInventory } = require('./reservations');
 
 function reverseOrderSideEffects(order, restoreStock) {
   // Если заказ уже был возвращён через /refund — статистика клиента,
@@ -28,19 +29,9 @@ function reverseOrderSideEffects(order, restoreStock) {
     const { refundBones } = require('./bones');
     refundBones(customer.id, order.bones_used, order.id, 'Удаление заказа ' + order.order_code + ' — возврат списанных косточек');
   }
-  if (restoreStock && order.point_id) {
+  if (restoreStock) {
     const items = db.prepare('SELECT * FROM order_items WHERE order_id = ? AND is_custom = 0').all(order.id);
-    for (const item of items) {
-      const variant = db.prepare(`
-        SELECT pv.id FROM product_variants pv
-        JOIN products p ON p.id = pv.product_id
-        WHERE p.name = ? AND pv.weight = ?
-      `).get(item.name, item.weight);
-      if (!variant) continue;
-      const stockRow = db.prepare('SELECT qty FROM stock WHERE variant_id = ? AND point_id = ?').get(variant.id, order.point_id);
-      const newQty = (stockRow ? stockRow.qty : 0) + item.qty;
-      db.prepare('INSERT OR REPLACE INTO stock (variant_id, point_id, qty) VALUES (?, ?, ?)').run(variant.id, order.point_id, newQty);
-    }
+    restorePaidOrderInventory(order, items);
   }
 }
 
@@ -48,12 +39,18 @@ function reverseOrderSideEffects(order, restoreStock) {
 // используется при принудительном удалении самой точки/партнёра, чтобы не
 // оставлять заказы висеть на уже несуществующей точке.
 function reverseAndDeleteOrdersBy(column, value, restoreStock) {
-  const orders = db.prepare(`SELECT * FROM orders WHERE ${column} = ? AND status = 'paid'`).all(value);
+  const orders = db.prepare(`SELECT * FROM orders WHERE ${column} = ?`).all(value);
+  let reversedPaid = 0;
   for (const order of orders) {
-    reverseOrderSideEffects(order, restoreStock);
+    if (order.status === 'paid') {
+      reverseOrderSideEffects(order, restoreStock);
+      reversedPaid++;
+    } else if (order.reservation_status === 'active') {
+      releaseOrderReservation(order.id, null, 'Связанный объект удалён — резерв освобождён');
+    }
   }
   const info = db.prepare(`DELETE FROM orders WHERE ${column} = ?`).run(value);
-  return { reversedPaid: orders.length, deletedTotal: info.changes };
+  return { reversedPaid, deletedTotal: info.changes };
 }
 
 module.exports = { reverseOrderSideEffects, reverseAndDeleteOrdersBy };

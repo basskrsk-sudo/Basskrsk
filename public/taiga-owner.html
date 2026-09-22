@@ -2,13 +2,15 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<link rel="icon" type="image/x-icon" href="/favicon.ico">
-<link rel="shortcut icon" href="/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=28">
+<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=28">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Тайга — Кабинет владельца салона</title>
 <meta name="theme-color" content="#1C3A2F">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="payout-schedule.css">
+<link rel="stylesheet" href="telegram-connect.css?v=38">
 <style>
 html { font-size: 16px; }
 @media (min-width: 1440px) { html { font-size: 17px; } }
@@ -43,6 +45,9 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 .topbar{background:var(--forest);padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.6rem;}
 .topbar-logo{font-family:'Playfair Display',serif;font-size:1.25rem;color:#fff;}
 .topbar-logo span{color:var(--amber);}
+.topbar-brand{display:flex;align-items:center;gap:.55rem;color:#fff;font-size:.95rem;font-weight:800;line-height:.88;}
+.topbar-brand-mark{width:58px;height:58px;box-sizing:border-box;flex:0 0 58px;display:flex;align-items:center;justify-content:center;padding:3px;background:#fff;border-radius:14px;box-shadow:0 3px 12px rgba(0,0,0,.22);}
+.topbar-brand-mark img{width:52px;height:auto;display:block;image-rendering:auto;}
 .topbar-right{display:flex;align-items:center;gap:1rem;}
 .topbar-point{color:rgba(255,255,255,.85);font-size:.85rem;}
 .logout-btn{font-size:.78rem;color:rgba(255,255,255,.6);background:none;border:1px solid rgba(255,255,255,.25);border-radius:50px;padding:.35rem .9rem;cursor:pointer;font-family:'Inter',sans-serif;transition:color .2s,border-color .2s;}
@@ -81,20 +86,33 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
 .empty-state{text-align:center;padding:3rem 1rem;color:var(--muted);}
 .empty-state .ic{font-size:2.5rem;margin-bottom:.75rem;}
+.owner-tabs{display:flex;gap:.35rem;margin-bottom:1rem;padding:.3rem;background:rgba(255,255,255,.6);border:1px solid var(--border);border-radius:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.owner-tab{flex:0 0 auto;padding:.55rem .9rem;border:0;border-radius:7px;background:transparent;color:var(--muted);font:600 .8rem 'Inter',sans-serif;cursor:pointer;white-space:nowrap}
+.owner-tab.active{background:var(--forest);color:#fff}
+.owner-panel{display:none}.owner-panel.active{display:block}
 
 @media (max-width:640px){
+  .topbar-brand>span:last-child{display:none}
+  .topbar{padding:.7rem .85rem}
+  .topbar-brand-mark{width:46px;height:46px;flex-basis:46px;border-radius:11px}.topbar-brand-mark img{width:40px}
+  .topbar-point{display:none}
+  .content{padding:.85rem}
+  .owner-panel .card{overflow-x:auto}
+  .owner-panel .tbl{min-width:520px}
   .manager-stats{width:100%;justify-content:space-around;margin-top:.5rem;}
   .tbl{font-size:.78rem;}
   .tbl th,.tbl td{padding:.5rem .4rem;}
 }
 </style>
+<script src="payout-schedule.js"></script>
+<script src="telegram-connect.js?v=38"></script>
 </head>
 <body>
 
 <!-- ══════════ LOGIN ══════════ -->
 <div id="login-screen">
   <div class="login-card">
-    <div class="login-logo">🌲 ТАЙГА<span>.</span></div>
+    <div class="login-logo"><img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" style="height:132px;width:auto;display:block;margin:0 auto;"></div>
     <div class="login-role">Кабинет владельца салона</div>
     <div id="login-error" class="login-error"></div>
     <div class="field">
@@ -115,7 +133,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <!-- ══════════ APP ══════════ -->
 <div id="app">
   <div class="topbar">
-    <div class="topbar-logo">🌲 ТАЙГА<span>.</span> — владелец салона</div>
+    <div class="topbar-brand"><span class="topbar-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;"><span>Хвост</span><span style="color:#FF5A49;margin-top:.2rem;">Маркет</span></span><span style="font-weight:500;color:rgba(255,255,255,.72);line-height:1.15;">— владелец салона</span></div>
     <div class="topbar-right">
       <span class="topbar-point" id="topbar-point"></span>
       <button class="logout-btn" onclick="doLogout()">Выйти</button>
@@ -129,6 +147,13 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
     </div>
 
     <div id="dashboard-content" style="display:none;">
+      <div class="owner-tabs" aria-label="Разделы кабинета владельца">
+        <button class="owner-tab active" type="button" data-owner-tab="overview" onclick="showOwnerTab('overview')">Обзор</button>
+        <button class="owner-tab" type="button" data-owner-tab="team" onclick="showOwnerTab('team')">Команда</button>
+        <button class="owner-tab" type="button" data-owner-tab="salon" onclick="showOwnerTab('salon')">Страница салона</button>
+        <button class="owner-tab" type="button" data-owner-tab="orders" onclick="showOwnerTab('orders')">Заказы</button>
+      </div>
+      <div class="owner-panel active" data-owner-panel="overview">
       <div class="card" id="owner-earnings-card" style="background:var(--forest);border:none;margin-bottom:1.2rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
         <div>
           <div style="font-size:.78rem;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.04em;">Мой заработок (<span id="owner-tier-percent"></span>% с выручки точки)</div>
@@ -139,6 +164,16 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <div style="font-size:1.3rem;font-weight:700;color:var(--amber);" id="owner-earnings-month"></div>
         </div>
       </div>
+      <div class="payout-schedule-card">
+        <div class="payout-schedule-icon">📅</div>
+        <div class="payout-schedule-content">
+          <div class="payout-schedule-title">Следующая выплата вознаграждения</div>
+          <span class="payout-schedule-date" data-next-payout-date>—</span>
+          <span class="payout-schedule-countdown" data-next-payout-countdown></span>
+          <div class="payout-schedule-rule">Выплаты производятся два раза в месяц: 9-го и 24-го числа.</div>
+        </div>
+      </div>
+      <div id="owner-telegram-connect"></div>
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-label">Выручка всего</div>
@@ -158,7 +193,9 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <div class="stat-sub" id="stat-month-orders"></div>
         </div>
       </div>
+      </div>
 
+      <div class="owner-panel" data-owner-panel="team">
       <div class="card">
         <div class="card-title">✂️ Грумеры на точке</div>
         <table class="tbl">
@@ -180,7 +217,9 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           </div>
         </div>
       </div>
+      </div>
 
+      <div class="owner-panel" data-owner-panel="salon">
       <div class="card" style="margin-bottom:1.2rem;">
         <div class="card-title">🤝 Мой промокод для привлечения новых точек</div>
         <p style="font-size:.85rem;color:var(--muted);line-height:1.6;margin-bottom:.8rem;">Приведите нового грумера или ветеринара — когда его точка заработает «Тайге» 2 000 ₽ прибыли, вам придёт 1 000 ₽ (вторая половина достаётся менеджеру, который нашёл саму точку).</p>
@@ -220,7 +259,9 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
         <div id="owner-salon-link" style="display:none;font-size:.82rem;margin-bottom:.9rem;"></div>
         <button class="row-btn" style="background:var(--amber);color:#fff;" onclick="saveOwnerSalonPage()">Сохранить</button>
       </div>
+      </div>
 
+      <div class="owner-panel" data-owner-panel="orders">
       <div class="card">
         <div class="card-title">🧾 Последние заказы</div>
         <table class="tbl">
@@ -229,6 +270,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           </thead>
           <tbody id="orders-tbody"></tbody>
         </table>
+      </div>
       </div>
     </div>
   </div>
@@ -290,6 +332,15 @@ function doLogout() {
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('login-password').value = '';
+}
+
+function showOwnerTab(id) {
+  document.querySelectorAll('[data-owner-panel]').forEach(function(panel) {
+    panel.classList.toggle('active', panel.dataset.ownerPanel === id);
+  });
+  document.querySelectorAll('[data-owner-tab]').forEach(function(button) {
+    button.classList.toggle('active', button.dataset.ownerTab === id);
+  });
 }
 
 function fmtMoney(n) { return Math.round(n).toLocaleString('ru-RU') + ' ₽'; }
@@ -396,7 +447,24 @@ async function saveOwnerSalonPage() {
 async function showApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  await loadDashboard();
+  await Promise.all([loadDashboard(), loadOwnerTelegramConnect()]);
+}
+
+async function loadOwnerTelegramConnect() {
+  try {
+    const res = await authFetch('/api/owner/me');
+    if (!res.ok) return;
+    const data = await res.json();
+    HvostTelegramConnect.mount({
+      containerId: 'owner-telegram-connect',
+      role: 'owner',
+      tokenGetter: getToken,
+      connected: !!data.owner.telegram_connected,
+    });
+  } catch (e) {
+    // Основной кабинет продолжает работать, даже если статус Telegram
+    // временно не удалось загрузить.
+  }
 }
 
 async function loadDashboard() {

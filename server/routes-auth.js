@@ -77,8 +77,79 @@ function registerAuthRoutes(router) {
     }
 
     const token = signToken({ role, id: user.id, login: user.login, adminRole: role === 'admin' ? user.role : undefined });
-    const { password_hash, ...safeUser } = user;
+    const { password_hash, telegram_chat_id, ...safeUser } = user;
+    safeUser.telegram_connected = !!telegram_chat_id;
     sendJson(res, 200, { token, user: safeUser, table });
+  });
+
+  // GET /api/admin/me — данные именно того администратора, чей токен сейчас
+  // используется. Нужен панели, чтобы после обновления страницы показывать
+  // не только роль из localStorage, но и настоящее имя/логин текущего админа.
+  router.get('/api/admin/me', (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    const admin = db.prepare(`
+      SELECT id, login, full_name, role, telegram_chat_id
+      FROM admins
+      WHERE id = ? AND active = 1
+    `).get(payload.id);
+    if (!admin) return sendJson(res, 401, { error: 'Администратор не найден или отключён' });
+    const { telegram_chat_id, ...safeAdmin } = admin;
+    sendJson(res, 200, { admin: { ...safeAdmin, telegram_connected: !!telegram_chat_id } });
+  });
+
+  // Подключение Telegram из уже открытого кабинета. Пользователю не нужно
+  // повторно вводить телефон: подписанный токен кабинета однозначно задаёт
+  // роль и аккаунт. TG_CHAT_ID остаётся отдельным общим бизнес-чатом.
+  const telegramAccountTables = {
+    admin: 'admins',
+    partner: 'partners',
+    manager: 'managers',
+    owner: 'salon_owners',
+  };
+
+  router.post('/api/telegram/connect/start', (req, res, ctx) => {
+    const payload = requireAuth(Object.keys(telegramAccountTables))(req, res, ctx);
+    if (!payload) return;
+    if (!process.env.TG_TOKEN) return sendJson(res, 503, { error: 'Telegram-бот пока не настроен на сервере' });
+    const tableName = telegramAccountTables[payload.role];
+    const phoneColumn = payload.role === 'admin' ? '' : ', phone';
+    const account = db.prepare(`SELECT id, telegram_chat_id${phoneColumn} FROM ${tableName} WHERE id = ? AND active = 1`).get(payload.id);
+    if (!account) return sendJson(res, 404, { error: 'Аккаунт не найден или отключён' });
+
+    const token = crypto.randomBytes(24).toString('hex');
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const phoneOrAccount = account.phone || `account:${payload.role}:${payload.id}`;
+    db.prepare(`
+      INSERT INTO telegram_login_tokens (token, phone, role, account_id, expires_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(token, phoneOrAccount, payload.role, payload.id, expiresAt);
+
+    const botUsername = String(process.env.TG_BOT_USERNAME || 'taiga_dog_bot').replace(/^@/, '');
+    sendJson(res, 200, {
+      token,
+      deep_link: `https://t.me/${botUsername}?start=${token}`,
+      telegram_connected: !!account.telegram_chat_id,
+    });
+  });
+
+  router.get('/api/telegram/connect/check', (req, res, ctx) => {
+    const payload = requireAuth(Object.keys(telegramAccountTables))(req, res, ctx);
+    if (!payload) return;
+    const token = String(ctx.query.token || '');
+    if (!token) return sendJson(res, 400, { error: 'Не указан токен подключения' });
+    const record = db.prepare('SELECT * FROM telegram_login_tokens WHERE token = ?').get(token);
+    if (!record || record.role !== payload.role || Number(record.account_id) !== Number(payload.id)) {
+      return sendJson(res, 404, { error: 'Ссылка подключения не найдена' });
+    }
+    if (Date.parse(record.expires_at) <= Date.now() && !record.verified) {
+      return sendJson(res, 410, { error: 'Ссылка подключения устарела' });
+    }
+    if (!record.verified || !record.chat_id) return sendJson(res, 200, { verified: false });
+
+    const tableName = telegramAccountTables[payload.role];
+    db.prepare(`UPDATE ${tableName} SET telegram_chat_id = ? WHERE id = ?`).run(String(record.chat_id), payload.id);
+    sendJson(res, 200, { verified: true, telegram_connected: true });
   });
 
   // POST /api/auth/forgot-password { login } — только для admin. У этой роли нет
@@ -349,8 +420,13 @@ function registerAuthRoutes(router) {
     const partner = db.prepare('SELECT * FROM partners WHERE active = 1').all()
       .find((p) => phonesMatch(p.phone, record.phone));
     if (!partner) return sendJson(res, 404, { error: 'Партнёр не найден или отключён' });
+    if (record.chat_id && record.chat_id !== partner.telegram_chat_id) {
+      db.prepare('UPDATE partners SET telegram_chat_id = ? WHERE id = ?').run(String(record.chat_id), partner.id);
+      partner.telegram_chat_id = String(record.chat_id);
+    }
     const authToken = signToken({ role: 'partner', id: partner.id, login: partner.login });
-    const { password_hash: ph1, ...safePartnerUser } = partner;
+    const { password_hash: ph1, telegram_chat_id: tg1, ...safePartnerUser } = partner;
+    safePartnerUser.telegram_connected = !!tg1;
     sendJson(res, 200, { verified: true, token: authToken, user: safePartnerUser });
   });
 
@@ -372,8 +448,13 @@ function registerAuthRoutes(router) {
     const partner = db.prepare('SELECT * FROM partners WHERE active = 1').all()
       .find((p) => phonesMatch(p.phone, record.phone));
     if (!partner) return sendJson(res, 404, { error: 'Партнёр не найден или отключён' });
+    if (record.chat_id && record.chat_id !== partner.telegram_chat_id) {
+      db.prepare('UPDATE partners SET telegram_chat_id = ? WHERE id = ?').run(String(record.chat_id), partner.id);
+      partner.telegram_chat_id = String(record.chat_id);
+    }
     const authToken = signToken({ role: 'partner', id: partner.id, login: partner.login });
-    const { password_hash: ph1, ...safePartnerUser } = partner;
+    const { password_hash: ph1, telegram_chat_id: tg1, ...safePartnerUser } = partner;
+    safePartnerUser.telegram_connected = !!tg1;
     sendJson(res, 200, { verified: true, token: authToken, user: safePartnerUser });
   });
 
@@ -407,8 +488,13 @@ function registerAuthRoutes(router) {
     const mgr = db.prepare('SELECT * FROM managers WHERE active = 1').all()
       .find((a) => phonesMatch(a.phone, record.phone));
     if (!mgr) return sendJson(res, 404, { error: 'Менеджер не найден или отключён' });
+    if (record.chat_id && record.chat_id !== mgr.telegram_chat_id) {
+      db.prepare('UPDATE managers SET telegram_chat_id = ? WHERE id = ?').run(String(record.chat_id), mgr.id);
+      mgr.telegram_chat_id = String(record.chat_id);
+    }
     const authToken = signToken({ role: 'manager', id: mgr.id, login: mgr.login });
-    const { password_hash: ph2, ...safeMgrUser } = mgr;
+    const { password_hash: ph2, telegram_chat_id: tg2, ...safeMgrUser } = mgr;
+    safeMgrUser.telegram_connected = !!tg2;
     sendJson(res, 200, { verified: true, token: authToken, user: safeMgrUser });
   });
 
@@ -430,8 +516,13 @@ function registerAuthRoutes(router) {
     const mgr = db.prepare('SELECT * FROM managers WHERE active = 1').all()
       .find((a) => phonesMatch(a.phone, record.phone));
     if (!mgr) return sendJson(res, 404, { error: 'Менеджер не найден или отключён' });
+    if (record.chat_id && record.chat_id !== mgr.telegram_chat_id) {
+      db.prepare('UPDATE managers SET telegram_chat_id = ? WHERE id = ?').run(String(record.chat_id), mgr.id);
+      mgr.telegram_chat_id = String(record.chat_id);
+    }
     const authToken = signToken({ role: 'manager', id: mgr.id, login: mgr.login });
-    const { password_hash: ph2, ...safeMgrUser } = mgr;
+    const { password_hash: ph2, telegram_chat_id: tg2, ...safeMgrUser } = mgr;
+    safeMgrUser.telegram_connected = !!tg2;
     sendJson(res, 200, { verified: true, token: authToken, user: safeMgrUser });
   });
 
@@ -478,8 +569,9 @@ function registerAuthRoutes(router) {
   });
 
   // POST /api/admins — создать нового админа (обычного или ещё одного супер-админа)
-  router.post('/api/admins', (req, res, ctx) => {
-    if (!requireSuperAdmin(req, res, ctx)) return;
+  router.post('/api/admins', async (req, res, ctx) => {
+    const payload = requireSuperAdmin(req, res, ctx);
+    if (!payload) return;
     const { login, password, full_name, role } = ctx.body || {};
     if (!login || !password || password.length < 6) {
       return sendJson(res, 400, { error: 'Укажите login и password (не короче 6 символов)' });
@@ -489,6 +581,21 @@ function registerAuthRoutes(router) {
     const finalRole = role === 'super' ? 'super' : 'admin';
     const info = db.prepare('INSERT INTO admins (login, password_hash, full_name, role, active) VALUES (?, ?, ?, ?, 1)')
       .run(login, hashPassword(password), full_name || null, finalRole);
+
+    // Создание админа (особенно супер-админа) — чувствительное действие,
+    // уведомление тут работает ещё и как сигнал безопасности: если аккаунт
+    // появился неожиданно, об этом сразу узнают, а не через недели.
+    const { sendTelegram } = require('./telegram');
+    await sendTelegram([
+      (finalRole === 'super' ? '🔐 <b>Новый СУПЕР-админ</b>' : '🔐 <b>Новый администратор</b>'),
+      '',
+      '👤 ' + (full_name || login),
+      '🔑 Логин: ' + login,
+      '🎖 Роль: ' + (finalRole === 'super' ? 'супер-админ' : 'админ'),
+      '👤 Создал: ' + payload.login,
+      '🕐 ' + new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Krasnoyarsk' }),
+    ].join('\n'));
+
     sendJson(res, 201, { ok: true, id: info.lastInsertRowid });
   });
 

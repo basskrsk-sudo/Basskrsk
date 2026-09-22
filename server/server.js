@@ -2,13 +2,18 @@
 // Запуск: node server/server.js  (или через npm start, см. package.json)
 'use strict';
 
+// Отложенную замену базы выполняем раньше любых импортов, которые открывают
+// db.js. Загруженный файл проверяется на предыдущем запуске, после чего
+// сервер перезапускается и устанавливает его до открытия SQLite-соединения.
+require('./database-restore').applyPendingDatabaseRestore();
+
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { URL } = require('node:url');
 
-const { Router, parseJsonBody, sendJson } = require('./http-utils');
-const { registerAuthRoutes } = require('./routes-auth');
+const { Router, readBinaryBody, parseJsonBody, sendJson } = require('./http-utils');
+const { registerAuthRoutes, requireSuperAdmin } = require('./routes-auth');
 const { registerProductRoutes } = require('./routes-products');
 const { registerReviewRoutes } = require('./routes-reviews');
 const { registerPartnerRoutes } = require('./routes-partners');
@@ -28,11 +33,18 @@ const { registerBackupRoutes } = require('./backup');
 const { registerLaunchTaskRoutes } = require('./routes-launch-tasks');
 const { registerWinbackRoutes } = require('./winback');
 const { registerEconomicsRoutes } = require('./routes-economics');
+const { registerAuditRoutes } = require('./routes-audit');
+const { registerPublicMessageRoutes } = require('./routes-public-messages');
 
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+// Тот же путь, что и в routes-products.js — фото товаров живут в постоянном
+// хранилище (DATA_DIR), не внутри public/, которая пересобирается заново
+// при каждом деплое. См. подробный комментарий там же.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -73,19 +85,40 @@ registerBackupRoutes(router);
 registerLaunchTaskRoutes(router);
 registerWinbackRoutes(router);
 registerEconomicsRoutes(router);
+registerAuditRoutes(router);
+registerPublicMessageRoutes(router);
 
 function serveStatic(req, res, pathname) {
-  let filePath = path.join(PUBLIC_DIR, decodeURIComponent(pathname));
-  // Защита от выхода за пределы public/ через '../'
-  if (!filePath.startsWith(PUBLIC_DIR)) {
-    res.writeHead(403); res.end('Forbidden'); return;
+  const decoded = decodeURIComponent(pathname);
+  // Фото товаров — особый случай: физически лежат в постоянном хранилище
+  // (DATA_DIR/uploads), а не в public/images/uploads, но по URL для сайта
+  // и админки должны выглядеть так же, как обычный статический файл — чтобы
+  // не переписывать пути во всех местах, где они уже сохранены в базе.
+  let filePath;
+  if (decoded.startsWith('/images/uploads/')) {
+    filePath = path.join(UPLOADS_DIR, decoded.slice('/images/uploads/'.length));
+    if (!filePath.startsWith(UPLOADS_DIR)) {
+      res.writeHead(403); res.end('Forbidden'); return;
+    }
+  } else {
+    filePath = path.join(PUBLIC_DIR, decoded);
+    // Защита от выхода за пределы public/ через '../'
+    if (!filePath.startsWith(PUBLIC_DIR)) {
+      res.writeHead(403); res.end('Forbidden'); return;
+    }
   }
   if (pathname === '/' || pathname === '') filePath = path.join(PUBLIC_DIR, 'index.html');
 
   fs.stat(filePath, (err, stat) => {
     if (err || !stat.isFile()) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('Не найдено');
+      const notFoundPath = path.join(PUBLIC_DIR, '404.html');
+      res.writeHead(404, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      fs.createReadStream(notFoundPath)
+        .on('error', () => res.end('Страница не найдена'))
+        .pipe(res);
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
@@ -131,10 +164,19 @@ const server = http.createServer(async (req, res) => {
     const match = router.match(req.method, pathname);
     if (!match) return sendJson(res, 404, { error: 'Маршрут не найден' });
     try {
-      const body = (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE')
-        ? await parseJsonBody(req)
-        : {};
-      await match.handler(req, res, { params: match.params, query, body });
+      let body = {};
+      let rawBody = null;
+      let authenticatedPayload = null;
+      if (req.method === 'POST' && pathname === '/api/backup/restore') {
+        // Проверяем права ДО чтения крупного файла в память. Восстановление
+        // доступно только супер-администратору.
+        authenticatedPayload = requireSuperAdmin(req, res, { params: match.params, query, body: {} });
+        if (!authenticatedPayload) return;
+        rawBody = await readBinaryBody(req, 100 * 1024 * 1024);
+      } else if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
+        body = await parseJsonBody(req);
+      }
+      await match.handler(req, res, { params: match.params, query, body, rawBody, authenticatedPayload });
     } catch (e) {
       const status = e.statusCode || 500;
       sendJson(res, status, { error: e.message || 'Внутренняя ошибка сервера' });
