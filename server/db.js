@@ -782,6 +782,7 @@ ensureColumn('customers', 'referral_code', 'TEXT');
 ensureColumn('customers', 'referred_by_customer_id', 'INTEGER');
 ensureColumn('customers', 'last_order_at', 'TEXT');
 ensureColumn('customers', 'telegram_chat_id', 'TEXT');
+ensureColumn('customers', 'max_chat_id', 'TEXT');
 ensureColumn('customers', 'winback_sent_at', 'TEXT');
 ensureColumn('admins', 'full_name', 'TEXT');
 ensureColumn('admins', 'role', "TEXT NOT NULL DEFAULT 'admin'");

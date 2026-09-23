@@ -1157,7 +1157,7 @@
           <button class="btn-primary" style="width:100%;background:#7C4DFF;" onclick="submitMaxStart()">Войти через MAX</button>
         </div>
         <div id="account-max-step-waiting" style="display:none;text-align:center;padding:.5rem 0;">
-          <p style="font-size:.88rem;color:var(--text);margin-bottom:1rem;">Откройте бота и нажмите «Запустить» — если код не подхватится сам, отправьте команду /start ещё раз тем же переходом.</p>
+          <p style="font-size:.88rem;color:var(--text);margin-bottom:1rem;">Откройте бота, нажмите «Запустить», затем подтвердите номер кнопкой «Поделиться номером».</p>
           <a id="account-max-link" href="#" target="_blank" class="btn-primary" style="display:inline-block;background:#7C4DFF;text-decoration:none;">Открыть бота в MAX →</a>
           <p style="font-size:.78rem;color:var(--muted);margin-top:1rem;">Ждём подтверждения...</p>
         </div>
@@ -3236,6 +3236,16 @@ function startMaxPolling(token) {
     try {
       const res = await fetch('/api/customer/max/check?token=' + encodeURIComponent(token));
       const data = await res.json();
+      if (!res.ok) {
+        clearInterval(maxPollTimer);
+        maxPollTimer = null;
+        const errEl = document.getElementById('account-max-error');
+        errEl.textContent = data.error || 'Ссылка для входа устарела. Попробуйте ещё раз.';
+        errEl.style.display = 'block';
+        document.getElementById('account-max-step-phone').style.display = 'block';
+        document.getElementById('account-max-step-waiting').style.display = 'none';
+        return;
+      }
       if (data.verified && data.token) {
         clearInterval(maxPollTimer);
         maxPollTimer = null;
@@ -3531,6 +3541,18 @@ function updateAccountNavButton(customer) {
   btn.style.background = 'rgba(242,173,61,.18)';
 }
 
+async function updateMaxLoginAvailability() {
+  const block = document.getElementById('account-max-block');
+  if (!block) return;
+  try {
+    const res = await fetch('/api/customer/max/status', { cache: 'no-store' });
+    const data = await res.json();
+    block.style.display = res.ok && data.enabled ? 'block' : 'none';
+  } catch (error) {
+    block.style.display = 'none';
+  }
+}
+
 async function renderAccountPage() {
   const token = getAccountToken();
   const guestView = document.getElementById('account-guest-view');
@@ -3553,6 +3575,7 @@ async function renderAccountPage() {
     guestView.style.display = 'block';
     loggedView.style.display = 'none';
     updateAccountNavButton(null);
+    updateMaxLoginAvailability();
     return;
   }
 

@@ -35,6 +35,7 @@ const { registerWinbackRoutes } = require('./winback');
 const { registerEconomicsRoutes } = require('./routes-economics');
 const { registerAuditRoutes } = require('./routes-audit');
 const { registerPublicMessageRoutes } = require('./routes-public-messages');
+const { registerMaxWebhookRoutes } = require('./routes-max-webhook');
 
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
 // Страницы партнёрских салонов дополнительно сохраняются отдельным снимком
@@ -90,6 +91,7 @@ registerWinbackRoutes(router);
 registerEconomicsRoutes(router);
 registerAuditRoutes(router);
 registerPublicMessageRoutes(router);
+registerMaxWebhookRoutes(router);
 
 function serveStatic(req, res, pathname) {
   const decoded = decodeURIComponent(pathname);
@@ -205,7 +207,9 @@ server.listen(PORT, () => {
   console.log(`Тайга: сервер запущен на порту ${PORT} (Node.js ${process.version})`);
   require('./backup').scheduleBackups();
   require('./telegram-login-poller').startPolling();
-  require('./max-bot').startPolling();
+  console.log(require('./max-bot').isConfigured()
+    ? 'MAX: сайт готов принимать события через /api/max/webhook'
+    : 'MAX: вход выключен — задайте MAX_BOT_TOKEN, MAX_BOT_USERNAME и MAX_WEBHOOK_SECRET');
 
   // Ежесуточная проверка уровней партнёров — ловит понижения даже у тех,
   // у кого давно не было заказов (иначе понижение сработало бы только при

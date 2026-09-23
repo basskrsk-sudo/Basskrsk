@@ -531,14 +531,20 @@ function registerAuthRoutes(router) {
     const { phone } = ctx.body || {};
     const digits = normalizePhoneDigits(phone);
     if (digits.length < 10) return sendJson(res, 400, { error: 'Укажите корректный номер телефона' });
-    if (!process.env.MAX_BOT_TOKEN) return sendJson(res, 503, { error: 'Вход через MAX пока не настроен на сервере' });
+    const { isConfigured } = require('./max-bot');
+    if (!isConfigured()) return sendJson(res, 503, { error: 'Вход через MAX пока не настроен на сервере' });
 
     const token = crypto.randomBytes(16).toString('hex');
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     db.prepare('INSERT INTO max_login_tokens (token, phone, expires_at) VALUES (?, ?, ?)').run(token, digits, expiresAt);
 
-    const botUsername = process.env.MAX_BOT_USERNAME || 'taiga_dog_bot';
+    const botUsername = String(process.env.MAX_BOT_USERNAME).replace(/^@/, '');
     sendJson(res, 200, { token, deep_link: 'https://max.ru/' + botUsername + '?start=' + token });
+  });
+
+  router.get('/api/customer/max/status', (req, res) => {
+    const { isConfigured } = require('./max-bot');
+    sendJson(res, 200, { enabled: isConfigured() });
   });
 
   // GET /api/customer/max/check?token=... — фронтенд опрашивает, подтвердил ли клиент вход в боте MAX
@@ -546,7 +552,9 @@ function registerAuthRoutes(router) {
     const token = ctx.query.token;
     if (!token) return sendJson(res, 400, { error: 'Укажите token' });
     const record = db.prepare('SELECT * FROM max_login_tokens WHERE token = ?').get(token);
-    if (!record) return sendJson(res, 404, { error: 'Токен не найден' });
+    if (!record || new Date(record.expires_at).getTime() <= Date.now()) {
+      return sendJson(res, 404, { error: 'Ссылка устарела. Запросите вход заново.' });
+    }
     if (!record.verified) return sendJson(res, 200, { verified: false });
 
     let customer = db.prepare('SELECT * FROM customers WHERE phone = ?').get(record.phone);
@@ -554,8 +562,13 @@ function registerAuthRoutes(router) {
       const info = db.prepare('INSERT INTO customers (phone, orders_count, total_spent) VALUES (?, 0, 0)').run(record.phone);
       customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(info.lastInsertRowid);
     }
+    if (record.chat_id && record.chat_id !== customer.max_chat_id) {
+      db.prepare('UPDATE customers SET max_chat_id = ? WHERE id = ?').run(String(record.chat_id), customer.id);
+      customer.max_chat_id = String(record.chat_id);
+    }
     const authToken = signToken({ role: 'customer', id: customer.id });
-    const { password_hash, ...safeUser } = customer;
+    const { password_hash, max_chat_id, ...safeUser } = customer;
+    safeUser.max_connected = !!max_chat_id;
     sendJson(res, 200, { verified: true, token: authToken, user: safeUser });
   });
 

@@ -248,7 +248,34 @@ TG_CHAT_ID=ваш_chat_id
 # Текущий адрес бота без @. Меняйте только после смены username в BotFather:
 TG_BOT_USERNAME=taiga_dog_bot
 TOKEN_SECRET=любая_длинная_случайная_строка_для_подписи_токенов_входа
+# MAX: токен и username одобренного бота, username без символа @
+MAX_BOT_TOKEN=токен_бота_MAX
+MAX_BOT_USERNAME=username_бота_MAX
+# Случайная строка 32+ символа: A-Z, a-z, 0-9, _ и -
+MAX_WEBHOOK_SECRET=отдельный_секрет_MAX_webhook
 ```
+
+### MAX-бот «ХвостМаркет»
+
+Сайт принимает события MAX по адресу:
+
+`https://ваш-домен/api/max/webhook`
+
+После деплоя и добавления трёх переменных зарегистрируйте Webhook один раз:
+
+```bash
+curl -X POST "https://platform-api2.max.ru/subscriptions" \
+  -H "Authorization: ВАШ_MAX_BOT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://ваш-домен/api/max/webhook",
+    "update_types": ["bot_started", "message_created"],
+    "secret": "ВАШ_MAX_WEBHOOK_SECRET"
+  }'
+```
+
+Ожидаемый ответ: `{"success":true}`. Токен и webhook-секрет нельзя
+публиковать в коде, логах или переписке.
 
 ### Telegram-бот «ХвостМаркет»
 
