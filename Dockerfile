@@ -3,6 +3,26 @@
 # внешней npm-зависимости — nothing to "npm install" вообще.
 FROM node:22-alpine
 
+# API MAX использует цепочку Russian Trusted CA (Минцифры), которой нет в
+# стандартном хранилище Alpine/Node.js. Берём оба публичных сертификата только
+# с официального CDN Госуслуг, проверяем, что это действительно CA Минцифры,
+# и добавляем их в хранилище контейнера. NODE_EXTRA_CA_CERTS нужен отдельно:
+# встроенный fetch Node.js по умолчанию использует собственный набор корней.
+RUN apk add --no-cache ca-certificates openssl curl && \
+    curl --fail --silent --show-error --location --retry 4 \
+      https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt \
+      --output /usr/local/share/ca-certificates/russian_trusted_root_ca.crt && \
+    curl --fail --silent --show-error --location --retry 4 \
+      https://gu-st.ru/content/lending/russian_trusted_sub_ca_pem.crt \
+      --output /usr/local/share/ca-certificates/russian_trusted_sub_ca.crt && \
+    openssl x509 -in /usr/local/share/ca-certificates/russian_trusted_root_ca.crt \
+      -noout -subject | grep -F 'Russian Trusted Root CA' && \
+    openssl x509 -in /usr/local/share/ca-certificates/russian_trusted_sub_ca.crt \
+      -noout -subject | grep -F 'Russian Trusted Sub CA' && \
+    update-ca-certificates
+
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
 # ImageMagick — для сжатия/изменения размера картинок товаров и фотографий
 # салонов, загружаемых через кабинеты (без него сервер не сможет обработать
 # загруженные изображения).
