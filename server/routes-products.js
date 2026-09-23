@@ -522,6 +522,7 @@ function registerProductRoutes(router) {
     const tempPath = path.join(UPLOADS_DIR, `tmp-salon-${id}.${srcExt}`);
     let finalName = `salon-${safePointId}-${id}.webp`;
     const finalPath = path.join(UPLOADS_DIR, finalName);
+    let storedPath = finalPath;
 
     try {
       fs.writeFileSync(tempPath, buffer);
@@ -545,6 +546,7 @@ function registerProductRoutes(router) {
       const fallbackPath = path.join(UPLOADS_DIR, finalName);
       try {
         fs.renameSync(tempPath, fallbackPath);
+        storedPath = fallbackPath;
         console.warn('Фото салона сохранено без серверной конвертации:', rawError.slice(0, 300));
       } catch (fallbackError) {
         try { fs.unlinkSync(tempPath); } catch (cleanupError) {}
@@ -563,7 +565,7 @@ function registerProductRoutes(router) {
       `).run(nextPhotos[0], JSON.stringify(nextPhotos), updatedAt, point.id);
       writeSalonPagesSnapshot();
     } catch (error) {
-      try { fs.unlinkSync(finalPath); } catch (cleanupError) {}
+      try { fs.unlinkSync(storedPath); } catch (cleanupError) {}
       throw error;
     }
     sendJson(res, 201, { ok: true, path: publicPath, photos: nextPhotos });
@@ -657,7 +659,7 @@ function registerProductRoutes(router) {
     // и старые изображения других подсистем никогда не трогаем.
     for (const removedUrl of currentPhotos.filter((url) => !nextPhotos.includes(url))) {
       const fileName = path.basename(removedUrl);
-      if (!/^salon-[a-zA-Z0-9_-]+-[a-f0-9]{16}\.webp$/.test(fileName)) continue;
+      if (!/^salon-[a-zA-Z0-9_-]+-[a-f0-9]{16}\.(?:jpe?g|png|webp)$/.test(fileName)) continue;
       try { fs.unlinkSync(path.join(UPLOADS_DIR, fileName)); }
       catch (error) { if (error.code !== 'ENOENT') console.error(`Не удалось удалить старое фото салона: ${error.message}`); }
     }
@@ -688,11 +690,22 @@ function registerProductRoutes(router) {
   // (для витрины "Наши партнёры" на сайте).
   router.get('/api/salons', (req, res) => {
     const rows = db.prepare(`
-      SELECT id, name, addr, salon_tagline, salon_photo_url
+      SELECT id, name, addr, salon_tagline, salon_photo_url, salon_photo_urls
       FROM points WHERE active = 1 AND salon_page_published = 1
       ORDER BY name
     `).all();
-    sendJson(res, 200, { salons: rows });
+    const salons = rows.map((salon) => {
+      const photos = normalizeSalonPhotoUrls(salon.salon_photo_urls, salon.salon_photo_url);
+      return {
+        id: salon.id,
+        name: salon.name,
+        addr: salon.addr,
+        salon_tagline: salon.salon_tagline,
+        salon_photo_url: photos[0] || null,
+        photo_count: photos.length,
+      };
+    });
+    sendJson(res, 200, { salons });
   });
 
   // GET /api/partner-showcase-points — безопасный публичный список реально
@@ -708,17 +721,21 @@ function registerProductRoutes(router) {
       WHERE p.active = 1
       ORDER BY COALESCE(c.name, ''), p.name
     `).all();
-    const points = rows.map((point) => ({
-      id: point.id,
-      name: point.name,
-      addr: point.addr,
-      icon: point.icon,
-      city_id: point.city_id,
-      city_name: point.city_name,
-      tagline: point.salon_tagline,
-      photo: normalizeSalonPhotoUrls(point.salon_photo_urls, point.salon_photo_url)[0] || null,
-      salon_page_published: !!point.salon_page_published,
-    }));
+    const points = rows.map((point) => {
+      const photos = normalizeSalonPhotoUrls(point.salon_photo_urls, point.salon_photo_url);
+      return {
+        id: point.id,
+        name: point.name,
+        addr: point.addr,
+        icon: point.icon,
+        city_id: point.city_id,
+        city_name: point.city_name,
+        tagline: point.salon_tagline,
+        photo: photos[0] || null,
+        photo_count: photos.length,
+        salon_page_published: !!point.salon_page_published,
+      };
+    });
     sendJson(res, 200, { points });
   });
 

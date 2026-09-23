@@ -569,13 +569,26 @@
   }
   .partner-point-card {
     overflow: hidden; background: var(--white); border: 1px solid var(--border);
-    border-radius: 16px; box-shadow: var(--shadow);
+    border-radius: 16px; box-shadow: var(--shadow); position: relative;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  .partner-point-card.is-clickable { cursor: pointer; }
+  .partner-point-card.is-clickable:hover,
+  .partner-point-card.is-clickable:focus-visible {
+    transform: translateY(-3px); border-color: var(--amber);
+    box-shadow: 0 15px 36px rgba(10,74,56,.16); outline: none;
   }
   .partner-point-photo {
     height: 180px; background: linear-gradient(135deg, #DDEEE6, #FFF1CE);
     display: flex; align-items: center; justify-content: center; overflow: hidden;
   }
   .partner-point-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .partner-point-photo-count {
+    position: absolute; top: 12px; right: 12px; z-index: 1;
+    padding: .3rem .55rem; border-radius: 999px;
+    background: rgba(10,74,56,.88); color: #fff;
+    font-size: .68rem; font-weight: 700; backdrop-filter: blur(4px);
+  }
   .partner-point-placeholder { text-align: center; color: var(--forest); }
   .partner-point-placeholder span { display: block; font-size: 2.2rem; margin-bottom: .25rem; }
   .partner-point-placeholder strong { font-size: .76rem; letter-spacing: .06em; text-transform: uppercase; }
@@ -1686,7 +1699,7 @@
     <div class="partner-recruit-inner">
       <div class="partner-recruit-copy">
         <div class="partner-recruit-kicker">Для груминг-салонов и ветклиник</div>
-        <h1>Дополнительный доход с ваших клиентов — <em>без вложений в товар</em></h1>
+        <h1>Дополнительный доход — <em>без вложений в товар</em></h1>
         <p>Разместите компактный хвостомат у себя. Мы предоставим стойку и товар, организуем оплату, учёт и пополнение. Вы получаете долю с каждой продажи и даёте клиентам полезный сервис прямо в салоне.</p>
         <div class="partner-recruit-actions">
           <button class="btn-primary" onclick="document.getElementById('partnerFormAnchor').scrollIntoView({behavior:'smooth'})">Получить стойку бесплатно</button>
@@ -3915,6 +3928,7 @@ function onBonesInputChange(el) {
 
 let currentDetailId = null;
 let detailQty = 1;
+let currentSalonPointId = null;
 
 // ── NAVIGATION ────────────────────────────────────────
 function showPage(id) {
@@ -3931,8 +3945,16 @@ function showPage(id) {
   // салонов. При переходе в другой раздел параметр удаляется, чтобы обновление
   // страницы не возвращало пользователя в уже закрытую вкладку.
   const pageUrl = new URL(window.location.href);
-  if (id === 'partners') pageUrl.searchParams.set('page', 'partners');
-  else pageUrl.searchParams.delete('page');
+  if (id === 'partners' || id === 'salons') {
+    pageUrl.searchParams.set('page', id);
+    pageUrl.searchParams.delete('salon');
+  } else if (id === 'salon' && currentSalonPointId) {
+    pageUrl.searchParams.set('page', 'salon');
+    pageUrl.searchParams.set('salon', currentSalonPointId);
+  } else {
+    pageUrl.searchParams.delete('page');
+    pageUrl.searchParams.delete('salon');
+  }
   window.history.replaceState(null, '', pageUrl.pathname + pageUrl.search + pageUrl.hash);
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (id === 'catalog') renderCatalog();
@@ -5847,6 +5869,7 @@ function escapeHtml(str) {
 }
 
 async function showSalonPage(code) {
+  currentSalonPointId = String(code || '');
   showPage('salon');
   document.getElementById('salon-loading').style.display = 'block';
   document.getElementById('salon-notfound').style.display = 'none';
@@ -5927,13 +5950,21 @@ async function renderSalonsDirectory() {
     }
     emptyEl.style.display = 'none';
     grid.innerHTML = salons.map((s) => `
-      <div class="product-card" onclick="showSalonPage('${escapeHtml(s.id)}')" style="cursor:pointer;">
+      <div class="product-card" role="link" tabindex="0" data-salon-directory-id="${escapeHtml(s.id)}" style="cursor:pointer;">
         <div class="product-thumb">${s.salon_photo_url ? `<img src="${escapeHtml(s.salon_photo_url)}" alt="${escapeHtml(s.name)}" loading="lazy" onerror="this.outerHTML='<span>🏠</span>'">` : '<span>🏠</span>'}</div>
         <div class="product-body">
           <h3>${escapeHtml(s.name)}</h3>
           <div class="weight">${escapeHtml(s.salon_tagline || s.addr || '')}</div>
+          <div style="margin-top:.65rem;color:var(--forest);font-size:.78rem;font-weight:700;">Подробнее${s.photo_count ? ` · ${s.photo_count} ${s.photo_count === 1 ? 'фото' : (s.photo_count < 5 ? 'фото' : 'фотографий')}` : ''} →</div>
         </div>
       </div>`).join('');
+    grid.querySelectorAll('[data-salon-directory-id]').forEach((card) => {
+      const open = () => showSalonPage(card.dataset.salonDirectoryId);
+      card.addEventListener('click', open);
+      card.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
+      });
+    });
   } catch (e) {
     grid.innerHTML = '';
     emptyEl.style.display = 'block';
@@ -5978,10 +6009,17 @@ async function renderPartnerWorkingPoints() {
         ? `<img src="${escapeHtml(point.photo)}" alt="${escapeHtml(point.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block';">${placeholder}`
         : placeholder;
       const salonButton = point.salon_page_published
-        ? `<button class="btn-outline" type="button" data-point-action="salon" data-point-id="${escapeHtml(point.id)}">О салоне</button>`
+        ? `<button class="btn-outline" type="button" data-point-action="salon" data-point-id="${escapeHtml(point.id)}">Подробнее и все фото${point.photo_count ? ` (${point.photo_count})` : ''}</button>`
         : '';
-      return `<article class="partner-point-card">
-        <div class="partner-point-photo">${photo}</div>
+      const cardClass = point.salon_page_published ? 'partner-point-card is-clickable' : 'partner-point-card';
+      const cardAttrs = point.salon_page_published
+        ? ` role="link" tabindex="0" data-salon-card-id="${escapeHtml(point.id)}"`
+        : '';
+      const photoCount = point.salon_page_published && point.photo_count
+        ? `<span class="partner-point-photo-count">📷 ${point.photo_count}</span>`
+        : '';
+      return `<article class="${cardClass}"${cardAttrs}>
+        <div class="partner-point-photo">${photo}${photoCount}</div>
         <div class="partner-point-body">
           <div class="partner-point-city">${escapeHtml(point.city_name || 'Точка сети')}</div>
           <h3>${escapeHtml(point.name)}</h3>
@@ -5995,9 +6033,17 @@ async function renderPartnerWorkingPoints() {
       </article>`;
     }).join('');
     grid.querySelectorAll('[data-point-action]').forEach((button) => {
-      button.addEventListener('click', () => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
         if (button.dataset.pointAction === 'salon') showSalonPage(button.dataset.pointId);
         else openPartnerPointCatalog(button.dataset.pointId);
+      });
+    });
+    grid.querySelectorAll('[data-salon-card-id]').forEach((card) => {
+      const open = () => showSalonPage(card.dataset.salonCardId);
+      card.addEventListener('click', open);
+      card.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
       });
     });
     partnerWorkingPointsLoaded = true;
@@ -6616,9 +6662,11 @@ Promise.all([loadProducts(), loadSitePoints(), loadSiteCities()]).then(function(
   renderHeroProductExamples();
   renderFeatured();
   renderCatalog(); // на случай, если каталог уже был открыт до того, как товары успели загрузиться
-  if (new URLSearchParams(window.location.search).get('page') === 'partners') {
-    showPage('partners');
-  }
+  const initialParams = new URLSearchParams(window.location.search);
+  const initialPage = initialParams.get('page');
+  if (initialPage === 'partners') showPage('partners');
+  else if (initialPage === 'salons') showPage('salons');
+  else if (initialPage === 'salon' && initialParams.get('salon')) showSalonPage(initialParams.get('salon'));
 });
 handleRedirectPaymentReturn();
 loadPublicNews();
