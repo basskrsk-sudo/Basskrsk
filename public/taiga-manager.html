@@ -1568,7 +1568,7 @@ function qrGenerate() {
         <img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" class="qr-logo-full">
         <div class="qr-caption">${isStand ? 'Сканируйте — узнайте, как купить за минуту' : 'Сканируйте для быстрой покупки этого товара'}</div>
         <div class="qr-box" id="${cardId}"></div>
-        <div class="qr-product">${isStand ? '📱 Как купить в Хвостомате' : item.product.icon + ' ' + item.product.name}</div>
+        <div class="qr-product">${isStand ? '📱 Как купить в минимаркете' : item.product.icon + ' ' + item.product.name}</div>
         <div class="qr-price">${isStand ? 'Инструкция + каталог этой точки' : item.product.price + ' ₽ · ' + item.product.weight}</div>
         <div class="qr-url">${url}</div>
       </div>
@@ -1792,7 +1792,7 @@ async function qrDownloadOne(cardId, name, standMode) {
 
   const measureCtx = document.createElement('canvas').getContext('2d');
   measureCtx.font = 'bold 13px Arial';
-  const titleLines = qrWrapText(measureCtx, standMode ? 'Как купить в Хвостомате' : 'Для покупки отсканируйте здесь', sz - pad * 2);
+  const titleLines = qrWrapText(measureCtx, standMode ? 'Как купить в минимаркете' : 'Для покупки отсканируйте здесь', sz - pad * 2);
   measureCtx.font = '11px Arial';
   const subLines = qrWrapText(measureCtx, standMode ? 'Товар → QR на упаковке → оплата → заберите' : 'Карточка товара откроется сразу', sz - pad * 2);
 

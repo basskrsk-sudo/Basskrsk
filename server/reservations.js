@@ -51,7 +51,7 @@ function resolveInventorySource({ fulfillmentType, pointId, needsDelivery, cityI
   }
 
   if (!pointId) {
-    throw reservationError('Для оплаты выберите хвостомат из списка', 'POINT_REQUIRED', 400);
+    throw reservationError('Для оплаты выберите минимаркет из списка', 'POINT_REQUIRED', 400);
   }
   const point = db.prepare('SELECT id, city_id FROM points WHERE id = ? AND active = 1').get(pointId);
   if (!point) {
@@ -126,20 +126,27 @@ function reserveForOrder(orderId, source, items, bonesCustomerId, bonesAmount) {
   }
 }
 
+// Вариант без собственной BEGIN/COMMIT — только для вызывающего кода, который
+// уже открыл транзакцию. Нужен, например, при атомарном удалении заказа:
+// SQLite не допускает BEGIN внутри другой активной транзакции.
+function releaseOrderReservationInTransaction(orderId, nextOrderStatus = 'failed', reason = 'Оплата отменена или время резерва истекло') {
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+  if (!order || order.reservation_status !== 'active') return { released: false, order };
+  const items = db.prepare('SELECT * FROM order_items WHERE order_id = ? AND is_custom = 0').all(order.id);
+  restoreInventory(order.inventory_source_type, order.inventory_source_id, items);
+  releaseReservedBones(order.id, reason);
+  db.prepare(`
+    UPDATE orders SET reservation_status = 'released',
+      status = CASE WHEN ? IS NULL THEN status ELSE ? END
+    WHERE id = ? AND reservation_status = 'active'
+  `).run(nextOrderStatus, nextOrderStatus, order.id);
+  return { released: true, order: db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id), items };
+}
+
 function releaseOrderReservation(orderId, nextOrderStatus = 'failed', reason = 'Оплата отменена или время резерва истекло') {
-  return withImmediateTransaction(() => {
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-    if (!order || order.reservation_status !== 'active') return { released: false, order };
-    const items = db.prepare('SELECT * FROM order_items WHERE order_id = ? AND is_custom = 0').all(order.id);
-    restoreInventory(order.inventory_source_type, order.inventory_source_id, items);
-    releaseReservedBones(order.id, reason);
-    db.prepare(`
-      UPDATE orders SET reservation_status = 'released',
-        status = CASE WHEN ? IS NULL THEN status ELSE ? END
-      WHERE id = ? AND reservation_status = 'active'
-    `).run(nextOrderStatus, nextOrderStatus, order.id);
-    return { released: true, order: db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id), items };
-  });
+  return withImmediateTransaction(() =>
+    releaseOrderReservationInTransaction(orderId, nextOrderStatus, reason)
+  );
 }
 
 function consumeOrderReservation(orderId) {
@@ -186,6 +193,7 @@ module.exports = {
   resolveInventorySource,
   reserveForOrder,
   releaseOrderReservation,
+  releaseOrderReservationInTransaction,
   consumeOrderReservation,
   listExpiredActiveReservations,
   restorePaidOrderInventory,

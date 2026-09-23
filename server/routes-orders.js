@@ -10,7 +10,11 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth, requireSuperAdmin } = require('./routes-auth');
 const { reverseOrderSideEffects } = require('./order-reversal');
-const { releaseOrderReservation, restorePaidOrderInventory } = require('./reservations');
+const {
+  releaseOrderReservation,
+  releaseOrderReservationInTransaction,
+  restorePaidOrderInventory,
+} = require('./reservations');
 
 function registerOrderRoutes(router) {
   // GET /api/orders — список заказов для админки (последние сверху)
@@ -158,7 +162,7 @@ function registerOrderRoutes(router) {
       if (order.status === 'paid' && force) {
         reverseOrderSideEffects(order, !!restore_stock);
       } else if (order.reservation_status === 'active') {
-        releaseOrderReservation(order.id, null, 'Заказ удалён — резерв освобождён');
+        releaseOrderReservationInTransaction(order.id, null, 'Заказ удалён — резерв освобождён');
       }
       // bone_transactions намеренно не имеет ON DELETE CASCADE: обычное
       // удаление заказа не должно бесследно стирать историю лояльности.
@@ -202,7 +206,9 @@ function registerOrderRoutes(router) {
       db.exec('BEGIN IMMEDIATE');
       for (const order of allOrders) {
         if (order.status === 'paid') reverseOrderSideEffects(order, !!restore_stock);
-        else if (order.reservation_status === 'active') releaseOrderReservation(order.id, null, 'Заказ удалён — резерв освобождён');
+        else if (order.reservation_status === 'active') {
+          releaseOrderReservationInTransaction(order.id, null, 'Заказ удалён — резерв освобождён');
+        }
         db.prepare('DELETE FROM bone_transactions WHERE order_id = ?').run(order.id);
       }
       const info = db.prepare('DELETE FROM orders').run();

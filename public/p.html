@@ -224,7 +224,7 @@ async function boot() {
     if (!CTX.point) {
       state('<div class="state"><div class="em">📍</div><h2>Точка не найдена</h2>'
         + '<p>Возможно, QR-код устарел или точка временно не работает.</p>'
-        + '<button class="link-btn" onclick="location.href=\'/\'">Найти другой хвостомат</button></div>');
+        + '<button class="link-btn" onclick="location.href=\'/\'">Найти другой минимаркет</button></div>');
       return;
     }
     var prod = (products || []).find(function(x) { return x.slug === p.product || String(x.id) === String(p.product); });

@@ -225,7 +225,7 @@ function registerProductRoutes(router) {
     sendJson(res, 200, { points: rows });
   });
 
-  // GET /api/points/available-for-registration — публичный список хвостоматов,
+  // GET /api/points/available-for-registration — публичный список минимаркетов,
   // на которые можно зарегистрироваться партнёром (активные). На одной точке
   // может работать несколько партнёров одновременно (см. orders.partner_id
   // и выбор грумера в чекауте на сайте) — поэтому список НЕ исключает точки,

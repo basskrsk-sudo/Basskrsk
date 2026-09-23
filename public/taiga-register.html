@@ -218,7 +218,7 @@ canvas#sigCanvas.has-sig{border-color:var(--deep);}
       <input type="tel" id="f-phone" placeholder="+7 (900) 000-00-00">
     </div>
     <div class="field">
-      <label>Хвостомат <span class="req">*</span></label>
+      <label>Минимаркет <span class="req">*</span></label>
       <select id="f-point">
         <option value="">Загружаем список...</option>
       </select>
@@ -280,10 +280,10 @@ async function loadAvailablePoints() {
     const data = await res.json();
     AVAILABLE_POINTS = data.points || [];
     if (!AVAILABLE_POINTS.length) {
-      sel.innerHTML = '<option value="">Свободных хвостоматов сейчас нет</option>';
+      sel.innerHTML = '<option value="">Свободных минимаркетов сейчас нет</option>';
       return;
     }
-    sel.innerHTML = '<option value="">— Выберите хвостомат —</option>' +
+    sel.innerHTML = '<option value="">— Выберите минимаркет —</option>' +
       AVAILABLE_POINTS.map(function(p) {
         return '<option value="' + p.id + '">' + p.icon + ' ' + p.name + ' — ' + p.addr + '</option>';
       }).join('');
@@ -342,7 +342,7 @@ function validateForm() {
   if (!document.getElementById('f-lname').value.trim()) { setFieldError('f-lname', 'Укажите фамилию'); ok = false; }
   const phone = document.getElementById('f-phone').value.trim();
   if (!phone || phone.replace(/\D/g,'').length < 11) { setFieldError('f-phone', 'Укажите телефон полностью'); ok = false; }
-  if (!document.getElementById('f-point').value) { setFieldError('f-point', 'Выберите хвостомат'); ok = false; }
+  if (!document.getElementById('f-point').value) { setFieldError('f-point', 'Выберите минимаркет'); ok = false; }
   if (!document.getElementById('f-login').value.trim()) { setFieldError('f-login', 'Придумайте логин'); ok = false; }
   if (document.getElementById('f-password').value.length < 6) { setFieldError('f-password', 'Не короче 6 символов'); ok = false; }
   return ok;
@@ -402,7 +402,7 @@ async function submitForm() {
     document.getElementById('success-details').innerHTML =
       '<strong>Партнёр:</strong> ' + ln + ' ' + fn + '<br>' +
       '<strong>Телефон:</strong> ' + phone + '<br>' +
-      '<strong>Хвостомат:</strong> ' + (selectedPoint ? selectedPoint.icon + ' ' + selectedPoint.name + ' — ' + selectedPoint.addr : '') + '<br>' +
+      '<strong>Минимаркет:</strong> ' + (selectedPoint ? selectedPoint.icon + ' ' + selectedPoint.name + ' — ' + selectedPoint.addr : '') + '<br>' +
       '<strong>Код партнёра:</strong> ' + data.partner_code;
   } catch (e) {
     errBox.textContent = e.message;

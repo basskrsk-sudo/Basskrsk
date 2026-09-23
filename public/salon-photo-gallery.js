@@ -124,7 +124,7 @@
       const image = document.createElement('img');
       image.src = url;
       image.alt = 'Фото салона ' + (index + 1);
-      image.style.cssText = 'display:block;width:100%;height:105px;object-fit:cover;';
+      image.style.cssText = 'display:block;width:100%;height:105px;object-fit:contain;background:#E9E5DE;';
       image.onerror = () => { image.style.display = 'none'; };
       card.appendChild(image);
 

@@ -65,7 +65,7 @@ function registerPartnerRoutes(router) {
     } = ctx.body || {};
 
     if (!full_name || !phone || !point_id || !login || !password) {
-      return sendJson(res, 400, { error: 'Заполните ФИО, телефон, выберите хвостомат, укажите логин и пароль' });
+      return sendJson(res, 400, { error: 'Заполните ФИО, телефон, выберите минимаркет, укажите логин и пароль' });
     }
     if (String(password).length < 6) {
       return sendJson(res, 400, { error: 'Пароль должен быть не короче 6 символов' });
@@ -73,12 +73,12 @@ function registerPartnerRoutes(router) {
     const existingLogin = db.prepare('SELECT id FROM partners WHERE login = ?').get(login);
     if (existingLogin) return sendJson(res, 409, { error: 'Такой логин уже занят' });
 
-    // Регистрация возможна только на уже существующий хвостомат — его
+    // Регистрация возможна только на уже существующий минимаркет — его
     // заранее создаёт администратор или менеджер. Свободный ввод названия
     // и адреса убран: раньше грумер мог "создать" точку прямо в форме, что
     // приводило к дублям и точкам без реального контроля со стороны сети.
     const point = db.prepare('SELECT * FROM points WHERE id = ? AND active = 1').get(point_id);
-    if (!point) return sendJson(res, 400, { error: 'Хвостомат не найден или отключён' });
+    if (!point) return sendJson(res, 400, { error: 'Минимаркет не найден или отключён' });
     // На одной точке может работать несколько партнёров одновременно (см.
     // orders.partner_id и выбор грумера в чекауте на сайте — это штатный,
     // уже реализованный сценарий, не ограничение "один партнёр на точку").
