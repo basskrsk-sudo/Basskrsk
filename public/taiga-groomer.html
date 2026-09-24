@@ -625,12 +625,22 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
     <!-- ══ REFERRAL ══ -->
     <div class="page-sec" id="sec-referral">
       <div class="ref-card">
+        <div class="ref-title">Моя ссылка для покупателей</div>
+        <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Покупатель сразу увидит вашу точку, а вы будете указаны как советник</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Отправьте эту ссылку клиенту. Выбор сохранится в оформлении заказа, но клиент при желании сможет его изменить.</div>
+        <div class="ref-link-wrap">
+          <span class="ref-link" id="customer-link-text">Ссылка появится после входа</span>
+          <button class="copy-btn" onclick="copyLink('customer-link-text', this)">Скопировать</button>
+        </div>
+      </div>
+
+      <div class="ref-card">
         <div class="ref-title">Мой промокод для привлечения новых точек</div>
         <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Приглашайте партнёров — получайте 1 000 ₽ за каждого</div>
         <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Бонус за запуск точки — 2 000 ₽ — делится поровну между вами и менеджером, который нашёл саму точку: вам 1 000 ₽, когда точка приглашённого партнёра заработает «Тайге» 2 000 ₽ прибыли.</div>
         <div class="ref-link-wrap">
           <span class="ref-link" id="ref-link-text">тайга-корм.рф/taiga-register.html?ref=GR-001</span>
-          <button class="copy-btn" onclick="copyRef()">Скопировать</button>
+          <button class="copy-btn" onclick="copyLink('ref-link-text', this)">Скопировать</button>
         </div>
       </div>
 
@@ -1133,6 +1143,14 @@ async function onPartnerLoginSuccess(data) {
   if (refLinkEl && data.user.partner_code) {
     refLinkEl.textContent = 'тайга-корм.рф/taiga-register.html?ref=' + data.user.partner_code;
   }
+  const customerLinkEl = document.getElementById('customer-link-text');
+  if (customerLinkEl && data.user.id && data.user.point_id) {
+    const customerUrl = new URL('/', window.location.origin);
+    customerUrl.searchParams.set('ref', data.user.point_id);
+    customerUrl.searchParams.set('partner', data.user.id);
+    if (data.user.city_id) customerUrl.searchParams.set('city', data.user.city_id);
+    customerLinkEl.textContent = customerUrl.toString();
+  }
 
   await loadMyStock();
 
@@ -1556,10 +1574,9 @@ async function renderOrders(){
 // на вкладке "Реферальная программа", только ссылка-приглашение.
 
 // ── ACTIONS ──────────────────────────────────────────────────────────
-function copyRef(){
-  const txt=document.getElementById('ref-link-text').textContent;
+function copyLink(elementId, btn){
+  const txt=document.getElementById(elementId).textContent;
   navigator.clipboard?.writeText(txt).catch(()=>{});
-  const btn=document.querySelector('.copy-btn');
   btn.textContent='Скопировано!'; btn.style.background='#2D5A3F';
   setTimeout(()=>{btn.textContent='Скопировать';btn.style.background='';},2000);
 }

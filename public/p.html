@@ -73,11 +73,11 @@
   .panel { background:#fff; border:1px solid var(--border); border-radius:16px; padding:16px; margin-top:8px; }
   .panel h2 { font-size:18px; color:var(--forest); margin-bottom:12px; }
   label { display:block; font-size:13px; font-weight:600; color:var(--text); margin-bottom:6px; }
-  input[type=tel] {
+  input[type=tel], .checkout-select {
     width:100%; border:1.5px solid var(--border); border-radius:10px; padding:13px 14px;
     font-size:16px; font-family:inherit; color:var(--text); background:var(--cream); outline:none;
   }
-  input[type=tel]:focus { border-color:var(--deep); }
+  input[type=tel]:focus, .checkout-select:focus { border-color:var(--deep); }
   .err { display:none; color:#B3261E; font-size:13px; margin-top:8px; }
   .note { background:var(--warn-bg); border-radius:10px; padding:10px 12px; font-size:12.5px; color:var(--deep); line-height:1.5; margin-top:12px; display:none; }
   #yk-box { display:none; margin-top:14px; }
@@ -92,7 +92,18 @@
   .success .big { font-size:56px; margin-bottom:12px; }
   .success h2 { font-size:24px; color:var(--forest); margin-bottom:8px; }
   .success p { font-size:15px; line-height:1.6; color:var(--muted); }
+  .take-product { font-size:20px; line-height:1.3; font-weight:800; color:var(--forest); margin:16px 0 6px; }
+  .success-product { margin:16px 0 0; padding:12px; border-radius:12px; background:var(--cream); border:1px solid var(--border); }
+  .success-product b { display:block; color:var(--text); font-size:15px; margin-bottom:3px; }
+  .success-product span { color:var(--muted); font-size:13px; }
   .order-code { display:inline-block; background:var(--mint); color:var(--forest); font-weight:700; border-radius:8px; padding:6px 14px; margin-top:12px; font-size:15px; }
+  .notify-title { margin:20px 0 8px; color:var(--forest); font-size:14px; font-weight:800; }
+  .notify-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .notify-card { padding:10px; border:1px solid var(--border); border-radius:10px; background:#fff; font-size:12px; color:var(--muted); }
+  .notify-card b { display:block; color:var(--forest); font-size:13px; margin-bottom:4px; }
+  .notify-card button { width:100%; margin-top:8px; padding:8px 6px; border:0; border-radius:8px; color:#fff; font:700 12px 'Manrope',sans-serif; cursor:pointer; }
+  .notify-status { margin-top:6px; font-size:11px; line-height:1.35; }
+  @media(max-width:390px){.notify-grid{grid-template-columns:1fr}}
 
   .state { text-align:center; padding:48px 16px; color:var(--muted); }
   .state .em { font-size:44px; margin-bottom:12px; }
@@ -113,9 +124,37 @@
   <footer>ХвостМаркет · оплата через ЮKassa · <a href="/privacy-policy.html">конфиденциальность</a></footer>
 </div>
 
+<script src="/config.js"></script>
 <script>
 'use strict';
 var app = document.getElementById('app');
+
+/* ── Яндекс Метрика: тот же счётчик, что на основном сайте ── */
+(function initMetrika() {
+  var counterId = window.TAIGA_CONFIG && window.TAIGA_CONFIG.YANDEX_METRICA_ID;
+  if (!counterId) return;
+  (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+  m[i].l=1*new Date();
+  for (var j=0;j<document.scripts.length;j++){if(document.scripts[j].src===r){return;}}
+  k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+  (window,document,'script','https://mc.yandex.ru/metrika/tag.js','ym');
+  window.ym(counterId,'init',{clickmap:true,trackLinks:true,accurateTrackBounce:true,webvisor:true});
+  window._metricaCounterId = counterId;
+})();
+
+function trackGoal(goalName, params) {
+  if (window.ym && window._metricaCounterId) {
+    window.ym(window._metricaCounterId, 'reachGoal', goalName, params || {});
+  }
+}
+function trackGoalOnce(goalName, uniqueKey, params) {
+  var storageKey = 'hvostmarket_goal:' + goalName + ':' + String(uniqueKey || 'session');
+  try {
+    if (sessionStorage.getItem(storageKey)) return;
+    sessionStorage.setItem(storageKey, '1');
+  } catch (e) { /* продолжаем без защиты, если хранилище недоступно */ }
+  trackGoal(goalName, params);
+}
 
 /* ── Параметры: /p/{точка}/{товар} или старый формат ?ref=&product= ── */
 function parseParams() {
@@ -137,7 +176,27 @@ function normPhone(p) {
   return null;
 }
 
-var CTX = { point: null, product: null, variants: [], selVariant: null, checkout: null };
+var KNOWN_PHONE_KEY = 'taiga_known_phone';
+function rememberPhone(phone) {
+  var digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length >= 10) localStorage.setItem(KNOWN_PHONE_KEY, '7' + digits.slice(-10));
+}
+function knownPhone() {
+  var digits = localStorage.getItem(KNOWN_PHONE_KEY) || '';
+  if (digits.length === 10) digits = '7' + digits;
+  return digits.length === 11 ? '+' + digits : '+7';
+}
+
+function rememberQrPoint(point) {
+  if (!point || !point.id) return;
+  var cityId = point.city_id || localStorage.getItem('taiga_city') || 'krsk';
+  localStorage.setItem('taiga_city', cityId);
+  localStorage.setItem('hvostmarket_catalog_point:' + cityId, String(point.id));
+}
+
+var CTX = { point: null, product: null, variants: [], selVariant: null, checkout: null, partners: [] };
+var SUCCESS_PHONE = '';
+var SUCCESS_ORDER_ID = '';
 var YOOKASSA_WIDGET_URL = 'https://yookassa.ru/checkout-widget/v1/checkout-widget.js';
 var widgetLoadPromise = null;
 
@@ -211,7 +270,8 @@ async function boot() {
   try {
     var responses = await Promise.all([
       fetch('/api/products', { cache: 'no-store' }),
-      fetch('/api/points', { cache: 'no-store' })
+      fetch('/api/points', { cache: 'no-store' }),
+      fetch('/api/points/' + encodeURIComponent(p.point) + '/partners', { cache: 'no-store' })
     ]);
     var res = responses[0];
     if (!res.ok) throw new Error('catalog');
@@ -220,6 +280,10 @@ async function boot() {
     var pres = responses[1];
     var ptsdata = pres.ok ? await pres.json() : {};
     var points = ptsdata.points || [];
+    var partnersRes = responses[2];
+    if (!partnersRes.ok) throw new Error('partners');
+    var partnersData = await partnersRes.json();
+    CTX.partners = Array.isArray(partnersData.partners) ? partnersData.partners : [];
     CTX.point = (points || []).find(function(x) { return x.id === p.point; }) || null;
     if (!CTX.point) {
       state('<div class="state"><div class="em">📍</div><h2>Точка не найдена</h2>'
@@ -227,9 +291,16 @@ async function boot() {
         + '<button class="link-btn" onclick="location.href=\'/\'">Найти другой минимаркет</button></div>');
       return;
     }
+    rememberQrPoint(CTX.point);
     var prod = (products || []).find(function(x) { return x.slug === p.product || String(x.id) === String(p.product); });
     if (!prod || prod.active === false) { failState('Товар не найден', 'Возможно, его сняли с продажи.'); return; }
     CTX.product = prod;
+    trackGoalOnce('minimarket_selected', 'qr:' + CTX.point.id, {
+      scenario: 'qr', selection_mode: 'qr_auto', point_id: CTX.point.id, point_name: CTX.point.name,
+    });
+    trackGoalOnce('product_opened', 'qr:' + CTX.point.id + ':' + prod.id, {
+      scenario: 'qr', product_id: prod.id, product_name: prod.name, point_id: CTX.point.id,
+    });
 
     var chip = document.getElementById('pointChip');
     if (CTX.point) { chip.textContent = '📍 ' + CTX.point.name; chip.style.display = 'block'; }
@@ -243,6 +314,11 @@ async function boot() {
       return;
     }
     CTX.selVariant = avail[0];
+    var paymentReturn = new URLSearchParams(location.search).get('payment_return');
+    if (paymentReturn) {
+      handlePaymentReturn(paymentReturn);
+      return;
+    }
     renderCard();
   } catch (e) {
     failState('Не удалось загрузить', 'Проверьте интернет и обновите страницу.');
@@ -306,12 +382,30 @@ function pickVariant(id) {
 /* ── Экран 2: телефон ── */
 function showPhoneStep() {
   var v = CTX.selVariant;
+  trackGoal('buy_now_clicked', {
+    scenario: 'qr', source: 'qr_product', product_id: CTX.product.id,
+    variant_id: v.id, price: v.price, point_id: CTX.pointId,
+  });
+  trackGoal('checkout_started', {
+    scenario: 'qr', source: 'qr_product', product_id: CTX.product.id,
+    point_id: CTX.pointId, cart_total: v.price, items_count: 1,
+  });
+  var advisorField = '';
+  if (CTX.partners.length > 0) {
+    advisorField = '<label for="advisor">Кто посоветовал товар?</label>'
+      + '<select id="advisor" class="checkout-select" style="margin-bottom:12px">'
+      + '<option value="">Выберите вариант</option>'
+      + CTX.partners.map(function(partner) { return '<option value="' + Number(partner.id) + '">' + esc(partner.full_name) + '</option>'; }).join('')
+      + '<option value="self">Выбрал всё сам</option></select>';
+  }
   state('<div class="panel"><h2>Почти готово</h2>'
     + '<p class="small muted" style="margin-bottom:14px">' + esc(CTX.product.name) + ' · ' + esc(v.weight) + ' · <b>' + fmtPrice(v.price) + '</b>'
     + (CTX.point ? '<br>Забрать: ' + esc(CTX.point.name) + (CTX.point.addr ? ', ' + esc(CTX.point.addr) : '') : '') + '</p>'
     + '<label for="phone">Номер телефона</label>'
-    + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="+7">'
+    + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(knownPhone()) + '">'
     + '<p class="small muted" style="margin-top:6px">Свяжем заказ с вашим номером и начислим косточки-бонусы.</p>'
+    + advisorField
+    + '<div class="note" style="display:block">📍 Точка уже определена по QR-коду товара. Повторно выбирать её не нужно.</div>'
     + '<button class="cta" id="payBtn" onclick="startPayment()">Оплатить ' + fmtPrice(v.price) + '</button>'
     + '<div class="err" id="err"></div>'
     + '<button class="link-btn" onclick="renderCard()">← Назад к товару</button></div>');
@@ -325,11 +419,26 @@ function showErr(msg) { var e = document.getElementById('err'); e.textContent = 
 async function startPayment() {
   var phone = normPhone(document.getElementById('phone').value);
   if (!validatePhone(phone || '')) { showErr('Укажите телефон в формате +7 (900) 000-00-00.'); return; }
+  var advisorValue = document.getElementById('advisor') ? document.getElementById('advisor').value : '';
+  if (CTX.partners.length > 0 && !advisorValue) {
+    showErr('Выберите грумера или пункт «Выбрал всё сам».');
+    return;
+  }
+  var selectedPartnerId = advisorValue && advisorValue !== 'self' ? Number(advisorValue) : null;
+  rememberPhone(phone);
   var btn = document.getElementById('payBtn');
   btn.disabled = true; btn.textContent = 'Готовим оплату…';
 
   var orderId = 'TG-' + Date.now();
   var v = CTX.selVariant;
+  var funnelKey = 'qr:' + CTX.pointId + ':' + v.id;
+  trackGoalOnce('phone_entered', funnelKey, {
+    scenario: 'qr', product_id: CTX.product.id, variant_id: v.id, point_id: CTX.pointId,
+  });
+  trackGoalOnce('checkout_to_payment', funnelKey, {
+    scenario: 'qr', product_id: CTX.product.id, variant_id: v.id,
+    point_id: CTX.pointId, revenue: v.price, items_count: 1,
+  });
   try {
     // Сначала проверяем внешний модуль и только затем резервируем товар.
     // Если модуль заблокирован браузером, используем redirect-оплату.
@@ -349,7 +458,8 @@ async function startPayment() {
         customerLname: null,
         pickupPoint: CTX.point ? CTX.point.name + (CTX.point.addr ? ' — ' + CTX.point.addr : '') : '',
         pointId: CTX.pointId,
-        partnerId: null,
+        partnerId: selectedPartnerId,
+        advisorSelection: advisorValue === 'self' ? 'self' : null,
         comment: null,
         bonesUsed: 0,
         fulfillmentType: 'pickup',
@@ -357,11 +467,18 @@ async function startPayment() {
         cityId: null,
         referralCode: null,
         confirmationMode: confirmationMode,
+        returnPath: location.pathname,
         cartItems: [{ variantId: v.id, qty: 1 }]
       })
     });
     var data = await res.json();
     if (!res.ok) throw new Error((data && data.error) || 'Не удалось создать заказ');
+
+    trackGoalOnce('payment_created', orderId, {
+      scenario: 'qr', order_id: orderId, product_id: CTX.product.id,
+      variant_id: v.id, point_id: CTX.pointId, revenue: v.price,
+      confirmation_mode: confirmationMode,
+    });
 
     if (data.demo === true) { showSuccess(orderId, phone); return; }
 
@@ -405,6 +522,9 @@ async function startPayment() {
           box.style.display = 'none';
           noteEl.textContent = 'Оплата не прошла. Можно безопасно попробовать оплатить заказ заново.';
           btn.style.display = 'block'; btn.disabled = false; btn.textContent = 'Оплатить ' + fmtPrice(v.price);
+          trackGoalOnce('payment_cancelled', orderId, {
+            scenario: 'qr', order_id: orderId, status: st.status, revenue: v.price,
+          });
         }
       } catch (e) { /* временный сбой — опрос продолжится */ }
     }
@@ -415,6 +535,9 @@ async function startPayment() {
     });
     checkout.on('fail', function() {
       noteEl.textContent = 'Оплата не прошла. Попробуйте ещё раз.';
+      trackGoalOnce('payment_cancelled', orderId, {
+        scenario: 'qr', order_id: orderId, status: 'widget_fail', revenue: v.price,
+      });
     });
     await checkout.render('yk-box');
     checkStatus();
@@ -422,19 +545,137 @@ async function startPayment() {
   } catch (e) {
     console.error('Не удалось запустить оплату:', e);
     showErr('Не удалось открыть оплату. Проверьте интернет и попробуйте ещё раз.');
+    trackGoal('payment_create_error', { scenario: 'qr', order_id: orderId, point_id: CTX.pointId });
     btn.disabled = false; btn.textContent = 'Оплатить ' + fmtPrice(v.price);
   }
 }
 
 /* ── Экран 4: успех ── */
 function showSuccess(orderId, phone) {
+  SUCCESS_PHONE = phone || '';
+  SUCCESS_ORDER_ID = orderId || '';
+  trackGoalOnce('payment_success', orderId, {
+    scenario: 'qr', order_id: orderId, product_id: CTX.product.id,
+    variant_id: CTX.selVariant.id, point_id: CTX.pointId, revenue: CTX.selVariant.price,
+  });
+  trackGoalOnce('purchase', orderId, {
+    order_id: orderId, revenue: CTX.selVariant.price, payment_method: 'yookassa', scenario: 'qr',
+  });
   state('<div class="panel success"><div class="big">✅</div>'
-    + '<h2>Оплата прошла!</h2>'
-    + '<p>Товар можно забирать с полки' + (CTX.point ? ' в точке «' + esc(CTX.point.name) + '»' : '') + '.<br>Обращаться к сотруднику не нужно.</p>'
+    + '<h2>Оплачено</h2>'
+    + '<div class="take-product">Возьмите товар с полки</div>'
+    + '<p>Обращаться к сотруднику не нужно.</p>'
+    + '<div class="success-product"><b>' + esc(CTX.product.name) + '</b><span>' + esc(CTX.selVariant.weight) + ' · 1 шт.</span></div>'
+    + (CTX.point ? '<p class="small" style="margin-top:12px">📍 ' + esc(CTX.point.name) + (CTX.point.addr ? '<br>' + esc(CTX.point.addr) : '') + '</p>' : '')
     + '<div class="order-code">Заказ ' + esc(orderId) + '</div>'
-    + '<p class="small" style="margin-top:14px">Заказ привязан к номеру ' + esc(phone) + '.<br>Косточки-бонусы начислятся на этот номер, а подтверждение придёт в Telegram, если бот подключён.</p>'
-    + '<button class="link-btn" onclick="location.href=\'/?ref=' + encodeURIComponent(CTX.pointId) + '\'">Смотреть весь каталог точки</button>'
+    + (phone ? '<p class="small" style="margin-top:14px">Заказ привязан к номеру ' + esc(phone) + '.<br>Косточки-бонусы начислятся на этот номер.</p>' : '')
+    + '<button class="link-btn" onclick="location.href=\'/?page=account&open_orders=1\'">Открыть мой заказ</button>'
+    + '<div class="notify-title">Получать уведомления о заказах</div>'
+    + '<div class="notify-grid">'
+    + '<div class="notify-card" id="successMaxCard" style="display:none;background:#F5F1FF;border-color:#D9CBFF"><b>MAX</b>Статусы следующих заказов<button id="successMaxBtn" style="background:#7C4DFF" onclick="connectSuccessChannel(\'max\')">Подключить MAX</button><div class="notify-status" id="successMaxStatus"></div></div>'
+    + '<div class="notify-card" id="successTelegramCard" style="background:#EEF6FF;border-color:#B8D8F8"><b>Telegram</b>Статусы следующих заказов<button id="successTelegramBtn" style="background:#229ED9" onclick="connectSuccessChannel(\'telegram\')">Подключить Telegram</button><div class="notify-status" id="successTelegramStatus"></div></div>'
+    + '</div>'
+    + '<button class="cta" style="margin-top:18px" onclick="location.href=\'/?ref=' + encodeURIComponent(CTX.pointId) + '\'">Купить ещё товар</button>'
     + '</div>');
+  initSuccessNotifications(phone);
+}
+
+async function initSuccessNotifications(phone) {
+  if (!validatePhone(normPhone(phone || '') || '')) {
+    var tg = document.getElementById('successTelegramCard');
+    if (tg) tg.style.display = 'none';
+    return;
+  }
+  var digits = String(phone).replace(/\D/g,'').slice(-10);
+  if (localStorage.getItem('hvostmarket_tg_connected_phone') === digits) markSuccessChannelConnected('telegram', phone);
+  try {
+    var res = await fetch('/api/customer/max/status', { cache:'no-store' });
+    var data = await res.json();
+    var card = document.getElementById('successMaxCard');
+    if (card && res.ok && data.enabled) card.style.display = 'block';
+    if (res.ok && data.enabled && localStorage.getItem('hvostmarket_max_connected_phone') === digits) markSuccessChannelConnected('max', phone);
+  } catch (e) { /* MAX просто не показываем */ }
+}
+
+function markSuccessChannelConnected(channel, phone) {
+  var prefix = channel === 'max' ? 'Max' : 'Telegram';
+  var btn = document.getElementById('success' + prefix + 'Btn');
+  var status = document.getElementById('success' + prefix + 'Status');
+  var digits = String(phone || '').replace(/\D/g,'').slice(-10);
+  if (digits) localStorage.setItem(channel === 'max' ? 'hvostmarket_max_connected_phone' : 'hvostmarket_tg_connected_phone', digits);
+  if (btn) btn.style.display = 'none';
+  if (status) { status.textContent = '✓ Подключено'; status.style.color = '#2D7D46'; status.style.fontWeight = '700'; }
+}
+
+async function connectSuccessChannel(channel) {
+  var phone = SUCCESS_PHONE;
+  var prefix = channel === 'max' ? 'Max' : 'Telegram';
+  var btn = document.getElementById('success' + prefix + 'Btn');
+  var status = document.getElementById('success' + prefix + 'Status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Создаём ссылку…'; }
+  var popup = window.open('', '_blank');
+  try {
+    var res = await fetch('/api/customer/' + channel + '/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({phone:phone}) });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось создать ссылку');
+    if (popup) popup.location.href = data.deep_link;
+    if (status) status.textContent = 'Подтвердите номер в приложении…';
+    var attempts = 0;
+    var timer = setInterval(async function() {
+      attempts++;
+      try {
+        var check = await fetch('/api/customer/' + channel + '/check?token=' + encodeURIComponent(data.token));
+        var result = await check.json();
+        if (result.verified && result.token) {
+          clearInterval(timer);
+          localStorage.setItem('taiga_customer_token', result.token);
+          markSuccessChannelConnected(channel, phone);
+          trackGoalOnce('notifications_connected', channel + ':' + (SUCCESS_ORDER_ID || 'qr'), {
+            scenario: 'qr', channel: channel, order_id: SUCCESS_ORDER_ID,
+          });
+        } else if (!check.ok || attempts >= 150) {
+          clearInterval(timer);
+          if (btn) { btn.disabled = false; btn.textContent = 'Попробовать снова'; }
+          if (status) status.textContent = 'Подтверждение не получено.';
+        }
+      } catch (e) { /* повторим */ }
+    }, 2000);
+  } catch (e) {
+    if (popup) popup.close();
+    if (btn) { btn.disabled = false; btn.textContent = 'Попробовать снова'; }
+    if (status) status.textContent = e.message;
+  }
+}
+
+async function handlePaymentReturn(orderCode) {
+  var cleanUrl = new URL(location.href);
+  cleanUrl.searchParams.delete('payment_return');
+  history.replaceState({}, '', cleanUrl.pathname + (cleanUrl.searchParams.toString() ? '?' + cleanUrl.searchParams.toString() : ''));
+  loadState('Подтверждаем оплату…', '⏳');
+
+  for (var attempt = 0; attempt < 15; attempt += 1) {
+    try {
+      var response = await fetch('/api/order-payment-status/' + encodeURIComponent(orderCode), { cache:'no-store' });
+      var result = await response.json();
+      if (response.ok && result.paid) {
+        showSuccess(result.order_code || orderCode, knownPhone() === '+7' ? '' : knownPhone());
+        return;
+      }
+      if (response.ok && (result.status === 'failed' || result.status === 'canceled')) {
+        trackGoalOnce('payment_cancelled', orderCode, {
+          scenario: 'qr', order_id: orderCode, status: result.status,
+        });
+        failState('Оплата не прошла', 'Товар снова доступен. Попробуйте оплатить ещё раз.');
+        return;
+      }
+    } catch (e) { /* временный сетевой сбой — повторяем */ }
+    await new Promise(function(resolve) { setTimeout(resolve, 2000); });
+  }
+
+  state('<div class="state"><div class="em">⏳</div><h2>Платёж ещё обрабатывается</h2>'
+    + '<p>Подождите немного и проверьте результат ещё раз.</p>'
+    + '<button class="cta" id="retryPaymentStatus" style="margin-top:18px">Проверить оплату</button></div>');
+  document.getElementById('retryPaymentStatus').onclick = function() { handlePaymentReturn(orderCode); };
 }
 
 boot();

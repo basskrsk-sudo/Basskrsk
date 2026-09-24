@@ -77,7 +77,28 @@ function registerAuditRoutes(router) {
       LIMIT ?
     `).all(limit);
 
-    const events = customerEvents.concat(warehouseEvents, managerEvents)
+    const orderPartnerEvents = type && type !== 'order_partner_change' ? [] : db.prepare(`
+      SELECT
+        'order_partner_change' AS type,
+        id,
+        created_at,
+        admin_id,
+        admin_login,
+        reason,
+        order_id,
+        order_code,
+        old_partner_id,
+        old_partner_name,
+        old_commission_rate,
+        new_partner_id,
+        new_partner_name,
+        new_commission_rate
+      FROM order_partner_change_log
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `).all(limit);
+
+    const events = customerEvents.concat(warehouseEvents, managerEvents, orderPartnerEvents)
       .sort((a, b) => {
         const byDate = String(b.created_at).localeCompare(String(a.created_at));
         if (byDate) return byDate;

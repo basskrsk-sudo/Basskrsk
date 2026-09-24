@@ -43,9 +43,15 @@ function isDemoModeEnabled() {
   return process.env.DEMO_MODE === 'true';
 }
 
-function paymentReturnUrl(req, orderCode) {
+function paymentReturnUrl(req, orderCode, requestedPath) {
   const configuredBase = String(process.env.PUBLIC_URL || '').trim().replace(/\/$/, '');
-  if (configuredBase) return configuredBase + '/?payment_return=' + encodeURIComponent(orderCode);
+  // Быстрая покупка по товарному QR должна вернуться на тот же товар и ту же
+  // точку. Принимаем только внутренний путь строгого формата /p/X/Y — полный
+  // URL или произвольный путь отклоняется, поэтому open redirect невозможен.
+  const safePath = /^\/p\/[-A-Za-z0-9._~%]+\/[-A-Za-z0-9._~%]+\/?$/.test(String(requestedPath || ''))
+    ? String(requestedPath)
+    : '/';
+  if (configuredBase) return configuredBase + safePath + '?payment_return=' + encodeURIComponent(orderCode);
 
   const forwardedHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
   const safeHost = /^[a-z0-9.-]+(?::\d+)?$/i.test(forwardedHost) ? forwardedHost : 'xn----7sbal3ajopsm.xn--p1ai';
@@ -53,7 +59,7 @@ function paymentReturnUrl(req, orderCode) {
   const protocol = forwardedProto === 'http' || forwardedProto === 'https'
     ? forwardedProto
     : (safeHost.includes('localhost') || safeHost.startsWith('127.') ? 'http' : 'https');
-  return `${protocol}://${safeHost}/?payment_return=${encodeURIComponent(orderCode)}`;
+  return `${protocol}://${safeHost}${safePath}?payment_return=${encodeURIComponent(orderCode)}`;
 }
 
 function phonesMatchLast10(a, b) {
@@ -67,12 +73,20 @@ function phonesMatchLast10(a, b) {
 // Смотрим на партнёра, который реально обслуживал заказ (partnerId, если
 // клиент его выбрал — актуально для точек с несколькими грумерами), а если
 // не выбирали — на единственного активного грумера точки.
-function resolveOrderCommission(pointId, partnerId, customerPhone) {
+function resolveOrderCommission(pointId, partnerId, customerPhone, advisorSelection) {
   let partner = null;
   if (partnerId) {
     partner = db.prepare('SELECT phone, commission_rate FROM partners WHERE id = ?').get(partnerId);
+  } else if (advisorSelection === 'self') {
+    // Клиент явно указал, что выбрал товар самостоятельно: не приписываем
+    // рекомендацию единственному сотруднику точки и фиксируем 0%, чтобы в
+    // истории это не смешивалось со старыми заказами без атрибуции.
+    return { rate: 0, isSelfOrder: false };
   } else if (pointId) {
-    partner = db.prepare('SELECT phone, commission_rate FROM partners WHERE point_id = ? AND active = 1 LIMIT 1').get(pointId);
+    const pointPartners = db.prepare('SELECT phone, commission_rate FROM partners WHERE point_id = ? AND active = 1').all(pointId);
+    // Без выбора клиента ставку можно однозначно связать с партнёром только
+    // когда он на точке один. При нескольких не выбираем первого случайно.
+    partner = pointPartners.length === 1 ? pointPartners[0] : null;
   }
   if (!partner) return { rate: null, isSelfOrder: false };
   const isSelfOrder = phonesMatchLast10(partner.phone, customerPhone);
@@ -282,7 +296,7 @@ function registerPaymentRoutes(router) {
       customerName, customerLname, pickupPoint, pointId, partnerId, comment,
       promoCode, cartItems,
       fulfillmentType, deliveryAddress, cityId, referralCode, bonesUsed,
-      confirmationMode,
+      confirmationMode, returnPath, advisorSelection,
     } = ctx.body || {};
 
     if (!orderId || typeof amount !== 'number' || !customerPhone ||
@@ -326,12 +340,21 @@ function registerPaymentRoutes(router) {
       }
       selectedPartnerName = selectedPartner.full_name;
     }
+    if (authoritativeFulfillment === 'pickup' && pointId && !partnerId && advisorSelection !== 'self') {
+      const hasActivePartner = db.prepare('SELECT 1 FROM partners WHERE point_id = ? AND active = 1 LIMIT 1').get(pointId);
+      if (hasActivePartner) {
+        return sendJson(res, 400, {
+          error: 'Выберите грумера или пункт «Выбрал всё сам»',
+          code: 'ADVISOR_SELECTION_REQUIRED',
+        });
+      }
+    }
 
     // Фиксируем ставку комиссии партнёра прямо на заказе — 0% вместо
     // обычного уровня, если это самозаказ (см. комментарий у SELF_ORDER_COMMISSION_RATE выше).
     // Считаем ДО блока с косточками ниже — нужно знать isSelfOrder, чтобы
     // применить более строгий лимит списания для самозаказов (30% вместо 50%).
-    const { rate: orderCommissionRate, isSelfOrder } = resolveOrderCommission(pointId, partnerId, customerPhone);
+    const { rate: orderCommissionRate, isSelfOrder } = resolveOrderCommission(pointId, partnerId, customerPhone, advisorSelection);
     if (isSelfOrder) {
       console.log(`[create-payment] Заказ ${orderId}: самозаказ грумера (телефон совпадает с партнёром точки) — комиссия зафиксирована на ${Math.round(orderCommissionRate * 100)}%`);
     }
@@ -440,7 +463,7 @@ function registerPaymentRoutes(router) {
         customerEmail,
         method,
         confirmationMode: confirmationMode === 'redirect' ? 'redirect' : 'embedded',
-        returnUrl: paymentReturnUrl(req, orderId),
+        returnUrl: paymentReturnUrl(req, orderId, returnPath),
       });
       console.log(`[create-payment] Заказ ${orderId}: платёж создан, payment_id=${payment.id}`);
       db.prepare('UPDATE orders SET yookassa_payment_id = ? WHERE id = ?').run(payment.id, orderRowId);

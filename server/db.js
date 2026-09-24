@@ -103,6 +103,9 @@ CREATE TABLE IF NOT EXISTS products (
   img       TEXT,
   desc      TEXT NOT NULL,
   comp      TEXT NOT NULL,        -- JSON-массив строк состава
+  pet_suitability TEXT,           -- для какого питомца / размера подходит
+  purpose         TEXT,           -- назначение товара
+  restrictions    TEXT,           -- ограничения и важные предостережения
   active    INTEGER NOT NULL DEFAULT 1
 );
 
@@ -523,6 +526,25 @@ CREATE TABLE IF NOT EXISTS manager_action_log (
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Финансово значимые исправления атрибуции уже оплаченных заказов.
+-- Храним оба состояния и снимок администратора: это позволяет понять,
+-- кто и когда переназначил комиссию, даже если партнёра позже переименуют.
+CREATE TABLE IF NOT EXISTS order_partner_change_log (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id           INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  order_code         TEXT NOT NULL,
+  old_partner_id     INTEGER,
+  old_partner_name   TEXT,
+  old_commission_rate REAL,
+  new_partner_id     INTEGER,
+  new_partner_name   TEXT,
+  new_commission_rate REAL NOT NULL,
+  admin_id           INTEGER,
+  admin_login        TEXT,
+  reason             TEXT,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS site_settings (
   key         TEXT PRIMARY KEY,
   value       TEXT NOT NULL,  -- JSON
@@ -803,6 +825,9 @@ if (!hasSuperAdmin) {
   }
 }
 ensureColumn('product_variants', 'active', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('products', 'pet_suitability', 'TEXT');
+ensureColumn('products', 'purpose', 'TEXT');
+ensureColumn('products', 'restrictions', 'TEXT');
 ensureColumn('points', 'lat', 'REAL');
 ensureColumn('points', 'lng', 'REAL');
 

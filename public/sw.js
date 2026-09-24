@@ -3,7 +3,7 @@
 // Запросы к /api/ ВСЕГДА идут напрямую в сеть, без кэша — там живые данные
 // (заказы, остатки, токены авторизации), кэшировать их нельзя ни в коем случае.
 
-const CACHE_NAME = 'hvostmarket-shell-v28-minimarket-naming';
+const CACHE_NAME = 'hvostmarket-shell-v40-order-groomer-reassignment';
 const SHELL_FILES = [
   '/taiga-admin.html',
   '/taiga-groomer.html',

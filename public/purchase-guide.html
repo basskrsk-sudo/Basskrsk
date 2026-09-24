@@ -89,6 +89,9 @@
       font-weight: 700;
       white-space: nowrap;
     }
+    .top-nav { display: flex; align-items: center; gap: 18px; }
+    .top-nav a { color: rgba(255,255,255,.82); font-size: .78rem; font-weight: 700; white-space: nowrap; }
+    .top-nav a:hover, .top-nav a[aria-current="page"] { color: var(--amber); }
 
     main { overflow: hidden; }
     .hero {
@@ -338,6 +341,9 @@
       html { scroll-behavior: auto; }
       *, *::before, *::after { transition: none !important; }
     }
+    @media (max-width: 720px) {
+      .top-nav a:not(.catalog-link) { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -347,7 +353,13 @@
         <span class="brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt=""></span>
         <span class="brand-name"><span>Хвост</span><span>Маркет</span></span>
       </a>
-      <a class="top-link catalog-link" href="/">Каталог →</a>
+      <nav class="top-nav" aria-label="Основная навигация">
+        <a class="catalog-link" href="/?page=catalog">Каталог</a>
+        <a href="/?page=contacts">Где купить</a>
+        <a href="purchase-guide.html" aria-current="page">Как это работает</a>
+        <a href="/?page=bones">Бонусы</a>
+        <a href="/?page=account">Кабинет</a>
+      </nav>
     </div>
   </header>
 
@@ -360,7 +372,7 @@
           <p class="hero-copy">Выберите товар прямо на полке, отсканируйте QR-код на его упаковке, оплатите онлайн и заберите покупку самостоятельно.</p>
           <div class="hero-actions">
             <a class="button button-primary" href="#quick-way">Показать быстрый способ ↓</a>
-            <a class="button button-secondary catalog-link" href="/">Открыть каталог точки</a>
+            <a class="button button-secondary catalog-link" href="/?page=catalog">Открыть каталог точки</a>
           </div>
         </div>
         <aside class="speed-card" aria-label="Главное преимущество">
@@ -484,6 +496,7 @@
     (function preservePointInCatalogLinks() {
       var params = new URLSearchParams(window.location.search);
       var target = new URL('/', window.location.origin);
+      target.searchParams.set('page', 'catalog');
       ['ref', 'city'].forEach(function (key) {
         var value = params.get(key);
         if (value) target.searchParams.set(key, value);

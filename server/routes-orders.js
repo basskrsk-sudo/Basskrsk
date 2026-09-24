@@ -54,6 +54,119 @@ function registerOrderRoutes(router) {
     sendJson(res, 200, { order: { ...order, items } });
   });
 
+  // PUT /api/orders/:id/partner — исправление атрибуции уже оплаченного
+  // заказа. Это влияет на сумму к выплате, поэтому доступно только супер-
+  // администратору, фиксируется в журнале и запрещено после выплаты.
+  router.put('/api/orders/:id/partner', (req, res, ctx) => {
+    const payload = requireSuperAdmin(req, res, ctx);
+    if (!payload) return;
+
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(ctx.params.id);
+    if (!order) return sendJson(res, 404, { error: 'Заказ не найден' });
+    if (order.status !== 'paid') {
+      return sendJson(res, 409, { error: 'Назначить грумера можно только оплаченному заказу' });
+    }
+    if (order.refund_status === 'refunded') {
+      return sendJson(res, 409, { error: 'Нельзя менять грумера у возвращённого заказа' });
+    }
+    if (order.fulfillment_type === 'home_delivery' || order.needs_delivery || !order.point_id) {
+      return sendJson(res, 409, { error: 'Грумера можно назначить только заказу на самовывоз из точки' });
+    }
+    const paidOut = db.prepare(`
+      SELECT pi.id, pp.paid_at
+      FROM partner_payout_items pi
+      JOIN partner_payouts pp ON pp.id = pi.payout_id
+      WHERE pi.order_id = ?
+    `).get(order.id);
+    if (paidOut) {
+      return sendJson(res, 409, {
+        error: 'Этот заказ уже вошёл в выплату грумеру. Сначала разберите выплату вручную — автоматическое переназначение заблокировано.',
+        code: 'PARTNER_PAYOUT_ALREADY_PAID',
+      });
+    }
+
+    const rawPartnerId = ctx.body && ctx.body.partner_id;
+    const reason = String((ctx.body && ctx.body.reason) || '').trim();
+    if (reason.length < 3) {
+      return sendJson(res, 400, { error: 'Укажите причину исправления' });
+    }
+    let partner = null;
+    if (rawPartnerId !== null && rawPartnerId !== undefined && rawPartnerId !== '' && rawPartnerId !== 'self') {
+      const partnerId = Number(rawPartnerId);
+      if (!Number.isInteger(partnerId) || partnerId <= 0) {
+        return sendJson(res, 400, { error: 'Некорректный идентификатор грумера' });
+      }
+      partner = db.prepare(`
+        SELECT id, full_name, commission_rate, point_id, active
+        FROM partners WHERE id = ?
+      `).get(partnerId);
+      if (!partner) return sendJson(res, 404, { error: 'Грумер не найден' });
+      if (!partner.active) return sendJson(res, 409, { error: 'Нельзя назначить неактивного грумера' });
+      if (String(partner.point_id || '') !== String(order.point_id)) {
+        return sendJson(res, 409, { error: 'Этот грумер не привязан к точке заказа' });
+      }
+    }
+
+    const newPartnerId = partner ? partner.id : null;
+    const newPartnerName = partner ? partner.full_name : null;
+    // Явный вариант «Выбрал всё сам» фиксируется ставкой 0, чтобы не
+    // смешивать его со старыми заказами, где атрибуция просто отсутствует.
+    const newRate = partner ? Number(partner.commission_rate || 0) : 0;
+    if (Number(order.partner_id || 0) === Number(newPartnerId || 0)
+        && String(order.partner_name || '') === String(newPartnerName || '')
+        && Number(order.commission_rate) === newRate) {
+      return sendJson(res, 200, {
+        ok: true,
+        unchanged: true,
+        partner_id: newPartnerId,
+        partner_name: newPartnerName,
+        commission_rate: newRate,
+        commission_amount: Math.round(Number(order.total || 0) * newRate),
+      });
+    }
+
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      db.prepare(`
+        UPDATE orders
+        SET partner_id = ?, partner_name = ?, commission_rate = ?
+        WHERE id = ?
+      `).run(newPartnerId, newPartnerName, newRate, order.id);
+      db.prepare(`
+        INSERT INTO order_partner_change_log
+          (order_id, order_code, old_partner_id, old_partner_name,
+           old_commission_rate, new_partner_id, new_partner_name,
+           new_commission_rate, admin_id, admin_login, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        order.id,
+        order.order_code,
+        order.partner_id || null,
+        order.partner_name || null,
+        order.commission_rate == null ? null : Number(order.commission_rate),
+        newPartnerId,
+        newPartnerName,
+        newRate,
+        payload.id || null,
+        payload.login || null,
+        reason || null
+      );
+      db.exec('COMMIT');
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch (_) {}
+      console.error('[orders] Не удалось переназначить грумера:', error.message);
+      return sendJson(res, 500, { error: 'Не удалось переназначить грумера. Изменения отменены.' });
+    }
+
+    sendJson(res, 200, {
+      ok: true,
+      partner_id: newPartnerId,
+      partner_name: newPartnerName,
+      commission_rate: newRate,
+      commission_amount: Math.round(Number(order.total || 0) * newRate),
+    });
+  });
+
   // POST /api/orders/:id/refund — оформление возврата (полного или частичного)
   router.post('/api/orders/:id/refund', async (req, res, ctx) => {
     // Денежный возврат через ЮKassa — критичное действие. Одного наличия

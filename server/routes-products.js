@@ -67,7 +67,10 @@ function productWithVariantsAndStock(product, includeCost, includeInactiveVarian
     badge: product.badge,
     img: product.img,
     desc: product.desc,
-    comp: JSON.parse(product.comp),
+    comp: (() => { try { return JSON.parse(product.comp); } catch (e) { return []; } })(),
+    pet_suitability: product.pet_suitability || '',
+    purpose: product.purpose || '',
+    restrictions: product.restrictions || '',
     active: !!product.active,
     ...getReviewSummary(product.id),
     variants: variants.map((v) => Object.assign({
@@ -796,7 +799,7 @@ function registerProductRoutes(router) {
   router.post('/api/products', (req, res, ctx) => {
     const payload = requireAuth(['admin', 'warehouse'])(req, res, ctx);
     if (!payload) return;
-    const { slug, name, category, icon, badge, img, desc, comp, variants } = ctx.body || {};
+    const { slug, name, category, icon, badge, img, desc, comp, pet_suitability, purpose, restrictions, variants } = ctx.body || {};
     if (!slug || !name || !category || !icon || !desc || !Array.isArray(variants) || variants.length === 0) {
       return sendJson(res, 400, { error: 'Заполните slug, name, category, icon, desc и хотя бы один вариант' });
     }
@@ -804,8 +807,11 @@ function registerProductRoutes(router) {
       return sendJson(res, 400, { error: 'Выберите категорию: лакомства, игрушки, аксессуары или уход' });
     }
     const info = db.prepare(
-      'INSERT INTO products (slug, name, category, icon, badge, img, desc, comp, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)'
-    ).run(slug, name, category, icon, badge || null, img || null, desc, JSON.stringify(comp || []));
+      'INSERT INTO products (slug, name, category, icon, badge, img, desc, comp, pet_suitability, purpose, restrictions, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)'
+    ).run(
+      slug, name, category, icon, badge || null, img || null, desc, JSON.stringify(comp || []),
+      pet_suitability || null, purpose || null, restrictions || null
+    );
     const productId = info.lastInsertRowid;
     const points = db.prepare('SELECT id FROM points').all();
     variants.forEach((v, i) => {
@@ -824,21 +830,24 @@ function registerProductRoutes(router) {
   router.put('/api/products/:id', (req, res, ctx) => {
     const payload = requireAuth(['admin', 'warehouse'])(req, res, ctx);
     if (!payload) return;
-    const { name, category, icon, badge, desc, comp, active, img } = ctx.body || {};
+    const { name, category, icon, badge, desc, comp, pet_suitability, purpose, restrictions, active, img } = ctx.body || {};
     if (category !== undefined && !PRODUCT_CATEGORIES.has(category)) {
       return sendJson(res, 400, { error: 'Выберите категорию: лакомства, игрушки, аксессуары или уход' });
     }
     const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Товар не найден' });
     db.prepare(
-      'UPDATE products SET name=?, category=?, icon=?, badge=?, desc=?, comp=?, active=?, img=? WHERE id=?'
+      'UPDATE products SET name=?, category=?, icon=?, badge=?, desc=?, comp=?, pet_suitability=?, purpose=?, restrictions=?, active=?, img=? WHERE id=?'
     ).run(
       name ?? existing.name,
       category ?? existing.category,
       icon ?? existing.icon,
       badge !== undefined ? badge : existing.badge,
       desc ?? existing.desc,
-      comp ? JSON.stringify(comp) : existing.comp,
+      comp !== undefined ? JSON.stringify(Array.isArray(comp) ? comp : []) : existing.comp,
+      pet_suitability !== undefined ? pet_suitability : existing.pet_suitability,
+      purpose !== undefined ? purpose : existing.purpose,
+      restrictions !== undefined ? restrictions : existing.restrictions,
       active !== undefined ? (active ? 1 : 0) : existing.active,
       img !== undefined ? img : existing.img,
       ctx.params.id

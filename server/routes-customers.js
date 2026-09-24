@@ -227,10 +227,10 @@ function registerCustomerRoutes(router) {
   router.get('/api/customer/me', (req, res, ctx) => {
     const payload = requireAuth(['customer'])(req, res, ctx);
     if (!payload) return;
-    const customer = db.prepare('SELECT id, phone, name, lname, email, pet_name, pet_birthday, pet_breed, pet_size, pet_notes, orders_count, total_spent, first_order_at, bones_balance, telegram_chat_id FROM customers WHERE id = ?').get(payload.id);
+    const customer = db.prepare('SELECT id, phone, name, lname, email, pet_name, pet_birthday, pet_breed, pet_size, pet_notes, orders_count, total_spent, first_order_at, bones_balance, telegram_chat_id, max_chat_id FROM customers WHERE id = ?').get(payload.id);
     if (!customer) return sendJson(res, 404, { error: 'Клиент не найден' });
-    const { telegram_chat_id, ...safeCustomer } = customer;
-    sendJson(res, 200, { customer: { ...safeCustomer, telegram_connected: !!telegram_chat_id, tier: getTierInfo(customer.orders_count, customer.phone) } });
+    const { telegram_chat_id, max_chat_id, ...safeCustomer } = customer;
+    sendJson(res, 200, { customer: { ...safeCustomer, telegram_connected: !!telegram_chat_id, max_connected: !!max_chat_id, tier: getTierInfo(customer.orders_count, customer.phone) } });
   });
 
   // PUT /api/customer/me — клиент редактирует своё имя/фамилию/email/анкету питомца

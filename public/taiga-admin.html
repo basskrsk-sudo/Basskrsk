@@ -381,13 +381,16 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   display:block; font-size:.75rem; font-weight:600;
   color:var(--text); margin-bottom:.35rem;
 }
-.admin-field input {
+.admin-field input,
+.admin-field textarea {
   width:100%; padding:.65rem .9rem;
   border:1.5px solid var(--border); border-radius:var(--radius);
   font-size:.9rem; font-family:'Inter',sans-serif;
   color:var(--text); outline:none; transition:border-color .2s;
 }
-.admin-field input:focus { border-color:var(--deep); }
+.admin-field textarea { resize:vertical; line-height:1.5; }
+.admin-field input:focus,
+.admin-field textarea:focus { border-color:var(--deep); }
 .admin-login-btn {
   width:100%; background:var(--forest); color:#fff;
   border:none; border-radius:var(--radius);
@@ -1200,12 +1203,13 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="customer_delete">Удаление клиентов</option>
               <option value="warehouse_delete">Удаление со склада</option>
               <option value="manager_action">Действия менеджеров</option>
+              <option value="order_partner_change">Исправление грумера в заказе</option>
             </select>
             <button class="row-btn" onclick="renderAuditLog()">↻ Обновить</button>
           </div>
         </div>
         <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
-          История удаления клиентов и складских позиций, а также операционных действий менеджеров. Доступна только супер-администраторам.
+          История удаления клиентов и складских позиций, исправлений грумера в оплаченных заказах, а также операционных действий менеджеров. Доступна только супер-администраторам.
         </p>
         <table class="tbl">
           <thead>
@@ -1519,6 +1523,29 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
     </div>
 
+    <!-- Модалка исправления грумера в уже оплаченном заказе -->
+    <div id="order-partner-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:101;">
+      <div style="background:#fff;border-radius:12px;padding:1.5rem;width:calc(100% - 24px);max-width:430px;">
+        <h3 style="margin-bottom:.3rem;">Назначить грумера</h3>
+        <p id="order-partner-info" style="font-size:.82rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;"></p>
+        <div id="order-partner-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.5rem .7rem;border-radius:6px;margin-bottom:.8rem;"></div>
+        <div class="admin-field">
+          <label>Кому начислить комиссию</label>
+          <select id="order-partner-select" class="pm-select" onchange="updateOrderPartnerPreview()"></select>
+        </div>
+        <div id="order-partner-preview" style="background:#F7F5EF;border-radius:8px;padding:.7rem;font-size:.8rem;color:var(--text);margin-bottom:.8rem;"></div>
+        <div class="admin-field">
+          <label>Причина исправления</label>
+          <input type="text" id="order-partner-reason" placeholder="Например: заказ прошёл до привязки грумера">
+        </div>
+        <p style="font-size:.75rem;color:var(--muted);line-height:1.45;">Изменение попадёт в журнал действий и сразу повлияет на сумму к выплате. Заказ, который уже вошёл в выплату, изменить нельзя.</p>
+        <div style="display:flex;gap:.6rem;margin-top:1rem;">
+          <button class="row-btn" style="flex:1;" onclick="closeOrderPartnerModal()">Отмена</button>
+          <button class="row-btn" id="order-partner-save" style="flex:1;background:var(--forest);color:#fff;" onclick="saveOrderPartner()">Сохранить</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Модалка начисления/списания косточек -->
     <div id="bones-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:100;">
       <div style="background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:400px;">
@@ -1776,6 +1803,31 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <option>Аксессуары</option>
         <option>Уход</option>
       </select>
+    </div>
+
+    <div class="admin-field">
+      <label>Краткое описание</label>
+      <textarea id="pm-desc" rows="3" placeholder="Что это за товар и чем он полезен"></textarea>
+    </div>
+
+    <div class="admin-field">
+      <label>Для какого питомца подходит</label>
+      <input type="text" id="pm-suitability" placeholder="Например, для собак мелких и средних пород">
+    </div>
+
+    <div class="admin-field">
+      <label>Назначение</label>
+      <input type="text" id="pm-purpose" placeholder="Например, поощрение и тренировки">
+    </div>
+
+    <div class="admin-field">
+      <label>Состав / особенности — каждый пункт с новой строки</label>
+      <textarea id="pm-comp" rows="4" placeholder="100% говядина&#10;Без красителей"></textarea>
+    </div>
+
+    <div class="admin-field">
+      <label>Ограничения и важная информация</label>
+      <textarea id="pm-restrictions" rows="3" placeholder="Например, учитывать индивидуальную непереносимость"></textarea>
     </div>
 
     <div class="admin-field">
@@ -2074,6 +2126,11 @@ function openProductModal(id, variantId) {
   document.getElementById('pm-name').value     = p ? p.name : '';
   document.getElementById('pm-weight').value   = v ? v.weight : '';
   document.getElementById('pm-category').value = p ? productCategoryLabel(p.category) : 'Лакомства';
+  document.getElementById('pm-desc').value = p ? (p.desc || '') : '';
+  document.getElementById('pm-suitability').value = p ? (p.pet_suitability || '') : '';
+  document.getElementById('pm-purpose').value = p ? (p.purpose || '') : '';
+  document.getElementById('pm-comp').value = p && Array.isArray(p.comp) ? p.comp.join('\n') : '';
+  document.getElementById('pm-restrictions').value = p ? (p.restrictions || '') : '';
   document.getElementById('pm-price').value    = v ? v.price : '';
   document.getElementById('pm-cost-price').value = v && v.cost_price ? v.cost_price : '';
   document.getElementById('pm-active').checked = p ? !!p.active : true;
@@ -2107,6 +2164,11 @@ async function saveProductForm() {
   const costPrice  = costPriceRaw ? parseFloat(costPriceRaw) : null;
   const active     = document.getElementById('pm-active').checked;
   const imgPath    = document.getElementById('pm-image-path').value || null;
+  const desc       = document.getElementById('pm-desc').value.trim() || name;
+  const petSuitability = document.getElementById('pm-suitability').value.trim();
+  const purpose    = document.getElementById('pm-purpose').value.trim();
+  const comp       = document.getElementById('pm-comp').value.split(/\n+/).map(x => x.trim()).filter(Boolean);
+  const restrictions = document.getElementById('pm-restrictions').value.trim();
   const errEl      = document.getElementById('product-modal-error');
 
   if (!name || !weight || isNaN(price) || price <= 0) {
@@ -2118,7 +2180,10 @@ async function saveProductForm() {
   if (editingProductId) {
     await authFetch('/api/products/' + editingProductId, {
       method: 'PUT',
-      body: { name, category: CATEGORY_TO_CODE[categoryRu] || 'treats', active, img: imgPath },
+      body: {
+        name, category: CATEGORY_TO_CODE[categoryRu] || 'treats', active, img: imgPath,
+        desc, pet_suitability: petSuitability, purpose, comp, restrictions,
+      },
     });
     const p = adminProducts.find(x => x.id === editingProductId);
     const targetVariant = p ? (p.variants.find(v => v.id === editingVariantId) || p.variants[0]) : null;
@@ -2136,7 +2201,8 @@ async function saveProductForm() {
       method: 'POST',
       body: {
         slug, name, category: CATEGORY_TO_CODE[categoryRu] || 'treats',
-        icon: '🐾', badge: null, img: imgPath, desc: name, comp: [],
+        icon: '🐾', badge: null, img: imgPath, desc, comp,
+        pet_suitability: petSuitability, purpose, restrictions,
         variants: [{ weight, price }],
       },
     });
@@ -3039,22 +3105,27 @@ function renderOrders() {
           : '')
       : '<button class="row-btn danger" onclick="deleteOrder(' + o.id + ', \'' + o.order_code + '\')">✕ Удалить</button>';
     const actionCell = (o.status === 'paid' && !isRefunded && currentAdminRole === 'super')
-      ? '<button class="row-btn" onclick="openRefundModal(' + o.id + ')">Возврат</button> ' + deleteBtn
+      ? '<button class="row-btn" onclick="openOrderPartnerModal(' + o.id + ')">Грумер</button> ' +
+        '<button class="row-btn" onclick="openRefundModal(' + o.id + ')">Возврат</button> ' + deleteBtn
       : deleteBtn;
-    // Самозаказ грумера — ставка комиссии на заказе зафиксирована ровно 0
-    // (обычные тарифы партнёров 15/18/20%, нулевыми не бывают — см.
-    // routes-payment.js). Заказы без привязки к партнёру — commission_rate
-    // null, не 0, поэтому с самозаказом не спутать.
-    const isSelfOrder = o.commission_rate === 0;
+    // Нулевая ставка означает явный выбор без комиссии. Если partner_id есть,
+    // телефон совпал с грумером (самозаказ); без partner_id клиент выбрал сам.
+    const isPartnerSelfOrder = !!o.partner_id && o.commission_rate === 0;
+    const isAdvisorSelfChoice = !o.partner_id && o.commission_rate === 0;
+    const selfBadge = isPartnerSelfOrder
+      ? ' <span title="Самозаказ грумера — комиссия не начислена" style="background:#FFF4E5;color:#7A4A00;font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:50px;margin-left:.3rem;">САМОЗАКАЗ</span>'
+      : isAdvisorSelfChoice
+        ? ' <span title="Покупатель выбрал товар самостоятельно" style="background:#EDF5EE;color:#2D5A3F;font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:50px;margin-left:.3rem;">ВЫБРАЛ САМ</span>'
+        : '';
     const customerCell = o.customer_name + ' ' + (o.customer_lname || '')
-      + (isSelfOrder ? ' <span title="Самозаказ грумера — комиссия не начислена" style="background:#FFF4E5;color:#7A4A00;font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:50px;margin-left:.3rem;">САМОЗАКАЗ</span>' : '')
+      + selfBadge
       + '<br><span style="font-size:.75rem;color:var(--muted);">' + o.customer_phone + '</span>';
     return '<tr>' +
       '<td style="font-family:monospace;font-size:.78rem;">' + o.order_code + '</td>' +
       '<td style="font-size:.8rem;color:var(--muted);">' + parseOrderDate(o.created_at).toLocaleString('ru-RU') + '</td>' +
       '<td>' + customerCell + '</td>' +
       '<td>' + o.pickup_point + '</td>' +
-      '<td>' + (o.partner_name ? escapeOrderCell(o.partner_name) : '<span style="color:var(--muted);">Не выбран</span>') + '</td>' +
+      '<td>' + (o.partner_name ? escapeOrderCell(o.partner_name) : (isAdvisorSelfChoice ? '<span style="color:var(--muted);">Выбрал сам</span>' : '<span style="color:var(--muted);">Не выбран</span>')) + '</td>' +
       '<td style="font-size:.8rem;max-width:220px;">' + itemsText + '</td>' +
       '<td class="r" style="font-weight:600;">' + o.total.toLocaleString('ru-RU') + ' ₽</td>' +
       '<td>' + (o.payment_method === 'sbp' ? 'СБП' : (o.payment_method === 'yookassa' ? 'ЮKassa' : 'Карта')) + '</td>' +
@@ -3152,6 +3223,123 @@ async function bulkDeleteOrders() {
   alert(msg);
   await loadOrders();
   renderOrders();
+}
+
+// ── ИСПРАВЛЕНИЕ ГРУМЕРА В ОПЛАЧЕННОМ ЗАКАЗЕ ──────────────────────
+let editingOrderPartnerId = null;
+let editingOrderPartnerOptions = [];
+
+async function openOrderPartnerModal(orderId) {
+  if (currentAdminRole !== 'super') {
+    alert('Исправлять грумера в оплаченном заказе может только супер-администратор.');
+    return;
+  }
+  const order = allOrders.find(function(o) { return o.id === orderId; });
+  if (!order) return;
+  editingOrderPartnerId = orderId;
+  const modal = document.getElementById('order-partner-modal');
+  const select = document.getElementById('order-partner-select');
+  const error = document.getElementById('order-partner-error');
+  document.getElementById('order-partner-info').textContent =
+    'Заказ ' + order.order_code + ' · ' + Number(order.total || 0).toLocaleString('ru-RU') + ' ₽\n' +
+    'Точка: ' + (order.pickup_point || order.point_id || '—') + '. Сейчас: ' + (order.partner_name || 'грумер не выбран') + '.';
+  document.getElementById('order-partner-reason').value = '';
+  error.style.display = 'none';
+  select.innerHTML = '<option value="">Загрузка…</option>';
+  select.disabled = true;
+  modal.style.display = 'flex';
+
+  try {
+    const res = await authFetch('/api/partners?days=365');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось загрузить грумеров');
+    editingOrderPartnerOptions = (data.partners || []).filter(function(partner) {
+      return partner.active && String(partner.point_id || '') === String(order.point_id || '');
+    });
+    let selectedValue = '';
+    if (order.partner_id && editingOrderPartnerOptions.some(function(partner) { return Number(partner.id) === Number(order.partner_id); })) {
+      selectedValue = String(order.partner_id);
+    } else if (!order.partner_id && editingOrderPartnerOptions.length === 1) {
+      selectedValue = String(editingOrderPartnerOptions[0].id);
+    }
+    select.innerHTML = '<option value="">Выберите вариант</option>' +
+      editingOrderPartnerOptions.map(function(partner) {
+        return '<option value="' + Number(partner.id) + '">' + escapeOrderCell(partner.full_name) +
+          ' · ' + Math.round(Number(partner.commission_rate || 0) * 100) + '%</option>';
+      }).join('') +
+      '<option value="self">Выбрал всё сам · 0%</option>';
+    select.value = selectedValue;
+    select.disabled = false;
+    updateOrderPartnerPreview();
+  } catch (loadError) {
+    error.textContent = loadError.message;
+    error.style.display = 'block';
+    select.innerHTML = '<option value="">Не удалось загрузить список</option>';
+  }
+}
+
+function updateOrderPartnerPreview() {
+  const order = allOrders.find(function(o) { return o.id === editingOrderPartnerId; });
+  const value = document.getElementById('order-partner-select').value;
+  const preview = document.getElementById('order-partner-preview');
+  if (!order || !value) {
+    preview.textContent = 'Выберите грумера или вариант «Выбрал всё сам».';
+    return;
+  }
+  const partner = editingOrderPartnerOptions.find(function(item) { return String(item.id) === value; });
+  const rate = partner ? Number(partner.commission_rate || 0) : 0;
+  const amount = Math.round(Number(order.total || 0) * rate);
+  preview.textContent = partner
+    ? 'Будет начислено: ' + amount.toLocaleString('ru-RU') + ' ₽ (' + Math.round(rate * 100) + '%) · ' + partner.full_name
+    : 'Комиссия не начисляется: покупатель выбрал товар сам.';
+}
+
+function closeOrderPartnerModal() {
+  document.getElementById('order-partner-modal').style.display = 'none';
+  editingOrderPartnerId = null;
+  editingOrderPartnerOptions = [];
+}
+
+async function saveOrderPartner() {
+  const select = document.getElementById('order-partner-select');
+  const reason = document.getElementById('order-partner-reason').value.trim();
+  const error = document.getElementById('order-partner-error');
+  if (!select.value) {
+    error.textContent = 'Выберите грумера или пункт «Выбрал всё сам».';
+    error.style.display = 'block';
+    return;
+  }
+  if (reason.length < 3) {
+    error.textContent = 'Укажите причину исправления.';
+    error.style.display = 'block';
+    return;
+  }
+  const order = allOrders.find(function(o) { return o.id === editingOrderPartnerId; });
+  if (!order) return;
+  const chosen = editingOrderPartnerOptions.find(function(item) { return String(item.id) === select.value; });
+  const targetName = chosen ? chosen.full_name : 'Выбрал всё сам';
+  if (!confirm('Изменить грумера в заказе ' + order.order_code + ' на «' + targetName + '»?')) return;
+
+  const button = document.getElementById('order-partner-save');
+  button.disabled = true;
+  error.style.display = 'none';
+  try {
+    const res = await authFetch('/api/orders/' + editingOrderPartnerId + '/partner', {
+      method: 'PUT',
+      body: { partner_id: select.value === 'self' ? null : Number(select.value), reason: reason },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось сохранить');
+    closeOrderPartnerModal();
+    await loadOrders();
+    renderOrders();
+    alert('Грумер исправлен. Комиссия по заказу: ' + Number(data.commission_amount || 0).toLocaleString('ru-RU') + ' ₽.');
+  } catch (saveError) {
+    error.textContent = saveError.message;
+    error.style.display = 'block';
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // ── ВОЗВРАТ ЗАКАЗА ─────────────────────────────────────────────────
@@ -4976,6 +5164,14 @@ async function renderAuditLog() {
       action = 'Удаление со склада';
       target = auditEscape(event.product_name) + ' <span style="color:var(--muted);">(' + auditEscape(event.weight) + ')</span>';
       details = 'Склад: ' + auditEscape(event.city_name || event.city_id) + ' · удалено: ' + Number(event.old_qty || 0) + ' шт.';
+    } else if (event.type === 'order_partner_change') {
+      action = 'Исправление грумера';
+      target = 'Заказ <span style="font-family:monospace;">' + auditEscape(event.order_code) + '</span>';
+      const oldName = event.old_partner_name || 'Не выбран';
+      const newName = event.new_partner_name || 'Выбрал всё сам';
+      const oldRate = event.old_commission_rate == null ? '—' : Math.round(Number(event.old_commission_rate) * 100) + '%';
+      const newRate = Math.round(Number(event.new_commission_rate || 0) * 100) + '%';
+      details = auditEscape(oldName) + ' (' + oldRate + ') → ' + auditEscape(newName) + ' (' + newRate + ')';
     } else {
       action = event.action || 'Действие менеджера';
       target = auditEscape(event.target_name || event.target_id || '—');
