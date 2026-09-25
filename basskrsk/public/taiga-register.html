@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=28">
+<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=28">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Тайга — Регистрация партнёра</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --forest:#1C3A2F; --deep:#2D5A3F; --amber:#D4872A; --amber-lt:#E8A84A;
+  --cream:#F7F3EC; --white:#fff; --text:#2A2218; --muted:#8A7D6B;
+  --border:#DDD5C8; --r:8px; --shadow:0 2px 16px rgba(28,58,47,.10);
+  --red:#C0392B; --red-bg:#FDECEA;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);min-height:100vh;}
+
+/* ── NAV ── */
+nav{background:var(--forest);padding:0 5vw;}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:60px;max-width:900px;margin:0 auto;}
+.nav-logo{font-family:'Playfair Display',serif;font-size:1.3rem;color:#fff;cursor:pointer;}
+.nav-logo span{color:var(--amber);}
+.nav-brand-mark{width:54px;height:54px;box-sizing:border-box;flex:0 0 54px;display:flex;align-items:center;justify-content:center;padding:3px;background:#fff;border-radius:13px;box-shadow:0 2px 9px rgba(0,0,0,.2);}
+.nav-brand-mark img{width:48px;height:auto;display:block;image-rendering:auto;}
+.nav-back{font-size:.82rem;color:rgba(255,255,255,.55);text-decoration:none;transition:color .2s;}
+.nav-back:hover{color:rgba(255,255,255,.9);}
+
+/* ── WRAPPER ── */
+.wrap{max-width:680px;margin:0 auto;padding:2.5rem 5vw 4rem;}
+
+/* ── PROGRESS ── */
+.progress-bar{display:flex;align-items:center;gap:0;margin-bottom:2.5rem;}
+.step-item{display:flex;flex-direction:column;align-items:center;flex:1;position:relative;}
+.step-item:not(:last-child)::after{
+  content:'';position:absolute;top:16px;left:50%;width:100%;
+  height:2px;background:var(--border);z-index:0;
+  transition:background .3s;
+}
+.step-item.done:not(:last-child)::after{background:var(--deep);}
+.step-circle{
+  width:32px;height:32px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.78rem;font-weight:700;z-index:1;
+  border:2px solid var(--border);background:var(--white);color:var(--muted);
+  transition:all .3s;
+}
+.step-item.active .step-circle{border-color:var(--deep);background:var(--deep);color:#fff;}
+.step-item.done .step-circle{border-color:var(--deep);background:var(--deep);color:#fff;}
+.step-label{font-size:.7rem;color:var(--muted);margin-top:.4rem;text-align:center;white-space:nowrap;}
+.step-item.active .step-label{color:var(--deep);font-weight:600;}
+
+/* ── CARD ── */
+.card{background:var(--white);border-radius:14px;padding:2rem;box-shadow:var(--shadow);margin-bottom:1.25rem;}
+.card-title{font-family:'Playfair Display',serif;font-size:1.25rem;color:var(--forest);margin-bottom:.35rem;}
+.card-sub{font-size:.85rem;color:var(--muted);margin-bottom:1.5rem;line-height:1.6;}
+
+/* ── FORM ── */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+.field{margin-bottom:1rem;}
+.field label{display:block;font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.35rem;}
+.field label .req{color:var(--red);}
+.field input,.field select,.field textarea{
+  width:100%;padding:.65rem .9rem;
+  border:1.5px solid var(--border);border-radius:var(--r);
+  font-size:.88rem;font-family:'Inter',sans-serif;color:var(--text);
+  outline:none;transition:border-color .2s;background:var(--white);
+}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--deep);}
+.field input.error,.field select.error{border-color:var(--red);}
+.field-error{font-size:.75rem;color:var(--red);margin-top:.3rem;}
+.field-hint{font-size:.74rem;color:var(--muted);margin-top:.3rem;}
+
+/* radio group */
+.radio-group{display:flex;gap:.65rem;flex-wrap:wrap;}
+.radio-card{
+  flex:1;min-width:120px;padding:.7rem .9rem;
+  border:1.5px solid var(--border);border-radius:var(--r);
+  cursor:pointer;transition:all .2s;text-align:center;
+}
+.radio-card:hover{border-color:var(--deep);}
+.radio-card.selected{border-color:var(--deep);background:var(--cream);}
+.radio-card input{display:none;}
+.radio-card-icon{font-size:1.3rem;margin-bottom:.3rem;}
+.radio-card-label{font-size:.8rem;font-weight:600;color:var(--text);}
+.radio-card-sub{font-size:.7rem;color:var(--muted);margin-top:.1rem;}
+
+/* tier cards */
+.tier-grid{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.5rem;}
+.tier-card{
+  flex:1;min-width:140px;padding:1rem;border-radius:10px;
+  border:1.5px solid var(--border);cursor:pointer;transition:all .2s;
+}
+.tier-card:hover{border-color:var(--deep);}
+.tier-card.selected{border-color:var(--amber);background:#FFF9F0;}
+.tier-pct{font-size:1.6rem;font-weight:700;color:var(--forest);line-height:1;}
+.tier-name{font-size:.78rem;font-weight:600;color:var(--text);margin:.3rem 0 .15rem;}
+.tier-desc{font-size:.72rem;color:var(--muted);line-height:1.5;}
+.tier-card.selected .tier-pct{color:var(--amber);}
+
+/* ── CONTRACT ── */
+.contract-scroll{
+  height:380px;overflow-y:auto;border:1.5px solid var(--border);
+  border-radius:var(--r);padding:1.25rem 1.4rem;
+  font-size:.8rem;line-height:1.8;color:var(--text);
+  background:var(--white);margin-bottom:1.25rem;
+}
+.contract-scroll h2{font-size:.9rem;font-weight:700;margin:1.2rem 0 .4rem;color:var(--forest);}
+.contract-scroll h2:first-child{margin-top:0;}
+.contract-scroll p{margin-bottom:.6rem;}
+.contract-scroll table{width:100%;border-collapse:collapse;margin-top:.5rem;}
+.contract-scroll td{border:1px solid var(--border);padding:.5rem;vertical-align:top;font-size:.78rem;}
+.contract-filled{background:#EDF5EE;color:var(--deep);font-weight:600;padding:.05rem .2rem;border-radius:3px;}
+.scroll-hint{
+  display:flex;align-items:center;gap:.5rem;
+  font-size:.78rem;color:var(--muted);margin-bottom:.85rem;
+}
+.read-badge{
+  display:none;align-items:center;gap:.4rem;
+  font-size:.78rem;color:var(--deep);font-weight:600;margin-bottom:.85rem;
+}
+.read-badge.show{display:flex;}
+
+/* ── SIGNATURE ── */
+.sig-wrap{position:relative;margin-bottom:1rem;}
+.sig-label{font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.4rem;}
+canvas#sigCanvas{
+  width:100%;height:150px;border:1.5px solid var(--border);
+  border-radius:var(--r);background:#FAFAF7;cursor:crosshair;
+  display:block;touch-action:none;
+}
+canvas#sigCanvas.has-sig{border-color:var(--deep);}
+.sig-actions{display:flex;justify-content:flex-end;margin-top:.4rem;}
+.clear-sig{
+  font-size:.75rem;color:var(--muted);background:none;border:none;
+  cursor:pointer;font-family:'Inter',sans-serif;transition:color .2s;
+}
+.clear-sig:hover{color:var(--red);}
+.sig-empty-hint{font-size:.75rem;color:var(--red);display:none;margin-top:.3rem;}
+
+/* checkbox */
+.check-row{display:flex;align-items:flex-start;gap:.65rem;margin-bottom:1rem;}
+.check-row input[type=checkbox]{width:17px;height:17px;margin-top:.1rem;accent-color:var(--deep);flex-shrink:0;}
+.check-row label{font-size:.83rem;color:var(--text);line-height:1.5;cursor:pointer;}
+.check-row label a{color:var(--amber);}
+
+/* ── BUTTONS ── */
+.btn-row{display:flex;gap:.75rem;justify-content:flex-end;margin-top:.5rem;}
+.btn-primary{
+  background:var(--forest);color:#fff;border:none;border-radius:var(--r);
+  padding:.75rem 1.8rem;font-size:.9rem;font-weight:600;cursor:pointer;
+  font-family:'Inter',sans-serif;transition:background .2s;
+}
+.btn-primary:hover{background:var(--deep);}
+.btn-primary:disabled{background:var(--border);color:var(--muted);cursor:not-allowed;}
+.btn-secondary{
+  background:none;border:1.5px solid var(--border);color:var(--muted);
+  border-radius:var(--r);padding:.75rem 1.4rem;font-size:.9rem;font-weight:500;
+  cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;
+}
+.btn-secondary:hover{border-color:var(--deep);color:var(--deep);}
+
+/* ── SUCCESS ── */
+#step-success{display:none;}
+.success-icon{font-size:3.5rem;text-align:center;margin-bottom:1rem;}
+.success-title{font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--forest);text-align:center;margin-bottom:.6rem;}
+.success-sub{font-size:.88rem;color:var(--muted);text-align:center;line-height:1.7;margin-bottom:1.5rem;}
+.success-details{
+  background:var(--cream);border-radius:10px;padding:1.1rem 1.25rem;
+  font-size:.85rem;line-height:1.9;margin-bottom:1.5rem;
+}
+.success-details strong{color:var(--forest);}
+.dl-btn{
+  display:flex;align-items:center;justify-content:center;gap:.5rem;
+  width:100%;background:var(--forest);color:#fff;border:none;border-radius:var(--r);
+  padding:.8rem;font-size:.9rem;font-weight:600;cursor:pointer;
+  font-family:'Inter',sans-serif;transition:background .2s;margin-bottom:.65rem;
+}
+.dl-btn:hover{background:var(--deep);}
+.dl-btn-outline{background:none;border:1.5px solid var(--border);color:var(--muted);}
+.dl-btn-outline:hover{border-color:var(--deep);color:var(--deep);background:none;}
+
+@media(max-width:560px){
+  .form-row{grid-template-columns:1fr;}
+  .btn-row{flex-direction:column-reverse;}
+  .btn-primary,.btn-secondary{width:100%;text-align:center;}
+}
+</style>
+<script src="config.js"></script>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="nav-logo" aria-label="ХвостМаркет" style="display:flex;align-items:center;gap:.5rem;"><span class="nav-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;line-height:.82;font-family:Inter,sans-serif;font-size:.92rem;font-weight:800;"><span style="color:#fff;">Хвост</span><span style="color:#FF5A49;margin-top:.22rem;">Маркет</span></span></div>
+    <a href="index.html" class="nav-back">← Вернуться на сайт</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <div class="card" id="form-card">
+    <div class="card-title">Стать партнёром «Тайги»</div>
+    <div class="card-sub">Понадобится буквально минута. Остальные детали — реквизиты для выплат, формат размещения на точке — заполним вместе чуть позже, когда всё будет готово к первым продажам.</div>
+
+    <div class="field">
+      <label>Имя <span class="req">*</span></label>
+      <input type="text" id="f-fname" placeholder="Мария">
+    </div>
+    <div class="field">
+      <label>Фамилия <span class="req">*</span></label>
+      <input type="text" id="f-lname" placeholder="Иванова">
+    </div>
+    <div class="field">
+      <label>Телефон <span class="req">*</span></label>
+      <input type="tel" id="f-phone" placeholder="+7 (900) 000-00-00">
+    </div>
+    <div class="field">
+      <label>Минимаркет <span class="req">*</span></label>
+      <select id="f-point">
+        <option value="">Загружаем список...</option>
+      </select>
+      <div class="field-hint">Точку заранее создаёт администратор или менеджер сети. Не нашли свою в списке? Уточните у менеджера, который вас пригласил.</div>
+    </div>
+    <div class="field">
+      <label>Логин для личного кабинета <span class="req">*</span></label>
+      <input type="text" id="f-login" placeholder="maria_groomer" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Пароль <span class="req">*</span></label>
+      <input type="password" id="f-password" placeholder="Не короче 6 символов" autocomplete="new-password">
+    </div>
+
+    <div id="extra-codes-toggle" style="margin-bottom:1.2rem;">
+      <a href="#" onclick="toggleExtraCodes(event)" style="font-size:.85rem;color:var(--amber);text-decoration:underline;cursor:pointer;">Есть код от менеджера или промокод? →</a>
+    </div>
+    <div id="extra-codes-fields" style="display:none;">
+      <div class="field">
+        <label>Код менеджера</label>
+        <input type="text" id="f-manager" placeholder="Например: MGR-2025-042">
+        <div class="field-hint">Не обязательно — если не укажете, точка останется закреплена за менеджером, который её уже создал.</div>
+      </div>
+      <div class="field">
+        <label>Промокод</label>
+        <input type="text" id="f-refcode" placeholder="Например: GR-001 или OWN-001">
+        <div class="field-hint">Если вас пригласил другой грумер или владелец салона — впишите его код. Он получит 1 000 ₽, когда ваша точка заработает «Тайге» 2 000 ₽ прибыли.</div>
+      </div>
+    </div>
+
+    <div class="check-row">
+      <input type="checkbox" id="chk-agree">
+      <label for="chk-agree">Я согласен(-на) с условиями партнёрства и подтверждаю, что указанные данные верны</label>
+    </div>
+    <div class="check-row">
+      <input type="checkbox" id="chk-pd">
+      <label for="chk-pd">Я даю согласие на <a href="privacy-policy.html" target="_blank">обработку персональных данных</a> в соответствии с ФЗ-152</label>
+    </div>
+
+    <div id="submit-error" style="display:none;background:var(--red-bg);color:var(--red);font-size:.85rem;padding:.7rem 1rem;border-radius:8px;margin-bottom:1rem;"></div>
+    <button class="btn-primary" id="submit-btn" onclick="submitForm()">Отправить заявку</button>
+  </div>
+
+  <div class="card" id="step-success" style="display:none;text-align:center;">
+    <div style="font-size:3rem;margin-bottom:.5rem;">✅</div>
+    <div class="card-title" style="text-align:center;">Готово! Вы зарегистрированы</div>
+    <div id="success-details" style="text-align:left;font-size:.9rem;color:var(--text);line-height:1.9;background:var(--cream);border-radius:10px;padding:1.2rem 1.4rem;margin:1rem 0;"></div>
+    <p style="font-size:.85rem;color:var(--muted);">Можно сразу входить в личный кабинет по указанным логину и паролю. Реквизиты для выплат и формат размещения на точке уточним отдельно, когда точка будет готова к первым продажам.</p>
+  </div>
+
+</div>
+
+<script>
+let AVAILABLE_POINTS = [];
+async function loadAvailablePoints() {
+  const sel = document.getElementById('f-point');
+  try {
+    const res = await fetch('/api/points/available-for-registration');
+    const data = await res.json();
+    AVAILABLE_POINTS = data.points || [];
+    if (!AVAILABLE_POINTS.length) {
+      sel.innerHTML = '<option value="">Свободных минимаркетов сейчас нет</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">— Выберите минимаркет —</option>' +
+      AVAILABLE_POINTS.map(function(p) {
+        return '<option value="' + p.id + '">' + p.icon + ' ' + p.name + ' — ' + p.addr + '</option>';
+      }).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="">Не удалось загрузить список — обновите страницу</option>';
+  }
+}
+loadAvailablePoints();
+
+function toggleExtraCodes(e) {
+  e.preventDefault();
+  document.getElementById('extra-codes-fields').style.display = 'block';
+  document.getElementById('extra-codes-toggle').style.display = 'none';
+}
+
+function fmtPhone(el) {
+  let v = el.value.replace(/\D/g, '');
+  if (v.startsWith('8')) v = '7' + v.slice(1);
+  if (v.startsWith('7') && v.length > 1) {
+    let d = v.slice(1);
+    let r = '+7';
+    if (d.length > 0) r += ' (' + d.slice(0,3);
+    if (d.length >= 3) r += ') ' + d.slice(3,6);
+    if (d.length >= 6) r += '-' + d.slice(6,8);
+    if (d.length >= 8) r += '-' + d.slice(8,10);
+    el.value = r;
+  } else if (v.length > 0 && !v.startsWith('7')) {
+    el.value = '+' + v;
+  }
+}
+document.getElementById('f-phone').addEventListener('input', function() { fmtPhone(this); });
+
+function setFieldError(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('error', !!msg);
+  let hint = el.parentNode.querySelector('.field-error');
+  if (msg) {
+    if (!hint) {
+      hint = document.createElement('div');
+      hint.className = 'field-error';
+      el.parentNode.appendChild(hint);
+    }
+    hint.textContent = msg;
+  } else if (hint) {
+    hint.remove();
+  }
+}
+
+function validateForm() {
+  let ok = true;
+  ['f-fname','f-lname','f-phone','f-point','f-login','f-password'].forEach(function(id) {
+    setFieldError(id, '');
+  });
+  if (!document.getElementById('f-fname').value.trim()) { setFieldError('f-fname', 'Укажите имя'); ok = false; }
+  if (!document.getElementById('f-lname').value.trim()) { setFieldError('f-lname', 'Укажите фамилию'); ok = false; }
+  const phone = document.getElementById('f-phone').value.trim();
+  if (!phone || phone.replace(/\D/g,'').length < 11) { setFieldError('f-phone', 'Укажите телефон полностью'); ok = false; }
+  if (!document.getElementById('f-point').value) { setFieldError('f-point', 'Выберите минимаркет'); ok = false; }
+  if (!document.getElementById('f-login').value.trim()) { setFieldError('f-login', 'Придумайте логин'); ok = false; }
+  if (document.getElementById('f-password').value.length < 6) { setFieldError('f-password', 'Не короче 6 символов'); ok = false; }
+  return ok;
+}
+
+async function submitForm() {
+  const errBox = document.getElementById('submit-error');
+  errBox.style.display = 'none';
+
+  if (!validateForm()) return;
+  if (!document.getElementById('chk-agree').checked) {
+    errBox.textContent = 'Подтвердите согласие с условиями партнёрства';
+    errBox.style.display = 'block';
+    return;
+  }
+  if (!document.getElementById('chk-pd').checked) {
+    errBox.textContent = 'Нужно согласие на обработку персональных данных';
+    errBox.style.display = 'block';
+    return;
+  }
+
+  const fn = document.getElementById('f-fname').value.trim();
+  const ln = document.getElementById('f-lname').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+  const pointId = document.getElementById('f-point').value;
+  const selectedPoint = AVAILABLE_POINTS.find(function(p) { return p.id === pointId; });
+  const login = document.getElementById('f-login').value.trim();
+  const password = document.getElementById('f-password').value;
+  const mgrCode = document.getElementById('f-manager').value.trim() || null;
+  const refCode = document.getElementById('f-refcode').value.trim() || null;
+
+  const submitBtn = document.getElementById('submit-btn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Отправляем…';
+
+  try {
+    const res = await fetch('/api/partners/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: (ln + ' ' + fn).trim(),
+        phone,
+        point_id: pointId,
+        manager_code: mgrCode,
+        referral_code: refCode,
+        login,
+        password,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось отправить заявку');
+
+    document.getElementById('form-card').style.display = 'none';
+    document.getElementById('step-success').style.display = 'block';
+    window.scrollTo({top:0,behavior:'smooth'});
+
+    document.getElementById('success-details').innerHTML =
+      '<strong>Партнёр:</strong> ' + ln + ' ' + fn + '<br>' +
+      '<strong>Телефон:</strong> ' + phone + '<br>' +
+      '<strong>Минимаркет:</strong> ' + (selectedPoint ? selectedPoint.icon + ' ' + selectedPoint.name + ' — ' + selectedPoint.addr : '') + '<br>' +
+      '<strong>Код партнёра:</strong> ' + data.partner_code;
+  } catch (e) {
+    errBox.textContent = e.message;
+    errBox.style.display = 'block';
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Отправить заявку';
+  }
+}
+
+// Если по ссылке пришли параметры ?mgr=... и/или ?ref=... (поделился менеджер
+// или грумер/владелец салона своим кодом) — подставляем их сразу и сразу
+// разворачиваем блок, чтобы было видно, что код принят.
+(function prefillFromLink() {
+  const params = new URLSearchParams(window.location.search);
+  const mgr = params.get('mgr');
+  const ref = params.get('ref');
+  if (mgr || ref) {
+    document.getElementById('extra-codes-fields').style.display = 'block';
+    document.getElementById('extra-codes-toggle').style.display = 'none';
+    if (mgr) document.getElementById('f-manager').value = mgr;
+    if (ref) document.getElementById('f-refcode').value = ref;
+  }
+})();
+</script>
+</body>
+</html>

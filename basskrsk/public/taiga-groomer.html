@@ -1,0 +1,1762 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=28">
+<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=28">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Тайга — Личный кабинет партнёра</title>
+<link rel="manifest" href="manifest-groomer.json">
+<meta name="theme-color" content="#1C3A2F">
+<link rel="apple-touch-icon" href="images/icons/icon-180-apple.png?v=20">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Тайга Грумер">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="payout-schedule.css">
+<link rel="stylesheet" href="telegram-connect.css?v=38">
+<link rel="stylesheet" href="cabinet-navigation.css?v=46">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+html { font-size: 16px; }
+/* На широких экранах (частый случай Retina-ноутбуков с масштабом "Больше
+   пространства" в macOS) логическое разрешение больше, из-за чего интерфейс
+   на fixed-px/rem вёрстке кажется мельче физически. Плавно увеличиваем базовый
+   размер — почти все элементы (rem-based) вырастут пропорционально. */
+@media (min-width: 1440px) { html { font-size: 17px; } }
+@media (min-width: 1800px) { html { font-size: 18px; } }
+
+
+:root {
+  --forest:#1C3A2F; --deep:#2D5A3F; --amber:#D4872A; --amber-lt:#E8A84A;
+  --cream:#F7F3EC; --white:#fff; --text:#2A2218; --muted:#8A7D6B;
+  --border:#DDD5C8; --r:8px; --shadow:0 1px 8px rgba(28,58,47,.09);
+  --green-bg:#EDF5EE; --green-text:#2D5A3F;
+  --red-bg:#FDECEA; --red-text:#9B2335;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-size:14px;min-height:100vh;}
+
+/* ── LOGIN ── */
+#login-screen{
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;padding:1rem;
+}
+.login-card{
+  background:var(--white);border-radius:16px;padding:2.5rem 2rem;
+  width:100%;max-width:380px;box-shadow:0 4px 24px rgba(28,58,47,.12);
+}
+.login-logo{font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--forest);margin-bottom:.25rem;}
+.login-logo span{color:var(--amber);}
+.login-sub{font-size:.82rem;color:var(--muted);margin-bottom:2rem;}
+.field{margin-bottom:1rem;}
+.field label{display:block;font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.35rem;}
+.field input{
+  width:100%;padding:.65rem .9rem;border:1.5px solid var(--border);
+  border-radius:var(--r);font-size:.9rem;font-family:'Inter',sans-serif;
+  color:var(--text);outline:none;transition:border-color .2s;background:var(--white);
+}
+.field input:focus{border-color:var(--deep);}
+.login-btn{
+  width:100%;background:var(--forest);color:#fff;border:none;border-radius:var(--r);
+  padding:.85rem;font-size:.95rem;font-weight:600;cursor:pointer;
+  font-family:'Inter',sans-serif;transition:background .2s;margin-top:.5rem;
+}
+.login-btn:hover{background:var(--deep);}
+.login-hint{font-size:.75rem;color:var(--muted);text-align:center;margin-top:1rem;}
+.login-error{
+  display:none;background:var(--red-bg);color:var(--red-text);
+  border-radius:6px;padding:.55rem .8rem;font-size:.8rem;margin-bottom:1rem;
+}
+
+/* ── APP ── */
+#app{display:none;}
+.layout{display:flex;min-height:100vh;}
+
+/* sidebar */
+.sidebar{width:220px;flex-shrink:0;background:var(--forest);display:flex;flex-direction:column;}
+.sidebar-logo{
+  padding:1.4rem 1.25rem .9rem;
+  font-family:'Playfair Display',serif;font-size:1.2rem;color:#fff;letter-spacing:.04em;
+  border-bottom:1px solid rgba(255,255,255,.1);
+}
+.sidebar-logo span{color:var(--amber);}
+.sidebar-brand-mark{width:66px;height:66px;box-sizing:border-box;flex:0 0 66px;display:flex;align-items:center;justify-content:center;padding:4px;background:#fff;border-radius:16px;box-shadow:0 3px 12px rgba(0,0,0,.22);}
+.sidebar-brand-mark img{width:58px;height:auto;display:block;image-rendering:auto;}
+.sidebar-user{
+  padding:.9rem 1.25rem;display:flex;align-items:center;gap:.65rem;
+  border-bottom:1px solid rgba(255,255,255,.08);
+}
+.avatar{
+  width:34px;height:34px;border-radius:50%;
+  background:rgba(212,135,42,.3);display:flex;align-items:center;justify-content:center;
+  font-size:.75rem;font-weight:700;color:var(--amber);flex-shrink:0;
+}
+.user-name{font-size:.82rem;font-weight:600;color:#fff;line-height:1.3;}
+.user-role{font-size:.7rem;color:rgba(255,255,255,.45);}
+.sidebar-label{
+  padding:.7rem 1.25rem .3rem;
+  font-size:.68rem;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:rgba(255,255,255,.3);
+}
+.nav-item{
+  display:flex;align-items:center;gap:.6rem;
+  padding:.6rem 1.25rem;font-size:.85rem;color:rgba(255,255,255,.7);
+  cursor:pointer;border:none;background:none;width:100%;text-align:left;
+  transition:background .15s,color .15s;
+}
+.nav-item:hover{background:rgba(255,255,255,.07);color:#fff;}
+.nav-item.active{background:rgba(212,135,42,.2);color:var(--amber);}
+.nav-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+.sidebar-footer{
+  margin-top:auto;padding:.9rem 1.25rem;
+  font-size:.75rem;color:rgba(255,255,255,.3);
+  border-top:1px solid rgba(255,255,255,.08);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.logout-btn{
+  font-size:.72rem;color:rgba(255,255,255,.4);background:none;border:none;
+  cursor:pointer;font-family:'Inter',sans-serif;transition:color .2s;
+}
+.logout-btn:hover{color:rgba(255,255,255,.8);}
+
+/* main */
+.main{flex:1;overflow:auto;}
+.topbar{
+  background:var(--white);border-bottom:1px solid var(--border);
+  padding:.85rem 2rem;display:flex;align-items:center;justify-content:space-between;
+}
+.topbar h1{font-size:1rem;font-weight:600;}
+.topbar-right{display:flex;align-items:center;gap:.65rem;}
+.period-btn{
+  padding:.32rem .8rem;border-radius:50px;border:1px solid var(--border);
+  background:var(--white);font-size:.76rem;font-weight:500;cursor:pointer;
+  color:var(--muted);transition:all .15s;font-family:'Inter',sans-serif;
+}
+.period-btn.active{background:var(--forest);border-color:var(--forest);color:#fff;}
+.content{padding:1.5rem 2rem;}
+
+/* sections */
+.page-sec{display:none;}
+.page-sec.active{display:block;}
+
+/* cards */
+.card{
+  background:var(--white);border-radius:10px;padding:1.25rem;
+  border:1px solid var(--border);box-shadow:var(--shadow);
+}
+.card-title{
+  font-size:.8rem;font-weight:600;color:var(--text);
+  margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;
+}
+.card-title span{font-weight:400;color:var(--muted);font-size:.74rem;}
+
+/* kpi */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.85rem;margin-bottom:1.25rem;}
+.kpi-card{
+  background:var(--white);border-radius:10px;padding:1rem 1.1rem;
+  border:1px solid var(--border);box-shadow:var(--shadow);
+}
+.kpi-label{font-size:.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.35rem;}
+.kpi-value{font-size:1.5rem;font-weight:700;color:var(--text);line-height:1;margin-bottom:.3rem;}
+.kpi-delta{font-size:.75rem;font-weight:500;}
+.delta-up{color:#2D7D46;} .delta-dn{color:#9B2335;}
+
+/* grid */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem;}
+
+/* table */
+.tbl{width:100%;border-collapse:collapse;font-size:.8rem;}
+.tbl th{
+  text-align:left;padding:.45rem .7rem;font-size:.68rem;font-weight:600;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--muted);
+  border-bottom:1px solid var(--border);white-space:nowrap;
+}
+.tbl th.r,.tbl td.r{text-align:right;}
+.tbl td{padding:.5rem .7rem;border-bottom:1px solid #F5F0E8;color:var(--text);}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:hover td{background:#FAFAF7;}
+
+/* pills */
+.pill{display:inline-flex;align-items:center;gap:.25rem;padding:.15rem .55rem;border-radius:50px;font-size:.7rem;font-weight:600;}
+.pill-green{background:var(--green-bg);color:var(--green-text);}
+.pill-amber{background:#FFF4E5;color:#7A4A00;}
+.pill-blue{background:#EEF0FB;color:#3C3489;}
+.pill-red{background:var(--red-bg);color:var(--red-text);}
+
+/* stock bars */
+.stock-row{display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid #F5F0E8;}
+.stock-row:last-child{border-bottom:none;}
+.stock-name{flex:1;font-size:.82rem;color:var(--text);}
+.stock-qty{font-size:.82rem;font-weight:600;min-width:40px;text-align:right;}
+.stock-bar-wrap{width:80px;}
+.stock-bar-track{height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+.stock-bar-fill{height:100%;border-radius:2px;transition:width .3s;}
+
+/* referral */
+.ref-card{
+  background:linear-gradient(135deg,var(--forest) 0%,#2D5A3F 100%);
+  border-radius:12px;padding:1.5rem;color:#fff;margin-bottom:1rem;
+}
+.ref-title{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:.4rem;}
+.ref-link-wrap{
+  display:flex;align-items:center;gap:.5rem;
+  background:rgba(255,255,255,.1);border-radius:6px;padding:.55rem .8rem;
+  margin:.75rem 0;
+}
+.ref-link{font-size:.82rem;color:rgba(255,255,255,.9);flex:1;font-family:monospace;word-break:break-all;}
+.copy-btn{
+  background:var(--amber);color:#fff;border:none;border-radius:5px;
+  padding:.3rem .7rem;font-size:.75rem;font-weight:600;cursor:pointer;
+  font-family:'Inter',sans-serif;white-space:nowrap;transition:background .15s;
+}
+.copy-btn:hover{background:var(--amber-lt);}
+.ref-stats{display:flex;gap:1.5rem;margin-top:.75rem;}
+.ref-stat-val{font-size:1.2rem;font-weight:700;}
+.ref-stat-lbl{font-size:.72rem;color:rgba(255,255,255,.5);margin-top:.1rem;}
+
+/* tier badge */
+.tier-wrap{
+  display:flex;align-items:center;gap:.6rem;
+  background:rgba(212,135,42,.15);border:1px solid rgba(212,135,42,.3);
+  border-radius:8px;padding:.6rem .9rem;margin-bottom:1rem;
+}
+.tier-icon{font-size:1.3rem;}
+.tier-name{font-size:.85rem;font-weight:600;color:var(--amber);}
+.tier-desc{font-size:.75rem;color:var(--muted);}
+.tier-pct{font-size:1.3rem;font-weight:700;color:var(--amber);margin-left:auto;}
+
+/* progress to next tier */
+.tier-progress{margin-top:.5rem;}
+.tier-prog-row{display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);margin-bottom:.3rem;}
+.tier-prog-track{height:6px;background:var(--border);border-radius:3px;overflow:hidden;}
+.tier-prog-fill{height:100%;border-radius:3px;background:var(--amber);transition:width .5s;}
+
+/* news/notifications */
+.notif{
+  display:flex;gap:.75rem;padding:.75rem 0;border-bottom:1px solid #F5F0E8;
+}
+.notif:last-child{border-bottom:none;}
+.notif-dot{width:8px;height:8px;border-radius:50%;background:var(--amber);flex-shrink:0;margin-top:4px;}
+.notif-dot.read{background:var(--border);}
+.notif-title{font-size:.82rem;font-weight:500;color:var(--text);margin-bottom:.15rem;}
+.notif-time{font-size:.72rem;color:var(--muted);}
+
+/* payout */
+.payout-amount{
+  font-size:2rem;font-weight:700;color:var(--deep);
+  margin:.5rem 0;display:flex;align-items:baseline;gap:.35rem;
+}
+.payout-amount span{font-size:.9rem;font-weight:400;color:var(--muted);}
+.payout-btn{
+  background:var(--forest);color:#fff;border:none;border-radius:var(--r);
+  padding:.65rem 1.4rem;font-size:.85rem;font-weight:600;cursor:pointer;
+  font-family:'Inter',sans-serif;transition:background .2s;margin-top:.75rem;
+}
+.payout-btn:hover{background:var(--deep);}
+
+/* ══ MOBILE (≤768px) — сайдбар сворачивается в горизontal-scroll меню сверху ══ */
+@media (max-width: 768px) {
+  .layout { flex-direction: column; }
+  .sidebar {
+    width: 100%; flex-direction: row; overflow-x: auto;
+    -webkit-overflow-scrolling: touch; flex-shrink: 0;
+  }
+  .sidebar-logo, .sidebar-user, .sidebar-label, .sidebar-footer { display: none; }
+  .nav-item {
+    width: auto; flex-shrink: 0; white-space: nowrap;
+    padding: .7rem .9rem; font-size: .78rem;
+  }
+  .main { overflow: visible; }
+  .content { padding: .85rem; }
+  .topbar { padding: .65rem .9rem; }
+  .topbar h1 { font-size: .9rem; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .card { padding: .9rem; overflow-x: auto; }
+  .tbl { font-size: .74rem; min-width: 480px; }
+}
+
+</style>
+<script src="config.js"></script>
+<script src="payout-schedule.js"></script>
+<script src="telegram-connect.js?v=38"></script>
+<script src="max-connect.js?v=41"></script>
+<script src="cabinet-navigation.js?v=46"></script>
+</head>
+<body>
+
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo"><img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" style="height:132px;width:auto;display:block;margin:0 auto;"></div>
+    <div class="login-sub">Личный кабинет партнёра</div>
+    <div class="field">
+      <label>Логин</label>
+      <input type="text" id="l-login" placeholder="groomer01" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Пароль</label>
+      <div style="position:relative;">
+        <input type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password" style="padding-right:2.6rem;">
+        <button type="button" onclick="togglePasswordVisibility('l-pass', this)" style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.05rem;padding:.2rem;line-height:1;">👁️</button>
+      </div>
+    </div>
+    <div id="login-error-msg" style="display:none;color:#9B2335;font-size:.8rem;margin-bottom:.5rem;text-align:center;"></div>
+    <button class="login-btn" onclick="doLogin()">Войти</button>
+
+    <div style="text-align:center;margin:.9rem 0;">
+      <a onclick="toggleTgLogin()" style="font-size:.8rem;color:var(--muted);cursor:pointer;text-decoration:underline;">Подключить Telegram и получать уведомления о продажах</a>
+    </div>
+    <div id="tg-login-block" style="display:none;background:var(--bg,#F7F3EC);border-radius:10px;padding:1rem;margin-bottom:.8rem;">
+      <div id="tg-login-error" style="display:none;color:#9B2335;font-size:.78rem;margin-bottom:.5rem;"></div>
+      <div id="tg-login-step-phone">
+        <div class="field" style="margin-bottom:.6rem;">
+          <input type="tel" id="tg-login-phone" placeholder="+7 (900) 000-00-00" oninput="fmtPhoneLogin(this)" style="width:100%;padding:.6rem;border:1.5px solid var(--border,#DDD5C8);border-radius:8px;">
+        </div>
+        <button class="login-btn" style="background:#2AABEE;" onclick="submitLoginViaTelegram()">✈️ Получить ссылку в Telegram</button>
+      </div>
+      <div id="tg-login-step-waiting" style="display:none;text-align:center;">
+        <p style="font-size:.82rem;margin-bottom:.7rem;">Откройте бота и нажмите «Запустить» — вход обычно подтверждается автоматически.</p>
+        <a id="tg-login-link" href="#" target="_blank" class="login-btn" style="display:inline-block;background:#2AABEE;text-decoration:none;">Открыть бота в Telegram →</a>
+        <p style="font-size:.75rem;color:var(--muted);margin-top:.7rem;">Ждём подтверждения...</p>
+        <div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border,#DDD5C8);">
+          <a onclick="toggleTgCodeBlock()" style="font-size:.76rem;color:var(--muted);cursor:pointer;text-decoration:underline;">Код не пришёл автоматически? Ввести код из Telegram</a>
+          <div id="tg-login-code-block" style="display:none;margin-top:.7rem;">
+            <input type="text" id="tg-login-code" inputmode="numeric" maxlength="4" placeholder="Код из сообщения бота" style="width:100%;max-width:220px;padding:.6rem;border:1.5px solid var(--border,#DDD5C8);border-radius:8px;text-align:center;letter-spacing:.1em;margin-bottom:.6rem;">
+            <button class="login-btn" style="background:var(--deep,#2D5A3F);" onclick="submitTelegramCode()">Войти по коду</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="login-hint" style="margin-top:1rem;">Логин и пароль выдаёт менеджер «Тайги»</div>
+    <div style="margin-top:.75rem;text-align:center;">
+      <a href="taiga-register.html" style="font-size:.82rem;color:var(--amber);font-weight:600;">Ещё не партнёр? Зарегистрироваться →</a>
+    </div>
+    <div style="margin-top:.5rem;text-align:center;">
+      <a href="taiga-manager.html" style="font-size:.78rem;color:var(--muted);">Вы менеджер? Войти →</a>
+    </div>
+  </div>
+</div>
+
+<!-- ══ APP ══ -->
+<div id="app">
+<div class="layout">
+
+<!-- SIDEBAR -->
+<aside class="sidebar cabinet-sidebar" id="groomer-sidebar">
+  <div class="sidebar-logo" style="display:flex;align-items:center;gap:.6rem;"><span class="sidebar-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;line-height:.88;font-family:'Inter',sans-serif;font-size:1rem;font-weight:800;letter-spacing:0;"><span style="color:#fff;">Хвост</span><span style="color:#FF5A49;margin-top:.2rem;">Маркет</span></span><button class="cabinet-menu-close" type="button" onclick="HvostCabinetNavigation.close()" aria-label="Закрыть меню">×</button></div>
+  <div class="sidebar-user">
+    <div class="avatar" id="sb-avatar">АН</div>
+    <div>
+      <div class="user-name" id="sb-name">Анна Николаева</div>
+      <div class="user-role" id="sb-tier">Партнёр · 15%</div>
+      <div class="user-role" id="sb-city" style="opacity:.7;font-size:.75rem;"></div>
+    </div>
+  </div>
+  <div class="sidebar-label">Разделы</div>
+  <button class="nav-item active" data-group="home" onclick="showSec('home')"><span class="nav-dot"></span> Главная</button>
+  <button class="nav-item" data-group="work" onclick="showSec('orders')"><span class="nav-dot"></span> Продажи и остатки</button>
+  <button class="nav-item" data-group="income" onclick="showSec('earnings')"><span class="nav-dot"></span> Доход</button>
+  <button class="nav-item" data-group="growth" onclick="showSec('referral')"><span class="nav-dot"></span> Развитие</button>
+  <button class="nav-item" data-group="profile" onclick="showSec('profile')"><span class="nav-dot"></span> Профиль</button>
+  <div class="sidebar-footer">
+    <span>v1.0</span>
+    <button class="logout-btn" onclick="doLogout()">Выйти →</button>
+  </div>
+</aside>
+<div class="cabinet-sidebar-overlay" id="groomer-sidebar-overlay" onclick="HvostCabinetNavigation.close()"></div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="cabinet-title-wrap"><button class="cabinet-menu-btn" type="button" data-cabinet-menu-button onclick="HvostCabinetNavigation.toggle()" aria-label="Открыть меню" aria-controls="groomer-sidebar" aria-expanded="false">☰</button><h1 id="sec-title">Главная</h1></div>
+    <div class="topbar-right">
+      <button class="period-btn active" onclick="setPeriod('7d',this)">7 дней</button>
+      <button class="period-btn" onclick="setPeriod('30d',this)">30 дней</button>
+      <button class="period-btn" onclick="setPeriod('90d',this)">90 дней</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="cabinet-context-tabs" id="groomer-context-tabs" aria-label="Подразделы"></div>
+
+    <!-- ══ HOME ══ -->
+    <div class="page-sec active" id="sec-home">
+
+      <!-- Tier -->
+      <div class="tier-wrap">
+        <div class="tier-icon" id="tier-icon">⭐</div>
+        <div>
+          <div class="tier-name" id="tier-name">Партнёр</div>
+          <div class="tier-desc" id="tier-desc"></div>
+        </div>
+        <div class="tier-pct" id="tier-pct">15%</div>
+      </div>
+      <div class="tier-progress" id="tier-progress-wrap" style="margin-bottom:1.25rem;display:none;">
+        <div class="tier-prog-row"><span id="tier-prog-label"></span><span id="tier-prog-pct"></span></div>
+        <div class="tier-prog-track"><div class="tier-prog-fill" id="tier-prog-fill" style="width:0%"></div></div>
+      </div>
+      <div id="tier-grace-warning" style="display:none;background:#FFF4E5;border-radius:8px;padding:.7rem 1rem;margin-bottom:1.25rem;font-size:.8rem;color:#7A4A00;line-height:1.5;"></div>
+
+      <div style="background:var(--cream,#F7F3EC);border-radius:8px;padding:.8rem 1rem;margin-bottom:1.25rem;font-size:.8rem;color:var(--muted,#8A7D6B);line-height:1.6;">
+        🐾 <strong>Покупаете лакомства сами себе?</strong> Если оформляете заказ на свой же номер телефона через свою точку — комиссия на этот заказ не начисляется (0%, вы не платите комиссию сами себе), а как клиент вы дополнительно получите 10% кэшбэка косточками на баланс.
+      </div>
+
+      <div class="payout-schedule-card">
+        <div class="payout-schedule-icon">📅</div>
+        <div class="payout-schedule-content">
+          <div class="payout-schedule-title">Следующая выплата вознаграждения</div>
+          <span class="payout-schedule-date" data-next-payout-date>—</span>
+          <span class="payout-schedule-countdown" data-next-payout-countdown></span>
+          <div class="payout-schedule-rule">Выплаты производятся два раза в месяц: 9-го и 24-го числа.</div>
+        </div>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Начислено</div>
+          <div class="kpi-value" id="h-kpi-earn">—</div>
+          <div class="kpi-delta delta-up" id="h-kpi-earn-d"></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Продаж</div>
+          <div class="kpi-value" id="h-kpi-ord">—</div>
+          <div class="kpi-delta delta-up" id="h-kpi-ord-d"></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Ср. комиссия</div>
+          <div class="kpi-value" id="h-kpi-avg">—</div>
+          <div class="kpi-delta" id="h-kpi-avg-d"></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">К выплате</div>
+          <div class="kpi-value" id="h-kpi-payout" style="color:var(--amber)">—</div>
+          <div class="kpi-delta" id="h-kpi-payout-d"></div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Комиссия по дням</div>
+          <div style="position:relative;height:180px;">
+            <canvas id="chartHomeEarn" role="img" aria-label="Комиссия по дням"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Продажи по товарам <span>топ-5</span></div>
+          <div style="position:relative;height:180px;">
+            <canvas id="chartHomeProd" role="img" aria-label="Продажи по товарам"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Реферальные бонусы (за приведённых грумеров) -->
+      <div class="card" id="referral-bonus-card" style="display:none;">
+        <div class="card-title">Реферальные бонусы <span id="referral-bonus-total" style="color:var(--amber);font-weight:700;"></span></div>
+        <div id="referral-bonus-list"></div>
+      </div>
+
+      <!-- Notifications -->
+      <div class="card">
+        <div class="card-title">Уведомления <span id="notif-count"></span></div>
+        <div id="notif-list"></div>
+      </div>
+
+    </div>
+
+    <!-- ══ EARNINGS ══ -->
+    <div class="page-sec" id="sec-earnings">
+      <div class="grid-2" style="align-items:start;">
+
+        <!-- Payout block -->
+        <div class="card">
+          <div class="card-title">К выплате</div>
+          <div class="payout-amount">
+            <span id="earn-payout">—</span>
+            <span>₽</span>
+          </div>
+          <div style="font-size:.8rem;color:var(--muted);line-height:1.7;">
+            Следующая выплата: <strong data-next-payout-date style="color:var(--text);">—</strong>
+            (<span data-next-payout-countdown></span>)<br>
+            График: 9-го и 24-го числа каждого месяца, на карту из профиля.
+          </div>
+          <button class="payout-btn" onclick="requestPayout()">Запросить выплату</button>
+        </div>
+
+        <!-- Tier info -->
+        <div class="card">
+          <div class="card-title">Моя ставка комиссии</div>
+          <div style="display:flex;flex-direction:column;gap:.75rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem;border-radius:6px;background:var(--cream);">
+              <span style="font-size:.82rem;">Партнёр</span>
+              <span style="font-weight:700;color:var(--muted);">15%</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem;border-radius:6px;background:#FFF9F0;border:1.5px solid rgba(212,135,42,.3);">
+              <span style="font-size:.82rem;font-weight:600;color:var(--amber);">⭐ Старший партнёр (мой уровень)</span>
+              <span style="font-weight:700;color:var(--amber);">18%</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem;border-radius:6px;background:var(--cream);">
+              <span style="font-size:.82rem;">💎 Эксперт</span>
+              <span style="font-weight:700;color:var(--muted);">20%</span>
+            </div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:.25rem;">
+              + 2 000 ₽ разовый бонус за каждого приведённого партнёра
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Earnings chart -->
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Динамика начислений <span id="earn-chart-label"></span></div>
+        <div style="position:relative;height:200px;">
+          <canvas id="chartEarnings" role="img" aria-label="Динамика начислений"></canvas>
+        </div>
+      </div>
+
+      <!-- Earnings history table -->
+      <div class="card">
+        <div class="card-title">История начислений <span id="earn-hist-count"></span></div>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Дата</th><th>Заказ</th><th>Товар</th>
+              <th class="r">Сумма заказа</th><th class="r">Комиссия 18%</th><th>Статус</th>
+            </tr>
+          </thead>
+          <tbody id="earn-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card" style="margin-top:1rem;overflow-x:auto;">
+        <div class="card-title">История выплат <span id="payout-history-count"></span></div>
+        <table class="tbl">
+          <thead><tr><th>Дата</th><th class="r">Заказов</th><th class="r">Сумма</th><th>Статус</th></tr></thead>
+          <tbody id="payout-history-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ STOCK ══ -->
+    <div class="page-sec" id="sec-stock">
+      <div class="grid-2" style="align-items:start;margin-bottom:1rem;">
+        <div class="card">
+          <div class="card-title">Состояние стойки</div>
+          <div style="display:flex;flex-direction:column;gap:.1rem;" id="stock-bars"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Сводка по остаткам</div>
+          <div class="kpi-grid" style="grid-template-columns:1fr 1fr;gap:.65rem;margin-bottom:0;">
+            <div class="kpi-card">
+              <div class="kpi-label">Всего позиций</div>
+              <div class="kpi-value" id="st-total-pos">—</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Сумма на полке</div>
+              <div class="kpi-value" id="st-shelf-val">—</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Заканчивается</div>
+              <div class="kpi-value" style="color:#7A4A00" id="st-low">—</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Нет в наличии</div>
+              <div class="kpi-value" style="color:var(--red-text)" id="st-out">—</div>
+            </div>
+          </div>
+          <button onclick="submitRestockSignal()" style="width:100%;margin-top:1rem;background:var(--forest);color:#fff;border:none;border-radius:var(--r);padding:.65rem;font-size:.84rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">
+            Запросить пополнение стойки
+          </button>
+          <div id="restock-signal-msg" style="margin-top:.5rem;font-size:.8rem;"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Детальные остатки <span>максимум 20 шт. на позицию</span></div>
+        <table class="tbl" id="stock-table-full">
+          <thead>
+            <tr>
+              <th>Товар</th><th class="r">Остаток</th>
+              <th>Статус</th><th class="r">Цена</th><th class="r">На полке</th><th class="r">Нужно ещё</th>
+            </tr>
+          </thead>
+          <tbody id="stock-tbody-full"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ ORDERS ══ -->
+    <div class="page-sec" id="sec-orders">
+      <div class="kpi-grid" style="margin-bottom:1rem;">
+        <div class="kpi-card">
+          <div class="kpi-label">Продаж</div>
+          <div class="kpi-value" id="ord-cnt">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Выручка</div>
+          <div class="kpi-value" id="ord-rev">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Моя комиссия</div>
+          <div class="kpi-value" style="color:var(--amber)" id="ord-comm">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Ср. чек</div>
+          <div class="kpi-value" id="ord-avg">—</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Мои продажи <span id="ord-table-count"></span></div>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Дата</th><th>Заказ</th><th>Покупатель</th>
+              <th>Товар</th><th class="r">Сумма</th>
+              <th class="r">Комиссия</th><th>Статус</th>
+            </tr>
+          </thead>
+          <tbody id="ord-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ REFERRAL ══ -->
+    <div class="page-sec" id="sec-referral">
+      <div class="ref-card">
+        <div class="ref-title">Моя ссылка для покупателей</div>
+        <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Покупатель сразу увидит вашу точку, а вы будете указаны как советник</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Отправьте эту ссылку клиенту. Выбор сохранится в оформлении заказа, но клиент при желании сможет его изменить.</div>
+        <div class="ref-link-wrap">
+          <span class="ref-link" id="customer-link-text">Ссылка появится после входа</span>
+          <button class="copy-btn" onclick="copyLink('customer-link-text', this)">Скопировать</button>
+        </div>
+      </div>
+
+      <div class="ref-card">
+        <div class="ref-title">Мой промокод для привлечения новых точек</div>
+        <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Приглашайте партнёров — получайте 1 000 ₽ за каждого</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Бонус за запуск точки — 2 000 ₽ — делится поровну между вами и менеджером, который нашёл саму точку: вам 1 000 ₽, когда точка приглашённого партнёра заработает «Тайге» 2 000 ₽ прибыли.</div>
+        <div class="ref-link-wrap">
+          <span class="ref-link" id="ref-link-text">тайга-корм.рф/taiga-register.html?ref=GR-001</span>
+          <button class="copy-btn" onclick="copyLink('ref-link-text', this)">Скопировать</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Начисленные бонусы</div>
+        <p style="font-size:.85rem;color:var(--muted);line-height:1.6;">Уже начисленные бонусы за приведённых партнёров показаны на главной странице кабинета, в карточке «Реферальные бонусы».</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Как работает программа</div>
+        <div style="display:flex;flex-direction:column;gap:.75rem;font-size:.83rem;color:var(--text);line-height:1.6;">
+          <div style="display:flex;gap:.75rem;">
+            <div style="width:24px;height:24px;border-radius:50%;background:var(--green-bg);color:var(--green-text);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:.75rem;">1</div>
+            <div><strong>Приглашаете грумера или ветеринара</strong> — он вводит ваш промокод при регистрации новой точки на «Тайге».</div>
+          </div>
+          <div style="display:flex;gap:.75rem;">
+            <div style="width:24px;height:24px;border-radius:50%;background:var(--green-bg);color:var(--green-text);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:.75rem;">2</div>
+            <div><strong>Бонус 1 000 ₽</strong> поступает на ваш счёт, когда точка нового партнёра заработает «Тайге» 2 000 ₽ прибыли — вторая половина (1 000 ₽) достаётся менеджеру, который нашёл саму точку.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ CALCULATOR ══ -->
+    <div class="page-sec" id="sec-calculator">
+      <div class="card" style="max-width:520px;">
+        <div class="card-title">Ориентировочный расчёт дохода</div>
+        <p style="font-size:.85rem;color:var(--muted);margin-bottom:1.2rem;line-height:1.6;">
+          Если вы совмещаете несколько ролей на одной точке (например, сами и держите стойку как партнёр, и привели её как менеджер) — доход считается по каждой роли отдельно и складывается. Расчёт приблизительный, не гарантирует точную сумму.
+        </p>
+
+        <div class="field">
+          <label>Ожидаемая выручка точки в месяц, ₽</label>
+          <input type="number" id="calc-revenue" placeholder="например, 50000" oninput="renderCalculator()">
+        </div>
+
+        <div class="field" style="display:flex;align-items:center;gap:.6rem;">
+          <input type="checkbox" id="calc-is-partner" checked onchange="renderCalculator()" style="width:auto;">
+          <label style="margin:0;">Я партнёр (грумер) на этой точке</label>
+        </div>
+        <div class="field" id="calc-partner-tier-wrap">
+          <label>Ваш тариф партнёра</label>
+          <select id="calc-partner-tier" onchange="renderCalculator()" style="width:100%;padding:.6rem;border:1.5px solid var(--border);border-radius:8px;font-family:'Inter',sans-serif;">
+            <option value="0.15">Партнёр — 15%</option>
+            <option value="0.18">Старший партнёр — 18%</option>
+            <option value="0.20">Эксперт — 20%</option>
+          </select>
+        </div>
+
+        <div class="field" style="display:flex;align-items:center;gap:.6rem;">
+          <input type="checkbox" id="calc-is-manager" onchange="renderCalculator()" style="width:auto;">
+          <label style="margin:0;">Я также менеджер этой точки</label>
+        </div>
+        <div class="field" id="calc-mgr-tier-wrap" style="display:none;">
+          <label>Тариф менеджера</label>
+          <div style="padding:.6rem;background:var(--cream,#F7F3EC);border-radius:8px;font-size:.9rem;">7% — с любой курируемой точки</div>
+        </div>
+        <div class="field" id="calc-mgr-points-wrap" style="display:none;">
+          <label>Сколько точек могли бы сопровождать как менеджер</label>
+          <input type="number" id="calc-mgr-points" placeholder="1" value="1" min="1" oninput="renderCalculator()">
+        </div>
+
+        <div class="field">
+          <label>Сколько новых партнёров могли бы привести (разово, по 2 000 ₽ каждый, когда их точка заработает «Тайге» 2 000 ₽ прибыли)</label>
+          <input type="number" id="calc-referrals" placeholder="0" value="0" oninput="renderCalculator()">
+        </div>
+
+        <div id="calc-result" style="background:var(--cream,#F7F3EC);border-radius:10px;padding:1.2rem 1.4rem;margin-top:1rem;"></div>
+      </div>
+    </div>
+
+    <!-- ══ PROFILE ══ -->
+    <div class="page-sec" id="sec-profile">
+      <div class="grid-2" style="align-items:start;">
+        <div class="card">
+          <div class="card-title">Личные данные</div>
+          <div style="display:flex;flex-direction:column;gap:.85rem;">
+            <div>
+              <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">ФИО</div>
+              <input type="text" id="prof-name" value="" style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.88rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;">
+            </div>
+            <div>
+              <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">Телефон</div>
+              <input type="tel" id="prof-phone" value="" style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.88rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;">
+            </div>
+            <div>
+              <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">Email</div>
+              <input type="email" id="prof-email" value="" placeholder="Пока не сохраняется — свяжитесь с менеджером" style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.88rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;">
+            </div>
+            <div>
+              <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">Заведение</div>
+              <input type="text" id="prof-point" value="" disabled style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.88rem;font-family:'Inter',sans-serif;color:var(--muted);background:var(--cream);outline:none;">
+            </div>
+            <button onclick="saveProfile()" style="background:var(--forest);color:#fff;border:none;border-radius:var(--r);padding:.65rem;font-size:.84rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">
+              Сохранить изменения
+            </button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:1rem;">
+          <div class="card">
+            <div class="card-title">Формат размещения</div>
+            <p style="font-size:.78rem;color:var(--muted);margin-bottom:.8rem;line-height:1.5;">Можно сочетать несколько вариантов — например, корзинку и стойку одновременно.</p>
+            <div id="profile-format-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.78rem;padding:.5rem .7rem;border-radius:6px;margin-bottom:.7rem;"></div>
+            <div style="display:flex;flex-direction:column;gap:.65rem;margin-bottom:.9rem;">
+              <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-weight:400;font-size:.85rem;">
+                <input type="checkbox" id="prof-display-stand" style="margin-top:.2rem;width:16px;height:16px;flex-shrink:0;">
+                <span>🧺 Стойка — полноценная, с товаром на месте</span>
+              </label>
+              <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-weight:400;font-size:.85rem;">
+                <input type="checkbox" id="prof-display-basket" style="margin-top:.2rem;width:16px;height:16px;flex-shrink:0;">
+                <span>🧺 Корзинка — компактнее стойки</span>
+              </label>
+              <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-weight:400;font-size:.85rem;">
+                <input type="checkbox" id="prof-display-poster" style="margin-top:.2rem;width:16px;height:16px;flex-shrink:0;">
+                <span>🖼️ Картинка с QR — без товара на месте, довоз по заказу</span>
+              </label>
+            </div>
+            <button onclick="saveDisplayFormat()" style="width:100%;background:var(--forest);color:#fff;border:none;border-radius:var(--r);padding:.6rem;font-size:.84rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">
+              Сохранить формат
+            </button>
+          </div>
+          <div class="card">
+            <div class="card-title">Карта для выплат</div>
+            <div style="background:var(--forest);border-radius:10px;padding:1.1rem;color:#fff;margin-bottom:.9rem;">
+              <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:.6rem;">ПРИВЯЗАННАЯ КАРТА</div>
+              <div style="font-size:.95rem;letter-spacing:.12em;margin-bottom:.5rem;">•••• •••• •••• 4521</div>
+              <div style="font-size:.75rem;color:rgba(255,255,255,.6);">Анна Н. · до 09/27</div>
+            </div>
+            <button style="width:100%;background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:var(--r);padding:.6rem;font-size:.82rem;cursor:pointer;font-family:'Inter',sans-serif;">
+              Сменить карту
+            </button>
+          </div>
+          <div id="partner-telegram-connect"></div>
+          <div id="partner-max-connect"></div>
+          <div class="card">
+            <div class="card-title">Безопасность</div>
+            <button style="width:100%;background:none;border:1.5px solid var(--border);color:var(--text);border-radius:var(--r);padding:.6rem;font-size:.82rem;cursor:pointer;font-family:'Inter',sans-serif;margin-bottom:.5rem;">
+              Сменить пароль
+            </button>
+            <div style="font-size:.75rem;color:var(--muted);">Последний вход: сегодня, только что</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1rem;">
+        <div class="card-title">📢 Страница вашего салона — реклама на сайте «Тайги»</div>
+        <p style="font-size:.78rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Заполните — и посетители сайта «Тайги» увидят рассказ о вашем салоне, фото и ссылки на ваши соцсети. Заполнены слоган и описание — можно опубликовать.</p>
+        <div id="salon-profile-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.78rem;padding:.5rem .7rem;border-radius:6px;margin-bottom:.8rem;"></div>
+        <div id="salon-profile-msg" style="display:none;background:#EDF5EE;color:#2D7D46;font-size:.78rem;padding:.5rem .7rem;border-radius:6px;margin-bottom:.8rem;"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem;">
+          <div>
+            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">Слоган (коротко, до 120 симв.)</div>
+            <input type="text" id="salon-tagline" maxlength="120" placeholder="Например: Грумминг с любовью к каждой собаке" style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.88rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;">
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">Фотографии салона (до 8)</div>
+            <input type="file" id="salon-photo-files" accept="image/jpeg,image/png,image/webp" multiple style="width:100%;padding:.55rem;border:1.5px dashed var(--border);border-radius:var(--r);background:var(--cream);">
+            <div id="salon-photo-status" style="display:none;font-size:.76rem;color:var(--muted);margin-top:.4rem;"></div>
+          </div>
+        </div>
+        <div id="salon-photo-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.55rem;margin-bottom:.9rem;"></div>
+        <div style="margin-bottom:.9rem;">
+          <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">Описание (до 3000 симв.)</div>
+          <textarea id="salon-description" rows="4" maxlength="3000" placeholder="Расскажите о вашем салоне: услуги, опыт, чем вы особенны..." style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.88rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;resize:vertical;"></textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.9rem;margin-bottom:1rem;">
+          <div>
+            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">📷 Instagram (ссылка)</div>
+            <input type="text" id="salon-instagram" placeholder="https://instagram.com/..." style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.85rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;">
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">💬 ВКонтакте (ссылка)</div>
+            <input type="text" id="salon-vk" placeholder="https://vk.com/..." style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.85rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;">
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.3rem;">🌐 Свой сайт (ссылка)</div>
+            <input type="text" id="salon-website" placeholder="https://..." style="width:100%;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.85rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.8rem;">
+          <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer;font-weight:500;font-size:.86rem;">
+            <input type="checkbox" id="salon-published" style="width:16px;height:16px;">
+            <span>Страница опубликована — видна всем посетителям сайта</span>
+          </label>
+          <button onclick="saveSalonPage()" style="background:var(--forest);color:#fff;border:none;border-radius:var(--r);padding:.65rem 1.3rem;font-size:.84rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">
+            Сохранить страницу салона
+          </button>
+        </div>
+        <div id="salon-public-link" style="display:none;margin-top:1rem;padding:.7rem 1rem;background:var(--cream);border-radius:8px;font-size:.82rem;color:var(--deep);"></div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /layout -->
+</div><!-- /app -->
+
+<script src="salon-photo-gallery.js?v=70"></script>
+<script>
+// ── DATA ─────────────────────────────────────────────────────────────
+let PRODUCTS = [];
+let PRICES   = [];
+let MY_STOCK = [];
+const MAX_STOCK  = 20;
+
+async function loadMyStock() {
+  if (myPointId) {
+    // Есть привязка к реальной точке — показываем остаток именно на ней,
+    // а не сумму по всем точкам сразу.
+    const res = await authFetch('/api/partners/me/stock');
+    const data = await res.json();
+    const rows = data.stock || [];
+    PRODUCTS = rows.map(r => r.product_name + ' (' + r.weight + ')');
+    PRICES   = rows.map(r => r.price);
+    MY_STOCK = rows.map(r => r.qty);
+    window._restockVariantIds = rows.map(r => r.variant_id); // для формы сигнала о нехватке
+    return;
+  }
+  // Точка ещё не подключена к складскому учёту (старые демо-партнёры) —
+  // показываем общий каталог как раньше, просто для наглядности интерфейса.
+  const res = await fetch('/api/products');
+  const data = await res.json();
+  const list = data.products || [];
+  PRODUCTS = list.map(p => p.name);
+  PRICES   = list.map(p => p.variants[0] ? p.variants[0].price : 0);
+  MY_STOCK = list.map(p => p.variants.reduce((s, v) => {
+    const stockVals = Object.values(v.stock || {});
+    return s + stockVals.reduce((a, b) => a + b, 0);
+  }, 0));
+  window._restockVariantIds = [];
+}
+
+async function submitRestockSignal() {
+  const msgEl = document.getElementById('restock-signal-msg');
+  if (!myPointId) {
+    msgEl.textContent = 'У вашей точки не включён складской учёт — обратитесь к администратору.';
+    msgEl.style.color = '#9B2335';
+    return;
+  }
+  const inputs = document.querySelectorAll('.restock-need-input');
+  const items = [];
+  inputs.forEach(function(inp) {
+    const qty = parseInt(inp.value, 10) || 0;
+    if (qty > 0) items.push({ variant_id: parseInt(inp.dataset.variantId, 10), qty: qty });
+  });
+  if (items.length === 0) {
+    msgEl.textContent = 'Укажите, сколько нужно, хотя бы для одной позиции.';
+    msgEl.style.color = '#9B2335';
+    return;
+  }
+  const res = await authFetch('/api/partners/me/restock-signal', { method: 'POST', body: { items: items } });
+  const data = await res.json();
+  if (!res.ok) {
+    msgEl.textContent = data.error || 'Не удалось отправить запрос.';
+    msgEl.style.color = '#9B2335';
+    return;
+  }
+  msgEl.textContent = '✅ Запрос отправлен — менеджер увидит его и привезёт пополнение.';
+  msgEl.style.color = '#2D7D46';
+  document.querySelectorAll('.restock-need-input').forEach(function(inp) { inp.value = 0; });
+}
+let COMMISSION = 0.15; // будет заменено реальным тарифом партнёра после логина
+
+let NOTIFS = [];
+
+const TIER_NAME_BY_RATE = { 0.15: 'Партнёр', 0.18: 'Старший партнёр', 0.2: 'Эксперт' };
+const TIER_ICON_BY_RATE = { 0.15: '🐾', 0.18: '⭐', 0.2: '💎' };
+
+async function renderTierProgress() {
+  try {
+    const res = await authFetch('/api/partners/me/tier-progress');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    document.getElementById('tier-name').textContent = TIER_NAME_BY_RATE[data.currentRate] || 'Партнёр';
+    document.getElementById('tier-icon').textContent = TIER_ICON_BY_RATE[data.currentRate] || '🐾';
+    document.getElementById('tier-pct').textContent = Math.round(data.currentRate * 100) + '%';
+
+    const wrap = document.getElementById('tier-progress-wrap');
+    const warnEl = document.getElementById('tier-grace-warning');
+
+    if (data.graceWarning) {
+      warnEl.style.display = 'block';
+      warnEl.textContent = '⚠️ Показатели этого месяца пока не дотягивают до уровня «' + data.graceWarning.currentTierName +
+        '» — если не подтвердите до конца месяца, со следующего понизитесь до «' + data.graceWarning.willDropTo + '» (' + Math.round(data.graceWarning.willDropToRate * 100) + '%).';
+    } else {
+      warnEl.style.display = 'none';
+    }
+
+    if (!data.nextTier) {
+      document.getElementById('tier-desc').textContent = 'Вы на максимальном уровне — выше пока некуда 🎉';
+      wrap.style.display = 'none';
+      return;
+    }
+
+    const nt = data.nextTier;
+    // Показываем то условие, которое ближе к выполнению — выручку или рефералов,
+    // раз для перехода достаточно любого из двух.
+    const closerIsRevenue = nt.revenueNeeded === 0 || (nt.revenueLeft / Math.max(nt.revenueNeeded, 1)) <= (nt.referralsLeft / Math.max(nt.referralsNeeded, 1));
+    document.getElementById('tier-desc').textContent = closerIsRevenue
+      ? 'Ещё ' + nt.revenueLeft.toLocaleString('ru-RU') + ' ₽ выручки в этом месяце до уровня «' + nt.name + '»'
+      : 'Ещё ' + nt.referralsLeft + ' привед' + (nt.referralsLeft === 1 ? 'ённый партнёр' : 'ённых партнёров') + ' до уровня «' + nt.name + '»';
+
+    document.getElementById('tier-prog-label').textContent = 'Прогресс к «' + nt.name + '» (' + Math.round(nt.rate * 100) + '%)';
+    document.getElementById('tier-prog-pct').textContent = nt.progressPercent + '%';
+    document.getElementById('tier-prog-fill').style.width = nt.progressPercent + '%';
+    wrap.style.display = 'block';
+  } catch (e) {
+    console.warn('Не удалось загрузить прогресс уровня:', e.message);
+  }
+}
+
+async function renderReferralBonuses() {
+  try {
+    const res = await authFetch('/api/partners/me/referral-bonuses');
+    const data = await res.json();
+    const bonuses = data.bonuses || [];
+    const card = document.getElementById('referral-bonus-card');
+    if (bonuses.length === 0) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    document.getElementById('referral-bonus-total').textContent = '+' + data.total.toLocaleString('ru-RU') + ' ₽';
+    document.getElementById('referral-bonus-list').innerHTML = bonuses.map(function(b) {
+      return '<div class="notif"><div class="notif-dot read"></div><div>' +
+        '<div class="notif-title">Вы привели ' + b.referred_partner_name + '</div>' +
+        '<div style="font-size:.78rem;color:var(--muted);">Точка «' + b.point_name + '» заработала «Тайге» 2 000 ₽ прибыли — начислено ' + b.referred_groomer_amount.toLocaleString('ru-RU') + ' ₽</div>' +
+        '</div></div>';
+    }).join('');
+  } catch (e) { /* тихо пропускаем, если не удалось загрузить */ }
+}
+
+async function loadNews() {
+  try {
+    const res = await authFetch('/api/news');
+    const data = await res.json();
+    const lastSeenId = parseInt(localStorage.getItem('taiga_groomer_last_seen_news') || '0', 10);
+    NOTIFS = (data.news || []).map(n => ({
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      time: new Date(n.created_at.replace(' ', 'T') + 'Z').toLocaleString('ru-RU'),
+      read: n.id <= lastSeenId,
+    }));
+  } catch (e) {
+    NOTIFS = [];
+  }
+}
+
+function markNewsSeen() {
+  if (NOTIFS.length === 0) return;
+  const maxId = Math.max(...NOTIFS.map(n => n.id));
+  localStorage.setItem('taiga_groomer_last_seen_news', String(maxId));
+  NOTIFS.forEach(n => { n.read = true; });
+}
+
+// ── РЕАЛЬНЫЕ ЗАКАЗЫ ПАРТНЁРА (было — генератор случайных демо-данных) ──
+// Раньше здесь стоял genOrders()/genDays() — полностью выдуманные продажи
+// со случайными именами клиентов и суммами, никак не связанные с реальной
+// базой. Сколько бы ни было настоящих продаж, кабинет их не показывал.
+// Теперь запрашиваем реальную историю заказов этого партнёра с сервера.
+let myOrdersCache = null;
+let myOrdersCacheDays = null;
+
+async function fetchMyOrders(days) {
+  if (myOrdersCache && myOrdersCacheDays === days) return myOrdersCache;
+  try {
+    const res = await authFetch('/api/partners/me/orders?days=' + days);
+    const data = await res.json();
+    myOrdersCache = data.orders || [];
+    myOrdersCacheDays = days;
+  } catch (e) {
+    console.error('Не удалось загрузить реальные заказы:', e);
+    myOrdersCache = [];
+    myOrdersCacheDays = days;
+  }
+  return myOrdersCache;
+}
+
+async function fetchMyPayouts() {
+  try {
+    const res = await authFetch('/api/partners/me/payouts?limit=100');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  } catch (e) {
+    console.error('Не удалось загрузить выплаты:', e);
+    return { unpaid_amount: 0, unpaid_orders_count: 0, payouts: [] };
+  }
+}
+
+function escapePayoutCell(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function renderPayoutHistory(payouts) {
+  const countEl = document.getElementById('payout-history-count');
+  const bodyEl = document.getElementById('payout-history-tbody');
+  if (!countEl || !bodyEl) return;
+  countEl.textContent = payouts.length + ' выплат';
+  bodyEl.innerHTML = payouts.length ? payouts.map(function(payout) {
+    const paidAt = new Date(String(payout.paid_at).replace(' ', 'T') + 'Z').toLocaleString('ru-RU');
+    return '<tr>' +
+      '<td style="white-space:nowrap;color:var(--muted);">' + paidAt + '</td>' +
+      '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
+      '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
+      '<td><span class="pill pill-green">Выплачено</span></td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплат пока не было</td></tr>';
+}
+
+// Строит {labels, earn} для графика по дням из РЕАЛЬНЫХ заказов — каждый
+// день периода присутствует в графике (с нулём, если продаж не было),
+// чтобы график не «прыгал» из-за отсутствующих дат.
+function buildDailyEarnings(orders, days) {
+  const now = new Date();
+  const byDate = {};
+  orders.forEach((o) => {
+    const key = o.date.slice(0, 10); // 'YYYY-MM-DD'
+    byDate[key] = (byDate[key] || 0) + o.commission;
+  });
+  const labels = [], earn = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    labels.push(d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }));
+    earn.push(byDate[key] || 0);
+  }
+  return { labels, earn };
+}
+
+function seededRand(seed) {
+  let s = seed;
+  return function() { s=(s*16807)%2147483647; return (s-1)/2147483646; };
+}
+
+// ── STATE ─────────────────────────────────────────────────────────────
+let currentPeriod='7d';
+let currentSec='home';
+let charts={};
+let currentUser={name:'Анна Николаева'};
+let currentPartnerUser = null; // полные данные партнёра с сервера (для профиля — формат размещения и т.п.)
+
+function periodDays(){return currentPeriod==='7d'?7:currentPeriod==='30d'?30:90;}
+
+// ── LOGIN ─────────────────────────────────────────────────────────────
+const PARTNER_TOKEN_KEY = 'taiga_partner_token';
+function getPartnerToken() { return localStorage.getItem(PARTNER_TOKEN_KEY); }
+function setPartnerToken(t) { localStorage.setItem(PARTNER_TOKEN_KEY, t); }
+function clearPartnerToken() { localStorage.removeItem(PARTNER_TOKEN_KEY); }
+let myPointId = null;
+
+async function authFetch(url, options) {
+  options = options || {};
+  options.headers = Object.assign({}, options.headers, { 'Authorization': 'Bearer ' + getPartnerToken() });
+  if (options.body && typeof options.body !== 'string') {
+    options.body = JSON.stringify(options.body);
+    options.headers['Content-Type'] = 'application/json';
+  }
+  return fetch(url, options);
+}
+
+// Город грумера — тот же паттерн, что и в кабинете менеджера: city_id
+// приходит вместе с данными входа, название подтягивается через общий
+// справочник (города могут добавляться, поэтому не хардкодим названия).
+let CITIES_CACHE = null;
+async function getCityName(cityId) {
+  if (!cityId) return '';
+  if (!CITIES_CACHE) {
+    try {
+      const res = await fetch('/api/cities');
+      const data = await res.json();
+      CITIES_CACHE = data.cities || [];
+    } catch (e) { CITIES_CACHE = []; }
+  }
+  const city = CITIES_CACHE.find((c) => c.id === cityId);
+  return city ? city.name : cityId;
+}
+
+async function onPartnerLoginSuccess(data) {
+  setPartnerToken(data.token);
+  myPointId = data.user.point_id || null;
+  currentUser.id   = data.user.partner_code;
+  currentUser.name = data.user.full_name;
+  COMMISSION = data.user.commission_rate || 0.15;
+  currentPartnerUser = data.user;
+
+  const tierEl = document.getElementById('sb-tier');
+  if (tierEl) {
+    const tierName = TIER_NAME_BY_RATE[COMMISSION] || 'Партнёр';
+    tierEl.textContent = tierName + ' · ' + Math.round(COMMISSION * 100) + '%';
+  }
+
+  const cityEl = document.getElementById('sb-city');
+  if (cityEl) {
+    const cityName = await getCityName(data.user.city_id);
+    cityEl.textContent = cityName ? '📍 ' + cityName : '';
+  }
+
+  const refLinkEl = document.getElementById('ref-link-text');
+  if (refLinkEl && data.user.partner_code) {
+    refLinkEl.textContent = 'тайга-корм.рф/taiga-register.html?ref=' + data.user.partner_code;
+  }
+  const customerLinkEl = document.getElementById('customer-link-text');
+  if (customerLinkEl && data.user.id && data.user.point_id) {
+    const customerUrl = new URL('/', window.location.origin);
+    customerUrl.searchParams.set('ref', data.user.point_id);
+    customerUrl.searchParams.set('partner', data.user.id);
+    if (data.user.city_id) customerUrl.searchParams.set('city', data.user.city_id);
+    customerLinkEl.textContent = customerUrl.toString();
+  }
+
+  await loadMyStock();
+
+  document.getElementById('sb-name').textContent = currentUser.name;
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  HvostTelegramConnect.mount({
+    containerId: 'partner-telegram-connect',
+    role: 'partner',
+    tokenGetter: getPartnerToken,
+    connected: !!data.user.telegram_connected,
+  });
+  HvostMaxConnect.mount({
+    containerId: 'partner-max-connect',
+    role: 'partner',
+    tokenGetter: getPartnerToken,
+    connected: !!data.user.max_connected,
+  });
+  renderSec('home');
+}
+
+function togglePasswordVisibility(inputId, btnEl) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const isHidden = input.type === 'password';
+  input.type = isHidden ? 'text' : 'password';
+  btnEl.textContent = isHidden ? '🙈' : '👁️';
+}
+
+async function doLogin(){
+  const l = document.getElementById('l-login').value.trim();
+  const p = document.getElementById('l-pass').value.trim();
+  if(!l || !p){ showLoginError('Введите логин и пароль'); return; }
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'partner', login: l, password: p }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showLoginError(data.error || 'Неверный логин или пароль'); return; }
+    await onPartnerLoginSuccess(data);
+  } catch (e) {
+    showLoginError('Не удалось связаться с сервером. Попробуйте ещё раз.');
+  }
+}
+
+// ── ВХОД ЧЕРЕЗ TELEGRAM ────────────────────────────────────────────
+function fmtPhoneLogin(el) {
+  let v = el.value.replace(/\D/g, '');
+  if (v.startsWith('8')) v = '7' + v.slice(1);
+  else if (v.startsWith('9')) v = '7' + v;
+  if (v.startsWith('7') && v.length > 1) {
+    let d = v.slice(1);
+    let r = '+7';
+    if (d.length > 0) r += ' (' + d.slice(0,3);
+    if (d.length >= 3) r += ') ' + d.slice(3,6);
+    if (d.length >= 6) r += '-' + d.slice(6,8);
+    if (d.length >= 8) r += '-' + d.slice(8,10);
+    el.value = r;
+  } else if (v.length > 0) {
+    el.value = '+' + v;
+  }
+}
+
+function toggleTgLogin() {
+  const block = document.getElementById('tg-login-block');
+  block.style.display = block.style.display === 'none' ? 'block' : 'none';
+}
+
+let partnerTgPollTimer = null;
+let partnerTgPhone = null; // телефон с шага 1 — нужен для входа по запасному коду без исходного token
+
+async function submitLoginViaTelegram() {
+  const phone = document.getElementById('tg-login-phone').value.trim();
+  const errEl = document.getElementById('tg-login-error');
+  errEl.style.display = 'none';
+  if (!phone) { errEl.textContent = 'Укажите телефон.'; errEl.style.display = 'block'; return; }
+  try {
+    const res = await fetch('/api/partners/telegram/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Не удалось начать вход через Telegram.';
+      errEl.style.display = 'block';
+      return;
+    }
+    partnerTgPhone = phone;
+    document.getElementById('tg-login-link').href = data.deep_link;
+    document.getElementById('tg-login-step-phone').style.display = 'none';
+    document.getElementById('tg-login-step-waiting').style.display = 'block';
+    document.getElementById('tg-login-code-block').style.display = 'none';
+    document.getElementById('tg-login-code').value = '';
+    window.open(data.deep_link, '_blank');
+    if (partnerTgPollTimer) clearInterval(partnerTgPollTimer);
+    partnerTgPollTimer = setInterval(async () => {
+      try {
+        const r = await fetch('/api/partners/telegram/check?token=' + encodeURIComponent(data.token));
+        const d = await r.json();
+        if (d.verified && d.token) {
+          clearInterval(partnerTgPollTimer);
+          partnerTgPollTimer = null;
+          await onPartnerLoginSuccess(d);
+        }
+      } catch (e) { /* пробуем на следующей итерации */ }
+    }, 2000);
+  } catch (e) {
+    errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
+    errEl.style.display = 'block';
+  }
+}
+
+function toggleTgCodeBlock() {
+  const block = document.getElementById('tg-login-code-block');
+  block.style.display = block.style.display === 'none' ? 'block' : 'none';
+}
+
+// Запасной путь: если опрос /telegram/check не подхватил подтверждение, партнёр
+// может ввести короткий код из сообщения бота — телефон достаточно того, что
+// был введён на шаге 1 (partnerTgPhone), исходный token для этого не нужен.
+async function submitTelegramCode() {
+  const code = document.getElementById('tg-login-code').value.trim();
+  const errEl = document.getElementById('tg-login-error');
+  errEl.style.display = 'none';
+  if (!partnerTgPhone) { errEl.textContent = 'Сначала укажите телефон и получите ссылку в Telegram.'; errEl.style.display = 'block'; return; }
+  if (!code) { errEl.textContent = 'Введите код из сообщения бота.'; errEl.style.display = 'block'; return; }
+  try {
+    const res = await fetch('/api/partners/telegram/verify-code', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: partnerTgPhone, code }),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.verified) {
+      errEl.textContent = d.error || 'Код неверен или устарел.';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (partnerTgPollTimer) { clearInterval(partnerTgPollTimer); partnerTgPollTimer = null; }
+    await onPartnerLoginSuccess(d);
+  } catch (e) {
+    errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
+    errEl.style.display = 'block';
+  }
+}
+
+function showLoginError(msg){
+  const err = document.getElementById('login-error-msg');
+  if(err){ err.textContent = msg; err.style.display='block'; }
+}
+
+function doLogout(){
+  clearPartnerToken();
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('l-login').value='';
+  document.getElementById('l-pass').value='';
+  const errMsg = document.getElementById('login-error-msg');
+  if(errMsg) errMsg.style.display='none';
+}
+document.getElementById('l-login').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('l-pass').focus(); });
+document.getElementById('l-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+
+// ── NAVIGATION ────────────────────────────────────────────────────────
+const SECS={home:'Главная',earnings:'Мои начисления',stock:'Остатки на стойке',orders:'Мои продажи',referral:'Реферальная программа',calculator:'Калькулятор дохода',profile:'Профиль'};
+const GROOMER_SECTION_GROUPS={home:'home',orders:'work',stock:'work',earnings:'income',calculator:'income',referral:'growth',profile:'profile'};
+HvostCabinetNavigation.init({sidebarId:'groomer-sidebar',overlayId:'groomer-sidebar-overlay',tabsId:'groomer-context-tabs',initialSection:'home',sectionGroups:GROOMER_SECTION_GROUPS,tabs:{work:[['orders','Продажи'],['stock','Остатки']],income:[['earnings','Начисления'],['calculator','Калькулятор']]}});
+function showSec(id){
+  currentSec=id;
+  document.querySelectorAll('.page-sec').forEach(s=>s.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('active');
+  document.getElementById('sec-title').textContent=SECS[id]||id;
+  HvostCabinetNavigation.activate(id);
+  renderSec(id);
+}
+function setPeriod(p,btn){
+  currentPeriod=p;
+  document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSec(currentSec);
+}
+function renderSec(id){
+  if(id==='home')     renderHome();
+  if(id==='earnings') renderEarnings();
+  if(id==='stock')    renderStock();
+  if(id==='orders')   renderOrders();
+  if(id==='referral') { /* только статичная ссылка-приглашение, рендерить нечего */ }
+  if(id==='calculator') renderCalculator();
+  if(id==='profile')  { renderProfile(); renderSalonProfile(); }
+}
+function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+// ── КАЛЬКУЛЯТОР ДОХОДА (учитывает совмещение ролей на одной точке) ────
+function pluralRu(n, one, few, many) {
+  const mod10 = n % 10, mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
+
+function renderCalculator() {
+  const revenue = parseFloat(document.getElementById('calc-revenue').value) || 0;
+  const isPartner = document.getElementById('calc-is-partner').checked;
+  const isManager = document.getElementById('calc-is-manager').checked;
+  const partnerRate = parseFloat(document.getElementById('calc-partner-tier').value);
+  const mgrPoints = Math.max(1, parseInt(document.getElementById('calc-mgr-points').value) || 1);
+  const referrals = parseInt(document.getElementById('calc-referrals').value) || 0;
+
+  document.getElementById('calc-partner-tier-wrap').style.display = isPartner ? 'block' : 'none';
+  document.getElementById('calc-mgr-tier-wrap').style.display = isManager ? 'block' : 'none';
+  document.getElementById('calc-mgr-points-wrap').style.display = isManager ? 'block' : 'none';
+
+  // Единственный тариф менеджера — 7% с любой точки.
+  const mgrRate = 0.07;
+
+  const partnerIncome = isPartner ? revenue * partnerRate : 0;
+  // Доход менеджера считается с ожидаемой выручки ОДНОЙ точки, умноженной на
+  // число точек, которые он мог бы сопровождать — так честнее отражает
+  // реальный доход менеджера, курирующего несколько точек одновременно.
+  const mgrIncome = isManager ? revenue * mgrRate * mgrPoints : 0;
+  const referralBonus = referrals * 2000;
+  const total = partnerIncome + mgrIncome;
+  const totalWithBonus = total + referralBonus;
+
+  const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
+
+  document.getElementById('calc-result').innerHTML = `
+    <div style="font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:.7rem;">Расчёт в месяц</div>
+    ${isPartner ? `<div style="display:flex;justify-content:space-between;margin-bottom:.4rem;"><span>Как партнёр (${Math.round(partnerRate*100)}%)</span><strong>${fmt(partnerIncome)} ₽</strong></div>` : ''}
+    ${isManager ? `<div style="display:flex;justify-content:space-between;margin-bottom:.4rem;"><span>Как менеджер (${Math.round(mgrRate*100)}% × ${mgrPoints} ${pluralRu(mgrPoints,'точку','точки','точек')})</span><strong>${fmt(mgrIncome)} ₽</strong></div>` : ''}
+    <div style="border-top:1px solid var(--border);margin:.6rem 0;padding-top:.6rem;display:flex;justify-content:space-between;font-size:1.05rem;">
+      <span>Итого в месяц</span><strong style="color:var(--deep);">${fmt(total)} ₽</strong>
+    </div>
+    ${referrals > 0 ? `
+    <div style="display:flex;justify-content:space-between;margin-top:.6rem;color:var(--amber,#D4872A);">
+      <span>+ Разовый бонус за ${referrals} приведённ${referrals===1?'ого партнёра':'ых партнёров'}</span><strong>${fmt(referralBonus)} ₽</strong>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:.4rem;font-size:1.1rem;">
+      <span>Итого с бонусом</span><strong style="color:var(--deep);">${fmt(totalWithBonus)} ₽</strong>
+    </div>` : ''}
+    ${!isPartner && !isManager ? '<p style="color:var(--muted);">Отметьте хотя бы одну роль, чтобы увидеть расчёт.</p>' : ''}
+  `;
+}
+
+// ── HOME ──────────────────────────────────────────────────────────────
+async function renderHome(){
+  await loadNews();
+  await renderReferralBonuses();
+  await renderTierProgress();
+  const days=periodDays();
+  const orders = await fetchMyOrders(days);
+  const payoutData = await fetchMyPayouts();
+  const {labels,earn}=buildDailyEarnings(orders, days);
+  const totalComm=orders.reduce((s,o)=>s+o.commission,0);
+  const avgComm=Math.round(totalComm/Math.max(orders.length,1));
+  const payout=Number(payoutData.unpaid_amount || 0);
+
+  document.getElementById('h-kpi-earn').textContent=totalComm.toLocaleString('ru-RU')+' ₽';
+  document.getElementById('h-kpi-earn-d').textContent='за выбранный период';
+  document.getElementById('h-kpi-ord').textContent=orders.length;
+  document.getElementById('h-kpi-ord-d').textContent='оплаченных заказов';
+  document.getElementById('h-kpi-avg').textContent=avgComm.toLocaleString('ru-RU')+' ₽';
+  document.getElementById('h-kpi-avg-d').innerHTML='<span style="color:var(--muted)">на заказ</span>';
+  document.getElementById('h-kpi-payout').textContent=payout.toLocaleString('ru-RU')+' ₽';
+  document.getElementById('h-kpi-payout-d').innerHTML='<span style="color:var(--muted)">' + Number(payoutData.unpaid_orders_count || 0) + ' невыплаченных заказов</span>';
+
+  destroyChart('hEarn');
+  charts['hEarn']=new Chart(document.getElementById('chartHomeEarn'),{
+    type:'bar',
+    data:{labels,datasets:[{
+      label:'Комиссия',data:earn,
+      backgroundColor:'rgba(45,90,63,.7)',borderRadius:4,borderSkipped:false
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{font:{size:10},maxRotation:45,autoSkip:days>14},grid:{display:false}},
+        y:{ticks:{font:{size:10},callback:v=>v+'₽'},grid:{color:'rgba(0,0,0,.04)'}}
+      }}
+  });
+
+  // Топ-5 товаров по реально заработанной комиссии — собираем из позиций
+  // настоящих заказов (было — случайные цифры от PRODUCTS/PRICES).
+  const prodTotals = {};
+  orders.forEach((o) => (o.items || []).forEach((i) => {
+    prodTotals[i.name] = (prodTotals[i.name] || 0) + i.commission;
+  }));
+  const sorted = Object.entries(prodTotals).map(([n, v]) => ({ n, v })).sort((a, b) => b.v - a.v).slice(0, 5);
+  destroyChart('hProd');
+  charts['hProd']=new Chart(document.getElementById('chartHomeProd'),{
+    type:'bar',
+    data:{labels:sorted.map(s=>s.n),datasets:[{label:'Комиссия',data:sorted.map(s=>s.v),backgroundColor:'#D4872A',borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{font:{size:10},callback:v=>v+'₽'},grid:{color:'rgba(0,0,0,.04)'}},
+        y:{ticks:{font:{size:10}},grid:{display:false}}
+      }}
+  });
+
+  const unread=NOTIFS.filter(n=>!n.read).length;
+  document.getElementById('notif-count').textContent=unread>0?unread+' новых':'';
+  document.getElementById('notif-list').innerHTML = NOTIFS.length ? NOTIFS.map(n=>`
+    <div class="notif">
+      <div class="notif-dot ${n.read?'read':''}"></div>
+      <div>
+        <div class="notif-title" style="${n.read?'':'font-weight:600'}">${n.title}</div>
+        ${n.body ? `<div style="font-size:.78rem;color:var(--muted);margin:.15rem 0;">${n.body}</div>` : ''}
+        <div class="notif-time">${n.time}</div>
+      </div>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:.85rem;padding:.5rem 0;">Пока нет новостей и обновлений.</div>';
+  markNewsSeen();
+}
+
+// ── EARNINGS ─────────────────────────────────────────────────────────
+async function renderEarnings(){
+  const days=periodDays();
+  const orders = await fetchMyOrders(days);
+  const payoutData = await fetchMyPayouts();
+  const {labels,earn}=buildDailyEarnings(orders, days);
+  const totalComm=orders.reduce((s,o)=>s+o.commission,0);
+  const payout=Number(payoutData.unpaid_amount || 0);
+
+  document.getElementById('earn-payout').textContent=payout.toLocaleString('ru-RU');
+  document.getElementById('earn-chart-label').textContent='за '+days+' дней';
+  document.getElementById('earn-hist-count').textContent=orders.length+' операций';
+
+  destroyChart('earnLine');
+  charts['earnLine']=new Chart(document.getElementById('chartEarnings'),{
+    type:'line',
+    data:{labels,datasets:[{
+      label:'Комиссия',data:earn,
+      borderColor:'#D4872A',backgroundColor:'rgba(212,135,42,.08)',
+      borderWidth:2,fill:true,tension:.4,
+      pointRadius:days<=7?4:2,pointBackgroundColor:'#D4872A'
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{font:{size:11},maxRotation:45,autoSkip:days>14},grid:{display:false}},
+        y:{ticks:{font:{size:11},callback:v=>v+' ₽'},grid:{color:'rgba(0,0,0,.04)'}}
+      }}
+  });
+
+  document.getElementById('earn-tbody').innerHTML=orders.length ? orders.map(o=>`<tr>
+    <td>${new Date(o.date.replace(' ','T')+'Z').toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</td>
+    <td style="font-family:monospace;font-size:.76rem;color:var(--muted)">${o.order_code}</td>
+    <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.product}</td>
+    <td class="r">${o.sum.toLocaleString('ru-RU')} ₽</td>
+    <td class="r" style="font-weight:600;color:var(--amber)">${o.commission.toLocaleString('ru-RU')} ₽</td>
+    <td><span class="pill pill-blue">Оплачен</span></td>
+  </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">За этот период продаж пока не было</td></tr>';
+  renderPayoutHistory(payoutData.payouts || []);
+}
+
+// ── STOCK ────────────────────────────────────────────────────────────
+function renderStock(){
+  const low=MY_STOCK.filter(q=>q>0&&q<=3).length;
+  const out=MY_STOCK.filter(q=>q===0).length;
+  const shelfVal=MY_STOCK.reduce((s,q,i)=>s+q*PRICES[i],0);
+  document.getElementById('st-total-pos').textContent=MY_STOCK.filter(q=>q>0).length+' из '+PRODUCTS.length;
+  document.getElementById('st-shelf-val').textContent=shelfVal.toLocaleString('ru-RU')+' ₽';
+  document.getElementById('st-low').textContent=low+' поз.';
+  document.getElementById('st-out').textContent=out+' поз.';
+
+  document.getElementById('stock-bars').innerHTML=MY_STOCK.map((q,i)=>{
+    const pct=Math.round(q/MAX_STOCK*100);
+    const color=q===0?'#E24B4A':q<=3?'#D4872A':'#2D5A3F';
+    const status=q===0?'<span class="pill pill-red">✕ Нет</span>':q<=3?'<span class="pill pill-amber">⚠ Мало</span>':'';
+    return `<div class="stock-row">
+      <span class="stock-name">${PRODUCTS[i]}</span>
+      ${status}
+      <span class="stock-qty" style="color:${color}">${q} шт.</span>
+      <div class="stock-bar-wrap">
+        <div class="stock-bar-track">
+          <div class="stock-bar-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('stock-tbody-full').innerHTML=MY_STOCK.map((q,i)=>{
+    const sc=q===0?'pill-red':q<=3?'pill-amber':'pill-green';
+    const st=q===0?'✕ Нет':q<=3?'⚠ Мало':'✓ Есть';
+    const variantId = (window._restockVariantIds || [])[i];
+    const needInput = variantId
+      ? `<input type="number" min="0" value="0" class="restock-need-input" data-variant-id="${variantId}" style="width:56px;text-align:right;">`
+      : '<span style="color:var(--muted);font-size:.75rem;">н/д</span>';
+    return `<tr>
+      <td style="font-weight:500">${PRODUCTS[i]}</td>
+      <td class="r" style="font-weight:600;color:${q===0?'#9B2335':q<=3?'#7A4A00':'inherit'}">${q} шт.</td>
+      <td><span class="pill ${sc}">${st}</span></td>
+      <td class="r" style="color:var(--muted)">${PRICES[i]} ₽</td>
+      <td class="r">${(q*PRICES[i]).toLocaleString('ru-RU')} ₽</td>
+      <td class="r">${needInput}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── ORDERS ───────────────────────────────────────────────────────────
+async function renderOrders(){
+  const orders = await fetchMyOrders(periodDays());
+  const rev=orders.reduce((s,o)=>s+o.sum,0);
+  const comm=orders.reduce((s,o)=>s+o.commission,0);
+  const avg=Math.round(rev/Math.max(orders.length,1));
+  document.getElementById('ord-cnt').textContent=orders.length;
+  document.getElementById('ord-rev').textContent=rev.toLocaleString('ru-RU')+' ₽';
+  document.getElementById('ord-comm').textContent=comm.toLocaleString('ru-RU')+' ₽';
+  document.getElementById('ord-avg').textContent=avg.toLocaleString('ru-RU')+' ₽';
+  document.getElementById('ord-table-count').textContent=orders.length+' заказов';
+  document.getElementById('ord-tbody').innerHTML=orders.length ? orders.map(o=>`<tr>
+    <td>${new Date(o.date.replace(' ','T')+'Z').toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</td>
+    <td style="font-family:monospace;font-size:.76rem;color:var(--muted)">${o.order_code}</td>
+    <td>${o.customer_name}</td>
+    <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.product}</td>
+    <td class="r">${o.sum.toLocaleString('ru-RU')} ₽</td>
+    <td class="r" style="font-weight:600;color:var(--amber)">${o.commission.toLocaleString('ru-RU')} ₽</td>
+    <td><span class="pill pill-blue">Оплачен</span></td>
+  </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1.5rem;">За этот период продаж пока не было</td></tr>';
+}
+
+// ── REFERRAL ─────────────────────────────────────────────────────────
+// Реальные начисленные бонусы показаны на главной странице кабинета
+// (карточка "Реферальные бонусы", renderReferralBonuses()) — здесь,
+// на вкладке "Реферальная программа", только ссылка-приглашение.
+
+// ── ACTIONS ──────────────────────────────────────────────────────────
+function copyLink(elementId, btn){
+  const txt=document.getElementById(elementId).textContent;
+  navigator.clipboard?.writeText(txt).catch(()=>{});
+  btn.textContent='Скопировано!'; btn.style.background='#2D5A3F';
+  setTimeout(()=>{btn.textContent='Скопировать';btn.style.background='';},2000);
+}
+function requestPayout(){
+  alert('Запрос на выплату отправлен менеджеру. Средства поступят на карту в течение 1 рабочего дня.');
+}
+function saveProfile(){
+  alert('Данные сохранены.');
+}
+
+// ── ФОРМАТ РАЗМЕЩЕНИЯ (профиль) — стойка/корзинка/картинка, можно сочетать ──
+function renderProfile() {
+  if (!currentPartnerUser) return;
+  // Раньше эти три поля были захардкожены на пример "Анна Николаева" —
+  // каждый партнёр видел один и тот же чужой пример вместо своих реальных
+  // данных. "Заведение" собиралось из point_name/point_address партнёра —
+  // то есть тоже часть проверки корректного отображения точек.
+  document.getElementById('prof-name').value = currentPartnerUser.full_name || '';
+  document.getElementById('prof-phone').value = currentPartnerUser.phone || '';
+  const pointEl = document.getElementById('prof-point');
+  if (pointEl) {
+    pointEl.value = [currentPartnerUser.point_name, currentPartnerUser.point_address].filter(Boolean).join(' — ');
+  }
+  document.getElementById('prof-display-stand').checked = !!currentPartnerUser.display_stand;
+  document.getElementById('prof-display-basket').checked = !!currentPartnerUser.display_basket;
+  document.getElementById('prof-display-poster').checked = !!currentPartnerUser.display_poster;
+  document.getElementById('profile-format-error').style.display = 'none';
+}
+
+async function saveDisplayFormat() {
+  const stand = document.getElementById('prof-display-stand').checked;
+  const basket = document.getElementById('prof-display-basket').checked;
+  const poster = document.getElementById('prof-display-poster').checked;
+  const errEl = document.getElementById('profile-format-error');
+  errEl.style.display = 'none';
+  if (!stand && !basket && !poster) {
+    errEl.textContent = 'Выберите хотя бы один формат размещения.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await authFetch('/api/partners/me', {
+      method: 'PUT',
+      body: { display_stand: stand, display_basket: basket, display_poster: poster },
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Не удалось сохранить.';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (currentPartnerUser) {
+      currentPartnerUser.display_stand = stand;
+      currentPartnerUser.display_basket = basket;
+      currentPartnerUser.display_poster = poster;
+    }
+    alert('Формат размещения сохранён.');
+  } catch (e) {
+    errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
+    errEl.style.display = 'block';
+  }
+}
+
+// ── СТРАНИЦА САЛОНА (публичная реклама на сайте «Тайги») ──────────────
+// ── СТРАНИЦА САЛОНА (публичная реклама на сайте «ХвостМаркета») ───────
+// Раньше эти поля жили на самом партнёре — теперь на точке (myPointId),
+// поэтому сначала подгружаем актуальное состояние отдельным запросом,
+// а не берём из currentPartnerUser (там их больше нет).
+let currentSalonPage = null;
+async function renderSalonProfile() {
+  if (!myPointId) return;
+  SalonPhotoGallery.init('groomer-salon', {
+    inputId: 'salon-photo-files', gridId: 'salon-photo-grid', statusId: 'salon-photo-status',
+    errorId: 'salon-profile-error', getPointId: () => myPointId, authFetch,
+  });
+  try {
+    const res = await authFetch('/api/points/' + myPointId + '/salon-page');
+    const data = await res.json();
+    if (!res.ok) return;
+    currentSalonPage = data.point;
+  } catch (e) {
+    return;
+  }
+  document.getElementById('salon-tagline').value = currentSalonPage.salon_tagline || '';
+  document.getElementById('salon-description').value = currentSalonPage.salon_description || '';
+  SalonPhotoGallery.set('groomer-salon', currentSalonPage.salon_photo_urls, currentSalonPage.salon_photo_url);
+  document.getElementById('salon-instagram').value = currentSalonPage.salon_instagram || '';
+  document.getElementById('salon-vk').value = currentSalonPage.salon_vk || '';
+  document.getElementById('salon-website').value = currentSalonPage.salon_website || '';
+  document.getElementById('salon-published').checked = !!currentSalonPage.salon_page_published;
+  document.getElementById('salon-profile-error').style.display = 'none';
+  document.getElementById('salon-profile-msg').style.display = 'none';
+  updateSalonPublicLink();
+}
+
+function updateSalonPublicLink() {
+  const linkEl = document.getElementById('salon-public-link');
+  if (currentSalonPage && currentSalonPage.salon_page_published && myPointId) {
+    const url = window.location.origin + '/?salon=' + encodeURIComponent(myPointId);
+    linkEl.innerHTML = '🔗 Ваша страница уже видна всем: <a href="' + url + '" target="_blank" style="color:var(--amber);font-weight:600;">' + url + '</a>';
+    linkEl.style.display = 'block';
+  } else {
+    linkEl.style.display = 'none';
+  }
+}
+
+async function saveSalonPage() {
+  const errEl = document.getElementById('salon-profile-error');
+  const msgEl = document.getElementById('salon-profile-msg');
+  errEl.style.display = 'none';
+  msgEl.style.display = 'none';
+  if (!myPointId) {
+    errEl.textContent = 'У вас нет привязанной точки — страницу заводить не для кого.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const payload = {
+    salon_tagline: document.getElementById('salon-tagline').value.trim(),
+    salon_description: document.getElementById('salon-description').value.trim(),
+    salon_photo_urls: SalonPhotoGallery.get('groomer-salon'),
+    salon_instagram: document.getElementById('salon-instagram').value.trim(),
+    salon_vk: document.getElementById('salon-vk').value.trim(),
+    salon_website: document.getElementById('salon-website').value.trim(),
+    salon_page_published: document.getElementById('salon-published').checked,
+  };
+
+  try {
+    const res = await authFetch('/api/points/' + myPointId + '/salon-page', { method: 'PUT', body: payload });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Не удалось сохранить.';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (currentSalonPage) Object.assign(currentSalonPage, payload, { salon_page_published: data.published });
+    document.getElementById('salon-published').checked = data.published;
+    msgEl.textContent = data.published ? '✅ Сохранено и опубликовано!' : '✅ Сохранено (пока не опубликовано).';
+    msgEl.style.display = 'block';
+    updateSalonPublicLink();
+  } catch (e) {
+    errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
+    errEl.style.display = 'block';
+  }
+}
+
+// ── PWA: регистрация service worker (устанавливаемое приложение) ──────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js').catch(function(e) {
+      console.warn('Service worker не зарегистрирован:', e.message);
+    });
+  });
+}
+
+// ── Восстановление сессии после перезагрузки страницы ──────────────────
+// Токен раньше жил только в JS-переменной и терялся при каждом F5 — теперь
+// хранится в localStorage, и при новой загрузке страницы просто проверяем
+// его валидность запросом собственных данных, не заставляя вводить пароль
+// заново. Если токен просрочен или отозван — тихо возвращаемся на экран входа.
+(async function restoreSession() {
+  const token = getPartnerToken();
+  if (!token) return;
+  try {
+    const res = await authFetch('/api/partners/me');
+    if (!res.ok) { clearPartnerToken(); return; }
+    const data = await res.json();
+    await onPartnerLoginSuccess({ token, user: data.partner });
+  } catch (e) {
+    clearPartnerToken();
+  }
+})();
+</script>
+</body>
+</html>

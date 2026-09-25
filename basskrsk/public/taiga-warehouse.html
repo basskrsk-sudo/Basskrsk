@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=28">
+<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=28">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Тайга — Кабинет кладовщика</title>
+<link rel="manifest" href="manifest-warehouse.json">
+<meta name="theme-color" content="#1C3A2F">
+<link rel="apple-touch-icon" href="images/icons/icon-180-apple.png?v=20">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Тайга Склад">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+<style>
+html { font-size: 16px; }
+/* На широких экранах (частый случай Retina-ноутбуков с масштабом "Больше
+   пространства" в macOS) логическое разрешение больше, из-за чего интерфейс
+   на fixed-px/rem вёрстке кажется мельче физически. Плавно увеличиваем базовый
+   размер — почти все элементы (rem-based) вырастут пропорционально. */
+@media (min-width: 1440px) { html { font-size: 17px; } }
+@media (min-width: 1800px) { html { font-size: 18px; } }
+
+
+:root{
+  --forest:#1C3A2F;--deep:#2D5A3F;--amber:#D4872A;--amber-lt:#E8A84A;
+  --cream:#F7F3EC;--white:#fff;--text:#2A2218;--muted:#8A7D6B;
+  --border:#DDD5C8;--r:8px;--shadow:0 1px 8px rgba(28,58,47,.09);
+  --green-bg:#EDF5EE;--green:#2D7D46;--red-bg:#FDECEA;--red:#9B2335;
+  --amber-bg:#FFF4E5;--amber-text:#7A4A00;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-size:14px;min-height:100vh;}
+
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem;}
+.login-card{background:var(--white);border-radius:16px;padding:2.5rem 2rem;width:100%;max-width:380px;box-shadow:0 4px 24px rgba(28,58,47,.12);}
+.login-logo{font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--forest);margin-bottom:.2rem;}
+.login-logo span{color:var(--amber);}
+.login-role{display:inline-block;background:var(--amber-bg);color:var(--amber-text);font-size:.72rem;font-weight:700;padding:.2rem .65rem;border-radius:50px;margin-bottom:1.5rem;letter-spacing:.05em;text-transform:uppercase;}
+.field{margin-bottom:1rem;}
+.field label{display:block;font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.35rem;}
+.field input,.field select{width:100%;padding:.65rem .9rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.9rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;transition:border-color .2s;}
+.field input:focus{border-color:var(--deep);}
+.login-btn{width:100%;background:var(--forest);color:#fff;border:none;border-radius:var(--r);padding:.85rem;font-size:.95rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;margin-top:.5rem;}
+.login-btn:hover{background:var(--deep);}
+.login-error{display:none;background:var(--red-bg);color:var(--red);font-size:.8rem;padding:.6rem .8rem;border-radius:var(--r);margin-bottom:1rem;}
+
+#app{display:none;}
+.layout{display:flex;min-height:100vh;}
+.sidebar{width:224px;flex-shrink:0;background:var(--forest);display:flex;flex-direction:column;}
+.sidebar-logo{padding:1.4rem 1.25rem .9rem;font-family:'Playfair Display',serif;font-size:1.2rem;color:#fff;letter-spacing:.04em;border-bottom:1px solid rgba(255,255,255,.1);}
+.sidebar-logo span{color:var(--amber);}
+.sidebar-brand-mark{width:66px;height:66px;box-sizing:border-box;flex:0 0 66px;display:flex;align-items:center;justify-content:center;padding:4px;background:#fff;border-radius:16px;box-shadow:0 3px 12px rgba(0,0,0,.22);}
+.sidebar-brand-mark img{width:58px;height:auto;display:block;image-rendering:auto;}
+.sidebar-user{padding:.9rem 1.25rem;display:flex;align-items:center;gap:.65rem;border-bottom:1px solid rgba(255,255,255,.08);}
+.avatar{width:34px;height:34px;border-radius:50%;background:rgba(212,135,42,.3);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;color:var(--amber-lt);flex-shrink:0;}
+.user-name{font-size:.82rem;font-weight:600;color:#fff;line-height:1.3;}
+.user-role{font-size:.7rem;color:rgba(255,255,255,.4);}
+.sidebar-label{padding:.7rem 1.25rem .3rem;font-size:.68rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.3);}
+.nav-item{display:flex;align-items:center;gap:.6rem;padding:.6rem 1.25rem;font-size:.85rem;color:rgba(255,255,255,.7);cursor:pointer;border:none;background:none;width:100%;text-align:left;transition:background .15s,color .15s;}
+.nav-item:hover{background:rgba(255,255,255,.07);color:#fff;}
+.nav-item.active{background:rgba(212,135,42,.2);color:var(--amber-lt);}
+.nav-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+.sidebar-footer{margin-top:auto;padding:.9rem 1.25rem;font-size:.75rem;color:rgba(255,255,255,.3);border-top:1px solid rgba(255,255,255,.08);display:flex;justify-content:space-between;align-items:center;}
+.logout-btn{font-size:.72rem;color:rgba(255,255,255,.4);background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;}
+.logout-btn:hover{color:rgba(255,255,255,.8);}
+
+.main{flex:1;overflow:auto;}
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:.85rem 2rem;display:flex;align-items:center;justify-content:space-between;}
+.topbar h1{font-size:1rem;font-weight:600;}
+.content{padding:1.5rem 2rem;}
+
+.page-sec{display:none;}
+.page-sec.active{display:block;}
+
+.card{background:var(--white);border-radius:10px;padding:1.25rem;border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:1rem;}
+.card-title{font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;}
+.card-title span{font-weight:400;color:var(--muted);font-size:.74rem;}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.85rem;margin-bottom:1.25rem;}
+.kpi-card{background:var(--white);border-radius:10px;padding:1rem 1.1rem;border:1px solid var(--border);box-shadow:var(--shadow);}
+.kpi-label{font-size:.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.35rem;}
+.kpi-value{font-size:1.5rem;font-weight:700;color:var(--text);line-height:1;}
+
+.tbl{width:100%;border-collapse:collapse;font-size:.8rem;}
+.tbl th{text-align:left;padding:.45rem .7rem;font-size:.68rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;}
+.tbl th.r,.tbl td.r{text-align:right;}
+.tbl td{padding:.5rem .7rem;border-bottom:1px solid #F5F0E8;}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl input[type=number]{border:1px solid var(--border);border-radius:6px;padding:.3rem .4rem;font-family:'Inter',sans-serif;}
+
+.pill{display:inline-flex;align-items:center;gap:.25rem;padding:.15rem .55rem;border-radius:50px;font-size:.7rem;font-weight:600;}
+.pill-green{background:var(--green-bg);color:var(--green);}
+.pill-amber{background:var(--amber-bg);color:var(--amber-text);}
+.pill-red{background:var(--red-bg);color:var(--red);}
+
+.row-btn{background:var(--forest);color:#fff;border:none;border-radius:6px;padding:.35rem .8rem;font-size:.76rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
+.row-btn:hover{background:var(--deep);}
+.btn-primary{background:var(--forest);color:#fff;border:none;border-radius:var(--r);padding:.7rem 1.2rem;font-size:.88rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
+.btn-primary:hover{background:var(--deep);}
+
+/* ══ MOBILE (≤768px) — сайдбар сворачивается в горизontal-scroll меню сверху ══ */
+@media (max-width: 768px) {
+  .layout { flex-direction: column; }
+  .sidebar {
+    width: 100%; flex-direction: row; overflow-x: auto;
+    -webkit-overflow-scrolling: touch; flex-shrink: 0;
+  }
+  .sidebar-logo, .sidebar-user, .sidebar-label, .sidebar-footer { display: none; }
+  .nav-item {
+    width: auto; flex-shrink: 0; white-space: nowrap;
+    padding: .7rem .9rem; font-size: .78rem;
+  }
+  .main { overflow: visible; }
+  .content { padding: .85rem; }
+  .topbar { padding: .65rem .9rem; }
+  .topbar h1 { font-size: .9rem; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .card { padding: .9rem; overflow-x: auto; }
+  .tbl { font-size: .74rem; min-width: 480px; }
+}
+
+</style>
+<link rel="stylesheet" href="cabinet-navigation.css?v=46">
+<script src="cabinet-navigation.js?v=46"></script>
+</head>
+<body>
+
+<!-- ══ LOGIN ══ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo"><img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" style="height:132px;width:auto;display:block;margin:0 auto;"></div>
+    <div class="login-role">Кабинет кладовщика</div>
+    <div class="login-error" id="login-error">Неверный логин или пароль</div>
+    <div class="field">
+      <label>Логин</label>
+      <input type="text" id="l-login" placeholder="login" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Пароль</label>
+      <div style="position:relative;">
+        <input type="password" id="l-pass" placeholder="••••••••" autocomplete="off" style="padding-right:2.6rem;">
+        <button type="button" onclick="togglePasswordVisibility('l-pass', this)" style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.05rem;padding:.2rem;line-height:1;">👁️</button>
+      </div>
+    </div>
+    <button class="login-btn" onclick="doLogin()">Войти</button>
+  </div>
+</div>
+
+<!-- ══ APP ══ -->
+<div id="app">
+  <div class="layout">
+    <div class="sidebar cabinet-sidebar" id="warehouse-sidebar">
+      <div class="sidebar-logo" style="display:flex;align-items:center;gap:.6rem;"><span class="sidebar-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;line-height:.88;font-family:'Inter',sans-serif;font-size:1rem;font-weight:800;letter-spacing:0;"><span style="color:#fff;">Хвост</span><span style="color:#FF5A49;margin-top:.2rem;">Маркет</span></span><button class="cabinet-menu-close" type="button" onclick="HvostCabinetNavigation.close()" aria-label="Закрыть меню">×</button></div>
+      <div class="sidebar-user">
+        <div class="avatar" id="sb-avatar">К</div>
+        <div>
+          <div class="user-name" id="sb-name">—</div>
+          <div class="user-role">Кладовщик</div>
+        </div>
+      </div>
+      <div class="sidebar-label">Разделы</div>
+      <button class="nav-item active" data-group="operations" onclick="showSec('receive')"><span class="nav-dot"></span> Операции</button>
+      <button class="nav-item" data-group="accounting" onclick="showSec('stock')"><span class="nav-dot"></span> Учёт склада</button>
+      <div class="sidebar-footer">
+        <span>Тайга</span>
+        <button class="logout-btn" onclick="location.reload()">Выйти</button>
+      </div>
+    </div>
+    <div class="cabinet-sidebar-overlay" id="warehouse-sidebar-overlay" onclick="HvostCabinetNavigation.close()"></div>
+
+    <div class="main">
+      <div class="topbar"><div class="cabinet-title-wrap"><button class="cabinet-menu-btn" type="button" data-cabinet-menu-button onclick="HvostCabinetNavigation.toggle()" aria-label="Открыть меню" aria-controls="warehouse-sidebar" aria-expanded="false">☰</button><h1 id="sec-title">Приход товара</h1></div></div>
+      <div class="content">
+        <div class="cabinet-context-tabs" id="warehouse-context-tabs" aria-label="Подразделы"></div>
+
+        <!-- ══ RECEIVE ══ -->
+        <div class="page-sec active" id="sec-receive">
+          <div class="card">
+            <div class="card-title">Приходовать товар от поставщика</div>
+            <p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
+              Выберите товар, укажите количество и, если удобно, номер накладной — это увеличит остаток на складе и сохранится в истории.
+            </p>
+            <div class="field">
+              <label>Товар</label>
+              <select id="rc-variant"></select>
+            </div>
+            <div class="field">
+              <label>Количество</label>
+              <input type="number" min="1" id="rc-qty" placeholder="например, 50">
+            </div>
+            <div class="field">
+              <label>Накладная / комментарий (необязательно)</label>
+              <input type="text" id="rc-note" placeholder="Счастливый хвостик, накладная №123">
+            </div>
+            <button class="btn-primary" onclick="submitReceipt()">Оприходовать</button>
+            <div id="receipt-msg" style="margin-top:.6rem;font-size:.85rem;"></div>
+          </div>
+        </div>
+
+        <!-- ══ NEW PRODUCT ══ -->
+        <div class="page-sec" id="sec-newproduct">
+          <div class="card">
+            <div class="card-title">Добавить новый товар в каталог</div>
+            <p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
+              Товар сразу появится в общем каталоге сайта с остатком 0 — дальше его нужно будет оприходовать и распределить по точкам как обычно.
+            </p>
+            <div class="field">
+              <label>Название товара</label>
+              <input type="text" id="np-name" placeholder="Например, Ушки говяжьи">
+            </div>
+            <div class="field">
+              <label>Фото товара</label>
+              <input type="file" id="np-image-file" accept="image/*" onchange="handleNewProductImageSelect(this)">
+              <div id="np-image-preview" style="margin-top:.6rem;"></div>
+              <input type="hidden" id="np-image-path">
+            </div>
+            <div class="field">
+              <label>Категория</label>
+              <select id="np-category">
+                <option value="treats">Лакомства</option>
+                <option value="toys">Игрушки</option>
+                <option value="accessories">Аксессуары</option>
+                <option value="care">Уход</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Цена, ₽</label>
+              <input type="number" id="np-price" min="0" step="1" placeholder="например, 350">
+            </div>
+            <button class="btn-primary" onclick="submitNewProduct()">Добавить товар</button>
+            <div id="np-msg" style="margin-top:.6rem;font-size:.85rem;"></div>
+          </div>
+        </div>
+
+        <!-- ══ REQUESTS ══ -->
+        <div class="page-sec" id="sec-requests">
+          <div class="card">
+            <div class="card-title">Заявки на пополнение <span id="requests-count"></span></div>
+            <table class="tbl">
+              <thead>
+                <tr><th>Кто просит</th><th>Дата</th><th>Состав</th><th>Статус</th><th class="r">Действие</th></tr>
+              </thead>
+              <tbody id="requests-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ══ STOCK ══ -->
+        <div class="page-sec" id="sec-stock">
+          <div class="kpi-grid">
+            <div class="kpi-card"><div class="kpi-label">Позиций на складе</div><div class="kpi-value" id="wh-positions">—</div></div>
+            <div class="kpi-card"><div class="kpi-label">Всего единиц</div><div class="kpi-value" id="wh-units">—</div></div>
+            <div class="kpi-card"><div class="kpi-label">Нет в наличии</div><div class="kpi-value" id="wh-out" style="color:var(--red)">—</div></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Остаток по товарам</div>
+            <table class="tbl">
+              <thead><tr><th>Товар</th><th>Вес</th><th class="r">Остаток</th><th>Статус</th></tr></thead>
+              <tbody id="stock-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ══ HISTORY ══ -->
+        <div class="page-sec" id="sec-history">
+          <div class="card">
+            <div class="card-title">История приходов <span id="history-count"></span></div>
+            <table class="tbl">
+              <thead><tr><th>Дата</th><th>Товар</th><th class="r">Количество</th><th>Накладная</th><th>Принял</th></tr></thead>
+              <tbody id="history-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let warehouseToken = null;
+
+async function authFetch(url, options) {
+  options = options || {};
+  options.headers = Object.assign({}, options.headers, { 'Authorization': 'Bearer ' + warehouseToken });
+  if (options.body && typeof options.body !== 'string') {
+    options.body = JSON.stringify(options.body);
+    options.headers['Content-Type'] = 'application/json';
+  }
+  return fetch(url, options);
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function togglePasswordVisibility(inputId, btnEl) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const isHidden = input.type === 'password';
+  input.type = isHidden ? 'text' : 'password';
+  btnEl.textContent = isHidden ? '🙈' : '👁️';
+}
+
+async function doLogin() {
+  const l = document.getElementById('l-login').value.trim();
+  const p = document.getElementById('l-pass').value.trim();
+  if (!l || !p) { showLoginError('Введите логин и пароль'); return; }
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'warehouse', login: l, password: p }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showLoginError(data.error || 'Неверный логин или пароль'); return; }
+
+    warehouseToken = data.token;
+    document.getElementById('sb-name').textContent = data.user.full_name;
+    document.getElementById('sb-avatar').textContent = data.user.full_name.charAt(0).toUpperCase();
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    await showSec('receive');
+  } catch (e) {
+    showLoginError('Не удалось связаться с сервером. Попробуйте ещё раз.');
+  }
+}
+
+const SECS = { receive: 'Приход товара', newproduct: 'Новый товар', requests: 'Заявки на выдачу', stock: 'Остаток склада', history: 'История приходов' };
+const WAREHOUSE_SECTION_GROUPS = { receive: 'operations', newproduct: 'operations', requests: 'operations', stock: 'accounting', history: 'accounting' };
+HvostCabinetNavigation.init({ sidebarId: 'warehouse-sidebar', overlayId: 'warehouse-sidebar-overlay', tabsId: 'warehouse-context-tabs', initialSection: 'receive', sectionGroups: WAREHOUSE_SECTION_GROUPS, tabs: { operations: [['receive','Приход'],['newproduct','Новый товар'],['requests','Заявки']], accounting: [['stock','Остатки'],['history','История']] } });
+
+async function showSec(id) {
+  document.querySelectorAll('.page-sec').forEach(function(s) { s.classList.remove('active'); });
+  document.getElementById('sec-' + id).classList.add('active');
+  document.getElementById('sec-title').textContent = SECS[id] || id;
+  HvostCabinetNavigation.activate(id);
+
+  if (id === 'receive')    await renderReceiveForm();
+  if (id === 'newproduct') resetNewProductForm();
+  if (id === 'requests')   await renderRequests();
+  if (id === 'stock')      await renderStock();
+  if (id === 'history')    await renderHistory();
+}
+
+let allVariants = [];
+
+async function loadVariants() {
+  const res = await fetch('/api/products?all=1');
+  const data = await res.json();
+  allVariants = [];
+  (data.products || []).forEach(function(p) {
+    p.variants.forEach(function(v) {
+      allVariants.push({ variantId: v.id, name: p.name, weight: v.weight, stock: v.stock });
+    });
+  });
+}
+
+async function renderReceiveForm() {
+  await loadVariants();
+  document.getElementById('rc-variant').innerHTML = allVariants.map(function(v) {
+    return '<option value="' + v.variantId + '">' + v.name + ' (' + v.weight + ')</option>';
+  }).join('');
+}
+
+// ── НОВЫЙ ТОВАР ────────────────────────────────────────────────────
+function slugify(str) {
+  const map = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
+  return str.toLowerCase().split('').map(function(ch) { return map[ch] !== undefined ? map[ch] : ch; }).join('')
+    .replace(/[«»"']/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'tovar';
+}
+
+function resetNewProductForm() {
+  document.getElementById('np-name').value = '';
+  document.getElementById('np-image-file').value = '';
+  document.getElementById('np-image-path').value = '';
+  document.getElementById('np-image-preview').innerHTML = '';
+  document.getElementById('np-category').value = 'treats';
+  document.getElementById('np-price').value = '';
+  document.getElementById('np-msg').textContent = '';
+}
+
+async function handleNewProductImageSelect(input) {
+  const file = input.files && input.files[0];
+  const previewEl = document.getElementById('np-image-preview');
+  const msgEl = document.getElementById('np-msg');
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    msgEl.textContent = 'Выберите файл изображения (jpg/png/webp).';
+    msgEl.style.color = 'var(--red)';
+    return;
+  }
+  previewEl.innerHTML = '<span style="font-size:.8rem;color:var(--muted);">Загружаем и сжимаем...</span>';
+  try {
+    const base64 = await new Promise(function(resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function() { resolve(reader.result); };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const res = await authFetch('/api/products/upload-image', { method: 'POST', body: { data: base64 } });
+    const data = await res.json();
+    if (!res.ok) {
+      previewEl.innerHTML = '';
+      msgEl.textContent = data.error || 'Не удалось загрузить картинку.';
+      msgEl.style.color = 'var(--red)';
+      return;
+    }
+    document.getElementById('np-image-path').value = data.path;
+    previewEl.innerHTML = '<img src="' + data.path + '?t=' + Date.now() + '" style="height:70px;border-radius:6px;">';
+    msgEl.textContent = '';
+  } catch (e) {
+    previewEl.innerHTML = '';
+    msgEl.textContent = 'Ошибка загрузки картинки: ' + e.message;
+    msgEl.style.color = 'var(--red)';
+  }
+}
+
+async function submitNewProduct() {
+  const name = document.getElementById('np-name').value.trim();
+  const category = document.getElementById('np-category').value;
+  const price = parseFloat(document.getElementById('np-price').value);
+  const imgPath = document.getElementById('np-image-path').value || null;
+  const msgEl = document.getElementById('np-msg');
+
+  if (!name || isNaN(price) || price <= 0) {
+    msgEl.textContent = 'Укажите название и цену больше нуля.';
+    msgEl.style.color = 'var(--red)';
+    return;
+  }
+
+  const slug = slugify(name) + '-' + Date.now().toString(36);
+  const res = await authFetch('/api/products', {
+    method: 'POST',
+    body: {
+      slug: slug, name: name, category: category, icon: '🐾', badge: null, img: imgPath,
+      desc: name, comp: [], variants: [{ weight: '1 шт.', price: price }],
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    msgEl.textContent = data.error || 'Не удалось создать товар.';
+    msgEl.style.color = 'var(--red)';
+    return;
+  }
+  msgEl.textContent = '✅ Товар добавлен в каталог. Не забудьте оприходовать и распределить остаток.';
+  msgEl.style.color = 'var(--green)';
+  resetNewProductForm();
+}
+
+async function submitReceipt() {
+  const variantId = parseInt(document.getElementById('rc-variant').value, 10);
+  const qty = parseInt(document.getElementById('rc-qty').value, 10) || 0;
+  const note = document.getElementById('rc-note').value.trim();
+  const msgEl = document.getElementById('receipt-msg');
+
+  if (!variantId || qty <= 0) {
+    msgEl.textContent = 'Выберите товар и укажите количество больше нуля.';
+    msgEl.style.color = 'var(--red)';
+    return;
+  }
+
+  const res = await authFetch('/api/warehouse/receipts', {
+    method: 'POST', body: { variant_id: variantId, qty: qty, supplier_note: note || null },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    msgEl.textContent = data.error || 'Не удалось оприходовать.';
+    msgEl.style.color = 'var(--red)';
+    return;
+  }
+  msgEl.textContent = '✅ Оприходовано. Новый остаток: ' + data.new_qty + ' шт.';
+  msgEl.style.color = 'var(--green)';
+  document.getElementById('rc-qty').value = '';
+  document.getElementById('rc-note').value = '';
+}
+
+async function renderRequests() {
+  const res = await authFetch('/api/restock-requests');
+  const data = await res.json();
+  const requests = data.requests || [];
+  document.getElementById('requests-count').textContent = requests.length + ' шт.';
+
+  const statusMap = { pending: ['⏳ Ожидает', 'pill-amber'], fulfilled: ['✓ Выдано', 'pill-green'], cancelled: ['✕ Отменено', 'pill-red'] };
+
+  document.getElementById('requests-tbody').innerHTML = requests.length ? requests.map(function(r) {
+    const who = r.initiated_by === 'partner' ? '📦 Грумер (точка ' + (r.point_id || '') + ')' : '🌟 Менеджер №' + r.manager_id;
+    const itemsText = r.items.map(function(i) {
+      return i.product_name + ' (' + i.weight + ') — ' + i.qty_requested + (r.status === 'fulfilled' ? ' (выдано ' + i.qty_allocated + ')' : '');
+    }).join('<br>');
+    const st = statusMap[r.status] || [r.status, 'pill-amber'];
+    return '<tr>' +
+      '<td style="font-weight:500;">' + who + '</td>' +
+      '<td style="font-size:.78rem;color:var(--muted);">' + new Date(r.requested_at.replace(' ', 'T') + 'Z').toLocaleString('ru-RU') + '</td>' +
+      '<td style="font-size:.8rem;">' + itemsText + '</td>' +
+      '<td><span class="pill ' + st[1] + '">' + st[0] + '</span></td>' +
+      '<td class="r">' + (r.status === 'pending' ? '<button class="row-btn" onclick="fulfillRequest(' + r.id + ')">Выдать</button>' : '—') + '</td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;">Заявок пока нет</td></tr>';
+}
+
+async function fulfillRequest(id) {
+  if (!confirm('Выдать эту заявку со склада?')) return;
+  const res = await authFetch('/api/restock-requests/' + id + '/fulfill', { method: 'PUT', body: {} });
+  if (!res.ok) { const d = await res.json(); alert(d.error || 'Не удалось выдать заявку'); return; }
+  await renderRequests();
+}
+
+async function renderStock() {
+  const res = await authFetch('/api/warehouse/stock');
+  const data = await res.json();
+  const rows = data.stock || [];
+  document.getElementById('wh-positions').textContent = rows.length;
+  document.getElementById('wh-units').textContent = rows.reduce(function(s, r) { return s + r.qty; }, 0);
+  document.getElementById('wh-out').textContent = rows.filter(function(r) { return r.qty === 0; }).length;
+
+  document.getElementById('stock-tbody').innerHTML = rows.length ? rows.map(function(r) {
+    const st = r.qty === 0 ? ['✕ Нет', 'pill-red'] : r.qty < 10 ? ['⚠ Мало', 'pill-amber'] : ['✓ Есть', 'pill-green'];
+    return '<tr>' +
+      '<td style="font-weight:500;">' + r.product_name + '</td>' +
+      '<td>' + r.weight + '</td>' +
+      '<td class="r" style="font-weight:600;">' + r.qty + '</td>' +
+      '<td><span class="pill ' + st[1] + '">' + st[0] + '</span></td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:2rem;">Склад пуст</td></tr>';
+}
+
+async function renderHistory() {
+  const res = await authFetch('/api/warehouse/receipts');
+  const data = await res.json();
+  const rows = data.receipts || [];
+  document.getElementById('history-count').textContent = rows.length + ' шт.';
+
+  document.getElementById('history-tbody').innerHTML = rows.length ? rows.map(function(r) {
+    return '<tr>' +
+      '<td style="font-size:.78rem;color:var(--muted);">' + new Date(r.received_at.replace(' ', 'T') + 'Z').toLocaleString('ru-RU') + '</td>' +
+      '<td style="font-weight:500;">' + r.product_name + ' (' + r.weight + ')</td>' +
+      '<td class="r" style="font-weight:600;color:var(--green);">+' + r.qty + '</td>' +
+      '<td style="font-size:.8rem;">' + (r.supplier_note || '—') + '</td>' +
+      '<td style="font-size:.8rem;color:var(--muted);">' + (r.keeper_name || '—') + '</td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;">Приходов пока нет</td></tr>';
+}
+
+// ── PWA: регистрация service worker ──────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js').catch(function(e) {
+      console.warn('Service worker не зарегистрирован:', e.message);
+    });
+  });
+}
+</script>
+</body>
+</html>
