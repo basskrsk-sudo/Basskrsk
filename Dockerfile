@@ -67,6 +67,14 @@ RUN (convert -size 10x10 xc:red /tmp/selftest.jpg && \
     echo "✅ ImageMagick: проверка чтения JPEG и записи WEBP прошла успешно.") || \
     echo "⚠️⚠️⚠️ ВНИМАНИЕ: ImageMagick не может обработать JPEG→WEBP в этой сборке Alpine — загрузка фото товаров и салонов работать НЕ БУДЕТ. Остальной сайт продолжит работать нормально. ⚠️⚠️⚠️"
 
+# Шрифт DejaVu нужен для PDF-отчётов планёрки ГД (server/weekly-report.js).
+# Пакет font-dejavu на Alpine кладёт файлы в /usr/share/fonts/dejavu/ —
+# проверяем это прямо при сборке, чтобы отсутствие шрифта было видно в логах
+# деплоя, а не только в момент формирования отчёта в проде.
+RUN find /usr/share/fonts -name 'DejaVuSans.ttf' | grep -q . && \
+    echo "✅ Шрифт DejaVu Sans найден: $(find /usr/share/fonts -name 'DejaVuSans.ttf' | head -1)" || \
+    echo "⚠️⚠️⚠️ ВНИМАНИЕ: шрифт DejaVu Sans не найден — PDF-отчёты планёрки ГД работать НЕ БУДУТ. ⚠️⚠️⚠️"
+
 WORKDIR /app
 
 # Сам сервер и статические файлы сайта

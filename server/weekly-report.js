@@ -452,12 +452,34 @@ function buildSpreadsheet(report) {
 function findFont() {
   const candidates = [
     process.env.REPORT_FONT_PATH,
-    '/usr/share/fonts/ttf-dejavu/DejaVuSans.ttf',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/dejavu/DejaVuSans.ttf',           // Alpine (пакет font-dejavu)
+    '/usr/share/fonts/ttf-dejavu/DejaVuSans.ttf',       // старые Alpine / Arch
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',  // Debian / Ubuntu
   ].filter(Boolean);
   const found = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!found) throw new Error('Шрифт DejaVu Sans для PDF не найден');
-  return found;
+  if (found) return found;
+  // Запасной вариант: ищем DejaVuSans.ttf рекурсивно по стандартным папкам
+  // шрифтов — на случай, если пакет в очередной версии ОС переедет в новый путь.
+  for (const dir of ['/usr/share/fonts', '/usr/local/share/fonts']) {
+    const hit = findFontRecursive(dir, 'DejaVuSans.ttf', 4);
+    if (hit) return hit;
+  }
+  throw new Error('Шрифт DejaVu Sans для PDF не найден');
+}
+
+function findFontRecursive(dir, name, depth) {
+  if (depth < 0) return null;
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return null; }
+  for (const entry of entries) {
+    const full = dir + '/' + entry.name;
+    if (entry.isFile() && entry.name === name) return full;
+    if (entry.isDirectory()) {
+      const hit = findFontRecursive(full, name, depth - 1);
+      if (hit) return hit;
+    }
+  }
+  return null;
 }
 
 function mvgEscape(value) { return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' '); }
