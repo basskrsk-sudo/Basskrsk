@@ -43,6 +43,40 @@ function previousCompletedWeek(now = new Date()) {
   };
 }
 
+// Произвольный период по локальным (красноярским) датам ГГГГ-ММ-ДД, обе
+// включительно. Проверяет формат и границы, бросает Error с понятным текстом —
+// маршрут отдаёт его администратору как есть. «Предыдущий» период для сравнения
+// — окно той же длины непосредственно перед выбранным.
+const MAX_PERIOD_DAYS = 31;
+
+function customPeriod(startLocal, endLocal) {
+  const format = /^\d{4}-\d{2}-\d{2}$/;
+  if (!format.test(startLocal) || !format.test(endLocal)) {
+    throw new Error('Укажите даты периода в формате ГГГГ-ММ-ДД');
+  }
+  const startMs = Date.parse(startLocal + 'T00:00:00Z');
+  const endMs = Date.parse(endLocal + 'T00:00:00Z');
+  if (Number.isNaN(startMs) || Number.isNaN(endMs)) throw new Error('Некорректные даты периода');
+  if (endMs < startMs) throw new Error('Дата окончания периода раньше даты начала');
+  const days = Math.round((endMs - startMs) / DAY_MS) + 1;
+  if (days > MAX_PERIOD_DAYS) {
+    throw new Error('Период не может быть длиннее ' + MAX_PERIOD_DAYS + ' дня — для более длинных интервалов формируйте отчёт по частям');
+  }
+  const todayLocalMs = Date.parse(localDateKeyFromMs(Date.now() + KRASNOYARSK_OFFSET_MS) + 'T00:00:00Z');
+  if (endMs > todayLocalMs) throw new Error('Период не может выходить за пределы сегодняшнего дня');
+  const endExclusiveMs = endMs + DAY_MS;
+  return {
+    start_local: startLocal,
+    end_local: endLocal,
+    previous_start_local: localDateKeyFromMs(startMs - days * DAY_MS),
+    previous_end_local: localDateKeyFromMs(startMs - DAY_MS),
+    start_utc: new Date(startMs - KRASNOYARSK_OFFSET_MS).toISOString().slice(0, 19).replace('T', ' '),
+    end_utc_exclusive: new Date(endExclusiveMs - KRASNOYARSK_OFFSET_MS).toISOString().slice(0, 19).replace('T', ' '),
+    previous_start_utc: new Date(startMs - days * DAY_MS - KRASNOYARSK_OFFSET_MS).toISOString().slice(0, 19).replace('T', ' '),
+    previous_end_utc_exclusive: new Date(startMs - KRASNOYARSK_OFFSET_MS).toISOString().slice(0, 19).replace('T', ' '),
+  };
+}
+
 function localDateKey(utcSqlDate) {
   const date = new Date(String(utcSqlDate).replace(' ', 'T') + 'Z');
   return localDateKeyFromMs(date.getTime() + KRASNOYARSK_OFFSET_MS);
@@ -235,10 +269,13 @@ function buildCustomers(current, period) {
 function buildDaily(current, previous, period) {
   const rows = [];
   const startLocalMs = Date.parse(period.start_local + 'T00:00:00Z');
-  for (let index = 0; index < 7; index += 1) {
+  // Длина выбранного периода в днях: для недели — 7, для произвольного — сколько выбрали.
+  // Сравнение идёт день-в-день с окном той же длины непосредственно перед периодом.
+  const days = Math.round((Date.parse(period.end_local + 'T00:00:00Z') - startLocalMs) / DAY_MS) + 1;
+  for (let index = 0; index < days; index += 1) {
     const date = localDateKeyFromMs(startLocalMs + index * DAY_MS);
     const currentOrders = current.paidOrders.filter((order) => localDateKey(order.created_at) === date);
-    const previousDate = localDateKeyFromMs(startLocalMs - 7 * DAY_MS + index * DAY_MS);
+    const previousDate = localDateKeyFromMs(startLocalMs + (index - days) * DAY_MS);
     const previousOrders = previous.paidOrders.filter((order) => localDateKey(order.created_at) === previousDate);
     rows.push({
       date,
@@ -314,8 +351,7 @@ function buildAlerts(report) {
   return alerts;
 }
 
-function collectWeeklyReport(now = new Date()) {
-  const period = previousCompletedWeek(now);
+function collectWeeklyReportForPeriod(period) {
   const current = collectMetrics(period.start_utc, period.end_utc_exclusive, period);
   const previous = collectMetrics(period.previous_start_utc, period.previous_end_utc_exclusive, {
     start_local: period.previous_start_local,
@@ -338,6 +374,10 @@ function collectWeeklyReport(now = new Date()) {
   };
   report.alerts = buildAlerts(report);
   return report;
+}
+
+function collectWeeklyReport(now = new Date()) {
+  return collectWeeklyReportForPeriod(previousCompletedWeek(now));
 }
 
 function xmlEscape(value) {
@@ -570,15 +610,21 @@ function buildPdfPages(report, font) {
   });
   first.text(62, 570, 'Выручка по дням', 27, '#1C3A2F', true);
   const maxDaily = Math.max(1, ...report.daily.flatMap((day) => [day.revenue, day.previous_revenue]));
+  // Шаг и ширина столбцов зависят от числа дней периода: для недели (7) раскладываем
+  // широко, для длинного периода (до 31) — компактно, с прореженными подписями дат.
+  const dailyDays = Math.max(1, report.daily.length);
+  const step = Math.min(158, Math.floor(1086 / dailyDays));
+  const barWidth = Math.max(7, Math.min(42, Math.floor(step * 0.27)));
+  const labelEvery = Math.max(1, Math.ceil(dailyDays / 8));
   report.daily.forEach((day, index) => {
-    const x = 92 + index * 158;
+    const x = 92 + index * step;
     const baseY = 900;
     const currentHeight = Math.round(day.revenue / maxDaily * 250);
     const prevHeight = Math.round(day.previous_revenue / maxDaily * 250);
-    first.rect(x, baseY - prevHeight, x + 42, baseY, '#C9C2B7', 5);
-    first.rect(x + 48, baseY - currentHeight, x + 90, baseY, '#D4872A', 5);
-    first.text(x, baseY + 32, day.date.slice(5), 15, '#7A7165', false);
-    first.text(x, baseY - currentHeight - 12, String(day.revenue), 13, '#1C3A2F', true);
+    first.rect(x, baseY - prevHeight, x + barWidth, baseY, '#C9C2B7', 5);
+    first.rect(x + barWidth + 6, baseY - currentHeight, x + barWidth * 2 + 6, baseY, '#D4872A', 5);
+    if (index % labelEvery === 0) first.text(x, baseY + 32, day.date.slice(5), 15, '#7A7165', false);
+    if (dailyDays <= 10) first.text(x, baseY - currentHeight - 12, String(day.revenue), 13, '#1C3A2F', true);
   });
   first.text(62, 970, 'Риски и вопросы для обсуждения', 27, '#1C3A2F', true);
   let alertY = 1020;
@@ -601,7 +647,7 @@ function buildPdfPages(report, font) {
   pages.push(second.finish());
 
   const third = new ReportPage(font, 'Финансы и клиенты', subtitle);
-  third.text(62, 225, 'P&L недели', 27, '#1C3A2F', true);
+  third.text(62, 225, 'P&L периода', 27, '#1C3A2F', true);
   const pnlRows = [
     ['Выручка после возвратов', rub(report.current.revenue)],
     ['Комиссия грумерам', rub(report.current.costs.partnerCommission)],
@@ -619,7 +665,7 @@ function buildPdfPages(report, font) {
     ['Уникальные покупатели', report.customers.unique],
     ['Новые покупатели', report.customers.new_customers],
     ['Вернувшиеся покупатели', report.customers.returning_customers + ' · ' + report.customers.returning_share + '%'],
-    ['Более одной покупки за неделю', report.customers.repeat_within_week],
+    ['Более одной покупки за период', report.customers.repeat_within_week],
     ['Начислено / потрачено косточек', report.customers.bones_accrued + ' / ' + report.customers.bones_spent],
     ['Возвращено клиентам', rub(report.current.refunds)],
   ], { rowHeight: 58, fontSize: 18 });
@@ -644,7 +690,7 @@ function buildPdfPages(report, font) {
     ['Новых менеджеров', report.operations.team.new_managers],
     ['Фактически выплачено грумерам', rub(report.operations.payouts.partner)],
     ['Фактически выплачено владельцам', rub(report.operations.payouts.owner)],
-    ['Начислено комиссий за неделю', rub(report.current.costs.partnerCommission + report.current.costs.managerCommission + report.current.costs.ownerCommission)],
+    ['Начислено комиссий за период', rub(report.current.costs.partnerCommission + report.current.costs.managerCommission + report.current.costs.ownerCommission)],
   ], { rowHeight: 60, fontSize: 18 });
   fourth.wrapped(62, 1390, 'Примечание: остатки приведены на момент формирования отчёта. Прибыль является управленческой оценкой на основе внесённых расходов, налога 6%, эквайринга 2% и действующих ставок комиссий.', 105, 17, '#7A7165', 25, false);
   pages.push(fourth.finish());
@@ -773,7 +819,11 @@ function telegramEscape(value) {
 
 async function createWeeklyReport(adminPayload, options = {}) {
   fs.mkdirSync(REPORTS_DIR, { recursive: true });
-  const report = collectWeeklyReport(options.now || new Date());
+  // Период: либо выбранный администратором (options.period от customPeriod),
+  // либо предыдущая завершённая неделя, как раньше.
+  const report = options.period
+    ? collectWeeklyReportForPeriod(options.period)
+    : collectWeeklyReport(options.now || new Date());
   const baseName = 'weekly-gd-' + report.period.start_local + '_' + report.period.end_local;
   const excelName = baseName + '.xls';
   const pdfName = baseName + '.pdf';
@@ -782,7 +832,9 @@ async function createWeeklyReport(adminPayload, options = {}) {
   fs.writeFileSync(excelPath, buildSpreadsheet(report), 'utf8');
   buildPdf(report, pdfPath);
 
-  let telegramStatus = 'not_configured';
+  // skipTelegram — администратор снял галочку отправки: файлы просто сохраняются
+  // в архиве, статус 'skipped' показываем в архиве как «Не отправлялся».
+  let telegramStatus = options.skipTelegram ? 'skipped' : 'not_configured';
   let telegramError = null;
   if (!options.skipTelegram && process.env.TG_TOKEN && process.env.TG_CHAT_ID) {
     try {
@@ -851,7 +903,9 @@ module.exports = {
   REPORTS_DIR,
   buildSpreadsheet,
   collectWeeklyReport,
+  collectWeeklyReportForPeriod,
   createWeeklyReport,
+  customPeriod,
   listWeeklyReports,
   previousCompletedWeek,
   resolveReportFile,

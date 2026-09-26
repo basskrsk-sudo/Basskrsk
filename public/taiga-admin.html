@@ -795,10 +795,21 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div style="max-width:720px;">
             <div style="font-size:.75rem;color:rgba(255,255,255,.68);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Управленческая отчётность</div>
             <h2 style="font-size:1.35rem;margin-bottom:.55rem;">Отчёт для планёрки ГД</h2>
-            <p style="font-size:.84rem;line-height:1.6;color:rgba(255,255,255,.78);">Система возьмёт предыдущую завершённую неделю с понедельника по воскресенье, сравнит её с предшествующей, сформирует PDF и Excel, сохранит файлы здесь и отправит их в служебный Telegram.</p>
+            <p style="font-size:.84rem;line-height:1.6;color:rgba(255,255,255,.78);">Выберите период (по умолчанию — предыдущая завершённая неделя с понедельника по воскресенье). Система сравнит его с предшествующим окном той же длины, сформирует PDF и Excel и сохранит файлы здесь. Отправку в служебный Telegram можно отключить галочкой.</p>
             <div id="weekly-report-period" style="margin-top:.8rem;font-size:.9rem;font-weight:700;color:var(--amber);">Период загружается…</div>
           </div>
-          <button id="weekly-report-generate" class="add-product-btn" style="background:var(--amber);color:#fff;min-width:230px;" onclick="generateWeeklyReport()">Сформировать и отправить</button>
+          <div style="display:flex;flex-direction:column;gap:.55rem;min-width:280px;">
+            <div style="display:flex;align-items:center;gap:.45rem;">
+              <input type="date" id="wr-date-start" style="flex:1;padding:.5rem .6rem;border-radius:8px;border:1.5px solid rgba(255,255,255,.35);background:rgba(255,255,255,.95);color:var(--deep);font-size:.85rem;font-family:inherit;">
+              <span style="color:rgba(255,255,255,.7);">—</span>
+              <input type="date" id="wr-date-end" style="flex:1;padding:.5rem .6rem;border-radius:8px;border:1.5px solid rgba(255,255,255,.35);background:rgba(255,255,255,.95);color:var(--deep);font-size:.85rem;font-family:inherit;">
+            </div>
+            <label style="display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:rgba(255,255,255,.85);cursor:pointer;">
+              <input type="checkbox" id="wr-send-telegram" checked style="width:15px;height:15px;accent-color:var(--amber);">
+              Отправить файлы в служебный Telegram
+            </label>
+            <button id="weekly-report-generate" class="add-product-btn" style="background:var(--amber);color:#fff;min-width:230px;" onclick="generateWeeklyReport()">Сформировать отчёт</button>
+          </div>
         </div>
         <div id="weekly-report-message" style="display:none;margin-top:1rem;padding:.75rem .9rem;border-radius:8px;background:rgba(255,255,255,.12);font-size:.82rem;line-height:1.5;"></div>
       </div>
@@ -814,7 +825,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="card-title">Архив отчётов <span id="weekly-reports-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></div>
         <div style="overflow-x:auto;">
           <table class="tbl" style="min-width:820px;">
-            <thead><tr><th>Неделя</th><th>Сформирован</th><th class="r">Выручка</th><th class="r">Заказов</th><th class="r">Прибыль</th><th>Telegram</th><th>Сформировал</th><th class="r">Файлы</th></tr></thead>
+            <thead><tr><th>Период</th><th>Сформирован</th><th class="r">Выручка</th><th class="r">Заказов</th><th class="r">Прибыль</th><th>Telegram</th><th>Сформировал</th><th class="r">Файлы</th></tr></thead>
             <tbody id="weekly-reports-tbody"></tbody>
           </table>
         </div>
@@ -3099,6 +3110,7 @@ function weeklyReportChange(value) {
 function weeklyTelegramStatus(report) {
   if (report.telegram_status === 'sent') return '<span class="stock-pill stock-ok">✓ Отправлен</span>';
   if (report.telegram_status === 'failed') return '<span class="stock-pill stock-low" title="' + weeklyReportEscape(report.telegram_error || '') + '">⚠ Ошибка</span>';
+  if (report.telegram_status === 'skipped') return '<span class="stock-pill">Не отправлялся</span>';
   return '<span class="stock-pill">Не настроен</span>';
 }
 
@@ -3124,8 +3136,16 @@ async function renderWeeklyReports() {
   }
   const period = data.period || {};
   document.getElementById('weekly-report-period').textContent = period.start_local && period.end_local
-    ? 'Следующий отчёт: ' + period.start_local + ' — ' + period.end_local
+    ? 'По умолчанию: ' + period.start_local + ' — ' + period.end_local
     : 'Предыдущая завершённая неделя';
+  // Подставляем предыдущую завершённую неделю в поля периода — только если
+  // администратор ещё ничего не выбирал сам.
+  const startInput = document.getElementById('wr-date-start');
+  const endInput = document.getElementById('wr-date-end');
+  if (period.start_local && period.end_local && !startInput.value && !endInput.value) {
+    startInput.value = period.start_local;
+    endInput.value = period.end_local;
+  }
   const reports = data.reports || [];
   document.getElementById('weekly-reports-count').textContent = reports.length + ' шт.';
   renderLatestWeeklyReport(reports[0]);
@@ -3158,14 +3178,23 @@ async function generateWeeklyReport() {
   message.style.color = '#fff';
   message.textContent = 'Формируем Excel и PDF. Обычно это занимает несколько секунд.';
   try {
-    const res = await authFetch('/api/weekly-reports', { method: 'POST', body: {} });
+    const start = document.getElementById('wr-date-start').value;
+    const end = document.getElementById('wr-date-end').value;
+    if (!start || !end) throw new Error('Выберите даты начала и окончания периода.');
+    const sendTelegram = document.getElementById('wr-send-telegram').checked;
+    const res = await authFetch('/api/weekly-reports', {
+      method: 'POST',
+      body: { start: start, end: end, skip_telegram: !sendTelegram },
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Не удалось сформировать отчёт.');
     const telegramText = data.telegram && data.telegram.status === 'sent'
       ? 'Файлы отправлены в служебный Telegram.'
-      : (data.telegram && data.telegram.status === 'failed'
-        ? 'Файлы сохранены, но Telegram сообщил об ошибке отправки.'
-        : 'Файлы сохранены. Служебный Telegram не настроен.');
+      : (data.telegram && data.telegram.status === 'skipped'
+        ? 'Отправка в Telegram пропущена — файлы сохранены в архиве ниже.'
+        : (data.telegram && data.telegram.status === 'failed'
+          ? 'Файлы сохранены, но Telegram сообщил об ошибке отправки.'
+          : 'Файлы сохранены. Служебный Telegram не настроен.'));
     message.textContent = '✓ Отчёт за ' + data.report.week_start + ' — ' + data.report.week_end + ' готов. ' + telegramText;
     await renderWeeklyReports();
   } catch (error) {

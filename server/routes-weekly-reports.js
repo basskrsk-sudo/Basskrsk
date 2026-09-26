@@ -6,6 +6,7 @@ const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const {
   createWeeklyReport,
+  customPeriod,
   listWeeklyReports,
   previousCompletedWeek,
   resolveReportFile,
@@ -35,7 +36,17 @@ function registerWeeklyReportRoutes(router) {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
     try {
-      const result = await createWeeklyReport(payload);
+      const body = ctx.body || {};
+      // Период необязателен: без start/end — предыдущая завершённая неделя,
+      // как раньше. customPeriod сам проверяет формат и границы дат.
+      let period = null;
+      if (body.start || body.end) {
+        period = customPeriod(String(body.start || ''), String(body.end || ''));
+      }
+      const result = await createWeeklyReport(payload, {
+        period,
+        skipTelegram: body.skip_telegram === true,
+      });
       sendJson(res, 201, {
         ok: true,
         report: safeRecord(result.record),
