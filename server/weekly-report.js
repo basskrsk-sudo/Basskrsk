@@ -9,6 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 const { sendTelegram, sendTelegramDocument } = require('./telegram');
+const { calculateBsc } = require('./bsc');
 
 const REPORTS_DIR = path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'reports');
 const KRASNOYARSK_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -373,6 +374,7 @@ function collectWeeklyReportForPeriod(period) {
     generated_at: new Date().toISOString(),
   };
   report.alerts = buildAlerts(report);
+  report.bsc = calculateBsc(report);
   return report;
 }
 
@@ -399,6 +401,26 @@ function xlsSheet(name, rows, widths) {
 function changeLabel(value) { return value === null ? 'нет базы' : (value > 0 ? '+' : '') + value + '%'; }
 
 function buildSpreadsheet(report) {
+  const bscRows = [
+    xlsRow(['Сбалансированная система показателей', report.period.start_local + ' — ' + report.period.end_local], 'Title'),
+    xlsRow(['Общий индекс', report.bsc.overall_score + ' из 100']),
+    xlsRow(['Рекомендация', report.bsc.readiness.title]),
+    xlsRow(['Направление', 'Вес', 'Оценка', 'Статус', 'Показатель', 'Факт', 'Цель'], 'Header'),
+  ];
+  report.bsc.perspectives.forEach((perspective) => {
+    perspective.kpis.forEach((kpi, index) => {
+      bscRows.push(xlsRow([
+        index === 0 ? perspective.name : '', index === 0 ? perspective.weight + '%' : '', index === 0 ? perspective.score : '',
+        kpi.status === 'green' ? 'Цель достигнута' : (kpi.status === 'yellow' ? 'Требует внимания' : (kpi.status === 'red' ? 'Отклонение' : 'Нет базы')),
+        kpi.name, kpi.actual === null ? 'нет базы' : kpi.actual + ' ' + kpi.unit, kpi.target + ' ' + kpi.unit,
+      ]));
+    });
+  });
+  bscRows.push(xlsRow([]), xlsRow(['Открытые планы улучшения'], 'Header'));
+  bscRows.push(xlsRow(['План', 'Ответственный', 'Срок', 'Статус'], 'Header'));
+  report.bsc.initiatives_summary.items.forEach((item) => bscRows.push(xlsRow([
+    item.title, item.responsible, item.due_date, item.overdue ? 'Просрочен' : (item.status === 'in_progress' ? 'В работе' : 'Запланирован'),
+  ])));
   const summary = [
     xlsRow(['Отчёт для планёрки ГД', report.period.start_local + ' — ' + report.period.end_local], 'Title'),
     xlsRow(['Показатель', 'Неделя', 'Предыдущая неделя', 'Изменение'], 'Header'),
@@ -479,6 +501,7 @@ function buildSpreadsheet(report) {
       '<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1C3A2F" ss:Pattern="Solid"/></Style>' +
       '<Style ss:ID="Strong"><Font ss:Bold="1"/><Interior ss:Color="#FFF1D6" ss:Pattern="Solid"/></Style>' +
     '</Styles>' +
+    xlsSheet('BSC · Стратегия', bscRows, [190, 70, 75, 115, 230, 100, 100]) +
     xlsSheet('Резюме', summary, [220, 120, 120, 100]) +
     xlsSheet('Точки', pointRows, [180, 110, 80, 65, 80, 85, 80, 80, 80, 105]) +
     xlsSheet('Товары', productRows, [210, 90, 80, 85, 85, 90, 80]) +
@@ -590,6 +613,26 @@ function metricChange(value) { return value === null ? 'нет базы' : (valu
 function buildPdfPages(report, font) {
   const pages = [];
   const subtitle = report.period.start_local + ' — ' + report.period.end_local + ' · сформирован ' + new Date(report.generated_at).toLocaleString('ru-RU', { timeZone: 'Asia/Krasnoyarsk' });
+  const strategy = new ReportPage(font, 'ХвостМаркет · Стратегия BSC', subtitle);
+  strategy.card(62, 225, 350, 150, 'Общий индекс бизнеса', report.bsc.overall_score + ' / 100', report.bsc.overall_score >= 70 ? '#1C3A2F' : '#9B2335');
+  strategy.text(450, 260, report.bsc.readiness.title, 29, report.bsc.overall_score >= 70 ? '#1C3A2F' : '#9B2335', true);
+  strategy.wrapped(450, 305, report.bsc.readiness.description, 56, 18, '#7A7165', 26, false);
+  strategy.text(62, 430, 'Четыре направления', 27, '#1C3A2F', true);
+  report.bsc.perspectives.forEach((perspective, index) => {
+    const x = 62 + (index % 2) * 570;
+    const y = 465 + Math.floor(index / 2) * 150;
+    strategy.card(x, y, 535, 118, perspective.name + ' · вес ' + perspective.weight + '%', perspective.score + ' / 100', perspective.score >= 85 ? '#2D7D46' : (perspective.score >= 70 ? '#D4872A' : '#9B2335'));
+  });
+  const deviations = report.bsc.perspectives.flatMap((item) => item.kpis.map((kpi) => ({ ...kpi, perspective: item.name })))
+    .filter((kpi) => kpi.status !== 'green').sort((a, b) => (a.score ?? -1) - (b.score ?? -1)).slice(0, 9);
+  strategy.text(62, 790, 'Основные отклонения', 27, '#1C3A2F', true);
+  strategy.table(62, 820, [290,330,150,150], ['Направление','Показатель','Факт','Цель'], deviations.map((kpi) => [
+    kpi.perspective, kpi.name, kpi.actual === null ? 'нет базы' : kpi.actual + ' ' + kpi.unit, kpi.target + ' ' + kpi.unit,
+  ]), { rowHeight: 56, fontSize: 16 });
+  const initiativeY = Math.min(1510, 930 + deviations.length * 56);
+  strategy.text(62, initiativeY, 'Планы улучшения', 27, '#1C3A2F', true);
+  strategy.text(390, initiativeY, 'Открыто: ' + report.bsc.initiatives_summary.open + ' · просрочено: ' + report.bsc.initiatives_summary.overdue, 19, report.bsc.initiatives_summary.overdue ? '#9B2335' : '#7A7165', true);
+  pages.push(strategy.finish());
   const first = new ReportPage(font, 'ХвостМаркет · Планёрка ГД', subtitle);
   first.text(62, 225, 'Ключевые показатели', 27, '#1C3A2F', true);
   const cards = [
@@ -806,6 +849,7 @@ function telegramSummary(report) {
     'Средний чек: <b>' + rub(report.current.average_check) + '</b>',
     'Чистая расчётная прибыль: <b>' + rub(report.current.net_profit) + '</b> · маржа ' + report.current.margin_percent + '%',
     'Платёжная конверсия: <b>' + report.current.payment_conversion + '%</b>',
+    'Индекс BSC: <b>' + report.bsc.overall_score + ' из 100</b> · ' + telegramEscape(report.bsc.readiness.title),
     '',
     '<b>Главный фокус:</b> ' + telegramEscape(report.alerts[0]),
     '',
@@ -875,6 +919,8 @@ async function createWeeklyReport(adminPayload, options = {}) {
       margin_percent: report.current.margin_percent,
       payment_conversion: report.current.payment_conversion,
       revenue_change_percent: report.comparison.revenue_change_percent,
+      bsc_score: report.bsc.overall_score,
+      bsc_readiness: report.bsc.readiness.title,
       primary_alert: report.alerts[0],
     }),
     telegramStatus, telegramError

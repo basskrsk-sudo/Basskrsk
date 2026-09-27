@@ -31,12 +31,14 @@ const { registerSettingsRoutes } = require('./routes-settings');
 const { registerNewsRoutes } = require('./routes-news');
 const { registerBackupRoutes } = require('./backup');
 const { registerLaunchTaskRoutes } = require('./routes-launch-tasks');
+const { registerPartnerLeadRoutes } = require('./routes-partner-leads');
 const { registerWinbackRoutes } = require('./winback');
 const { registerEconomicsRoutes } = require('./routes-economics');
 const { registerAuditRoutes } = require('./routes-audit');
 const { registerPublicMessageRoutes } = require('./routes-public-messages');
 const { registerMaxWebhookRoutes } = require('./routes-max-webhook');
 const { registerWeeklyReportRoutes } = require('./routes-weekly-reports');
+const { registerBscRoutes } = require('./routes-bsc');
 
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
 // Страницы партнёрских салонов дополнительно сохраняются отдельным снимком
@@ -89,12 +91,14 @@ registerSettingsRoutes(router);
 registerNewsRoutes(router);
 registerBackupRoutes(router);
 registerLaunchTaskRoutes(router);
+registerPartnerLeadRoutes(router);
 registerWinbackRoutes(router);
 registerEconomicsRoutes(router);
 registerAuditRoutes(router);
 registerPublicMessageRoutes(router);
 registerMaxWebhookRoutes(router);
 registerWeeklyReportRoutes(router);
+registerBscRoutes(router);
 
 function serveStatic(req, res, pathname) {
   const decoded = decodeURIComponent(pathname);

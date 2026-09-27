@@ -451,6 +451,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .card { padding: .9rem; overflow-x: auto; }
   .tbl { font-size: .74rem; min-width: 480px; }
+  .bsc-hero { grid-template-columns:1fr !important; }
+  .bsc-form-two { grid-template-columns:1fr !important; }
 }
 
 </style>
@@ -516,6 +518,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   <div class="sidebar-logo" style="display:flex;align-items:center;gap:.6rem;"><span class="sidebar-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;line-height:.88;font-family:'Inter',sans-serif;font-size:1rem;font-weight:800;letter-spacing:0;"><span style="color:#fff;">Хвост</span><span style="color:#FF5A49;margin-top:.2rem;">Маркет</span></span><button class="mobile-menu-close" type="button" onclick="closeAdminMenu()" aria-label="Закрыть меню">×</button></div>
   <div class="sidebar-label">Разделы</div>
   <button class="nav-item active" data-group="home" onclick="showSection('dashboard')"><span class="nav-dot"></span> Главная</button>
+  <button class="nav-item" data-group="strategy" onclick="showSection('bsc')"><span class="nav-dot"></span> Стратегия</button>
   <button class="nav-item" data-group="sales" onclick="showSection('orders')"><span class="nav-dot"></span> Продажи</button>
   <button class="nav-item" data-group="inventory" onclick="showSection('products')"><span class="nav-dot"></span> Товары и склад</button>
   <button class="nav-item" data-group="network" onclick="showSection('points')"><span class="nav-dot"></span> Сеть</button>
@@ -715,6 +718,60 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     </div>
 
+    <!-- ══ СТРАТЕГИЯ · BSC КАПЛАНА–НОРТОНА ══ -->
+    <div id="sec-bsc" style="display:none;">
+      <div class="card" style="background:linear-gradient(135deg,var(--forest),var(--deep));border:none;color:#fff;margin-bottom:1rem;">
+        <div class="bsc-hero" style="display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:1.5rem;align-items:center;">
+          <div style="text-align:center;padding:1rem;border:1px solid rgba(255,255,255,.18);border-radius:18px;background:rgba(255,255,255,.08);">
+            <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.68);">Индекс бизнеса</div>
+            <div id="bsc-overall-score" style="font-size:3rem;font-weight:800;line-height:1.1;margin:.45rem 0;">—</div>
+            <div id="bsc-overall-label" style="font-size:.78rem;color:rgba(255,255,255,.72);">из 100</div>
+          </div>
+          <div>
+            <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);margin-bottom:.45rem;">Сбалансированная система показателей</div>
+            <h2 id="bsc-readiness-title" style="font-size:1.45rem;margin-bottom:.45rem;">Загружаем стратегию…</h2>
+            <p id="bsc-readiness-description" style="font-size:.86rem;line-height:1.6;color:rgba(255,255,255,.78);max-width:760px;"></p>
+            <div id="bsc-period" style="font-size:.78rem;margin-top:.7rem;color:rgba(255,255,255,.62);"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="bsc-perspectives" class="grid-2" style="align-items:start;"></div>
+
+      <div class="card" style="margin-top:1rem;">
+        <div class="card-title"><span>Планы улучшения <span id="bsc-initiatives-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span><button class="row-btn" style="background:var(--forest);color:#fff;" onclick="toggleBscInitiativeForm()">+ Добавить план</button></div>
+        <div id="bsc-initiative-form" style="display:none;margin:1rem 0;padding:1rem;background:var(--cream,#F7F5EF);border-radius:12px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.7rem;">
+            <div class="admin-field" style="margin:0;"><label>Направление</label><select id="bsc-plan-perspective" onchange="renderBscKpiOptions()"></select></div>
+            <div class="admin-field" style="margin:0;"><label>Связанный показатель</label><select id="bsc-plan-kpi"><option value="">Общий план направления</option></select></div>
+            <div class="admin-field" style="margin:0;"><label>Ответственный</label><input id="bsc-plan-responsible" placeholder="Имя или роль"></div>
+            <div class="admin-field" style="margin:0;"><label>Срок</label><input type="date" id="bsc-plan-due"></div>
+          </div>
+          <div class="admin-field" style="margin-top:.7rem;"><label>Название плана</label><input id="bsc-plan-title" placeholder="Кратко: что нужно исправить"></div>
+          <div class="bsc-form-two" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;">
+            <div class="admin-field" style="margin:0;"><label>Проблема</label><textarea id="bsc-plan-problem" rows="3" placeholder="Какое отклонение обнаружено"></textarea></div>
+            <div class="admin-field" style="margin:0;"><label>Действие</label><textarea id="bsc-plan-action" rows="3" placeholder="Что именно необходимо сделать"></textarea></div>
+          </div>
+          <div class="admin-field" style="margin-top:.7rem;"><label>Ожидаемый результат</label><input id="bsc-plan-result" placeholder="Какой показатель должен измениться"></div>
+          <div style="display:flex;gap:.5rem;justify-content:flex-end;"><button class="row-btn" onclick="toggleBscInitiativeForm(false)">Отмена</button><button class="row-btn" style="background:var(--forest);color:#fff;" onclick="createBscInitiative()">Сохранить план</button></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="tbl" style="min-width:920px;"><thead><tr><th>План</th><th>Направление</th><th>Ответственный</th><th>Срок</th><th>Статус</th><th>Результат</th><th class="r">Действие</th></tr></thead><tbody id="bsc-initiatives-tbody"></tbody></table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1rem;">
+        <div class="card-title">Состояние точек</div>
+        <div style="overflow-x:auto;"><table class="tbl" style="min-width:720px;"><thead><tr><th>Точка</th><th>Город</th><th class="r">Выручка</th><th class="r">Заказов</th><th class="r">Динамика</th><th class="r">Проблемы с остатками</th><th>Статус</th></tr></thead><tbody id="bsc-points-tbody"></tbody></table></div>
+      </div>
+
+      <div class="card" id="bsc-settings-card" style="display:none;margin-top:1rem;">
+        <div class="card-title"><span>Цели и веса <span style="font-size:.72rem;font-weight:400;color:var(--muted);">только для супер-администратора</span></span><button class="row-btn" onclick="saveBscSettings()">Сохранить настройки</button></div>
+        <p style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:1rem;">Веса четырёх направлений должны составлять 100%. Изменения сохраняются в истории.</p>
+        <div id="bsc-settings"></div>
+      </div>
+    </div>
+
     <!-- ══ ЭКОНОМИКА ПРОЕКТА ══ -->
     <div id="sec-economics" style="display:none;">
       <div class="card" style="margin-bottom:1rem;">
@@ -819,6 +876,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="kpi-card"><div class="kpi-label">Оплачено заказов</div><div class="kpi-value" id="wr-kpi-orders">—</div></div>
         <div class="kpi-card"><div class="kpi-label">Чистая прибыль</div><div class="kpi-value" id="wr-kpi-profit">—</div><div class="kpi-delta" id="wr-kpi-margin"></div></div>
         <div class="kpi-card"><div class="kpi-label">Конверсия в оплату</div><div class="kpi-value" id="wr-kpi-conversion">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Индекс BSC</div><div class="kpi-value" id="wr-kpi-bsc">—</div><div class="kpi-delta" id="wr-kpi-bsc-status"></div></div>
       </div>
 
       <div class="card">
@@ -1174,6 +1232,36 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
     </div>
 
+    <!-- ══ ПРОЗВОН ГРУМЕРСКИХ ══ -->
+    <div id="sec-leads" style="display:none;">
+      <div class="card">
+        <div class="card-title">
+          <span>Прозвон грумерских и ветклиник <span id="leads-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
+          <button class="add-product-btn" onclick="openLeadModal()">+ Добавить заведение</button>
+        </div>
+        <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Учёт переговоров о размещении стойки в груминг-салонах, ветклиниках, у кинологов и в зоогостиницах — см. «Скрипт первого звонка» в разделе «Инструкции».</p>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem;">
+          <input type="text" id="leads-search" placeholder="Поиск по названию, контакту или телефону" oninput="renderLeads()" style="flex:2;min-width:200px;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:8px;font-family:'Inter',sans-serif;font-size:.82rem;">
+          <select id="leads-status-filter" class="pm-select" onchange="renderLeads()" style="flex:1;min-width:170px;">
+            <option value="">Все статусы</option>
+            <option value="to_call">Нужно позвонить</option>
+            <option value="no_answer">Не дозвонились</option>
+            <option value="meeting_scheduled">Встреча назначена</option>
+            <option value="meeting_held">Встреча прошла</option>
+            <option value="signed">Партнёр подключён</option>
+            <option value="declined">Отказ</option>
+          </select>
+          <select id="leads-city-filter" class="pm-select" onchange="renderLeads()" style="flex:1;min-width:150px;"></select>
+        </div>
+        <table class="tbl">
+          <thead>
+            <tr><th>Заведение</th><th>Контакт</th><th>Статус</th><th>Следующий контакт</th><th>Ответственный</th><th class="r">Действие</th></tr>
+          </thead>
+          <tbody id="leads-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- ══ QR-КОДЫ ══ -->
     <div id="sec-qr" style="display:none;">
       <div class="card no-print">
@@ -1248,12 +1336,13 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="warehouse_delete">Удаление со склада</option>
               <option value="manager_action">Действия менеджеров</option>
               <option value="order_partner_change">Исправление грумера в заказе</option>
+              <option value="bsc_settings_change">Изменение целей BSC</option>
             </select>
             <button class="row-btn" onclick="renderAuditLog()">↻ Обновить</button>
           </div>
         </div>
         <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
-          История удаления клиентов и складских позиций, исправлений грумера в оплаченных заказах, а также операционных действий менеджеров. Доступна только супер-администраторам.
+          История удаления клиентов и складских позиций, исправлений грумера в оплаченных заказах, изменений целей BSC, а также операционных действий менеджеров. Доступна только супер-администраторам.
         </p>
         <table class="tbl">
           <thead>
@@ -1560,6 +1649,59 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div style="display:flex;gap:.6rem;margin-top:1rem;">
           <button class="row-btn" style="flex:1;" onclick="closeNewsModal()">Отмена</button>
           <button class="row-btn" style="flex:1;background:var(--forest);color:#fff;" onclick="saveNewsForm()">Опубликовать</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Модалка карточки лида (заведение на прозвоне) -->
+    <div id="lead-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:100;padding:12px;">
+      <div style="background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:520px;max-height:calc(100vh - 24px);overflow-y:auto;">
+        <h3 id="lead-modal-title" style="margin-bottom:1rem;">Новое заведение</h3>
+        <div id="lead-modal-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.5rem .7rem;border-radius:6px;margin-bottom:.8rem;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 1rem;">
+          <div class="admin-field" style="grid-column:1/-1;"><label>Название заведения</label><input type="text" id="lm-name" placeholder="Салон «Барбос»"></div>
+          <div class="admin-field">
+            <label>Категория</label>
+            <select id="lm-category" class="pm-select">
+              <option value="groomer">Груминг-салон</option>
+              <option value="vet">Ветклиника</option>
+              <option value="kennel">Кинолог</option>
+              <option value="hotel">Зоогостиница</option>
+              <option value="other">Другое</option>
+            </select>
+          </div>
+          <div class="admin-field"><label>Город</label><select id="lm-city" class="pm-select"></select></div>
+          <div class="admin-field" style="grid-column:1/-1;"><label>Адрес</label><input type="text" id="lm-address" placeholder="ул. Свободы, 12"></div>
+          <div class="admin-field"><label>Контактное лицо</label><input type="text" id="lm-contact" placeholder="Имя владельца/администратора"></div>
+          <div class="admin-field"><label>Телефон</label><input type="tel" id="lm-phone" placeholder="+7 (900) 000-00-00"></div>
+          <div class="admin-field">
+            <label>Статус</label>
+            <select id="lm-status" class="pm-select">
+              <option value="to_call">Нужно позвонить</option>
+              <option value="no_answer">Не дозвонились</option>
+              <option value="meeting_scheduled">Встреча назначена</option>
+              <option value="meeting_held">Встреча прошла</option>
+              <option value="signed">Партнёр подключён</option>
+              <option value="declined">Отказ</option>
+            </select>
+          </div>
+          <div class="admin-field"><label>Следующий контакт</label><input type="date" id="lm-next-date"></div>
+          <div class="admin-field" style="grid-column:1/-1;"><label>Ответственный менеджер</label><select id="lm-manager" class="pm-select"><option value="">Не назначен</option></select></div>
+        </div>
+
+        <div id="lead-notes-block" style="display:none;margin-top:.5rem;">
+          <label style="display:block;font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem;">Информация и договорённости</label>
+          <div id="lead-notes-list" style="max-height:220px;overflow-y:auto;background:#F7F5EF;border-radius:8px;padding:.6rem .8rem;margin-bottom:.6rem;"></div>
+          <div style="display:flex;gap:.5rem;">
+            <input type="text" id="lead-note-input" placeholder="Например: договорились на встречу во вторник в 15:00" style="flex:1;padding:.5rem .7rem;border:1.5px solid var(--border);border-radius:8px;font-family:'Inter',sans-serif;font-size:.82rem;">
+            <button class="row-btn" onclick="addLeadNote()">Добавить</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:.6rem;margin-top:1.2rem;">
+          <button class="row-btn" style="flex:1;" onclick="closeLeadModal()">Закрыть</button>
+          <button class="row-btn" id="lead-delete-btn" style="flex:1;display:none;" onclick="deleteLeadFromModal()">Удалить</button>
+          <button class="row-btn" style="flex:2;background:var(--forest);color:#fff;" onclick="saveLeadForm()">Сохранить</button>
         </div>
       </div>
     </div>
@@ -2467,19 +2609,19 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
 }
 
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'guides', 'dashboard', 'economics', 'weekly-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'warehouse', 'restock', 'audit', 'admins', 'point'];
-const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', economics: 'Экономика проекта', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
+const sections = ['launch', 'guides', 'dashboard', 'bsc', 'economics', 'weekly-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
+const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', economics: 'Экономика проекта', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
 const sectionGroups = {
-  dashboard:'home', orders:'sales', customers:'sales',
+  dashboard:'home', bsc:'strategy', orders:'sales', customers:'sales',
   products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
-  points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network',
+  points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', leads:'network',
   news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'weekly-reports':'finance',
   launch:'system', guides:'system', audit:'system', admins:'system',
 };
 const contextTabs = {
   sales: [['orders','Заказы'], ['customers','Клиенты']],
   inventory: [['products','Каталог'], ['stock','На точках'], ['warehouse','Центральный склад'], ['restock','Перемещения']],
-  network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды']],
+  network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды'], ['leads','Прозвон']],
   promotion: [['news','Новости'], ['reviews','Отзывы'], ['winback','Возврат клиентов']],
   finance: [['economics','Экономика'], ['weekly-reports','Отчёт ГД']],
   system: [['launch','План запуска'], ['guides','Инструкции'], ['audit','Журнал действий',true], ['admins','Администраторы',true]],
@@ -2544,6 +2686,7 @@ async function showSection(id) {
 
   if (id === 'launch')      await renderLaunchTasks();
   if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo()]); renderDashboard(); }
+  if (id === 'bsc')         await renderBscDashboard();
   if (id === 'economics')   await renderEconomics();
   if (id === 'weekly-reports') await renderWeeklyReports();
   if (id === 'orders')      { await loadOrders(); renderOrders(); }
@@ -2558,6 +2701,7 @@ async function showSection(id) {
   if (id === 'points')      { await Promise.all([loadOrders(), loadPointsInfo()]); renderPointsOverview(); await renderPointsManagement(); }
   if (id === 'owners')      await renderOwners();
   if (id === 'qr')          await qrInitSection();
+  if (id === 'leads')       await renderLeads();
   if (id === 'warehouse')   { await loadAdminProducts(); await populateReceiptForm(); await renderWarehouse(); }
   if (id === 'restock')     await renderStockMovements();
   if (id === 'audit')       await renderAuditLog();
@@ -3097,6 +3241,225 @@ async function deleteExpense(id) {
   renderEconomics();
 }
 
+// ── СТРАТЕГИЯ · BSC КАПЛАНА–НОРТОНА ───────────────────────────────
+let bscDashboardData = null;
+
+function bscEscape(value) {
+  return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function bscStatusLabel(status) {
+  if (status === 'green') return '<span class="stock-pill stock-ok">Цель достигнута</span>';
+  if (status === 'yellow') return '<span class="stock-pill stock-low">Требует внимания</span>';
+  if (status === 'red') return '<span class="stock-pill" style="background:#FDECEA;color:#9B2335;">Отклонение</span>';
+  return '<span class="stock-pill">Нет базы</span>';
+}
+
+function bscStatusColor(status) {
+  return status === 'green' ? '#2D7D46' : (status === 'yellow' ? '#D4872A' : (status === 'red' ? '#9B2335' : '#9A9186'));
+}
+
+function bscValue(kpi, value) {
+  if (value === null || value === undefined) return 'нет базы';
+  if (kpi.format === 'money') return Number(value).toLocaleString('ru-RU') + ' ₽';
+  if (kpi.format === 'percent') return Number(value).toLocaleString('ru-RU') + '%';
+  return Number(value).toLocaleString('ru-RU') + (kpi.unit ? ' ' + kpi.unit : '');
+}
+
+function renderBscPerspectives(data) {
+  document.getElementById('bsc-perspectives').innerHTML = data.perspectives.map(function(perspective) {
+    const color = bscStatusColor(perspective.status);
+    const rows = perspective.kpis.map(function(kpi) {
+      const score = kpi.score === null ? 0 : Math.max(0, Math.min(100, Number(kpi.score)));
+      return '<div style="padding:.75rem 0;border-top:1px solid var(--border);">' +
+        '<div style="display:flex;justify-content:space-between;gap:.8rem;align-items:flex-start;">' +
+          '<div style="min-width:0;"><div style="font-size:.84rem;font-weight:650;">' + bscEscape(kpi.name) + '</div><div style="font-size:.7rem;color:var(--muted);margin-top:.18rem;line-height:1.35;">' + bscEscape(kpi.description) + '</div></div>' +
+          '<button class="row-btn" style="font-size:.68rem;white-space:nowrap;" onclick="openBscPlanFor(\'' + bscEscape(perspective.key) + '\',\'' + bscEscape(kpi.key) + '\')">План</button>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.55rem;align-items:end;margin-top:.55rem;font-size:.76rem;">' +
+          '<div><span style="color:var(--muted);">Факт</span><br><strong>' + bscEscape(bscValue(kpi, kpi.actual)) + '</strong></div>' +
+          '<div><span style="color:var(--muted);">Цель</span><br><strong>' + bscEscape(bscValue(kpi, kpi.target)) + '</strong></div>' +
+          '<div>' + bscStatusLabel(kpi.status) + '</div>' +
+        '</div>' +
+        '<div style="height:5px;background:var(--border);border-radius:20px;overflow:hidden;margin-top:.55rem;"><div style="height:100%;width:' + score + '%;background:' + bscStatusColor(kpi.status) + ';border-radius:20px;"></div></div>' +
+      '</div>';
+    }).join('');
+    return '<div class="card" style="border-top:4px solid ' + color + ';">' +
+      '<div class="card-title" style="align-items:flex-start;"><span>' + bscEscape(perspective.name) + '<small style="display:block;font-size:.68rem;font-weight:400;color:var(--muted);margin-top:.2rem;">Вес в общем индексе: ' + perspective.weight + '%</small></span><span style="font-size:1.55rem;color:' + color + ';">' + perspective.score + '</span></div>' + rows + '</div>';
+  }).join('');
+}
+
+function bscPerspectiveName(key) {
+  const perspective = bscDashboardData && bscDashboardData.perspectives.find(function(item) { return item.key === key; });
+  return perspective ? perspective.name : key;
+}
+
+function bscInitiativeStatus(status) {
+  return status === 'planned' ? 'Запланирован' : (status === 'in_progress' ? 'В работе' : (status === 'done' ? 'Выполнен' : 'Отменён'));
+}
+
+function renderBscInitiatives(initiatives) {
+  const tbody = document.getElementById('bsc-initiatives-tbody');
+  const openCount = initiatives.filter(function(item) { return item.status === 'planned' || item.status === 'in_progress'; }).length;
+  const overdueCount = initiatives.filter(function(item) { return item.overdue; }).length;
+  document.getElementById('bsc-initiatives-count').textContent = '· открыто ' + openCount + (overdueCount ? ' · просрочено ' + overdueCount : '');
+  tbody.innerHTML = initiatives.length ? initiatives.map(function(item) {
+    const deleteButton = currentAdminRole === 'super' ? '<button class="row-btn danger" onclick="deleteBscInitiative(' + item.id + ')">Удалить</button>' : '';
+    return '<tr>' +
+      '<td><strong>' + bscEscape(item.title) + '</strong><div style="font-size:.7rem;color:var(--muted);margin-top:.2rem;max-width:320px;">' + bscEscape(item.action) + '</div></td>' +
+      '<td>' + bscEscape(bscPerspectiveName(item.perspective_key)) + '</td>' +
+      '<td>' + bscEscape(item.responsible) + '</td>' +
+      '<td style="white-space:nowrap;color:' + (item.overdue ? '#9B2335' : 'inherit') + ';font-weight:' + (item.overdue ? '700' : '400') + ';">' + bscEscape(item.due_date) + (item.overdue ? '<br><small>Просрочен</small>' : '') + '</td>' +
+      '<td><select class="pm-select" style="min-width:130px;" onchange="updateBscInitiativeStatus(' + item.id + ',this.value)">' +
+        ['planned','in_progress','done','cancelled'].map(function(status) { return '<option value="' + status + '" ' + (item.status === status ? 'selected' : '') + '>' + bscInitiativeStatus(status) + '</option>'; }).join('') +
+      '</select></td>' +
+      '<td style="font-size:.75rem;max-width:220px;">' + bscEscape(item.result_comment || '—') + '</td>' +
+      '<td class="r" style="white-space:nowrap;"><button class="row-btn" onclick="editBscInitiative(' + item.id + ')">Изменить</button> ' + deleteButton + '</td>' +
+    '</tr>';
+  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Планов улучшения пока нет. Создайте план для показателя с отклонением.</td></tr>';
+}
+
+function renderBscPoints(points) {
+  document.getElementById('bsc-points-tbody').innerHTML = points.length ? points.map(function(point) {
+    const change = point.change_percent === null ? 'нет базы' : (Number(point.change_percent) > 0 ? '+' : '') + Number(point.change_percent).toLocaleString('ru-RU') + '%';
+    return '<tr><td><strong>' + bscEscape(point.name) + '</strong></td><td>' + bscEscape(point.city) + '</td><td class="r">' + Number(point.revenue || 0).toLocaleString('ru-RU') + ' ₽</td><td class="r">' + Number(point.orders_count || 0) + '</td><td class="r">' + change + '</td><td class="r">' + Number(point.stock_alerts || 0) + '</td><td>' + bscStatusLabel(point.status) + '</td></tr>';
+  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Активных точек пока нет.</td></tr>';
+}
+
+function renderBscSettings(data) {
+  const card = document.getElementById('bsc-settings-card');
+  card.style.display = currentAdminRole === 'super' ? 'block' : 'none';
+  if (currentAdminRole !== 'super') return;
+  document.getElementById('bsc-settings').innerHTML = data.perspectives.map(function(perspective) {
+    const targets = perspective.kpis.map(function(kpi) {
+      return '<label style="display:grid;grid-template-columns:1fr 110px;gap:.7rem;align-items:center;padding:.45rem 0;border-top:1px solid var(--border);font-size:.78rem;"><span>' + bscEscape(kpi.name) + '<small style="color:var(--muted);"> · ' + bscEscape(kpi.unit) + '</small></span><input type="number" step="0.1" min="0" id="bsc-target-' + bscEscape(kpi.key) + '" value="' + Number(kpi.target) + '"></label>';
+    }).join('');
+    return '<div style="margin-bottom:1rem;padding:1rem;border:1px solid var(--border);border-radius:10px;"><div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.5rem;"><strong>' + bscEscape(perspective.name) + '</strong><label style="font-size:.75rem;color:var(--muted);">Вес, % <input type="number" min="0" max="100" step="1" id="bsc-weight-' + bscEscape(perspective.key) + '" value="' + Number(perspective.weight) + '" style="width:72px;margin-left:.35rem;"></label></div>' + targets + '</div>';
+  }).join('');
+}
+
+async function renderBscDashboard() {
+  document.getElementById('bsc-readiness-title').textContent = 'Загружаем стратегию…';
+  const res = await authFetch('/api/bsc/dashboard');
+  const data = await res.json();
+  if (!res.ok) {
+    document.getElementById('bsc-readiness-title').textContent = data.error || 'Не удалось загрузить показатели';
+    return;
+  }
+  bscDashboardData = data;
+  document.getElementById('bsc-overall-score').textContent = Number(data.overall_score).toLocaleString('ru-RU');
+  document.getElementById('bsc-overall-score').style.color = data.status === 'green' ? '#A9E7C0' : (data.status === 'yellow' ? '#FFD28A' : '#FFB2B2');
+  document.getElementById('bsc-readiness-title').textContent = data.readiness.title;
+  document.getElementById('bsc-readiness-description').textContent = data.readiness.description;
+  document.getElementById('bsc-period').textContent = 'Период оценки: ' + data.period.start_local + ' — ' + data.period.end_local + ' · предыдущая завершённая неделя';
+  renderBscPerspectives(data);
+  renderBscInitiatives(data.initiatives || []);
+  renderBscPoints(data.points || []);
+  renderBscSettings(data);
+  renderBscPlanOptions();
+}
+
+function renderBscPlanOptions() {
+  if (!bscDashboardData) return;
+  const select = document.getElementById('bsc-plan-perspective');
+  const selected = select.value;
+  select.innerHTML = bscDashboardData.perspectives.map(function(item) { return '<option value="' + bscEscape(item.key) + '">' + bscEscape(item.name) + '</option>'; }).join('');
+  if (selected) select.value = selected;
+  renderBscKpiOptions();
+}
+
+function renderBscKpiOptions() {
+  if (!bscDashboardData) return;
+  const perspectiveKey = document.getElementById('bsc-plan-perspective').value;
+  const perspective = bscDashboardData.perspectives.find(function(item) { return item.key === perspectiveKey; });
+  document.getElementById('bsc-plan-kpi').innerHTML = '<option value="">Общий план направления</option>' + (perspective ? perspective.kpis.map(function(kpi) { return '<option value="' + bscEscape(kpi.key) + '">' + bscEscape(kpi.name) + '</option>'; }).join('') : '');
+}
+
+function toggleBscInitiativeForm(force) {
+  const form = document.getElementById('bsc-initiative-form');
+  const show = force === undefined ? form.style.display === 'none' : !!force;
+  form.style.display = show ? 'block' : 'none';
+  if (show && !document.getElementById('bsc-plan-due').value) {
+    const due = new Date(); due.setDate(due.getDate() + 7);
+    document.getElementById('bsc-plan-due').value = due.toISOString().slice(0, 10);
+  }
+}
+
+function openBscPlanFor(perspective, kpi) {
+  toggleBscInitiativeForm(true);
+  document.getElementById('bsc-plan-perspective').value = perspective;
+  renderBscKpiOptions();
+  document.getElementById('bsc-plan-kpi').value = kpi;
+  document.getElementById('bsc-plan-title').focus();
+  document.getElementById('bsc-initiative-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function createBscInitiative() {
+  const body = {
+    perspective_key: document.getElementById('bsc-plan-perspective').value,
+    kpi_key: document.getElementById('bsc-plan-kpi').value,
+    title: document.getElementById('bsc-plan-title').value,
+    problem: document.getElementById('bsc-plan-problem').value,
+    action: document.getElementById('bsc-plan-action').value,
+    responsible: document.getElementById('bsc-plan-responsible').value,
+    due_date: document.getElementById('bsc-plan-due').value,
+    expected_result: document.getElementById('bsc-plan-result').value,
+  };
+  const res = await authFetch('/api/bsc/initiatives', { method: 'POST', body: body });
+  const data = await res.json();
+  if (!res.ok) return alert(data.error || 'Не удалось сохранить план.');
+  ['bsc-plan-title','bsc-plan-problem','bsc-plan-action','bsc-plan-responsible','bsc-plan-result'].forEach(function(id) { document.getElementById(id).value = ''; });
+  toggleBscInitiativeForm(false);
+  await renderBscDashboard();
+}
+
+async function updateBscInitiativeStatus(id, status) {
+  const res = await authFetch('/api/bsc/initiatives/' + id, { method: 'PUT', body: { status: status } });
+  const data = await res.json();
+  if (!res.ok) alert(data.error || 'Не удалось изменить статус.');
+  await renderBscDashboard();
+}
+
+async function editBscInitiative(id) {
+  const item = bscDashboardData && bscDashboardData.initiatives.find(function(row) { return Number(row.id) === Number(id); });
+  if (!item) return;
+  const responsible = prompt('Ответственный:', item.responsible);
+  if (responsible === null) return;
+  const dueDate = prompt('Срок в формате ГГГГ-ММ-ДД:', item.due_date);
+  if (dueDate === null) return;
+  const comment = prompt('Результат или комментарий:', item.result_comment || '');
+  if (comment === null) return;
+  const res = await authFetch('/api/bsc/initiatives/' + id, { method: 'PUT', body: { responsible: responsible, due_date: dueDate, result_comment: comment } });
+  const data = await res.json();
+  if (!res.ok) return alert(data.error || 'Не удалось изменить план.');
+  await renderBscDashboard();
+}
+
+async function deleteBscInitiative(id) {
+  if (!confirm('Удалить этот план улучшения?')) return;
+  const res = await authFetch('/api/bsc/initiatives/' + id, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) return alert(data.error || 'Не удалось удалить план.');
+  await renderBscDashboard();
+}
+
+async function saveBscSettings() {
+  if (!bscDashboardData || currentAdminRole !== 'super') return;
+  const targets = {};
+  const perspectiveWeights = {};
+  bscDashboardData.perspectives.forEach(function(perspective) {
+    perspectiveWeights[perspective.key] = Number(document.getElementById('bsc-weight-' + perspective.key).value);
+    perspective.kpis.forEach(function(kpi) { targets[kpi.key] = Number(document.getElementById('bsc-target-' + kpi.key).value); });
+  });
+  const total = Object.values(perspectiveWeights).reduce(function(sum, value) { return sum + value; }, 0);
+  if (Math.abs(total - 100) > .01) return alert('Сумма весов направлений должна быть равна 100%. Сейчас: ' + total + '%.');
+  const res = await authFetch('/api/bsc/settings', { method: 'PUT', body: { targets: targets, perspective_weights: perspectiveWeights } });
+  const data = await res.json();
+  if (!res.ok) return alert(data.error || 'Не удалось сохранить настройки.');
+  await renderBscDashboard();
+  alert('Цели и веса сохранены. Общий индекс пересчитан.');
+}
+
 // ── ОТЧЁТ ДЛЯ ПЛАНЁРКИ ГД ─────────────────────────────────────────
 function weeklyReportEscape(value) {
   return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -3120,6 +3483,8 @@ function renderLatestWeeklyReport(report) {
   document.getElementById('wr-kpi-orders').textContent = summary ? Number(summary.orders_count || 0).toLocaleString('ru-RU') : '—';
   document.getElementById('wr-kpi-profit').textContent = summary ? Number(summary.net_profit || 0).toLocaleString('ru-RU') + ' ₽' : '—';
   document.getElementById('wr-kpi-conversion').textContent = summary ? Number(summary.payment_conversion || 0).toLocaleString('ru-RU') + '%' : '—';
+  document.getElementById('wr-kpi-bsc').textContent = summary && summary.bsc_score !== undefined ? Number(summary.bsc_score).toLocaleString('ru-RU') + ' / 100' : '—';
+  document.getElementById('wr-kpi-bsc-status').textContent = summary ? (summary.bsc_readiness || '') : '';
   document.getElementById('wr-kpi-revenue-change').textContent = summary ? weeklyReportChange(summary.revenue_change_percent) : '';
   document.getElementById('wr-kpi-revenue-change').className = 'kpi-delta ' + (summary && Number(summary.revenue_change_percent) >= 0 ? 'delta-up' : 'delta-down');
   document.getElementById('wr-kpi-margin').textContent = summary ? 'маржа ' + Number(summary.margin_percent || 0).toLocaleString('ru-RU') + '%' : '';
@@ -5445,6 +5810,15 @@ async function renderAuditLog() {
       const oldRate = event.old_commission_rate == null ? '—' : Math.round(Number(event.old_commission_rate) * 100) + '%';
       const newRate = Math.round(Number(event.new_commission_rate || 0) * 100) + '%';
       details = auditEscape(oldName) + ' (' + oldRate + ') → ' + auditEscape(newName) + ' (' + newRate + ')';
+    } else if (event.type === 'bsc_settings_change') {
+      action = 'Изменение BSC';
+      target = 'Цели и веса стратегии';
+      try {
+        const changes = JSON.parse(event.changes_json || '{}');
+        const targetCount = Object.keys(changes.targets || {}).length;
+        const weightCount = Object.keys(changes.perspective_weights || {}).length;
+        details = 'Изменено целей: ' + targetCount + ' · весов направлений: ' + weightCount;
+      } catch (_) { details = 'Настройки стратегии обновлены'; }
     } else {
       action = event.action || 'Действие менеджера';
       target = auditEscape(event.target_name || event.target_id || '—');
@@ -5774,6 +6148,171 @@ async function deleteNews(id) {
   if (!confirm('Удалить эту публикацию безвозвратно?')) return;
   await authFetch('/api/news/' + id, { method: 'DELETE' });
   await renderNews();
+}
+
+// ── ПРОЗВОН ГРУМЕРСКИХ ──────────────────────────────────────────────
+const LEAD_STATUS_LABEL = {
+  to_call: 'Нужно позвонить', no_answer: 'Не дозвонились',
+  meeting_scheduled: 'Встреча назначена', meeting_held: 'Встреча прошла',
+  signed: 'Партнёр подключён', declined: 'Отказ',
+};
+const LEAD_STATUS_CLASS = {
+  to_call: 'stock-low', no_answer: 'stock-low',
+  meeting_scheduled: 'stock-ok', meeting_held: 'stock-ok',
+  signed: 'stock-ok', declined: 'stock-out',
+};
+const LEAD_CATEGORY_LABEL = { groomer: 'Груминг-салон', vet: 'Ветклиника', kennel: 'Кинолог', hotel: 'Зоогостиница', other: 'Другое' };
+let leadsData = [];
+let leadsManagersCache = null;
+let currentLeadId = null;
+
+async function loadLeadManagersIntoSelect() {
+  if (!leadsManagersCache) {
+    const res = await authFetch('/api/managers');
+    const data = await res.json();
+    leadsManagersCache = data.managers || [];
+  }
+  const sel = document.getElementById('lm-manager');
+  sel.innerHTML = '<option value="">Не назначен</option>' +
+    leadsManagersCache.map(function(m) { return '<option value="' + m.id + '">' + m.full_name + '</option>'; }).join('');
+}
+
+async function renderLeads() {
+  const cityFilterSel = document.getElementById('leads-city-filter');
+  if (!cityFilterSel.options.length) {
+    await loadCitiesIntoSelect('leads-city-filter');
+    cityFilterSel.insertAdjacentHTML('afterbegin', '<option value="">Все города</option>');
+    cityFilterSel.value = '';
+  }
+
+  const status = document.getElementById('leads-status-filter').value;
+  const cityId = document.getElementById('leads-city-filter').value;
+  const q = document.getElementById('leads-search').value.trim();
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (cityId) params.set('city_id', cityId);
+  if (q) params.set('q', q);
+  const res = await authFetch('/api/partner-leads' + (params.toString() ? '?' + params.toString() : ''));
+  const data = await res.json();
+  leadsData = data.leads || [];
+
+  document.getElementById('leads-count').textContent = leadsData.length + ' шт.';
+  document.getElementById('leads-tbody').innerHTML = leadsData.length ? leadsData.map(function(l) {
+    const cityName = (ADMIN_CITIES_CACHE || []).find(function(c) { return c.id === l.city_id; });
+    const nextDate = l.next_contact_date ? new Date(l.next_contact_date).toLocaleDateString('ru-RU') : '—';
+    const overdue = l.next_contact_date && l.next_contact_date <= new Date().toISOString().slice(0, 10) && !['signed', 'declined'].includes(l.status);
+    return '<tr style="cursor:pointer;" onclick="openLeadModal(' + l.id + ')">' +
+      '<td style="font-weight:500;">' + l.salon_name + '<br><span style="font-size:.75rem;color:var(--muted);">' + (LEAD_CATEGORY_LABEL[l.category] || '—') + (cityName ? ' · ' + cityName.name : '') + '</span></td>' +
+      '<td>' + (l.contact_name || '—') + (l.phone ? '<br><span style="font-size:.75rem;color:var(--muted);">' + l.phone + '</span>' : '') + '</td>' +
+      '<td><span class="toggle-pill ' + (LEAD_STATUS_CLASS[l.status] || 'stock-low') + '">' + (LEAD_STATUS_LABEL[l.status] || l.status) + '</span></td>' +
+      '<td style="' + (overdue ? 'color:#9B2335;font-weight:600;' : '') + '">' + nextDate + '</td>' +
+      '<td>' + (l.assigned_manager_name || '—') + '</td>' +
+      '<td class="r"><button class="row-btn" onclick="event.stopPropagation(); openLeadModal(' + l.id + ')">Открыть</button></td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">Пока нет заведений на прозвоне — добавьте первое.</td></tr>';
+}
+
+async function openLeadModal(id) {
+  currentLeadId = id || null;
+  await loadLeadManagersIntoSelect();
+  await loadCitiesIntoSelect('lm-city');
+  document.getElementById('lead-modal-error').style.display = 'none';
+  document.getElementById('lead-delete-btn').style.display = id ? '' : 'none';
+  document.getElementById('lead-notes-block').style.display = id ? '' : 'none';
+
+  if (id) {
+    document.getElementById('lead-modal-title').textContent = 'Заведение';
+    const res = await authFetch('/api/partner-leads/' + id);
+    const data = await res.json();
+    const l = data.lead;
+    document.getElementById('lm-name').value = l.salon_name || '';
+    document.getElementById('lm-category').value = l.category || 'groomer';
+    document.getElementById('lm-city').value = l.city_id || '';
+    document.getElementById('lm-address').value = l.address || '';
+    document.getElementById('lm-contact').value = l.contact_name || '';
+    document.getElementById('lm-phone').value = l.phone || '';
+    document.getElementById('lm-status').value = l.status || 'to_call';
+    document.getElementById('lm-next-date').value = l.next_contact_date || '';
+    document.getElementById('lm-manager').value = l.assigned_manager_id || '';
+    renderLeadNotesList(data.notes || []);
+  } else {
+    document.getElementById('lead-modal-title').textContent = 'Новое заведение';
+    document.getElementById('lm-name').value = '';
+    document.getElementById('lm-category').value = 'groomer';
+    document.getElementById('lm-city').value = '';
+    document.getElementById('lm-address').value = '';
+    document.getElementById('lm-contact').value = '';
+    document.getElementById('lm-phone').value = '';
+    document.getElementById('lm-status').value = 'to_call';
+    document.getElementById('lm-next-date').value = '';
+    document.getElementById('lm-manager').value = '';
+  }
+  document.getElementById('lead-modal').style.display = 'flex';
+}
+
+function closeLeadModal() { document.getElementById('lead-modal').style.display = 'none'; currentLeadId = null; }
+
+function renderLeadNotesList(notes) {
+  const holder = document.getElementById('lead-notes-list');
+  holder.innerHTML = notes.length ? notes.map(function(n) {
+    const dt = new Date(n.created_at.replace(' ', 'T') + 'Z').toLocaleString('ru-RU');
+    return '<div style="margin-bottom:.5rem;font-size:.82rem;line-height:1.4;">' +
+      '<span style="color:var(--muted);font-size:.72rem;">' + dt + ' · ' + n.author + '</span><br>' + n.note + '</div>';
+  }).join('') : '<div style="color:var(--muted);font-size:.8rem;">Записей пока нет.</div>';
+  document.getElementById('lead-note-input').value = '';
+}
+
+async function addLeadNote() {
+  if (!currentLeadId) return;
+  const input = document.getElementById('lead-note-input');
+  const note = input.value.trim();
+  if (!note) return;
+  const res = await authFetch('/api/partner-leads/' + currentLeadId + '/notes', { method: 'POST', body: { note } });
+  if (!res.ok) return;
+  const detailRes = await authFetch('/api/partner-leads/' + currentLeadId);
+  const data = await detailRes.json();
+  renderLeadNotesList(data.notes || []);
+}
+
+async function saveLeadForm() {
+  const errEl = document.getElementById('lead-modal-error');
+  errEl.style.display = 'none';
+  const name = document.getElementById('lm-name').value.trim();
+  if (!name) {
+    errEl.textContent = 'Укажите название заведения.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const body = {
+    salon_name: name,
+    category: document.getElementById('lm-category').value,
+    city_id: document.getElementById('lm-city').value || null,
+    address: document.getElementById('lm-address').value.trim() || null,
+    contact_name: document.getElementById('lm-contact').value.trim() || null,
+    phone: document.getElementById('lm-phone').value.trim() || null,
+    status: document.getElementById('lm-status').value,
+    next_contact_date: document.getElementById('lm-next-date').value || null,
+    assigned_manager_id: document.getElementById('lm-manager').value || null,
+  };
+  const res = currentLeadId
+    ? await authFetch('/api/partner-leads/' + currentLeadId, { method: 'PUT', body })
+    : await authFetch('/api/partner-leads', { method: 'POST', body });
+  if (!res.ok) {
+    const data = await res.json();
+    errEl.textContent = data.error || 'Не удалось сохранить.';
+    errEl.style.display = 'block';
+    return;
+  }
+  closeLeadModal();
+  await renderLeads();
+}
+
+async function deleteLeadFromModal() {
+  if (!currentLeadId) return;
+  if (!confirm('Удалить это заведение из списка безвозвратно?')) return;
+  await authFetch('/api/partner-leads/' + currentLeadId, { method: 'DELETE' });
+  closeLeadModal();
+  await renderLeads();
 }
 
 // ── ADMIN AUTH ───────────────────────────────────────────────────────

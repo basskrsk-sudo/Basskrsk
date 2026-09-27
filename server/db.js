@@ -358,6 +358,35 @@ CREATE TABLE IF NOT EXISTS news (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ── ПРОЗВОН ГРУМЕРСКИХ САЛОНОВ (привлечение новых партнёров) ────────
+-- Один лид = одно заведение (груминг-салон/ветклиника/кинолог/зоогостиница),
+-- с которым ведутся переговоры о размещении стойки. История звонков и
+-- договорённостей хранится отдельно (partner_lead_notes), а сама карточка
+-- лида — только текущее состояние (статус, следующий контакт, ответственный).
+CREATE TABLE IF NOT EXISTS partner_leads (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  salon_name          TEXT NOT NULL,
+  category            TEXT,                        -- 'groomer'|'vet'|'kennel'|'hotel'|'other'
+  city_id             TEXT,
+  address             TEXT,
+  contact_name        TEXT,
+  phone               TEXT,
+  status              TEXT NOT NULL DEFAULT 'to_call',
+  -- 'to_call'|'no_answer'|'meeting_scheduled'|'meeting_held'|'signed'|'declined'
+  next_contact_date   TEXT,                          -- YYYY-MM-DD, когда перезвонить/напомнить
+  assigned_manager_id INTEGER REFERENCES managers(id),
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS partner_lead_notes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  lead_id     INTEGER NOT NULL REFERENCES partner_leads(id) ON DELETE CASCADE,
+  author      TEXT NOT NULL,                        -- 'Администратор' или имя менеджера
+  note        TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- ── ПЛАН ЗАПУСКА ПРОЕКТА ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS launch_tasks (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1174,6 +1203,48 @@ CREATE TABLE IF NOT EXISTS weekly_reports (
   telegram_status          TEXT NOT NULL DEFAULT 'not_configured',
   telegram_error           TEXT,
   generated_at             TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Сбалансированная система показателей (Kaplan–Norton). Фактические значения
+-- рассчитываются из рабочих таблиц, здесь хранятся только управленческие цели,
+-- веса направлений и планы улучшения.
+CREATE TABLE IF NOT EXISTS bsc_kpi_settings (
+  kpi_key          TEXT PRIMARY KEY,
+  target_value     REAL NOT NULL,
+  updated_by       TEXT,
+  updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS bsc_perspective_settings (
+  perspective_key TEXT PRIMARY KEY,
+  weight          REAL NOT NULL,
+  updated_by      TEXT,
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS bsc_settings_log (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_id        INTEGER,
+  admin_login     TEXT,
+  changes_json    TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS bsc_initiatives (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  perspective_key TEXT NOT NULL,
+  kpi_key         TEXT,
+  title           TEXT NOT NULL,
+  problem         TEXT,
+  action          TEXT NOT NULL,
+  responsible     TEXT NOT NULL,
+  due_date        TEXT NOT NULL,
+  expected_result TEXT,
+  status          TEXT NOT NULL DEFAULT 'planned',
+  result_comment  TEXT,
+  created_by      TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
 

@@ -1112,6 +1112,7 @@
       <li><a href="#" onclick="showPage('contacts')" class="nav-link" data-page="contacts">Где купить</a></li>
       <li><a href="purchase-guide.html" class="nav-link">Как это работает</a></li>
       <li><a href="#" onclick="showPage('bones')" class="nav-link" data-page="bones">Бонусы</a></li>
+      <li><a href="#" onclick="showPage('partners')" class="nav-link" data-page="partners">Партнёрам</a></li>
       <li id="citySwitcherMobileWrap" style="display:none;padding-top:.5rem;">
         <select id="citySwitcherMobile" onchange="setCurrentCity(this.value)" style="width:100%;background:rgba(255,255,255,.1);color:#fff;border:1.5px solid rgba(255,255,255,.25);border-radius:8px;padding:.5rem .6rem;font-size:.9rem;font-family:'Manrope',sans-serif;"></select>
       </li>
@@ -1164,6 +1165,20 @@
         <p>Выберите товар → отсканируйте QR на упаковке → оплатите → заберите самостоятельно.</p>
       </div>
       <a class="btn-primary" href="purchase-guide.html">Показать инструкцию →</a>
+    </div>
+  </div>
+
+  <!-- Привлечение партнёров — груминг-салонов и ветклиник, готовых разместить
+       минимаркет. Сейчас это приоритет роста сети, поэтому баннер стоит
+       прямо на главной, а не только в футере. -->
+  <div class="quick-buy-strip">
+    <div class="quick-buy-card">
+      <div class="quick-buy-icon" style="background:var(--forest);color:#fff;">🤝</div>
+      <div>
+        <h2>У вас груминг-салон или ветклиника?</h2>
+        <p>Разместите минимаркет «ХвостМаркета» — без вложений в товар, кассу и логистику. Владельцу — 5% с продаж, грумеру — до 20%.</p>
+      </div>
+      <button class="btn-primary" onclick="showPage('partners')">Разместить минимаркет →</button>
     </div>
   </div>
 
@@ -2068,6 +2083,10 @@
       <h2>Оставьте заявку</h2>
       <p>Оставьте контакты — мы перезвоним в течение 1 рабочего дня и расскажем об условиях.</p>
 
+      <div class="form-group">
+        <label>Название салона/клиники *</label>
+        <input type="text" id="pf-salon" placeholder="Например: Груминг-салон «Барбос»">
+      </div>
       <div class="form-row">
         <div class="form-group">
           <label>Имя *</label>
@@ -2081,6 +2100,10 @@
       <div class="form-group">
         <label>Номер телефона *</label>
         <input type="tel" id="pf-phone" placeholder="+7 (900) 000-00-00" autocomplete="tel" oninput="formatPhone(this)">
+      </div>
+      <div class="form-group">
+        <label>Город</label>
+        <select id="pf-city"><option value="">— Не важно / уточним по телефону —</option></select>
       </div>
       <button class="submit-btn" onclick="submitPartnerForm()">Отправить заявку</button>
     </div>
@@ -4256,7 +4279,16 @@ function showPage(id) {
   if (id === 'register') resetRegisterPage();
   if (id === 'chess') { prefillKnownPhone(document.getElementById('chess-phone')); updateChessPrizeHint(); loadChessLeaderboard(); }
   if (id === 'salons') renderSalonsDirectory();
-  if (id === 'partners') { renderPartnerWorkingPoints(); renderPublicCalculator(); }
+  if (id === 'partners') {
+    renderPartnerWorkingPoints();
+    renderPublicCalculator();
+    const pfCity = document.getElementById('pf-city');
+    if (pfCity && pfCity.options.length <= 1 && SITE_CITIES.length) {
+      pfCity.insertAdjacentHTML('beforeend', SITE_CITIES.map(function(c) {
+        return '<option value="' + c.id + '">' + c.name + '</option>';
+      }).join(''));
+    }
+  }
 }
 
 function toggleMenu() {
@@ -6599,34 +6631,53 @@ function renderPublicCalculator() {
   `;
 }
 
-function submitPartnerForm() {
+async function submitPartnerForm() {
+  const salonName = document.getElementById('pf-salon')?.value.trim() || '';
   const name    = document.getElementById('pf-name')?.value.trim()    || '';
   const lname   = document.getElementById('pf-lname')?.value.trim()   || '';
   const phone   = document.getElementById('pf-phone')?.value.trim()   || '';
+  const cityId  = document.getElementById('pf-city')?.value || '';
 
-  if (!name || !lname || !phone) { showToast('⚠️ Введите имя, фамилию и номер телефона'); return; }
+  if (!salonName || !name || !lname || !phone) {
+    showToast('⚠️ Укажите название заведения, имя, фамилию и телефон');
+    return;
+  }
 
-  const today = new Date().toLocaleDateString('ru-RU');
-  const newId = 'GR-' + String(Date.now()).slice(-4);
-  const msg =
-    `📋 <b>Новая заявка партнёра</b>\n\n` +
-    `<b>→ Вставить в Notion / лист «Партнёры»:</b>\n` +
-    `ID: ${newId}\n` +
-    `Имя: ${name}\n` +
-    `Фамилия: ${lname}\n` +
-    `Телефон: ${phone}\n` +
-    `Дата: ${today}\n` +
-    `Статус: Новая заявка\n` +
-    `🕐 ${new Date().toLocaleString('ru-RU')}`;
+  const btn = document.querySelector('#partnerFormAnchor .submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Отправляем…'; }
 
-  sendTelegram(msg);
-  showToast('✅ Заявка отправлена! Ответим в течение 1 рабочего дня.');
+  try {
+    const res = await fetchWithTimeout(
+      '/api/partner-leads/public',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          salon_name: salonName,
+          contact_name: (name + ' ' + lname).trim(),
+          phone,
+          city_id: cityId || null,
+        }),
+      },
+      10000
+    );
+    if (!res.ok) {
+      let errMsg = res.error || 'Не удалось отправить заявку';
+      try { const parsed = JSON.parse(res.body); if (parsed && parsed.error) errMsg = parsed.error; } catch (parseErr) { /* тело не JSON — оставляем errMsg как есть */ }
+      throw new Error(errMsg);
+    }
 
-  // Очищаем поля
-  ['pf-name','pf-lname','pf-phone'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
+    showToast('✅ Заявка отправлена! Ответим в течение 1 рабочего дня.');
+    ['pf-salon', 'pf-name', 'pf-lname', 'pf-phone'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    if (document.getElementById('pf-city')) document.getElementById('pf-city').value = '';
+  } catch (e) {
+    showToast('⚠️ ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Отправить заявку'; }
+  }
 }
 
 function submitFeedback() {
