@@ -739,12 +739,18 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       <div id="bsc-perspectives" class="grid-2" style="align-items:start;"></div>
 
       <div class="card" style="margin-top:1rem;">
+        <div class="card-title">Ответственность команды</div>
+        <p style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:1rem;">Владелец KPI принимает управленческое решение и отвечает за результат. Исполнитель ведёт ежедневную работу и данные по показателю. Методолог системы — Кучкин Николай.</p>
+        <div id="bsc-responsibility" class="grid-2" style="align-items:stretch;"></div>
+      </div>
+
+      <div class="card" style="margin-top:1rem;">
         <div class="card-title"><span>Планы улучшения <span id="bsc-initiatives-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span><button class="row-btn" style="background:var(--forest);color:#fff;" onclick="toggleBscInitiativeForm()">+ Добавить план</button></div>
         <div id="bsc-initiative-form" style="display:none;margin:1rem 0;padding:1rem;background:var(--cream,#F7F5EF);border-radius:12px;">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.7rem;">
             <div class="admin-field" style="margin:0;"><label>Направление</label><select id="bsc-plan-perspective" onchange="renderBscKpiOptions()"></select></div>
-            <div class="admin-field" style="margin:0;"><label>Связанный показатель</label><select id="bsc-plan-kpi"><option value="">Общий план направления</option></select></div>
-            <div class="admin-field" style="margin:0;"><label>Ответственный</label><input id="bsc-plan-responsible" placeholder="Имя или роль"></div>
+            <div class="admin-field" style="margin:0;"><label>Связанный показатель</label><select id="bsc-plan-kpi" onchange="syncBscPlanResponsible()"><option value="">Общий план направления</option></select></div>
+            <div class="admin-field" style="margin:0;"><label>Ответственный исполнитель</label><select id="bsc-plan-responsible"></select></div>
             <div class="admin-field" style="margin:0;"><label>Срок</label><input type="date" id="bsc-plan-due"></div>
           </div>
           <div class="admin-field" style="margin-top:.7rem;"><label>Название плана</label><input id="bsc-plan-title" placeholder="Кратко: что нужно исправить"></div>
@@ -3273,7 +3279,7 @@ function renderBscPerspectives(data) {
       const score = kpi.score === null ? 0 : Math.max(0, Math.min(100, Number(kpi.score)));
       return '<div style="padding:.75rem 0;border-top:1px solid var(--border);">' +
         '<div style="display:flex;justify-content:space-between;gap:.8rem;align-items:flex-start;">' +
-          '<div style="min-width:0;"><div style="font-size:.84rem;font-weight:650;">' + bscEscape(kpi.name) + '</div><div style="font-size:.7rem;color:var(--muted);margin-top:.18rem;line-height:1.35;">' + bscEscape(kpi.description) + '</div></div>' +
+          '<div style="min-width:0;"><div style="font-size:.84rem;font-weight:650;">' + bscEscape(kpi.name) + '</div><div style="font-size:.7rem;color:var(--muted);margin-top:.18rem;line-height:1.35;">' + bscEscape(kpi.description) + '</div><div style="font-size:.7rem;margin-top:.35rem;line-height:1.4;"><span style="color:var(--muted);">Владелец KPI:</span> <strong>' + bscEscape(kpi.accountable) + '</strong> <span style="color:var(--muted);">· Исполнитель:</span> <strong>' + bscEscape(kpi.executor) + '</strong></div></div>' +
           '<button class="row-btn" style="font-size:.68rem;white-space:nowrap;" onclick="openBscPlanFor(\'' + bscEscape(perspective.key) + '\',\'' + bscEscape(kpi.key) + '\')">План</button>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.55rem;align-items:end;margin-top:.55rem;font-size:.76rem;">' +
@@ -3285,7 +3291,22 @@ function renderBscPerspectives(data) {
       '</div>';
     }).join('');
     return '<div class="card" style="border-top:4px solid ' + color + ';">' +
-      '<div class="card-title" style="align-items:flex-start;"><span>' + bscEscape(perspective.name) + '<small style="display:block;font-size:.68rem;font-weight:400;color:var(--muted);margin-top:.2rem;">Вес в общем индексе: ' + perspective.weight + '%</small></span><span style="font-size:1.55rem;color:' + color + ';">' + perspective.score + '</span></div>' + rows + '</div>';
+      '<div class="card-title" style="align-items:flex-start;"><span>' + bscEscape(perspective.name) + '<small style="display:block;font-size:.68rem;font-weight:400;color:var(--muted);margin-top:.2rem;">Вес: ' + perspective.weight + '% · куратор: ' + bscEscape(perspective.accountable) + '</small></span><span style="font-size:1.55rem;color:' + color + ';">' + perspective.score + '</span></div>' + rows + '</div>';
+  }).join('');
+}
+
+function renderBscResponsibility(data) {
+  const members = data.responsibility_matrix || [];
+  document.getElementById('bsc-responsibility').innerHTML = members.map(function(member) {
+    const owned = member.owned_kpis || [];
+    const executed = member.executed_kpis || [];
+    return '<div style="border:1px solid var(--border);border-radius:12px;padding:1rem;background:var(--white);">' +
+      '<div style="font-size:.95rem;font-weight:700;color:var(--deep);">' + bscEscape(member.name) + '</div>' +
+      '<div style="font-size:.72rem;color:var(--muted);margin:.2rem 0 .65rem;">' + bscEscape(member.role) + '</div>' +
+      '<div style="font-size:.78rem;line-height:1.45;margin-bottom:.65rem;">' + bscEscape(member.responsibility) + '</div>' +
+      '<div style="font-size:.72rem;line-height:1.45;"><strong>Владелец:</strong> ' + (owned.length ? owned.map(bscEscape).join(', ') : '—') + '</div>' +
+      '<div style="font-size:.72rem;line-height:1.45;margin-top:.3rem;"><strong>Исполняет:</strong> ' + (executed.length ? executed.map(bscEscape).join(', ') : '—') + '</div>' +
+    '</div>';
   }).join('');
 }
 
@@ -3353,6 +3374,7 @@ async function renderBscDashboard() {
   document.getElementById('bsc-readiness-description').textContent = data.readiness.description;
   document.getElementById('bsc-period').textContent = 'Период оценки: ' + data.period.start_local + ' — ' + data.period.end_local + ' · предыдущая завершённая неделя';
   renderBscPerspectives(data);
+  renderBscResponsibility(data);
   renderBscInitiatives(data.initiatives || []);
   renderBscPoints(data.points || []);
   renderBscSettings(data);
@@ -3365,6 +3387,12 @@ function renderBscPlanOptions() {
   const selected = select.value;
   select.innerHTML = bscDashboardData.perspectives.map(function(item) { return '<option value="' + bscEscape(item.key) + '">' + bscEscape(item.name) + '</option>'; }).join('');
   if (selected) select.value = selected;
+  const responsible = document.getElementById('bsc-plan-responsible');
+  const previousResponsible = responsible.value;
+  responsible.innerHTML = (bscDashboardData.responsibility_matrix || []).map(function(member) {
+    return '<option value="' + bscEscape(member.name) + '">' + bscEscape(member.name) + '</option>';
+  }).join('');
+  if (previousResponsible) responsible.value = previousResponsible;
   renderBscKpiOptions();
 }
 
@@ -3373,6 +3401,17 @@ function renderBscKpiOptions() {
   const perspectiveKey = document.getElementById('bsc-plan-perspective').value;
   const perspective = bscDashboardData.perspectives.find(function(item) { return item.key === perspectiveKey; });
   document.getElementById('bsc-plan-kpi').innerHTML = '<option value="">Общий план направления</option>' + (perspective ? perspective.kpis.map(function(kpi) { return '<option value="' + bscEscape(kpi.key) + '">' + bscEscape(kpi.name) + '</option>'; }).join('') : '');
+  syncBscPlanResponsible();
+}
+
+function syncBscPlanResponsible() {
+  if (!bscDashboardData) return;
+  const perspectiveKey = document.getElementById('bsc-plan-perspective').value;
+  const kpiKey = document.getElementById('bsc-plan-kpi').value;
+  const perspective = bscDashboardData.perspectives.find(function(item) { return item.key === perspectiveKey; });
+  const kpi = perspective && perspective.kpis.find(function(item) { return item.key === kpiKey; });
+  const responsible = kpi ? kpi.executor : (perspective ? perspective.accountable : '');
+  if (responsible) document.getElementById('bsc-plan-responsible').value = responsible;
 }
 
 function toggleBscInitiativeForm(force) {
@@ -3390,6 +3429,7 @@ function openBscPlanFor(perspective, kpi) {
   document.getElementById('bsc-plan-perspective').value = perspective;
   renderBscKpiOptions();
   document.getElementById('bsc-plan-kpi').value = kpi;
+  syncBscPlanResponsible();
   document.getElementById('bsc-plan-title').focus();
   document.getElementById('bsc-initiative-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -3408,7 +3448,7 @@ async function createBscInitiative() {
   const res = await authFetch('/api/bsc/initiatives', { method: 'POST', body: body });
   const data = await res.json();
   if (!res.ok) return alert(data.error || 'Не удалось сохранить план.');
-  ['bsc-plan-title','bsc-plan-problem','bsc-plan-action','bsc-plan-responsible','bsc-plan-result'].forEach(function(id) { document.getElementById(id).value = ''; });
+  ['bsc-plan-title','bsc-plan-problem','bsc-plan-action','bsc-plan-result'].forEach(function(id) { document.getElementById(id).value = ''; });
   toggleBscInitiativeForm(false);
   await renderBscDashboard();
 }

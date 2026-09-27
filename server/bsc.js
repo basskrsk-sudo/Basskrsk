@@ -4,29 +4,52 @@
 const db = require('./db');
 
 const PERSPECTIVES = [
-  { key: 'finance', name: 'Финансы', defaultWeight: 35 },
-  { key: 'customers', name: 'Клиенты и партнёры', defaultWeight: 25 },
-  { key: 'processes', name: 'Внутренние процессы', defaultWeight: 25 },
-  { key: 'team', name: 'Команда и развитие', defaultWeight: 15 },
+  { key: 'finance', name: 'Финансы', defaultWeight: 35, accountable: 'Лакомых Алексей' },
+  { key: 'customers', name: 'Клиенты и партнёры', defaultWeight: 25, accountable: 'Лакомых Алексей' },
+  { key: 'processes', name: 'Внутренние процессы', defaultWeight: 25, accountable: 'Соколов Виталий' },
+  { key: 'team', name: 'Команда и развитие', defaultWeight: 15, accountable: 'Лакомых Алексей' },
+];
+
+const RESPONSIBILITY_MATRIX = [
+  {
+    name: 'Лакомых Алексей',
+    role: 'Собственник · операционное и коммерческое управление',
+    responsibility: 'Финансы, продажи, сайт, клиентский сервис, партнёры и команда',
+  },
+  {
+    name: 'Соколов Виталий',
+    role: 'Собственник · продукт, закупки и логистика',
+    responsibility: 'Остатки, пополнение, перемещения, качество и документы на товар',
+  },
+  {
+    name: 'Кучкин Николай',
+    role: 'Собственник · стратегия и бизнес-процессы',
+    responsibility: 'Методология BSC, аналитика, полнота данных, регламенты, право и риски',
+  },
+  {
+    name: 'Менеджер',
+    role: 'Операционный исполнитель',
+    responsibility: 'Запуск и активность точек, CRM, удержание партнёров, остатки и обращения',
+  },
 ];
 
 const KPI_DEFINITIONS = [
-  { key: 'margin_percent', perspective: 'finance', name: 'Маржинальность', target: 25, unit: '%', direction: 'up', weight: 40, format: 'percent', description: 'Чистая расчётная прибыль относительно выручки.' },
-  { key: 'revenue_growth', perspective: 'finance', name: 'Рост выручки', target: 10, unit: '%', direction: 'up', weight: 30, format: 'percent', description: 'Изменение к предыдущей завершённой неделе.' },
-  { key: 'average_check', perspective: 'finance', name: 'Средний чек', target: 350, unit: '₽', direction: 'up', weight: 30, format: 'money', description: 'Выручка после возвратов на оплаченный заказ.' },
+  { key: 'margin_percent', perspective: 'finance', name: 'Маржинальность', target: 25, unit: '%', direction: 'up', weight: 40, format: 'percent', accountable: 'Лакомых Алексей', executor: 'Лакомых Алексей', description: 'Чистая расчётная прибыль относительно выручки.' },
+  { key: 'revenue_growth', perspective: 'finance', name: 'Рост выручки', target: 10, unit: '%', direction: 'up', weight: 30, format: 'percent', accountable: 'Лакомых Алексей', executor: 'Менеджер', description: 'Изменение к предыдущей завершённой неделе.' },
+  { key: 'average_check', perspective: 'finance', name: 'Средний чек', target: 350, unit: '₽', direction: 'up', weight: 30, format: 'money', accountable: 'Лакомых Алексей', executor: 'Менеджер', description: 'Выручка после возвратов на оплаченный заказ.' },
 
-  { key: 'payment_conversion', perspective: 'customers', name: 'Конверсия в оплату', target: 85, unit: '%', direction: 'up', weight: 40, format: 'percent', description: 'Доля оплаченных заказов среди созданных.' },
-  { key: 'returning_share', perspective: 'customers', name: 'Вернувшиеся покупатели', target: 25, unit: '%', direction: 'up', weight: 30, format: 'percent', description: 'Доля покупателей, которые совершали покупки раньше.' },
-  { key: 'paid_orders_growth', perspective: 'customers', name: 'Рост оплаченных заказов', target: 10, unit: '%', direction: 'up', weight: 30, format: 'percent', description: 'Изменение количества оплаченных заказов к прошлой неделе.' },
+  { key: 'payment_conversion', perspective: 'customers', name: 'Конверсия в оплату', target: 85, unit: '%', direction: 'up', weight: 40, format: 'percent', accountable: 'Лакомых Алексей', executor: 'Лакомых Алексей', description: 'Доля оплаченных заказов среди созданных.' },
+  { key: 'returning_share', perspective: 'customers', name: 'Вернувшиеся покупатели', target: 25, unit: '%', direction: 'up', weight: 30, format: 'percent', accountable: 'Лакомых Алексей', executor: 'Менеджер', description: 'Доля покупателей, которые совершали покупки раньше.' },
+  { key: 'paid_orders_growth', perspective: 'customers', name: 'Рост оплаченных заказов', target: 10, unit: '%', direction: 'up', weight: 30, format: 'percent', accountable: 'Лакомых Алексей', executor: 'Менеджер', description: 'Изменение количества оплаченных заказов к прошлой неделе.' },
 
-  { key: 'stock_availability', perspective: 'processes', name: 'Доступность ассортимента', target: 95, unit: '%', direction: 'up', weight: 35, format: 'percent', description: 'Доля активных складских позиций с положительным остатком.' },
-  { key: 'low_stock_share', perspective: 'processes', name: 'Критически низкие остатки', target: 10, unit: '%', direction: 'down', weight: 20, format: 'percent', description: 'Доля позиций, где осталось 1–2 единицы.' },
-  { key: 'pending_movements', perspective: 'processes', name: 'Ожидающие перемещения', target: 0, unit: 'шт.', direction: 'down', weight: 20, format: 'number', description: 'Заявки на перемещение, ожидающие проверки.' },
-  { key: 'order_data_completeness', perspective: 'processes', name: 'Полнота данных заказов', target: 98, unit: '%', direction: 'up', weight: 25, format: 'percent', description: 'Оплаченные заказы с точкой, телефоном и зафиксированной ставкой.' },
+  { key: 'stock_availability', perspective: 'processes', name: 'Доступность ассортимента', target: 95, unit: '%', direction: 'up', weight: 35, format: 'percent', accountable: 'Соколов Виталий', executor: 'Менеджер', description: 'Доля активных складских позиций с положительным остатком.' },
+  { key: 'low_stock_share', perspective: 'processes', name: 'Критически низкие остатки', target: 10, unit: '%', direction: 'down', weight: 20, format: 'percent', accountable: 'Соколов Виталий', executor: 'Менеджер', description: 'Доля позиций, где осталось 1–2 единицы.' },
+  { key: 'pending_movements', perspective: 'processes', name: 'Ожидающие перемещения', target: 0, unit: 'шт.', direction: 'down', weight: 20, format: 'number', accountable: 'Соколов Виталий', executor: 'Менеджер', description: 'Заявки на перемещение, ожидающие проверки.' },
+  { key: 'order_data_completeness', perspective: 'processes', name: 'Полнота данных заказов', target: 98, unit: '%', direction: 'up', weight: 25, format: 'percent', accountable: 'Кучкин Николай', executor: 'Менеджер', description: 'Оплаченные заказы с точкой, телефоном и зафиксированной ставкой.' },
 
-  { key: 'manager_coverage', perspective: 'team', name: 'Точки закреплены за менеджерами', target: 100, unit: '%', direction: 'up', weight: 40, format: 'percent', description: 'Доля активных точек, у которых назначен менеджер.' },
-  { key: 'partner_channel_connection', perspective: 'team', name: 'Грумеры подключены к уведомлениям', target: 80, unit: '%', direction: 'up', weight: 30, format: 'percent', description: 'Доля активных грумеров с Telegram или MAX.' },
-  { key: 'partner_coverage', perspective: 'team', name: 'Точки с активными грумерами', target: 100, unit: '%', direction: 'up', weight: 30, format: 'percent', description: 'Доля активных точек, где есть хотя бы один активный грумер.' },
+  { key: 'manager_coverage', perspective: 'team', name: 'Точки закреплены за менеджерами', target: 100, unit: '%', direction: 'up', weight: 40, format: 'percent', accountable: 'Лакомых Алексей', executor: 'Лакомых Алексей', description: 'Доля активных точек, у которых назначен менеджер.' },
+  { key: 'partner_channel_connection', perspective: 'team', name: 'Грумеры подключены к уведомлениям', target: 80, unit: '%', direction: 'up', weight: 30, format: 'percent', accountable: 'Лакомых Алексей', executor: 'Менеджер', description: 'Доля активных грумеров с Telegram или MAX.' },
+  { key: 'partner_coverage', perspective: 'team', name: 'Точки с активными грумерами', target: 100, unit: '%', direction: 'up', weight: 30, format: 'percent', accountable: 'Лакомых Алексей', executor: 'Менеджер', description: 'Доля активных точек, где есть хотя бы один активный грумер.' },
 ];
 
 function round(value, precision = 1) {
@@ -147,6 +170,7 @@ function calculateBsc(report) {
     return {
       key: definition.key,
       name: definition.name,
+      accountable: definition.accountable,
       weight: perspectiveWeights.has(definition.key) ? perspectiveWeights.get(definition.key) : definition.defaultWeight,
       score,
       status: statusFromIndex(score),
@@ -194,6 +218,11 @@ function calculateBsc(report) {
       overdue: overdueInitiatives,
       items: openInitiatives,
     },
+    responsibility_matrix: RESPONSIBILITY_MATRIX.map((member) => ({
+      ...member,
+      owned_kpis: metrics.filter((metric) => metric.accountable === member.name).map((metric) => metric.name),
+      executed_kpis: metrics.filter((metric) => metric.executor === member.name).map((metric) => metric.name),
+    })),
     points: report.points.map((point) => ({
       id: point.id, name: point.name, city: point.city, revenue: point.revenue,
       orders_count: point.orders_count, change_percent: point.change_percent,
@@ -203,4 +232,4 @@ function calculateBsc(report) {
   };
 }
 
-module.exports = { KPI_DEFINITIONS, PERSPECTIVES, calculateBsc, seedSettings };
+module.exports = { KPI_DEFINITIONS, PERSPECTIVES, RESPONSIBILITY_MATRIX, calculateBsc, seedSettings };
