@@ -27,14 +27,9 @@ const {
 } = require('./reservations');
 
 
-// Если грумер покупает САМ У СЕБЯ на своей точке (тем же номером телефона,
-// каким зарегистрирован как партнёр) — комиссия на этот конкретный заказ
-// не его обычный уровень (15/18/20%), а 0%. Партнёр не платит себе
-// комиссию сам себе — иначе Экспертный уровень (20%) в сочетании с
-// максимальным кэшбэком клиенту (10% — грумерам он положен всегда, см.
-// routes-customers.js) делает самозаказы слишком выгодной лазейкой для
-// грумера и заметно режет маржу компании.
-const SELF_ORDER_COMMISSION_RATE = 0;
+// Самозаказ определяется сервером по телефону активного грумера выбранной
+// точки. Такой заказ получает обычную ставку грумера, но не участвует в
+// программе «Косточки»: их нельзя ни списать, ни получить.
 
 // Оплаченный демо-заказ опасен как неявный запасной сценарий: отсутствие или
 // опечатка в ключах ЮKassa не должны превращать неоплаченный заказ в продажу.
@@ -90,7 +85,15 @@ function resolveOrderCommission(pointId, partnerId, customerPhone, advisorSelect
   }
   if (!partner) return { rate: null, isSelfOrder: false };
   const isSelfOrder = phonesMatchLast10(partner.phone, customerPhone);
-  return { rate: isSelfOrder ? SELF_ORDER_COMMISSION_RATE : partner.commission_rate, isSelfOrder };
+  return { rate: partner.commission_rate, isSelfOrder };
+}
+
+function findSelfOrderingPartner(pointId, customerPhone) {
+  if (!pointId) return null;
+  return db.prepare(`
+    SELECT id, point_id, full_name, phone, commission_rate
+    FROM partners WHERE point_id = ? AND active = 1
+  `).all(pointId).find((partner) => phonesMatchLast10(partner.phone, customerPhone)) || null;
 }
 
 // Определяет, чей уровень нужно проверить после этого заказа: если клиент
@@ -143,9 +146,9 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
       INSERT INTO orders
         (order_code, customer_name, customer_lname, customer_phone, customer_email, pickup_point, point_id, partner_id, partner_name, comment,
          subtotal, discount, total, promo_code, payment_method, needs_delivery, has_custom_item,
-         fulfillment_type, delivery_address, delivery_fee, referral_code, bones_used, commission_rate, status,
+         fulfillment_type, delivery_address, delivery_fee, referral_code, bones_used, commission_rate, is_partner_self_order, status,
          reservation_status, reservation_expires_at, inventory_source_type, inventory_source_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'active', ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'active', ?, ?, ?)
     `).run(
       orderData.orderId, orderData.customerName, orderData.customerLname || null,
       orderData.customerPhone, orderData.customerEmail || null, orderData.pickupPoint,
@@ -153,7 +156,7 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
       orderData.subtotal, 0, orderData.total, orderData.promoCode || null,
       orderData.method || 'yookassa', orderData.needsDelivery ? 1 : 0, 0,
       orderData.fulfillmentType, orderData.deliveryAddress || null, orderData.deliveryFee,
-      orderData.referralCode || null, orderData.bonesUsed, orderData.commissionRate,
+      orderData.referralCode || null, orderData.bonesUsed, orderData.commissionRate, orderData.isSelfOrder ? 1 : 0,
       newReservationExpiry(), inventorySource.type, inventorySource.id
     );
     const orderRowId = info.lastInsertRowid;
@@ -171,7 +174,7 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
 async function runPaidOrderSideEffects(order, items, demo = false) {
   recordCustomerOrder(
     order.customer_phone, order.customer_name, order.customer_lname, order.total,
-    order.customer_email, order.referral_code, order.bones_used
+    order.customer_email, order.referral_code, order.bones_used, !!order.is_partner_self_order
   );
   if (order.point_id) {
     try {
@@ -332,15 +335,19 @@ function registerPaymentRoutes(router) {
       if (!point) return sendJson(res, 400, { error: 'Выбранная точка не найдена или временно не работает', code: 'POINT_UNAVAILABLE' });
       authoritativePickupPoint = point.name + (point.addr ? ' — ' + point.addr : '');
     }
-    let selectedPartnerName = null;
-    if (partnerId) {
-      const selectedPartner = db.prepare('SELECT id, point_id, full_name FROM partners WHERE id = ? AND active = 1').get(partnerId);
+    const selfOrderingPartner = authoritativeFulfillment === 'pickup'
+      ? findSelfOrderingPartner(pointId, customerPhone)
+      : null;
+    const authoritativePartnerId = selfOrderingPartner ? selfOrderingPartner.id : partnerId;
+    let selectedPartnerName = selfOrderingPartner ? selfOrderingPartner.full_name : null;
+    if (authoritativePartnerId && !selfOrderingPartner) {
+      const selectedPartner = db.prepare('SELECT id, point_id, full_name FROM partners WHERE id = ? AND active = 1').get(authoritativePartnerId);
       if (!selectedPartner || !pointId || selectedPartner.point_id !== pointId) {
         return sendJson(res, 400, { error: 'Выбранный сотрудник не работает на этой точке', code: 'PARTNER_POINT_MISMATCH' });
       }
       selectedPartnerName = selectedPartner.full_name;
     }
-    if (authoritativeFulfillment === 'pickup' && pointId && !partnerId && advisorSelection !== 'self') {
+    if (authoritativeFulfillment === 'pickup' && pointId && !authoritativePartnerId && advisorSelection !== 'self') {
       const hasActivePartner = db.prepare('SELECT 1 FROM partners WHERE point_id = ? AND active = 1 LIMIT 1').get(pointId);
       if (hasActivePartner) {
         return sendJson(res, 400, {
@@ -350,13 +357,13 @@ function registerPaymentRoutes(router) {
       }
     }
 
-    // Фиксируем ставку комиссии партнёра прямо на заказе — 0% вместо
-    // обычного уровня, если это самозаказ (см. комментарий у SELF_ORDER_COMMISSION_RATE выше).
-    // Считаем ДО блока с косточками ниже — нужно знать isSelfOrder, чтобы
-    // применить более строгий лимит списания для самозаказов (30% вместо 50%).
-    const { rate: orderCommissionRate, isSelfOrder } = resolveOrderCommission(pointId, partnerId, customerPhone, advisorSelection);
+    // Телефон имеет приоритет над выбором в форме: самозаказ автоматически
+    // привязывается к самому грумеру и оплачивается по его действующему тарифу.
+    const { rate: orderCommissionRate, isSelfOrder } = resolveOrderCommission(
+      pointId, authoritativePartnerId, customerPhone, advisorSelection
+    );
     if (isSelfOrder) {
-      console.log(`[create-payment] Заказ ${orderId}: самозаказ грумера (телефон совпадает с партнёром точки) — комиссия зафиксирована на ${Math.round(orderCommissionRate * 100)}%`);
+      console.log(`[create-payment] Заказ ${orderId}: самозаказ грумера — вознаграждение ${Math.round(orderCommissionRate * 100)}%, косточки отключены`);
     }
 
     // ── КОСТОЧКИ ─────────────────────────────────────────────────────────
@@ -369,6 +376,12 @@ function registerPaymentRoutes(router) {
     let bonesToDeduct = 0;
     let bonesCustomerId = null;
     const requestedBones = typeof bonesUsed === 'number' ? Math.round(bonesUsed) : 0;
+    if (isSelfOrder && requestedBones > 0) {
+      return sendJson(res, 400, {
+        error: 'При самозаказе грумера косточки списать нельзя',
+        code: 'SELF_ORDER_BONES_FORBIDDEN',
+      });
+    }
     if (requestedBones > 0) {
       const authPayload = tryAuth(['customer'])(req);
       if (!authPayload) {
@@ -433,12 +446,12 @@ function registerPaymentRoutes(router) {
     try {
       orderRowId = createReservedOrder({
         orderId, customerName: String(customerName || 'Клиент').trim() || 'Клиент', customerLname, customerPhone, customerEmail,
-        pickupPoint: authoritativePickupPoint, pointId, partnerId, partnerName: selectedPartnerName, comment,
+        pickupPoint: authoritativePickupPoint, pointId, partnerId: authoritativePartnerId, partnerName: selectedPartnerName, comment,
         subtotal: pricedCart.subtotal, total: authoritativeAmount, promoCode, method,
         needsDelivery: authoritativeNeedsDelivery, fulfillmentType: authoritativeFulfillment,
         deliveryAddress: authoritativeFulfillment === 'home_delivery' ? String(deliveryAddress).trim() : null,
         deliveryFee: authoritativeDeliveryFee, referralCode, bonesUsed: bonesToDeduct,
-        commissionRate: orderCommissionRate,
+        commissionRate: orderCommissionRate, isSelfOrder,
       }, pricedCart.items, inventorySource, bonesCustomerId);
     } catch (e) {
       console.warn(`[create-payment] Заказ ${orderId}: резерв не создан — ${e.message}`);
@@ -449,7 +462,7 @@ function registerPaymentRoutes(router) {
       // Явный тестовый режим проходит через ту же атомарную логику резерва,
       // после чего сразу превращает резерв в оплаченное списание.
       await finalizePaidOrder(orderRowId, true);
-      return sendJson(res, 200, { demo: true, order_id: orderRowId });
+      return sendJson(res, 200, { demo: true, order_id: orderRowId, is_partner_self_order: isSelfOrder });
     }
 
     try {
@@ -474,6 +487,7 @@ function registerPaymentRoutes(router) {
         confirmation_url: payment.confirmation && payment.confirmation.confirmation_url,
         reservation_expires_at: db.prepare('SELECT reservation_expires_at FROM orders WHERE id = ?').get(orderRowId).reservation_expires_at,
         reservation_minutes: RESERVATION_TTL_MINUTES,
+        is_partner_self_order: isSelfOrder,
       });
     } catch (e) {
       console.error(`[create-payment] Заказ ${orderId}: ОШИБКА создания платежа — ${e.message}`);
@@ -513,6 +527,7 @@ function registerPaymentRoutes(router) {
       paid: order.status === 'paid',
       status: order.status,
       order_code: order.order_code,
+      is_partner_self_order: !!order.is_partner_self_order,
     });
   });
 
@@ -540,6 +555,7 @@ function registerPaymentRoutes(router) {
       paid: order.status === 'paid',
       status: order.status,
       order_code: order.order_code,
+      is_partner_self_order: !!order.is_partner_self_order,
     });
   });
 

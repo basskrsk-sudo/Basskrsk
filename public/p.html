@@ -197,6 +197,7 @@ function rememberQrPoint(point) {
 var CTX = { point: null, product: null, variants: [], selVariant: null, checkout: null, partners: [] };
 var SUCCESS_PHONE = '';
 var SUCCESS_ORDER_ID = '';
+var QR_SELF_ORDER = false;
 var YOOKASSA_WIDGET_URL = 'https://yookassa.ru/checkout-widget/v1/checkout-widget.js';
 var widgetLoadPromise = null;
 
@@ -402,8 +403,8 @@ function showPhoneStep() {
     + '<p class="small muted" style="margin-bottom:14px">' + esc(CTX.product.name) + ' · ' + esc(v.weight) + ' · <b>' + fmtPrice(v.price) + '</b>'
     + (CTX.point ? '<br>Забрать: ' + esc(CTX.point.name) + (CTX.point.addr ? ', ' + esc(CTX.point.addr) : '') : '') + '</p>'
     + '<label for="phone">Номер телефона</label>'
-    + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(knownPhone()) + '">'
-    + '<p class="small muted" style="margin-top:6px">Свяжем заказ с вашим номером и начислим косточки-бонусы.</p>'
+    + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(knownPhone()) + '" oninput="checkQrSelfOrder()" onblur="checkQrSelfOrder()">'
+    + '<p class="small muted" id="qrBonesNote" style="margin-top:6px">Свяжем заказ с вашим номером и начислим косточки-бонусы.</p>'
     + advisorField
     + '<div class="note" style="display:block">📍 Точка уже определена по QR-коду товара. Повторно выбирать её не нужно.</div>'
     + '<button class="cta" id="payBtn" onclick="startPayment()">Оплатить ' + fmtPrice(v.price) + '</button>'
@@ -411,6 +412,31 @@ function showPhoneStep() {
     + '<button class="link-btn" onclick="renderCard()">← Назад к товару</button></div>');
   var inp = document.getElementById('phone');
   inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+  checkQrSelfOrder();
+}
+
+async function checkQrSelfOrder() {
+  var input = document.getElementById('phone');
+  var note = document.getElementById('qrBonesNote');
+  if (!input || !note) return false;
+  var phone = normPhone(input.value);
+  if (!phone || !CTX.pointId) {
+    QR_SELF_ORDER = false;
+    note.textContent = 'Свяжем заказ с вашим номером и начислим косточки-бонусы.';
+    return false;
+  }
+  try {
+    var response = await fetch('/api/points/' + encodeURIComponent(CTX.pointId) + '/is-self-order?phone=' + encodeURIComponent(phone));
+    var result = await response.json();
+    QR_SELF_ORDER = !!result.isSelfOrder;
+  } catch (e) {
+    QR_SELF_ORDER = false;
+  }
+  note.textContent = QR_SELF_ORDER
+    ? '🐾 Самозаказ: вознаграждение начислится по вашему тарифу. Косточки не списываются и не начисляются.'
+    : 'Свяжем заказ с вашим номером и начислим косточки-бонусы.';
+  note.style.color = QR_SELF_ORDER ? '#7A4A00' : '';
+  return QR_SELF_ORDER;
 }
 
 function showErr(msg) { var e = document.getElementById('err'); e.textContent = msg; e.style.display = 'block'; }
@@ -425,6 +451,7 @@ async function startPayment() {
     return;
   }
   var selectedPartnerId = advisorValue && advisorValue !== 'self' ? Number(advisorValue) : null;
+  await checkQrSelfOrder();
   rememberPhone(phone);
   var btn = document.getElementById('payBtn');
   btn.disabled = true; btn.textContent = 'Готовим оплату…';
@@ -480,7 +507,7 @@ async function startPayment() {
       confirmation_mode: confirmationMode,
     });
 
-    if (data.demo === true) { showSuccess(orderId, phone); return; }
+    if (data.demo === true) { showSuccess(orderId, phone, !!data.is_partner_self_order); return; }
 
     if (!data.confirmation_token) {
       if (confirmationMode === 'redirect' && data.confirmation_url) {
@@ -516,7 +543,7 @@ async function startPayment() {
         if (!r.ok) return;
         var st = await r.json();
         if (finished) return;
-        if (st.paid) { finished = true; if (stopTimer) clearInterval(stopTimer); try { checkout.destroy(); } catch (e) {} showSuccess(orderId, phone); }
+        if (st.paid) { finished = true; if (stopTimer) clearInterval(stopTimer); try { checkout.destroy(); } catch (e) {} showSuccess(orderId, phone, !!st.is_partner_self_order); }
         else if (st.status === 'failed' || st.status === 'canceled') {
           finished = true; if (stopTimer) clearInterval(stopTimer); try { checkout.destroy(); } catch (e) {}
           box.style.display = 'none';
@@ -551,7 +578,8 @@ async function startPayment() {
 }
 
 /* ── Экран 4: успех ── */
-function showSuccess(orderId, phone) {
+function showSuccess(orderId, phone, isSelfOrder) {
+  QR_SELF_ORDER = !!isSelfOrder;
   SUCCESS_PHONE = phone || '';
   SUCCESS_ORDER_ID = orderId || '';
   trackGoalOnce('payment_success', orderId, {
@@ -568,7 +596,7 @@ function showSuccess(orderId, phone) {
     + '<div class="success-product"><b>' + esc(CTX.product.name) + '</b><span>' + esc(CTX.selVariant.weight) + ' · 1 шт.</span></div>'
     + (CTX.point ? '<p class="small" style="margin-top:12px">📍 ' + esc(CTX.point.name) + (CTX.point.addr ? '<br>' + esc(CTX.point.addr) : '') + '</p>' : '')
     + '<div class="order-code">Заказ ' + esc(orderId) + '</div>'
-    + (phone ? '<p class="small" style="margin-top:14px">Заказ привязан к номеру ' + esc(phone) + '.<br>Косточки-бонусы начислятся на этот номер.</p>' : '')
+    + (phone ? '<p class="small" style="margin-top:14px">Заказ привязан к номеру ' + esc(phone) + '.<br>' + (QR_SELF_ORDER ? '🐾 Самозаказ: вознаграждение начислено по вашему тарифу; косточки не списываются и не начисляются.' : 'Косточки-бонусы начислятся на этот номер.') + '</p>' : '')
     + '<button class="link-btn" onclick="location.href=\'/?page=account&open_orders=1\'">Открыть мой заказ</button>'
     + '<div class="notify-title">Получать уведомления о заказах</div>'
     + '<div class="notify-grid">'
@@ -658,7 +686,7 @@ async function handlePaymentReturn(orderCode) {
       var response = await fetch('/api/order-payment-status/' + encodeURIComponent(orderCode), { cache:'no-store' });
       var result = await response.json();
       if (response.ok && result.paid) {
-        showSuccess(result.order_code || orderCode, knownPhone() === '+7' ? '' : knownPhone());
+        showSuccess(result.order_code || orderCode, knownPhone() === '+7' ? '' : knownPhone(), !!result.is_partner_self_order);
         return;
       }
       if (response.ok && (result.status === 'failed' || result.status === 'canceled')) {

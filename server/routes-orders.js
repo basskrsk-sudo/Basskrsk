@@ -114,7 +114,8 @@ function registerOrderRoutes(router) {
     const newRate = partner ? Number(partner.commission_rate || 0) : 0;
     if (Number(order.partner_id || 0) === Number(newPartnerId || 0)
         && String(order.partner_name || '') === String(newPartnerName || '')
-        && Number(order.commission_rate) === newRate) {
+        && Number(order.commission_rate) === newRate
+        && !order.is_partner_self_order) {
       return sendJson(res, 200, {
         ok: true,
         unchanged: true,
@@ -129,7 +130,7 @@ function registerOrderRoutes(router) {
       db.exec('BEGIN IMMEDIATE');
       db.prepare(`
         UPDATE orders
-        SET partner_id = ?, partner_name = ?, commission_rate = ?
+        SET partner_id = ?, partner_name = ?, commission_rate = ?, is_partner_self_order = 0
         WHERE id = ?
       `).run(newPartnerId, newPartnerName, newRate, order.id);
       db.prepare(`

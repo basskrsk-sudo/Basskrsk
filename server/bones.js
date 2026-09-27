@@ -123,6 +123,7 @@ function getMaxBonesShare(amountBeforeBones) {
   return tier ? tier.share : 0;
 }
 function computeMaxUsableBones(balance, amountBeforeBones, isSelfOrder) {
+  if (isSelfOrder) return 0;
   const maxSpendable = Math.floor(amountBeforeBones * getMaxBonesShare(amountBeforeBones));
   return Math.max(0, Math.min(Math.max(0, balance), maxSpendable));
 }

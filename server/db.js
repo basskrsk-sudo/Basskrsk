@@ -606,7 +606,8 @@ CREATE TABLE IF NOT EXISTS orders (
   delivery_address TEXT,                 -- адрес для 'home_delivery' (доставка курьером/своими силами)
   delivery_fee     INTEGER NOT NULL DEFAULT 0,       -- стоимость доставки, уже включена в total
   has_custom_item  INTEGER NOT NULL DEFAULT 0,
-  commission_rate  REAL,                 -- ставка партнёра, зафиксированная НА МОМЕНТ этого заказа (обычный уровень грумера, либо 0% для самозаказа — см. routes-payment.js). NULL у старых заказов — тогда используется текущая ставка партнёра как раньше.
+  commission_rate  REAL,                 -- ставка партнёра, зафиксированная НА МОМЕНТ этого заказа. NULL у старых заказов — тогда используется текущая ставка партнёра как раньше.
+  is_partner_self_order INTEGER NOT NULL DEFAULT 0, -- самозаказ грумера: комиссия по тарифу, косточки отключены
   status           TEXT NOT NULL DEFAULT 'pending', -- 'pending'|'paid'|'failed'|'cancelled'
   yookassa_payment_id TEXT,
   reservation_status TEXT NOT NULL DEFAULT 'none', -- 'none'|'active'|'consumed'|'released'
@@ -1118,6 +1119,7 @@ ensureColumn('customers', 'bones_balance', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('customers', 'profile_bones_awarded', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'bones_used', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'commission_rate', 'REAL');
+ensureColumn('orders', 'is_partner_self_order', 'INTEGER NOT NULL DEFAULT 0');
 // Резерв товара и косточек на время оплаты. Старые заказы получают 'none' и
 // не затрагиваются; новые pending-заказы держат резерв до оплаты/отмены.
 ensureColumn('orders', 'reservation_status', "TEXT NOT NULL DEFAULT 'none'");
@@ -1186,6 +1188,17 @@ CREATE TABLE IF NOT EXISTS expenses (
   note          TEXT,
   created_by    TEXT,                                 -- логин администратора, кто внёс запись
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- История изменений плановых допущений юнит-экономики. Сама актуальная
+-- модель хранится одной JSON-записью в site_settings, журнал нужен для
+-- управленческого контроля изменений супер-администратора.
+CREATE TABLE IF NOT EXISTS unit_economics_settings_log (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_id         INTEGER,
+  admin_login      TEXT,
+  assumptions_json TEXT NOT NULL,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Архив управленческих отчётов для еженедельной планёрки ГД. На каждую

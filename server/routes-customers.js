@@ -431,13 +431,13 @@ function generateUniqueReferralCode() {
 // bonesUsed — сколько косточек клиент списал на ЭТОТ заказ: если больше 0,
 // кэшбэк на этот же заказ не начисляется (либо тратим, либо зарабатываем —
 // не одновременно).
-function recordCustomerOrder(phone, name, lname, total, email, referralCode, bonesUsed) {
+function recordCustomerOrder(phone, name, lname, total, email, referralCode, bonesUsed, suppressBones) {
   const normalized = normalizePhone(phone);
   if (!normalized) return;
   const existing = db.prepare('SELECT * FROM customers WHERE phone = ?').get(normalized);
   if (!existing) {
     let referredBy = null;
-    if (referralCode) {
+    if (referralCode && !suppressBones) {
       const referrer = db.prepare('SELECT * FROM customers WHERE referral_code = ?').get(String(referralCode).trim().toUpperCase());
       if (referrer && referrer.phone !== normalized) referredBy = referrer.id;
     }
@@ -446,14 +446,14 @@ function recordCustomerOrder(phone, name, lname, total, email, referralCode, bon
       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'), 1, ?)
     `).run(normalized, name || null, lname || null, email || null, referredBy, total);
 
-    if (referredBy) rewardReferralPair(referredBy, info.lastInsertRowid, name);
+    if (referredBy && !suppressBones) rewardReferralPair(referredBy, info.lastInsertRowid, name);
   } else {
     // Кэшбэк считаем по статусу клиента ДО этого заказа (сколько заказов уже
     // было, какой у питомца день рождения) — то же правило, что действовало
     // бы, если бы это была скидка в чекауте, просто выплачивается постфактум.
     // Если клиент в этом же заказе списал косточки — кэшбэк не начисляем:
     // либо тратим, либо зарабатываем, не одновременно.
-    const usedBonesThisOrder = Number(bonesUsed) > 0;
+    const usedBonesThisOrder = Number(bonesUsed) > 0 || !!suppressBones;
     const loyaltyPercent = usedBonesThisOrder ? 0 : getLoyaltyPercent(existing.orders_count, existing.phone);
     const isBirthday = usedBonesThisOrder ? false : isPetBirthdayToday(existing.pet_birthday);
     const birthdayPercent = getDiscountSettings().pet_birthday_percent;

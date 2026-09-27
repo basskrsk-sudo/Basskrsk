@@ -53,6 +53,9 @@ function buildCustomerMessage(order, items) {
   const bones = Number(order.bones_used || 0) > 0
     ? '\n🦴 Списано косточек: ' + money(order.bones_used)
     : '';
+  const selfOrder = order.is_partner_self_order
+    ? '\n🐾 Самозаказ: вознаграждение по тарифу; косточки не списываются и не начисляются.'
+    : '';
   const finalLine = isDelivery
     ? 'Мы сообщим, когда заказ будет передан в доставку.'
     : 'Товар можно самостоятельно забрать из минимаркета — обращаться к сотруднику не обязательно.';
@@ -64,7 +67,7 @@ function buildCustomerMessage(order, items) {
     '',
     itemsText(items),
     '',
-    '💵 Оплачено: <b>' + money(order.total) + '</b>' + bones,
+    '💵 Оплачено: <b>' + money(order.total) + '</b>' + bones + selfOrder,
     '',
     '→ ' + finalLine,
   ].join('\n');
@@ -75,7 +78,7 @@ function buildPartnerMessage(order, items, partner) {
   const reward = Math.round(Number(order.total || 0) * rate);
   const rewardLine = rate > 0
     ? '💸 Ваше вознаграждение: <b>' + money(reward) + '</b> (' + Math.round(rate * 100) + '%)'
-    : 'ℹ️ Самозаказ: вознаграждение грумера не начисляется.';
+    : 'ℹ️ Вознаграждение по этому заказу не начисляется.';
   return [
     '💰 <b>Новая продажа у вас</b>',
     '',
@@ -88,6 +91,7 @@ function buildPartnerMessage(order, items, partner) {
     '',
     '💵 Сумма продажи: <b>' + money(order.total) + '</b>',
     rewardLine,
+    ...(order.is_partner_self_order ? ['🐾 Самозаказ: косточки не списываются и не начисляются.'] : []),
   ].join('\n');
 }
 

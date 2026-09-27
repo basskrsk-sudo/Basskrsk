@@ -453,6 +453,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   .tbl { font-size: .74rem; min-width: 480px; }
   .bsc-hero { grid-template-columns:1fr !important; }
   .bsc-form-two { grid-template-columns:1fr !important; }
+  .unit-econ-layout { grid-template-columns:1fr !important; }
 }
 
 </style>
@@ -780,6 +781,27 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     <!-- ══ ЭКОНОМИКА ПРОЕКТА ══ -->
     <div id="sec-economics" style="display:none;">
+      <div class="card" id="unit-economics-card" style="display:none;margin-bottom:1rem;border-top:4px solid var(--amber);">
+        <div class="card-title" style="align-items:flex-start;gap:1rem;">
+          <span>Юнит-экономика заказа<small style="display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:.25rem;">Плановая модель · доступна только супер-администратору</small></span>
+          <button class="row-btn" style="background:var(--forest);color:#fff;" onclick="saveUnitEconomics()">Сохранить допущения</button>
+        </div>
+        <p style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:1rem;">Изменения пересчитываются сразу, но не меняют реальные комиссии, выплаты и P&amp;L. Постоянные и центральные расходы в модели не учитываются.</p>
+        <div class="unit-econ-layout" style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:1rem;align-items:start;">
+          <div>
+            <div style="font-size:.78rem;font-weight:700;color:var(--deep);margin-bottom:.6rem;">Допущения</div>
+            <div id="unit-econ-inputs" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.65rem;"></div>
+            <div id="unit-econ-updated" style="font-size:.72rem;color:var(--muted);margin-top:.7rem;"></div>
+          </div>
+          <div>
+            <div id="unit-econ-summary" class="grid-2" style="gap:.6rem;margin-bottom:.8rem;"></div>
+            <div style="font-size:.78rem;font-weight:700;color:var(--deep);margin-bottom:.35rem;">Расчёт на один заказ</div>
+            <div id="unit-econ-waterfall"></div>
+            <div id="unit-econ-status" style="margin-top:.75rem;padding:.7rem .8rem;border-radius:8px;font-size:.78rem;line-height:1.45;"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="card" style="margin-bottom:1rem;">
         <div class="card-title" style="margin-bottom:.8rem;">Расходы (закуп товара, непредвиденные и любые другие) вносите вручную по факту — так точнее, чем расчёт от цены за штуку. Комиссии партнёру, менеджеру, владельцу точки, налог и эквайринг считаются автоматически из реальных заказов и уже настроенных в системе ставок.</div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
@@ -3098,6 +3120,141 @@ async function runWinbackNow() {
 
 // ── ЭКОНОМИКА ПРОЕКТА ──────────────────────────────────────────────
 let econPeriodMode = '7d';
+let unitEconomicsAssumptions = null;
+const UNIT_ECON_FIELDS = [
+  { key:'average_order_value', label:'Средний чек', suffix:'₽', step:'1' },
+  { key:'monthly_orders_per_point', label:'Заказов на точку в месяц', suffix:'шт.', step:'1' },
+  { key:'gross_margin_percent', label:'Валовая маржа', suffix:'%', step:'0.1' },
+  { key:'groomer_commission_percent', label:'Вознаграждение грумеру', suffix:'%', step:'0.1' },
+  { key:'self_selected_orders_percent', label:'Заказы «Выбрал всё сам»', suffix:'%', step:'0.1' },
+  { key:'manager_commission_percent', label:'Вознаграждение менеджеру', suffix:'%', step:'0.1' },
+  { key:'owner_commission_percent', label:'Вознаграждение владельцу точки', suffix:'%', step:'0.1' },
+  { key:'acquiring_percent', label:'Эквайринг', suffix:'%', step:'0.1' },
+  { key:'logistics_percent', label:'Логистика', suffix:'%', step:'0.1' },
+  { key:'writeoffs_percent', label:'Списания и недостачи', suffix:'%', step:'0.1' },
+  { key:'bonuses_it_percent', label:'Бонусы и переменный IT', suffix:'%', step:'0.1' },
+  { key:'tax_percent', label:'Налоговый резерв', suffix:'%', step:'0.1' },
+  { key:'launch_cost', label:'Запуск новой точки', suffix:'₽', step:'100' },
+  { key:'manager_launch_bonus', label:'Бонус менеджеру за запуск', suffix:'₽', step:'100' },
+];
+
+function unitMoney(value) {
+  return Number(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽';
+}
+
+function readUnitEconomicsInputs() {
+  const assumptions = {};
+  UNIT_ECON_FIELDS.forEach(function(field) {
+    assumptions[field.key] = Number(document.getElementById('unit-econ-' + field.key).value || 0);
+  });
+  return assumptions;
+}
+
+function calculateUnitEconomicsClient(a) {
+  const revenue = a.average_order_value;
+  const grossProfit = revenue * a.gross_margin_percent / 100;
+  const productCost = revenue - grossProfit;
+  const effectiveGroomerRate = a.groomer_commission_percent * (1 - a.self_selected_orders_percent / 100);
+  const costs = {
+    groomer_commission: revenue * effectiveGroomerRate / 100,
+    manager_commission: revenue * a.manager_commission_percent / 100,
+    owner_commission: revenue * a.owner_commission_percent / 100,
+    acquiring: revenue * a.acquiring_percent / 100,
+    logistics: revenue * a.logistics_percent / 100,
+    writeoffs: revenue * a.writeoffs_percent / 100,
+    bonuses_it: revenue * a.bonuses_it_percent / 100,
+    tax: revenue * a.tax_percent / 100,
+  };
+  const afterProduct = Object.values(costs).reduce(function(sum, value) { return sum + value; }, 0);
+  const contribution = revenue - productCost - afterProduct;
+  const monthlyContribution = contribution * a.monthly_orders_per_point;
+  const launchInvestment = a.launch_cost + a.manager_launch_bonus;
+  return {
+    revenue_per_order: revenue,
+    product_cost_per_order: productCost,
+    gross_profit_per_order: grossProfit,
+    effective_groomer_rate_percent: effectiveGroomerRate,
+    costs_per_order: costs,
+    total_variable_costs_per_order: productCost + afterProduct,
+    contribution_per_order: contribution,
+    contribution_margin_percent: revenue ? contribution / revenue * 100 : 0,
+    break_even_gross_margin_percent: effectiveGroomerRate + a.manager_commission_percent + a.owner_commission_percent + a.acquiring_percent + a.logistics_percent + a.writeoffs_percent + a.bonuses_it_percent + a.tax_percent,
+    monthly_revenue_per_point: revenue * a.monthly_orders_per_point,
+    monthly_contribution_per_point: monthlyContribution,
+    launch_investment: launchInvestment,
+    orders_to_payback: contribution > 0 ? launchInvestment / contribution : null,
+    payback_months: monthlyContribution > 0 ? launchInvestment / monthlyContribution : null,
+  };
+}
+
+function unitEconResultCard(label, value, accent) {
+  return '<div style="padding:.75rem;border:1px solid var(--border);border-radius:10px;background:var(--white);"><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;line-height:1.35;">' + label + '</div><div style="font-size:1.15rem;font-weight:750;color:' + (accent || 'var(--deep)') + ';margin-top:.25rem;">' + value + '</div></div>';
+}
+
+function renderUnitEconomicsResults(results) {
+  const positive = results.contribution_per_order > 0;
+  const contributionColor = positive ? '#2D7D46' : '#9B2335';
+  document.getElementById('unit-econ-summary').innerHTML =
+    unitEconResultCard('Остаётся с заказа', unitMoney(results.contribution_per_order), contributionColor) +
+    unitEconResultCard('Маржинальность', Number(results.contribution_margin_percent).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + '%', contributionColor) +
+    unitEconResultCard('С точки в месяц', unitMoney(results.monthly_contribution_per_point), contributionColor) +
+    unitEconResultCard('Окупаемость запуска', results.payback_months === null ? 'не окупается' : Number(results.payback_months).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' мес.', contributionColor);
+  const costLabels = {
+    groomer_commission:'Грумер (эффективно ' + Number(results.effective_groomer_rate_percent).toLocaleString('ru-RU', { maximumFractionDigits:2 }) + '%)', manager_commission:'Менеджер', owner_commission:'Владелец точки',
+    acquiring:'Эквайринг', logistics:'Логистика', writeoffs:'Списания', bonuses_it:'Бонусы и IT', tax:'Налоговый резерв'
+  };
+  let rows = pnlRow('Выручка заказа', results.revenue_per_order);
+  rows += pnlRow('Себестоимость товара', results.product_cost_per_order, { isCost:true });
+  Object.keys(costLabels).forEach(function(key) { rows += pnlRow(costLabels[key], results.costs_per_order[key], { isCost:true }); });
+  rows += pnlRow('Остаётся бизнесу', results.contribution_per_order, { bold:true, border:true });
+  document.getElementById('unit-econ-waterfall').innerHTML = rows;
+  const status = document.getElementById('unit-econ-status');
+  const margin = Number(results.contribution_margin_percent).toLocaleString('ru-RU', { maximumFractionDigits:2 });
+  const breakEven = Number(results.break_even_gross_margin_percent).toLocaleString('ru-RU', { maximumFractionDigits:2 });
+  const paybackOrders = results.orders_to_payback === null ? '—' : Math.ceil(results.orders_to_payback).toLocaleString('ru-RU');
+  status.style.background = positive ? '#E9F6ED' : '#FDECEA';
+  status.style.color = positive ? '#216536' : '#9B2335';
+  status.innerHTML = positive
+    ? '<strong>Модель прибыльна.</strong> Вклад после переменных затрат — ' + margin + '%. Минимальная валовая маржа для выхода в ноль — ' + breakEven + '%. Для возврата ' + unitMoney(results.launch_investment) + ' потребуется примерно ' + paybackOrders + ' заказов.'
+    : '<strong>Модель убыточна.</strong> Валовая маржа должна быть выше ' + breakEven + '% либо необходимо снизить комиссии и переменные расходы.';
+}
+
+function previewUnitEconomics() {
+  if (currentAdminRole !== 'super') return;
+  unitEconomicsAssumptions = readUnitEconomicsInputs();
+  renderUnitEconomicsResults(calculateUnitEconomicsClient(unitEconomicsAssumptions));
+}
+
+async function renderUnitEconomics() {
+  const card = document.getElementById('unit-economics-card');
+  card.style.display = currentAdminRole === 'super' ? 'block' : 'none';
+  if (currentAdminRole !== 'super') return;
+  const res = await authFetch('/api/economics/unit-model');
+  const data = await res.json();
+  if (!res.ok) {
+    document.getElementById('unit-econ-status').textContent = data.error || 'Не удалось загрузить модель.';
+    return;
+  }
+  unitEconomicsAssumptions = data.assumptions;
+  document.getElementById('unit-econ-inputs').innerHTML = UNIT_ECON_FIELDS.map(function(field) {
+    return '<label style="display:block;padding:.65rem .7rem;border:1px solid var(--border);border-radius:9px;background:var(--white);"><span style="display:block;font-size:.72rem;color:var(--muted);line-height:1.3;margin-bottom:.35rem;">' + field.label + '</span><span style="display:flex;align-items:center;gap:.4rem;"><input id="unit-econ-' + field.key + '" type="number" min="0" step="' + field.step + '" value="' + Number(data.assumptions[field.key]) + '" oninput="previewUnitEconomics()" style="width:100%;min-width:0;"><strong style="font-size:.76rem;color:var(--muted);">' + field.suffix + '</strong></span></label>';
+  }).join('');
+  const updated = data.updated_at ? 'Последнее изменение: ' + new Date(data.updated_at + 'Z').toLocaleString('ru-RU') + (data.updated_by ? ' · ' + data.updated_by : '') : 'Используются базовые допущения модели.';
+  document.getElementById('unit-econ-updated').textContent = updated;
+  renderUnitEconomicsResults(data.results);
+}
+
+async function saveUnitEconomics() {
+  if (currentAdminRole !== 'super') return;
+  const assumptions = readUnitEconomicsInputs();
+  const res = await authFetch('/api/economics/unit-model', { method:'PUT', body:{ assumptions:assumptions } });
+  const data = await res.json();
+  if (!res.ok) return alert(data.error || 'Не удалось сохранить допущения.');
+  unitEconomicsAssumptions = data.assumptions;
+  renderUnitEconomicsResults(data.results);
+  document.getElementById('unit-econ-updated').textContent = 'Сохранено только что · ' + (data.updated_by || 'супер-администратор');
+}
+
 function econPeriodRange() {
   const now = new Date();
   let from, to = null;
@@ -3138,6 +3295,7 @@ function pnlRow(label, value, opts) {
     '</div>';
 }
 async function renderEconomics() {
+  await renderUnitEconomics();
   const filterSel = document.getElementById('econ-city-filter');
   const currentFilterValue = filterSel ? filterSel.value : '';
   if (filterSel) {
@@ -3709,12 +3867,10 @@ function renderOrders() {
       ? '<button class="row-btn" onclick="openOrderPartnerModal(' + o.id + ')">Грумер</button> ' +
         '<button class="row-btn" onclick="openRefundModal(' + o.id + ')">Возврат</button> ' + deleteBtn
       : deleteBtn;
-    // Нулевая ставка означает явный выбор без комиссии. Если partner_id есть,
-    // телефон совпал с грумером (самозаказ); без partner_id клиент выбрал сам.
-    const isPartnerSelfOrder = !!o.partner_id && o.commission_rate === 0;
+    const isPartnerSelfOrder = !!o.is_partner_self_order;
     const isAdvisorSelfChoice = !o.partner_id && o.commission_rate === 0;
     const selfBadge = isPartnerSelfOrder
-      ? ' <span title="Самозаказ грумера — комиссия не начислена" style="background:#FFF4E5;color:#7A4A00;font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:50px;margin-left:.3rem;">САМОЗАКАЗ</span>'
+      ? ' <span title="Самозаказ грумера — вознаграждение по тарифу, без косточек" style="background:#FFF4E5;color:#7A4A00;font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:50px;margin-left:.3rem;">САМОЗАКАЗ</span>'
       : isAdvisorSelfChoice
         ? ' <span title="Покупатель выбрал товар самостоятельно" style="background:#EDF5EE;color:#2D5A3F;font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:50px;margin-left:.3rem;">ВЫБРАЛ САМ</span>'
         : '';

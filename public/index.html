@@ -2473,7 +2473,7 @@
           <div class="checkout-advisor-hint" id="oGroomerLinkHint"></div>
         </div>
         <div id="oSelfOrderBanner" style="display:none;background:#FFF4E5;border-radius:8px;padding:.7rem .9rem;margin-bottom:.9rem;font-size:.82rem;color:#7A4A00;line-height:1.5;">
-          🐾 Похоже, вы оформляете заказ сами себе (телефон совпадает с вашим как партнёра точки) — комиссия на этот заказ не начислится, а кэшбэк как клиенту вы получите как обычно.
+          🐾 Самозаказ грумера: вознаграждение начислится по вашему тарифу. Косточки в этом заказе нельзя списать, и новые косточки не начисляются.
         </div>
         <div id="pickup-instant-note" style="background:#FDF3DC;border-radius:var(--radius);padding:.9rem 1rem;margin-bottom:1.2rem;font-size:.85rem;color:var(--deep);line-height:1.6;">
           ✅ Товар уже находится в минимаркете. После оплаты заберите его самостоятельно — обращаться к сотруднику не обязательно.
@@ -4163,6 +4163,7 @@ function getMaxBonesShareClient(amountBeforeBones) {
   return 0.10;
 }
 function getMaxUsableBones() {
+  if (isCurrentOrderSelfOrder) return 0;
   if (!customerBonesBalance) return 0;
   const subtotal = getCartSubtotal();
   const afterDiscount = subtotal; // скидок по промокоду больше нет, только косточки-кэшбэк
@@ -4179,6 +4180,13 @@ function renderBonesBlock() {
   const box = document.getElementById('bones-block');
   if (!wrap || !box) return;
 
+  if (isCurrentOrderSelfOrder) {
+    wrap.style.display = 'block';
+    useBones = false;
+    bonesToUse = 0;
+    box.innerHTML = '<div style="background:#FFF4E5;border:1px solid #F0DDB8;border-radius:6px;padding:.65rem .8rem;font-size:.82rem;color:#7A4A00;">🐾 При самозаказе косточки не списываются и не начисляются.</div>';
+    return;
+  }
   if (!customerBonesBalance || customerBonesBalance <= 0) {
     wrap.style.display = 'none';
     useBones = false;
@@ -5725,7 +5733,7 @@ function getGroomerPartnerId() {
 }
 
 // Предупреждает грумера ДО оплаты, что он оформляет заказ сам себе —
-// комиссия на такой заказ не начисляется (см. routes-payment.js). Нужны
+// вознаграждение идёт по тарифу, а косточки отключаются. Нужны
 // оба значения — точка и телефон, поэтому вызывается и при смене точки,
 // и при вводе телефона; если чего-то не хватает, просто прячет баннер.
 async function checkSelfOrderWarning() {
@@ -5828,6 +5836,7 @@ async function goToPayment() {
   });
   syncPickupHiddenField();
   await checkLoyaltyByPhone(); // на случай если onblur не сработал (автозаполнение и т.п.)
+  await checkSelfOrderWarning(); // сервер всё равно перепроверит, но итог на экране должен быть точным
   const subtotal = getCartSubtotal();
   const afterDiscount = subtotal; // скидок по промокоду больше нет, только косточки-кэшбэк
   const sbpDiscount = getSbpDiscountAmount(afterDiscount);
@@ -5841,11 +5850,11 @@ async function goToPayment() {
   document.getElementById('order-summary-modal').innerHTML = `
     <div style="margin-bottom:.75rem;font-weight:600;color:var(--deep);">Состав заказа</div>
     ${cart.map(i=>`<div style="display:flex;justify-content:space-between;"><span>${i.icon} ${i.name} (${i.weight}) × ${i.qty}</span><span style="font-weight:600;">${i.price*i.qty} ₽</span></div>`).join('')}
-    ${referralCodeValid ? `
+    ${!isCurrentOrderSelfOrder && referralCodeValid ? `
     <div style="display:flex;justify-content:space-between;color:#7A4A00;">
       <span>🎁 Код друга (${referralReferrerName}) — после оплаты</span><span>+${referralBonesAwarded} 🦴</span>
     </div>` : ''}
-    ${cashbackBones > 0 ? `
+    ${!isCurrentOrderSelfOrder && cashbackBones > 0 ? `
     <div style="display:flex;justify-content:space-between;color:#7A4A00;">
       <span>${isPetBirthdayCheckout ? '🎂 Кэшбэк ко дню рождения питомца' : '🎉 Кэшбэк постоянного клиента'} (${loyaltyPercent}%) — после оплаты</span><span>+${cashbackBones} 🦴</span>
     </div>` : ''}
@@ -5857,6 +5866,7 @@ async function goToPayment() {
     <div style="display:flex;justify-content:space-between;color:#2D7D46;">
       <span>🦴 Косточки</span><span>−${bonesToUse} ₽</span>
     </div>` : ''}
+    ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 Самозаказ: вознаграждение по тарифу; косточки не списываются и не начисляются.</div>' : ''}
     <div style="border-top:1px solid var(--border);margin-top:.75rem;padding-top:.75rem;display:flex;justify-content:space-between;font-weight:700;font-size:1rem;">
       <span>Итого</span><span style="color:var(--amber);">${total} ₽</span>
     </div>
@@ -5972,8 +5982,8 @@ async function checkConfirmedPayment(paymentId) {
     );
     if (!res.ok) return { paid: false, status: 'pending' };
     const data = await res.json();
-    if (data.paid) return { paid: true, status: 'paid' };
-    return { paid: false, status: data.status || 'pending' };
+    if (data.paid) return { paid: true, status: 'paid', is_partner_self_order: !!data.is_partner_self_order };
+    return { paid: false, status: data.status || 'pending', is_partner_self_order: !!data.is_partner_self_order };
   } catch (e) {
     return { paid: false, status: 'pending' };
   }
@@ -6052,6 +6062,8 @@ async function launchYooKassaPayment() {
   const phone   = document.getElementById('oPhone').value.trim();
   const email   = document.getElementById('oEmail').value.trim();
   rememberPhone(phone);
+  await checkSelfOrderWarning();
+  if (isCurrentOrderSelfOrder) { useBones = false; bonesToUse = 0; }
   const isDelivery = fulfillmentType === 'home_delivery';
   const deliveryAddress = document.getElementById('oDeliveryAddress').value.trim();
   const pickup  = isDelivery ? ('🚚 Доставка на дом — ' + deliveryAddress) : document.getElementById('oPickup').value;
@@ -6173,6 +6185,7 @@ async function launchYooKassaPayment() {
     if (data.demo === true) {
       // Явный тестовый режим сервера (DEMO_MODE=true). В обычной среде без
       // настроенной ЮKassa этот ответ никогда не возвращается.
+      isCurrentOrderSelfOrder = !!data.is_partner_self_order;
       payBtn.disabled = false; payBtn.innerHTML = originalBtnHtml;
       simulatePaymentSuccess(orderId, name, lname, phone, pickup, total, comment);
       return;
@@ -6257,7 +6270,10 @@ async function launchYooKassaPayment() {
       paymentStatusCheckRunning = true;
       const confirmed = await checkConfirmedPayment(data.payment_id);
       paymentStatusCheckRunning = false;
-      if (confirmed.paid) showConfirmedPayment();
+      if (confirmed.paid) {
+        isCurrentOrderSelfOrder = !!confirmed.is_partner_self_order;
+        showConfirmedPayment();
+      }
       else if (confirmed.status === 'failed' || confirmed.status === 'canceled') showFailedPayment();
     };
 
@@ -6317,6 +6333,7 @@ async function handleRedirectPaymentReturn() {
       );
       const data = await res.json();
       if (res.ok && data.paid) {
+        isCurrentOrderSelfOrder = !!data.is_partner_self_order;
         const pending = readPendingSuccess(orderCode);
         const successType = pending && pending.fulfillmentType ? pending.fulfillmentType : 'pickup';
         configureSuccessFulfillment(successType);
@@ -6330,6 +6347,7 @@ async function handleRedirectPaymentReturn() {
             <div>📋 <strong>Заказ:</strong> ${escapeHtml(data.order_code || orderCode)}</div>
             ${pending && pending.pickup ? `<div>📍 <strong>${successType === 'home_delivery' ? 'Доставка' : 'Минимаркет'}:</strong> ${escapeHtml(pending.pickup)}</div>` : ''}
             ${pending && pending.total ? `<div>💳 <strong>Оплачено:</strong> <span style="color:var(--amber);font-weight:700;">${Number(pending.total)} ₽</span></div>` : ''}
+            ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 <strong>Самозаказ:</strong> вознаграждение по тарифу; косточки не списываются и не начисляются.</div>' : ''}
           </div>`;
         document.getElementById('loyalty-badge-card').style.display = 'none';
         trackGoalOnce('payment_success', data.order_code || orderCode, {
@@ -6436,7 +6454,7 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
   const badgeCard = document.getElementById('loyalty-badge-card');
   const leveledUp = tierAfter.key !== 'none' && tierAfter.key !== tierBefore.key;
 
-  if (tierAfter.key !== 'none') {
+  if (!isCurrentOrderSelfOrder && tierAfter.key !== 'none') {
     const progressText = tierAfter.nextTier
       ? (tierAfter.nextTier.minOrders - newOrdersTotal) + ' заказ(ов) до уровня «' + tierAfter.nextTier.name + '» (' + tierAfter.nextTier.percent + '%)'
       : 'Вы на максимальном уровне — выше пока некуда 🎉';
@@ -6461,9 +6479,10 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
       <div>📞 <strong>Телефон:</strong> ${escapeHtml(phone)}</div>
       <div>📍 <strong>${fulfillmentType === 'home_delivery' ? 'Доставка' : 'Минимаркет'}:</strong> ${escapeHtml(pickup)}</div>
       ${comment && comment.trim() ? `<div>💬 <strong>Пожелание:</strong> ${escapeHtml(comment.trim())}</div>` : ''}
-      ${referralCodeValid ? `<div>🎁 <strong>Код друга (${escapeHtml(referralReferrerName)}):</strong> +${referralBonesAwarded} 🦴 начислим на баланс</div>` : ''}
-      ${getLoyaltyCashbackAmount(subtotal) > 0 ? `<div>${isPetBirthdayCheckout ? '🎂' : '🎉'} <strong>Кэшбэк ${loyaltyPercent}%:</strong> +${getLoyaltyCashbackAmount(subtotal)} 🦴 начислим на баланс</div>` : ''}
+      ${!isCurrentOrderSelfOrder && referralCodeValid ? `<div>🎁 <strong>Код друга (${escapeHtml(referralReferrerName)}):</strong> +${referralBonesAwarded} 🦴 начислим на баланс</div>` : ''}
+      ${!isCurrentOrderSelfOrder && getLoyaltyCashbackAmount(subtotal) > 0 ? `<div>${isPetBirthdayCheckout ? '🎂' : '🎉'} <strong>Кэшбэк ${loyaltyPercent}%:</strong> +${getLoyaltyCashbackAmount(subtotal)} 🦴 начислим на баланс</div>` : ''}
       ${bonesToUse > 0 ? `<div>🦴 <strong>Оплачено косточками:</strong> −${bonesToUse} ₽</div>` : ''}
+      ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 <strong>Самозаказ:</strong> вознаграждение начислено по вашему тарифу; косточки не списываются и не начисляются.</div>' : ''}
       <div style="border-top:1px solid var(--border);margin-top:.5rem;padding-top:.5rem;">
         💳 <strong>Оплачено через ЮKassa:</strong> <span style="color:var(--amber);font-weight:700;">${subtotal} ₽</span>
       </div>
@@ -6482,6 +6501,7 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
   customerBonesBalance = 0;
   useBones = false;
   bonesToUse = 0;
+  isCurrentOrderSelfOrder = false;
   const deliveryAddrField = document.getElementById('oDeliveryAddress');
   if (deliveryAddrField) deliveryAddrField.value = '';
   setFulfillmentType('pickup');

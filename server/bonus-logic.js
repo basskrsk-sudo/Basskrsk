@@ -55,8 +55,8 @@ function computePointProfitSoFar(pointId, partnerRate, managerRate) {
     if (variant && variant.cost_price) cogs += variant.cost_price * item.qty;
   }
 
-  // Комиссия партнёра — по фактической ставке КАЖДОГО заказа (учитывает
-  // ставку 0% для самозаказов грумера, см. routes-payment.js),
+  // Комиссия партнёра — по фактической ставке КАЖДОГО заказа,
+  // зафиксированной при оплате (включая тариф грумера для самозаказа),
   // а не единым текущим уровнем партнёра на всю выручку.
   const partnerCommission = orders.reduce((s, o) => s + o.total * (o.commission_rate ?? (partnerRate || 0)), 0);
   const managerCommission = revenue * (managerRate || 0);

@@ -125,11 +125,8 @@ function buildOrderMessage(order, items) {
   const promoLine = order.promo_code ? '🏷 Промокод: ' + order.promo_code + '\n' : '';
   const bonesLine = order.bones_used > 0 ? '🦴 Оплачено косточками: ' + order.bones_used + ' ₽\n' : '';
   const deliveryFeeLine = isHomeDelivery ? '🚚 Доставка: ' + (order.delivery_fee > 0 ? order.delivery_fee + ' ₽' : 'бесплатно') + '\n' : '';
-  // Самозаказ грумера — определяем по зафиксированной на заказе ставке 0%
-  // (обычные тарифы партнёров — 15/18/20%, никогда не бывают нулевыми;
-  // у заказов без привязки к партнёру ставка не 0, а null — не спутать).
-  const selfOrderLine = order.commission_rate === 0
-    ? '👤 <b>САМОЗАКАЗ ГРУМЕРА</b> — комиссия на этот заказ не начислена (0%, партнёр не платит себе сам), плюс грумер получит 10% кэшбэком косточками как клиент.\n'
+  const selfOrderLine = order.is_partner_self_order
+    ? '👤 <b>САМОЗАКАЗ ГРУМЕРА</b> — вознаграждение начислено по тарифу ' + Math.round(Number(order.commission_rate || 0) * 100) + '%. Косточки не списываются и не начисляются.\n'
     : '';
   const actionLine = (isHomeDelivery
     ? '→ Соберите заказ, передайте курьеру или отвезите по адресу сами, свяжитесь с клиентом для согласования времени.'

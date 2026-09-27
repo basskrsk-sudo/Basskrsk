@@ -243,7 +243,7 @@ function registerOwnerRoutes(router) {
     if (!point) return sendJson(res, 200, { noPoint: true, message: 'Назначенная вам точка не найдена — обратитесь к администратору.' });
 
     const orders = db.prepare(`
-      SELECT id, total, partner_id, commission_rate, payment_method, created_at
+      SELECT id, total, partner_id, commission_rate, is_partner_self_order, payment_method, created_at
       FROM orders WHERE point_id = ? AND status = 'paid'
       ORDER BY created_at DESC
     `).all(owner.point_id);
@@ -304,7 +304,7 @@ function registerOwnerRoutes(router) {
     // Последние 20 заказов точки — для быстрого просмотра без захода в админку
     const recentOrders = orders.slice(0, 20).map((o) => ({
       id: o.id, total: o.total, payment_method: o.payment_method, created_at: o.created_at,
-      is_self_order: o.commission_rate === 0,
+      is_self_order: !!o.is_partner_self_order,
     }));
 
     // Реферальные бонусы — сколько владелец заработал, приведя новых грумеров

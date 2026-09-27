@@ -10,7 +10,12 @@
 
 const db = require('./db');
 const { sendJson } = require('./http-utils');
-const { requireAuth } = require('./routes-auth');
+const { requireAuth, requireSuperAdmin } = require('./routes-auth');
+const {
+  calculateUnitEconomics,
+  getUnitEconomicsSettings,
+  saveUnitEconomicsSettings,
+} = require('./unit-economics');
 
 // Те же допущения, что и в Excel-модели unit-экономики (taiga_unit_economics):
 // налог УСН 6% с выручки, эквайринг ЮKassa ~2%.
@@ -24,6 +29,34 @@ function parseDateParam(value, fallback) {
 }
 
 function registerEconomicsRoutes(router) {
+  // Плановая юнит-экономика не влияет на реальные начисления. Доступ к
+  // допущениям и результатам есть только у супер-администратора.
+  router.get('/api/economics/unit-model', (req, res, ctx) => {
+    const payload = requireSuperAdmin(req, res, ctx);
+    if (!payload) return;
+    const settings = getUnitEconomicsSettings();
+    sendJson(res, 200, {
+      ...settings,
+      results: calculateUnitEconomics(settings.assumptions),
+    });
+  });
+
+  router.put('/api/economics/unit-model', (req, res, ctx) => {
+    const payload = requireSuperAdmin(req, res, ctx);
+    if (!payload) return;
+    try {
+      const saved = saveUnitEconomicsSettings(ctx.body && ctx.body.assumptions, payload);
+      sendJson(res, 200, {
+        ok: true,
+        ...saved,
+        results: calculateUnitEconomics(saved.assumptions),
+      });
+    } catch (error) {
+      if (error.code === 'INVALID_ASSUMPTION') return sendJson(res, 400, { error: error.message });
+      throw error;
+    }
+  });
+
   // GET /api/economics/dashboard?from=&to=&city= — агрегированная экономика за период.
   // from/to — ISO-даты (включительно). city — необязательный фильтр по городу
   // (заказы фильтруются через точку, у orders нет своего city_id напрямую).
