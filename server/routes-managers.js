@@ -9,6 +9,17 @@ const { requireAuth } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
 const { getUnpaidSummary, listManagerPartnerPayouts } = require('./partner-payouts');
+const {
+  createManagerCommissionPayout,
+  createManagerLaunchBonusPayout,
+  getManagerUnpaidSummary,
+  listManagerPayouts,
+} = require('./manager-payouts');
+const {
+  previewManagerCommissionPayout,
+  previewManagerLaunchBonusPayout,
+  sendManagerPayoutNotification,
+} = require('./payout-reminders');
 
 function nextMgrCode() {
   const row = db.prepare("SELECT mgr_code FROM managers ORDER BY id DESC LIMIT 1").get();
@@ -18,8 +29,8 @@ function nextMgrCode() {
 }
 
 function safeMgr(a) {
-  const { password_hash, telegram_chat_id, ...rest } = a;
-  return { ...rest, telegram_connected: !!telegram_chat_id };
+  const { password_hash, telegram_chat_id, max_chat_id, ...rest } = a;
+  return { ...rest, telegram_connected: !!telegram_chat_id, max_connected: !!max_chat_id };
 }
 
 // Вознаграждение менеджера — постоянная ставка 7% со всех точек, без
@@ -40,13 +51,26 @@ function mgrWithPoints(a) {
   const points = db.prepare(`
     SELECT ap.*, rp.full_name AS referred_groomer_name, rp.partner_code AS referred_groomer_code,
            p.city_id AS actual_point_city_id, p.icon AS actual_point_icon,
-           COALESCE((SELECT SUM(o.total) FROM orders o WHERE o.point_id = ap.point_id AND o.status = 'paid'), 0) AS live_revenue
+           COALESCE((SELECT SUM(o.total) FROM orders o WHERE o.point_id = ap.point_id AND o.status = 'paid'), 0) AS live_revenue,
+           lbp.id AS launch_bonus_payout_id, lbp.paid_at AS launch_bonus_paid_at
     FROM manager_points ap
     LEFT JOIN partners rp ON rp.id = ap.referred_groomer_id
     LEFT JOIN points p ON p.id = ap.point_id
+    LEFT JOIN manager_launch_bonus_payouts lbp ON lbp.manager_point_id = ap.id
     WHERE ap.manager_id = ?
   `).all(a.id).map((row) => ({ ...row, revenue: row.live_revenue }));
-  return { ...safeMgr(a), points };
+  const commission = getManagerUnpaidSummary(a.id);
+  const paidCommission = db.prepare('SELECT COALESCE(SUM(amount), 0) AS amount FROM manager_commission_payouts WHERE manager_id = ?').get(a.id);
+  const unpaidLaunch = points.reduce((sum, point) => sum + (point.bonus_paid && !point.launch_bonus_payout_id ? Number(point.bonus_manager_amount || 2000) : 0), 0);
+  const paidLaunch = db.prepare('SELECT COALESCE(SUM(amount), 0) AS amount FROM manager_launch_bonus_payouts WHERE manager_id = ?').get(a.id);
+  return {
+    ...safeMgr(a), points,
+    commission_unpaid: commission.amount,
+    commission_unpaid_orders: commission.orders_count,
+    commission_paid_total: Number(paidCommission.amount || 0),
+    launch_bonus_unpaid: unpaidLaunch,
+    launch_bonus_paid_total: Number(paidLaunch.amount || 0),
+  };
 }
 
 function registerManagerRoutes(router) {
@@ -95,6 +119,100 @@ function registerManagerRoutes(router) {
       ? db.prepare('SELECT * FROM managers WHERE city_id = ? ORDER BY id DESC').all(cityFilter)
       : db.prepare('SELECT * FROM managers ORDER BY id DESC').all();
     sendJson(res, 200, { managers: rows.map(mgrWithPoints) });
+  });
+
+  // Единая история фактических выплат менеджерам: 7% и бонусы за запуск.
+  router.get('/api/manager-payouts', (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    const limit = Math.max(1, Math.min(500, parseInt(ctx.query.limit, 10) || 100));
+    sendJson(res, 200, { payouts: listManagerPayouts(limit) });
+  });
+
+  router.get('/api/managers/:id/payout-preview', (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    const preview = previewManagerCommissionPayout(Number(ctx.params.id));
+    if (!preview) return sendJson(res, 404, { error: 'Менеджер не найден' });
+    if (preview.amount <= 0 || preview.orders_count <= 0) {
+      return sendJson(res, 409, { error: 'У менеджера нет невыплаченного вознаграждения 7%' });
+    }
+    sendJson(res, 200, { preview });
+  });
+
+  router.post('/api/managers/:id/payouts', async (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    try {
+      const managerId = Number(ctx.params.id);
+      const preview = previewManagerCommissionPayout(managerId);
+      if (!preview) return sendJson(res, 404, { error: 'Менеджер не найден' });
+      const expectedAmount = Number(ctx.body && ctx.body.expected_amount);
+      const expectedOrders = Number(ctx.body && ctx.body.expected_orders_count);
+      const expectedMessage = String((ctx.body && ctx.body.expected_message) || '');
+      if (preview.amount !== expectedAmount || preview.orders_count !== expectedOrders || preview.message !== expectedMessage) {
+        return sendJson(res, 409, {
+          code: 'PAYOUT_CHANGED',
+          error: 'Данные выплаты изменились. Проверьте обновлённое сообщение и подтвердите ещё раз.',
+          preview,
+        });
+      }
+      const payout = createManagerCommissionPayout(managerId, payload);
+      let deliveries = [];
+      try {
+        deliveries = await sendManagerPayoutNotification(managerId, payout, expectedMessage, 'commission');
+      } catch (error) {
+        console.error('[manager-payout] Выплата записана, но уведомление не обработано:', error);
+      }
+      sendJson(res, 201, { ok: true, payout, deliveries });
+    } catch (error) {
+      if (error.code === 'MANAGER_NOT_FOUND') return sendJson(res, 404, { error: error.message });
+      if (error.code === 'NOTHING_TO_PAY') return sendJson(res, 409, { error: error.message });
+      console.error('[manager-payout] Не удалось зафиксировать выплату 7%:', error);
+      sendJson(res, 500, { error: 'Не удалось зафиксировать выплату менеджеру' });
+    }
+  });
+
+  router.get('/api/manager-points/:id/launch-bonus-payout-preview', (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    const preview = previewManagerLaunchBonusPayout(Number(ctx.params.id));
+    if (!preview) return sendJson(res, 404, { error: 'Точка менеджера не найдена' });
+    if (!preview.bonus_accrued) return sendJson(res, 409, { error: 'Бонус за запуск ещё не начислен' });
+    if (preview.already_paid) return sendJson(res, 409, { error: 'Бонус за запуск уже выплачен' });
+    sendJson(res, 200, { preview });
+  });
+
+  router.post('/api/manager-points/:id/launch-bonus-payouts', async (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    try {
+      const managerPointId = Number(ctx.params.id);
+      const preview = previewManagerLaunchBonusPayout(managerPointId);
+      if (!preview) return sendJson(res, 404, { error: 'Точка менеджера не найдена' });
+      const expectedAmount = Number(ctx.body && ctx.body.expected_amount);
+      const expectedMessage = String((ctx.body && ctx.body.expected_message) || '');
+      if (preview.amount !== expectedAmount || preview.message !== expectedMessage || preview.already_paid || !preview.bonus_accrued) {
+        return sendJson(res, 409, {
+          code: 'PAYOUT_CHANGED',
+          error: 'Данные выплаты изменились. Проверьте обновлённое сообщение и подтвердите ещё раз.',
+          preview,
+        });
+      }
+      const payout = createManagerLaunchBonusPayout(managerPointId, payload);
+      let deliveries = [];
+      try {
+        deliveries = await sendManagerPayoutNotification(payout.manager_id, payout, expectedMessage, 'launch_bonus');
+      } catch (error) {
+        console.error('[manager-launch-bonus] Выплата записана, но уведомление не обработано:', error);
+      }
+      sendJson(res, 201, { ok: true, payout, deliveries });
+    } catch (error) {
+      if (error.code === 'POINT_NOT_FOUND') return sendJson(res, 404, { error: error.message });
+      if (['NOT_ACCRUED', 'ALREADY_PAID'].includes(error.code)) return sendJson(res, 409, { error: error.message });
+      console.error('[manager-launch-bonus] Не удалось зафиксировать выплату:', error);
+      sendJson(res, 500, { error: 'Не удалось зафиксировать бонус за запуск' });
+    }
   });
 
   // PUT /api/managers/:id — админ меняет активность/данные
@@ -265,7 +383,7 @@ function registerManagerRoutes(router) {
     if (!existing) return sendJson(res, 404, { error: 'Менеджер не найден' });
 
     const { force } = ctx.body || {};
-    const paidBonuses = db.prepare('SELECT COUNT(*) AS c FROM manager_points WHERE manager_id = ? AND bonus_paid = 1').get(id).c;
+    const paidBonuses = db.prepare('SELECT COUNT(*) AS c FROM manager_launch_bonus_payouts WHERE manager_id = ?').get(id).c;
     if (paidBonuses > 0 && !force) {
       return sendJson(res, 400, {
         error: 'Менеджеру уже выплачено ' + paidBonuses + ' бонус(ов) за точки — удаление скроет эту историю. Деактивируйте вместо удаления, либо удалите принудительно.',

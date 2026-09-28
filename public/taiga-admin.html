@@ -520,6 +520,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   <div class="sidebar-label">Разделы</div>
   <button class="nav-item active" data-group="home" onclick="showSection('dashboard')"><span class="nav-dot"></span> Главная</button>
   <button class="nav-item" data-group="strategy" onclick="showSection('bsc')"><span class="nav-dot"></span> Стратегия</button>
+  <button class="nav-item" data-group="tasks" onclick="showSection('tasks')"><span class="nav-dot"></span> Поручения</button>
   <button class="nav-item" data-group="sales" onclick="showSection('orders')"><span class="nav-dot"></span> Продажи</button>
   <button class="nav-item" data-group="inventory" onclick="showSection('products')"><span class="nav-dot"></span> Товары и склад</button>
   <button class="nav-item" data-group="network" onclick="showSection('points')"><span class="nav-dot"></span> Сеть</button>
@@ -717,6 +718,57 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       <!-- Точки-карточки -->
       <div class="grid-3" id="point-cards-dash"></div>
 
+    </div>
+
+    <!-- ══ ПОРУЧЕНИЯ ПЛАНЁРОК ══ -->
+    <div id="sec-tasks" style="display:none;">
+      <div class="card" style="background:linear-gradient(135deg,var(--forest),var(--deep));border:none;color:#fff;margin-bottom:1rem;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+          <div><div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);">Исполнительская дисциплина</div><h2 style="font-size:1.45rem;margin:.35rem 0;">Поручения планёрок</h2><p style="font-size:.82rem;color:rgba(255,255,255,.75);max-width:720px;line-height:1.5;">Контроль сроков и ответственных. Напоминания отправляются в Telegram и MAX в 10:00 по Красноярску: за 3 и 1 день, в день срока и ежедневно при просрочке. Для задач без срока — по понедельникам.</p></div>
+          <button class="row-btn" style="background:var(--amber);color:var(--deep);font-weight:700;" onclick="openTaskForm()">+ Новое поручение</button>
+        </div>
+      </div>
+
+      <div class="grid-4" style="margin-bottom:1rem;">
+        <div class="kpi-card"><div class="kpi-label">Активные</div><div class="kpi-value" id="tasks-kpi-active">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Просроченные</div><div class="kpi-value" id="tasks-kpi-overdue">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Без ответственного</div><div class="kpi-value" id="tasks-kpi-unassigned">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Заблокированы</div><div class="kpi-value" id="tasks-kpi-blocked">—</div></div>
+      </div>
+
+      <div class="card" id="task-form-card" style="display:none;margin-bottom:1rem;border-top:4px solid var(--amber);">
+        <div class="card-title"><span id="task-form-title">Новое поручение</span><button class="row-btn" onclick="closeTaskForm()">Закрыть</button></div>
+        <input type="hidden" id="task-edit-id">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.7rem;">
+          <div class="admin-field" style="margin:0;grid-column:span 2;"><label>Поручение *</label><input id="task-title-input"></div>
+          <div class="admin-field" style="margin:0;"><label>Ответственный</label><select id="task-assignee-input"></select></div>
+          <div class="admin-field" style="margin:0;"><label>Срок</label><input type="date" id="task-due-input"></div>
+          <div class="admin-field" style="margin:0;"><label>Планёрка</label><input type="date" id="task-meeting-input"></div>
+          <div class="admin-field" style="margin:0;"><label>Приоритет</label><select id="task-priority-input"><option value="low">Низкий</option><option value="normal">Обычный</option><option value="high">Высокий</option><option value="critical">Критический</option></select></div>
+          <div class="admin-field" style="margin:0;"><label>Статус</label><select id="task-status-input"><option value="new">Новая</option><option value="in_progress">В работе</option><option value="blocked">Заблокирована</option><option value="done">Выполнена</option><option value="cancelled">Отменена</option></select></div>
+          <div class="admin-field" style="margin:0;"><label>Повторение</label><select id="task-recurrence-input"><option value="">Не повторять</option><option value="weekly:monday">Каждый понедельник</option><option value="monthly:10,25">10-го и 25-го числа</option></select></div>
+          <label style="display:flex;align-items:center;gap:.5rem;font-size:.8rem;padding-top:1.4rem;"><input type="checkbox" id="task-reminder-input" checked> Отправлять напоминания</label>
+        </div>
+        <div class="admin-field" style="margin-top:.7rem;"><label>Описание результата / следующий шаг</label><textarea id="task-description-input" rows="3"></textarea></div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;"><button class="row-btn" onclick="closeTaskForm()">Отмена</button><button class="row-btn" style="background:var(--forest);color:#fff;" onclick="saveTask()">Сохранить</button></div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title"><span>Реестр поручений <span id="tasks-visible-count" style="font-size:.72rem;font-weight:400;color:var(--muted);"></span></span></div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.8rem;">
+          <select id="tasks-filter-status" onchange="renderTasksTable()" style="max-width:190px;"><option value="active">Активные</option><option value="all">Все</option><option value="new">Новые</option><option value="in_progress">В работе</option><option value="blocked">Заблокированные</option><option value="done">Выполненные</option><option value="cancelled">Отменённые</option></select>
+          <select id="tasks-filter-assignee" onchange="renderTasksTable()" style="max-width:220px;"><option value="">Все ответственные</option></select>
+          <select id="tasks-filter-meeting" onchange="renderTasksTable()" style="max-width:190px;"><option value="">Все планёрки</option></select>
+        </div>
+        <div style="overflow-x:auto;"><table class="tbl" style="min-width:1180px;"><thead><tr><th>Поручение</th><th>Ответственный</th><th>Срок</th><th>Приоритет</th><th>Статус</th><th>Напоминания</th><th class="r">Действия</th></tr></thead><tbody id="tasks-tbody"></tbody></table></div>
+        <div id="task-history-box" style="display:none;margin-top:1rem;padding:1rem;background:var(--cream,#F7F5EF);border-radius:10px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Ответственные и каналы связи</div>
+        <p style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:1rem;">Сохраните телефон и попросите человека один раз подтвердить подключение в боте. После этого напоминания будут уходить автоматически сразу в оба подключённых канала.</p>
+        <div id="task-members-grid" class="grid-2"></div>
+      </div>
     </div>
 
     <!-- ══ СТРАТЕГИЯ · BSC КАПЛАНА–НОРТОНА ══ -->
@@ -1937,12 +1989,12 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div class="kpi-delta delta-up" id="mgr-pts-d"></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">Выплачено (7%)</div>
+          <div class="kpi-label">Фактически выплачено 7%</div>
           <div class="kpi-value" id="mgr-paid">—</div>
           <div class="kpi-delta" id="mgr-paid-d"></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">Бонусов за запуск</div>
+          <div class="kpi-label">Выплачено бонусов за запуск</div>
           <div class="kpi-value" id="mgr-bonus">—</div>
           <div class="kpi-delta" id="mgr-bonus-d"></div>
         </div>
@@ -1968,8 +2020,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <th class="r">Точек</th>
               <th class="r">Актив.</th>
               <th class="r">Оборот точек</th>
-              <th class="r">Residual 7%</th>
-              <th class="r">Бонусов</th>
+              <th class="r">7% к выплате</th>
+              <th class="r">Бонусы к выплате</th>
               <th>Статус</th>
               <th class="r">Действие</th>
             </tr>
@@ -1988,12 +2040,20 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <th>Менеджер</th>
               <th>Тип</th>
               <th class="r">Оборот</th>
-              <th class="r">Residual (7%)</th>
+              <th class="r">Начислено 7%</th>
               <th>Статус точки</th>
-              <th>Бонус выплачен</th>
+              <th>Бонус за запуск</th>
             </tr>
           </thead>
           <tbody id="mgr-points-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:1rem;overflow-x:auto;">
+        <div class="card-title">История выплат менеджерам <span id="manager-payouts-count"></span></div>
+        <table class="tbl">
+          <thead><tr><th>Дата</th><th>Менеджер</th><th>Вид выплаты</th><th>Точка / заказы</th><th class="r">Сумма</th><th>Подтвердил</th></tr></thead>
+          <tbody id="manager-payouts-tbody"></tbody>
         </table>
       </div>
 
@@ -2637,10 +2697,10 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
 }
 
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'guides', 'dashboard', 'bsc', 'economics', 'weekly-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
-const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', economics: 'Экономика проекта', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
+const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'weekly-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
+const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
 const sectionGroups = {
-  dashboard:'home', bsc:'strategy', orders:'sales', customers:'sales',
+  dashboard:'home', bsc:'strategy', tasks:'tasks', orders:'sales', customers:'sales',
   products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
   points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', leads:'network',
   news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'weekly-reports':'finance',
@@ -2715,6 +2775,7 @@ async function showSection(id) {
   if (id === 'launch')      await renderLaunchTasks();
   if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo()]); renderDashboard(); }
   if (id === 'bsc')         await renderBscDashboard();
+  if (id === 'tasks')       await loadTaskControl();
   if (id === 'economics')   await renderEconomics();
   if (id === 'weekly-reports') await renderWeeklyReports();
   if (id === 'orders')      { await loadOrders(); renderOrders(); }
@@ -3403,6 +3464,238 @@ async function deleteExpense(id) {
   if (!confirm('Удалить эту запись расхода?')) return;
   await authFetch('/api/economics/expenses/' + id, { method: 'DELETE' });
   renderEconomics();
+}
+
+// ── КОНТРОЛЬ ПОРУЧЕНИЙ ─────────────────────────────────────────────
+let meetingTasks = [];
+let taskMembers = [];
+let taskSummary = {};
+
+function taskEsc(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
+  });
+}
+
+function taskStatusLabel(status) {
+  return ({ new:'Новая', in_progress:'В работе', blocked:'Заблокирована', done:'Выполнена', cancelled:'Отменена' })[status] || status;
+}
+
+function taskPriorityLabel(priority) {
+  return ({ low:'Низкий', normal:'Обычный', high:'Высокий', critical:'Критический' })[priority] || priority;
+}
+
+function taskStatusPill(status) {
+  const colors = { new:['#EEF6FF','#245B86'], in_progress:['#FFF4D9','#7A4A00'], blocked:['#FCEBEC','#9B2335'], done:['#E8F5EC','#2D7D46'], cancelled:['#F1F1F1','#666'] };
+  const pair = colors[status] || colors.new;
+  return '<span style="display:inline-block;background:' + pair[0] + ';color:' + pair[1] + ';border-radius:50px;padding:.18rem .5rem;font-size:.69rem;font-weight:700;">' + taskStatusLabel(status) + '</span>';
+}
+
+function taskPriorityPill(priority) {
+  const color = priority === 'critical' ? '#9B2335' : priority === 'high' ? '#B36500' : 'var(--muted)';
+  return '<span style="font-size:.72rem;font-weight:700;color:' + color + ';">' + taskPriorityLabel(priority) + '</span>';
+}
+
+function taskDueHtml(task) {
+  if (!task.due_date) return '<span style="color:var(--muted);">Не установлен</span>';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = new Date(task.due_date + 'T00:00:00');
+  const days = Math.round((due - today) / 86400000);
+  const active = !['done','cancelled'].includes(task.status);
+  const color = active && days < 0 ? '#9B2335' : active && days <= 1 ? '#B36500' : 'inherit';
+  const note = active && days < 0 ? '<br><small>Просрочено на ' + Math.abs(days) + ' дн.</small>' : active && days === 0 ? '<br><small>Сегодня</small>' : '';
+  return '<span style="color:' + color + ';font-weight:' + (color === 'inherit' ? '400' : '700') + ';">' + taskEsc(task.due_date) + note + '</span>';
+}
+
+async function loadTaskControl() {
+  const responses = await Promise.all([authFetch('/api/tasks'), authFetch('/api/task-assignees')]);
+  const taskData = await responses[0].json();
+  const memberData = await responses[1].json();
+  if (!responses[0].ok || !responses[1].ok) {
+    showToast((taskData && taskData.error) || (memberData && memberData.error) || 'Не удалось загрузить поручения');
+    return;
+  }
+  meetingTasks = taskData.tasks || [];
+  taskSummary = taskData.summary || {};
+  taskMembers = memberData.members || [];
+  renderTaskSummary();
+  renderTaskFilters();
+  renderTasksTable();
+  renderTaskMembers();
+}
+
+function renderTaskSummary() {
+  document.getElementById('tasks-kpi-active').textContent = Number(taskSummary.active || 0);
+  document.getElementById('tasks-kpi-overdue').textContent = Number(taskSummary.overdue || 0);
+  document.getElementById('tasks-kpi-unassigned').textContent = Number(taskSummary.unassigned || 0);
+  document.getElementById('tasks-kpi-blocked').textContent = Number(taskSummary.blocked || 0);
+}
+
+function renderTaskFilters() {
+  const assignee = document.getElementById('tasks-filter-assignee');
+  const previousAssignee = assignee.value;
+  assignee.innerHTML = '<option value="">Все ответственные</option><option value="unassigned">Не назначен</option>' + taskMembers.filter(function(m){ return m.active; }).map(function(m){ return '<option value="' + m.id + '">' + taskEsc(m.full_name) + '</option>'; }).join('');
+  assignee.value = previousAssignee;
+  const meeting = document.getElementById('tasks-filter-meeting');
+  const previousMeeting = meeting.value;
+  const dates = Array.from(new Set(meetingTasks.map(function(t){ return t.meeting_date; }).filter(Boolean))).sort().reverse();
+  meeting.innerHTML = '<option value="">Все планёрки</option>' + dates.map(function(date){ return '<option value="' + taskEsc(date) + '">' + taskEsc(date) + '</option>'; }).join('');
+  meeting.value = previousMeeting;
+}
+
+function renderTasksTable() {
+  const status = document.getElementById('tasks-filter-status').value;
+  const assignee = document.getElementById('tasks-filter-assignee').value;
+  const meeting = document.getElementById('tasks-filter-meeting').value;
+  const rows = meetingTasks.filter(function(task) {
+    if (status === 'active' && ['done','cancelled'].includes(task.status)) return false;
+    if (status !== 'active' && status !== 'all' && task.status !== status) return false;
+    if (assignee === 'unassigned' && task.assignee_id) return false;
+    if (assignee && assignee !== 'unassigned' && String(task.assignee_id || '') !== assignee) return false;
+    if (meeting && task.meeting_date !== meeting) return false;
+    return true;
+  });
+  document.getElementById('tasks-visible-count').textContent = '· показано ' + rows.length;
+  document.getElementById('tasks-tbody').innerHTML = rows.length ? rows.map(function(task) {
+    const channels = task.assignee_id
+      ? '<span title="Telegram" style="opacity:' + (task.telegram_chat_id ? '1' : '.25') + '">TG</span> · <span title="MAX" style="opacity:' + (task.max_chat_id ? '1' : '.25') + '">MAX</span>'
+      : '—';
+    const repeat = task.recurrence_rule ? '<div style="font-size:.68rem;color:var(--muted);margin-top:.2rem;">↻ ' + (task.recurrence_rule === 'weekly:monday' ? 'еженедельно' : '10-го и 25-го') + '</div>' : '';
+    return '<tr>' +
+      '<td style="max-width:360px;"><strong>' + taskEsc(task.title) + '</strong>' + (task.description ? '<div style="font-size:.71rem;color:var(--muted);line-height:1.4;margin-top:.25rem;">' + taskEsc(task.description) + '</div>' : '') + '<div style="font-size:.67rem;color:var(--muted);margin-top:.3rem;">Планёрка: ' + taskEsc(task.meeting_date || 'не указана') + '</div></td>' +
+      '<td>' + (task.assignee_name ? '<strong>' + taskEsc(task.assignee_name) + '</strong>' : '<span style="color:#9B2335;">Не назначен</span>') + '</td>' +
+      '<td>' + taskDueHtml(task) + repeat + '</td>' +
+      '<td>' + taskPriorityPill(task.priority) + '</td>' +
+      '<td>' + taskStatusPill(task.status) + '</td>' +
+      '<td style="font-size:.72rem;">' + (task.reminder_enabled ? channels : '<span style="color:var(--muted);">Выключены</span>') + (task.last_reminder_at ? '<div style="color:var(--muted);margin-top:.25rem;">Последнее: ' + taskEsc(task.last_reminder_at) + '</div>' : '') + '</td>' +
+      '<td class="r" style="white-space:nowrap;"><button class="row-btn" onclick="openTaskForm(' + task.id + ')">Изменить</button> ' +
+      (!['done','cancelled'].includes(task.status) ? '<button class="row-btn" onclick="setTaskStatus(' + task.id + ',\'done\')">✓</button> ' : '') +
+      '<button class="row-btn" onclick="sendTaskReminderNow(' + task.id + ')">Напомнить</button> ' +
+      '<button class="row-btn" onclick="showTaskHistory(' + task.id + ')">История</button></td></tr>';
+  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Поручений по выбранному фильтру нет</td></tr>';
+}
+
+function populateTaskAssignees(selected) {
+  const select = document.getElementById('task-assignee-input');
+  select.innerHTML = '<option value="">Не назначен</option>' + taskMembers.filter(function(m){ return m.active; }).map(function(m){ return '<option value="' + m.id + '">' + taskEsc(m.full_name) + '</option>'; }).join('');
+  select.value = selected ? String(selected) : '';
+}
+
+function openTaskForm(id) {
+  const task = id ? meetingTasks.find(function(item){ return item.id === id; }) : null;
+  document.getElementById('task-form-title').textContent = task ? 'Изменить поручение' : 'Новое поручение';
+  document.getElementById('task-edit-id').value = task ? task.id : '';
+  document.getElementById('task-title-input').value = task ? task.title : '';
+  document.getElementById('task-description-input').value = task ? (task.description || '') : '';
+  document.getElementById('task-due-input').value = task ? (task.due_date || '') : '';
+  document.getElementById('task-meeting-input').value = task ? (task.meeting_date || '') : new Date().toISOString().slice(0,10);
+  document.getElementById('task-priority-input').value = task ? task.priority : 'normal';
+  document.getElementById('task-status-input').value = task ? task.status : 'new';
+  document.getElementById('task-recurrence-input').value = task ? (task.recurrence_rule || '') : '';
+  document.getElementById('task-reminder-input').checked = task ? !!task.reminder_enabled : true;
+  populateTaskAssignees(task && task.assignee_id);
+  document.getElementById('task-form-card').style.display = 'block';
+  document.getElementById('task-form-card').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function closeTaskForm() { document.getElementById('task-form-card').style.display = 'none'; }
+
+async function saveTask() {
+  const id = document.getElementById('task-edit-id').value;
+  const payload = {
+    title: document.getElementById('task-title-input').value.trim(),
+    description: document.getElementById('task-description-input').value.trim(),
+    assignee_id: document.getElementById('task-assignee-input').value || null,
+    due_date: document.getElementById('task-due-input').value || null,
+    meeting_date: document.getElementById('task-meeting-input').value || null,
+    priority: document.getElementById('task-priority-input').value,
+    status: document.getElementById('task-status-input').value,
+    recurrence_rule: document.getElementById('task-recurrence-input').value || null,
+    reminder_enabled: document.getElementById('task-reminder-input').checked,
+  };
+  if (!payload.title) return showToast('Укажите название поручения');
+  const res = await authFetch(id ? '/api/tasks/' + id : '/api/tasks', { method:id ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const data = await res.json();
+  if (!res.ok) return showToast(data.error || 'Не удалось сохранить поручение');
+  closeTaskForm();
+  showToast(data.recurring_advanced ? 'Выполнено. Следующий срок: ' + data.next_due_date : 'Поручение сохранено');
+  await loadTaskControl();
+}
+
+async function setTaskStatus(id, status) {
+  const res = await authFetch('/api/tasks/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:status}) });
+  const data = await res.json();
+  if (!res.ok) return showToast(data.error || 'Не удалось изменить статус');
+  showToast(data.recurring_advanced ? 'Выполнено. Следующий срок: ' + data.next_due_date : 'Поручение выполнено');
+  await loadTaskControl();
+}
+
+async function sendTaskReminderNow(id) {
+  const res = await authFetch('/api/tasks/' + id + '/remind', { method:'POST' });
+  const data = await res.json();
+  if (!res.ok) return showToast(data.error || 'Не удалось отправить напоминание');
+  const sent = (data.deliveries || []).filter(function(item){ return item.ok; }).map(function(item){ return item.channel === 'telegram' ? 'Telegram' : 'MAX'; });
+  showToast('Напоминание отправлено: ' + sent.join(', '));
+  await loadTaskControl();
+}
+
+async function showTaskHistory(id) {
+  const task = meetingTasks.find(function(item){ return item.id === id; });
+  const res = await authFetch('/api/tasks/' + id + '/history');
+  const data = await res.json();
+  const box = document.getElementById('task-history-box');
+  if (!res.ok) return showToast(data.error || 'Не удалось загрузить историю');
+  box.style.display = 'block';
+  function historyText(item) {
+    if (item.action === 'created') return 'Поручение создано';
+    if (item.action === 'status_report') return 'Отчёт сотрудника: ' + (item.new_value || '');
+    if (item.action === 'bot_status') return 'Через бота отмечено «В работе»';
+    if (item.action === 'bot_completed') return 'Через бота отмечено «Выполнено»';
+    if (item.action === 'bot_completed_recurring') return 'Выполнено через бота; следующий срок: ' + (item.new_value || 'не указан');
+    return 'Поручение изменено';
+  }
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;gap:1rem;"><strong>История: ' + taskEsc(task ? task.title : '') + '</strong><button class="row-btn" onclick="this.parentNode.parentNode.style.display=\'none\'">Закрыть</button></div>' + ((data.history || []).length ? data.history.map(function(item){ return '<div style="border-top:1px solid var(--border);padding:.55rem 0;font-size:.75rem;line-height:1.45;"><strong>' + taskEsc(item.actor || 'система') + '</strong> · ' + taskEsc(item.created_at) + '<div style="margin-top:.2rem;white-space:pre-wrap;">' + taskEsc(historyText(item)) + '</div></div>'; }).join('') : '<div style="color:var(--muted);margin-top:.6rem;">История пока пуста</div>');
+  box.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function renderTaskMembers() {
+  document.getElementById('task-members-grid').innerHTML = taskMembers.map(function(member) {
+    return '<div style="border:1px solid var(--border);border-radius:12px;padding:1rem;">' +
+      '<div style="display:flex;justify-content:space-between;gap:.7rem;align-items:flex-start;"><div><strong>' + taskEsc(member.full_name) + '</strong><div style="font-size:.7rem;color:var(--muted);margin-top:.2rem;">' + Number(member.active_tasks || 0) + ' активных поручений</div></div><span style="font-size:.7rem;color:' + (member.telegram_chat_id || member.max_chat_id ? '#2D7D46' : '#9B2335') + ';">' + (member.telegram_chat_id || member.max_chat_id ? 'есть канал' : 'не подключён') + '</span></div>' +
+      '<div style="font-size:.73rem;color:var(--muted);line-height:1.4;margin:.6rem 0;">' + taskEsc(member.responsibility || '') + '</div>' +
+      '<div style="display:flex;gap:.4rem;"><input id="task-member-phone-' + member.id + '" value="' + taskEsc(member.phone || '') + '" placeholder="Телефон" style="flex:1;min-width:0;"><button class="row-btn" onclick="saveTaskMember(' + member.id + ')">Сохранить</button></div>' +
+      '<div style="display:flex;gap:.4rem;margin-top:.55rem;flex-wrap:wrap;"><button class="row-btn" style="' + (member.telegram_chat_id ? 'color:#2D7D46;' : '') + '" onclick="connectTaskMember(' + member.id + ',\'telegram\')">' + (member.telegram_chat_id ? '✓ Telegram' : 'Подключить Telegram') + '</button><button class="row-btn" style="' + (member.max_chat_id ? 'color:#2D7D46;' : '') + '" onclick="connectTaskMember(' + member.id + ',\'max\')">' + (member.max_chat_id ? '✓ MAX' : 'Подключить MAX') + '</button></div></div>';
+  }).join('');
+}
+
+async function saveTaskMember(id) {
+  const phone = document.getElementById('task-member-phone-' + id).value;
+  const res = await authFetch('/api/task-assignees/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({phone:phone}) });
+  const data = await res.json();
+  if (!res.ok) return showToast(data.error || 'Не удалось сохранить телефон');
+  showToast('Телефон сохранён');
+  await loadTaskControl();
+}
+
+async function connectTaskMember(id, channel) {
+  const res = await authFetch('/api/task-assignees/' + id + '/connect/' + channel + '/start', { method:'POST' });
+  const data = await res.json();
+  if (!res.ok) return showToast(data.error || 'Не удалось начать подключение');
+  const popup = window.open(data.deep_link, '_blank');
+  let attempts = 0;
+  const timer = setInterval(async function() {
+    attempts++;
+    try {
+      const check = await authFetch('/api/task-assignees/' + id + '/connect/' + channel + '/check?token=' + encodeURIComponent(data.token));
+      const result = await check.json();
+      if (result.verified) {
+        clearInterval(timer); showToast((channel === 'telegram' ? 'Telegram' : 'MAX') + ' подключён'); await loadTaskControl();
+      } else if (!check.ok || attempts >= 150) {
+        clearInterval(timer); showToast('Подключение не подтверждено');
+      }
+    } catch (e) { if (attempts >= 150) clearInterval(timer); }
+  }, 2000);
+  if (!popup) showToast('Откройте ссылку подключения в новой вкладке');
 }
 
 // ── СТРАТЕГИЯ · BSC КАПЛАНА–НОРТОНА ───────────────────────────────
@@ -4852,12 +5145,11 @@ async function renderManagers() {
   }
   const cityFilter = filterSel ? filterSel.value : '';
   const url = '/api/managers' + (cityFilter ? '?city=' + encodeURIComponent(cityFilter) : '');
-  const res = await authFetch(url);
-  const data = await res.json();
+  const responses = await Promise.all([authFetch(url), authFetch('/api/manager-payouts?limit=100')]);
+  const data = await responses[0].json();
+  const payoutData = await responses[1].json();
   const list = data.managers || [];
   const cityName = (id) => (ADMIN_CITIES_CACHE || []).find((c) => c.id === id)?.name || id;
-
-  const LAUNCH_BONUS = 2000;
 
   const mgrData = list.map(function(a) {
     // Точки, у которых point_id стал null — сама точка была удалена
@@ -4868,33 +5160,24 @@ async function renderManagers() {
     const pts = (a.points || []).filter(function(p) { return p.point_id; });
     const activePts = pts.filter(function(p) { return p.active; });
     const totalRev = pts.reduce(function(s, p) { return s + p.revenue; }, 0);
-    // Ставка менеджера постоянная — 7% с любой точки. Считаем по фактической
-    // ставке каждой точки (commission_rate), а не жёстко захардкоженным
-    // числом — так расчёт не разъедется, если когда-нибудь понадобится
-    // индивидуальное исключение для конкретной точки.
-    const residual = Math.round(pts.reduce(function(s, p) { return s + p.revenue * (p.commission_rate ?? 0.07); }, 0));
-    // Бонусы считаем по ВСЕМ точкам, включая удалённые — если бонус реально
-    // был выплачен за точку, эти деньги не должны пропадать из статистики
-    // только потому, что саму точку потом удалили.
-    const bonuses = (a.points || []).reduce(function(s, p) { return s + (p.bonus_paid ? (p.bonus_manager_amount ?? LAUNCH_BONUS) : 0); }, 0);
-    return Object.assign({}, a, { pts: pts, activePts: activePts, totalRev: totalRev, residual: residual, bonuses: bonuses });
+    return Object.assign({}, a, { pts: pts, activePts: activePts, totalRev: totalRev });
   });
   lastMgrData = mgrData;
 
   const totalMgr = list.length;
   const allPts = mgrData.reduce(function(acc, a) { return acc.concat(a.pts); }, []);
   const totalActivePts = allPts.filter(function(p) { return p.active; }).length;
-  const totalRes = mgrData.reduce(function(s, a) { return s + a.residual; }, 0);
-  const totalBonus = mgrData.reduce(function(s, a) { return s + a.bonuses; }, 0);
+  const totalRes = mgrData.reduce(function(s, a) { return s + Number(a.commission_paid_total || 0); }, 0);
+  const totalBonus = mgrData.reduce(function(s, a) { return s + Number(a.launch_bonus_paid_total || 0); }, 0);
 
   document.getElementById('mgr-cnt').textContent = totalMgr;
   document.getElementById('mgr-cnt-d').textContent = '';
   document.getElementById('mgr-pts').textContent = totalActivePts + ' из ' + allPts.length;
   document.getElementById('mgr-pts-d').textContent = '';
   document.getElementById('mgr-paid').textContent = totalRes.toLocaleString('ru-RU') + ' ₽';
-  document.getElementById('mgr-paid-d').innerHTML = '<span style="color:var(--muted)">накопительно</span>';
+  document.getElementById('mgr-paid-d').innerHTML = '<span style="color:var(--muted)">по реестру выплат</span>';
   document.getElementById('mgr-bonus').textContent = totalBonus.toLocaleString('ru-RU') + ' ₽';
-  document.getElementById('mgr-bonus-d').innerHTML = '<span style="color:var(--muted)">разовые выплаты</span>';
+  document.getElementById('mgr-bonus-d').innerHTML = '<span style="color:var(--muted)">по реестру выплат</span>';
   document.getElementById('mgr-table-count').textContent = totalMgr + ' чел.';
 
   document.getElementById('mgr-tbody').innerHTML = mgrData.length ? mgrData.map(function(a) {
@@ -4905,13 +5188,30 @@ async function renderManagers() {
       '<td class="r">' + a.pts.length + '</td>' +
       '<td class="r" style="font-weight:600;color:var(--deep)">' + a.activePts.length + '</td>' +
       '<td class="r">' + a.totalRev.toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td class="r" style="font-weight:600;color:var(--amber)">' + a.residual.toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td class="r">' + a.bonuses.toLocaleString('ru-RU') + ' ₽</td>' +
+      '<td class="r" style="font-weight:600;color:var(--amber)">' + Number(a.commission_unpaid || 0).toLocaleString('ru-RU') + ' ₽<br><span style="font-size:.68rem;color:var(--muted);">' + Number(a.commission_unpaid_orders || 0) + ' заказов</span></td>' +
+      '<td class="r">' + Number(a.launch_bonus_unpaid || 0).toLocaleString('ru-RU') + ' ₽</td>' +
       '<td><span class="stock-pill ' + (a.active ? 'stock-ok' : 'stock-low') + '">' + (a.active ? 'Активен' : 'Приостановлен') + '</span></td>' +
-      '<td class="r"><button class="row-btn" onclick="event.stopPropagation(); openManagerContractModal(' + a.id + ')">Договор</button> <button class="row-btn" onclick="event.stopPropagation(); resetPersonPassword(\'managers\', ' + a.id + ', \'' + a.full_name.replace(/'/g, "\\'") + '\')">Сбросить пароль</button> <button class="row-btn danger" onclick="event.stopPropagation(); deleteManager(' + a.id + ', \'' + a.full_name.replace(/'/g, "\\'") + '\')">✕ Удалить</button></td></tr>';
-  }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem;">Менеджеров пока нет</td></tr>';
+      '<td class="r"><button class="row-btn" ' + (Number(a.commission_unpaid || 0) <= 0 ? 'disabled style="opacity:.45;cursor:not-allowed;"' : '') + ' onclick="event.stopPropagation(); openPayoutApproval(\'manager_commission\',' + a.id + ')">✓ Выплатить 7%</button> <button class="row-btn" onclick="event.stopPropagation(); openManagerContractModal(' + a.id + ')">Договор</button> <button class="row-btn" onclick="event.stopPropagation(); resetPersonPassword(\'managers\', ' + a.id + ', \'' + a.full_name.replace(/'/g, "\\'") + '\')">Сбросить пароль</button> <button class="row-btn danger" onclick="event.stopPropagation(); deleteManager(' + a.id + ', \'' + a.full_name.replace(/'/g, "\\'") + '\')">✕ Удалить</button></td></tr>';
+  }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Менеджеров пока нет</td></tr>';
 
   renderMgrPointsTable(null);
+  renderManagerPayoutHistory(payoutData.payouts || []);
+}
+
+function renderManagerPayoutHistory(payouts) {
+  document.getElementById('manager-payouts-count').textContent = payouts.length + ' выплат';
+  document.getElementById('manager-payouts-tbody').innerHTML = payouts.length ? payouts.map(function(payout) {
+    const paidAt = new Date(String(payout.paid_at).replace(' ', 'T') + 'Z').toLocaleString('ru-RU');
+    const type = payout.payout_type === 'launch_bonus' ? 'Бонус за запуск' : 'Вознаграждение 7%';
+    const details = payout.payout_type === 'launch_bonus'
+      ? escapeOrderCell(payout.point_name || '—')
+      : Number(payout.orders_count || 0) + ' заказов';
+    return '<tr><td style="white-space:nowrap;color:var(--muted);">' + paidAt + '</td>' +
+      '<td style="font-weight:500;">' + escapeOrderCell(payout.manager_name) + '</td>' +
+      '<td>' + type + '</td><td>' + details + '</td>' +
+      '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '</td></tr>';
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплаты менеджерам пока не зафиксированы</td></tr>';
 }
 
 function filterMgrPoints(mgrCode) {
@@ -4923,7 +5223,7 @@ function renderMgrPointsTable(filterCode) {
   lastMgrData.forEach(function(a) {
     if (filterCode && a.mgr_code !== filterCode) return;
     a.pts.forEach(function(p) {
-      const rate = p.commission_rate ?? 0.05;
+      const rate = p.commission_rate ?? 0.07;
       rows.push('<tr>' +
         '<td style="font-weight:500">' + p.point_name + '</td>' +
         '<td style="font-size:.78rem;color:var(--muted)">' + a.full_name + '</td>' +
@@ -4931,10 +5231,12 @@ function renderMgrPointsTable(filterCode) {
         '<td class="r">' + p.revenue.toLocaleString('ru-RU') + ' ₽</td>' +
         '<td class="r" style="font-weight:600;color:var(--amber)">' + Math.round(p.revenue * rate).toLocaleString('ru-RU') + ' ₽</td>' +
         '<td><span class="stock-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '✓ Активна' : '⚠ Спящая') + '</span></td>' +
-        '<td>' + (p.bonus_paid
-          ? '<span class="stock-pill stock-ok">✓ ' + (p.bonus_manager_amount ?? 2000).toLocaleString('ru-RU') + ' ₽</span>' +
-            (p.referred_groomer_id ? '<br><span style="font-size:.72rem;color:var(--muted);">🤝 сплит с ' + (p.referred_groomer_name || 'грумером') + (p.referred_groomer_code ? ' (' + p.referred_groomer_code + ')' : '') + ' — ' + (p.referred_groomer_amount ?? 0).toLocaleString('ru-RU') + ' ₽</span>' : '')
-          : '<span class="stock-pill stock-low">Ожидает</span>') + '</td></tr>');
+        '<td>' + (p.launch_bonus_payout_id
+          ? '<span class="stock-pill stock-ok">✓ Выплачено ' + (p.bonus_manager_amount ?? 2000).toLocaleString('ru-RU') + ' ₽</span>'
+          : p.bonus_paid
+            ? '<button class="row-btn" onclick="openPayoutApproval(\'manager_launch_bonus\',' + p.id + ')">✓ Выплатить ' + (p.bonus_manager_amount ?? 2000).toLocaleString('ru-RU') + ' ₽</button>'
+            : '<span class="stock-pill stock-low">Ещё не начислен</span>') +
+          (p.referred_groomer_id ? '<br><span style="font-size:.72rem;color:var(--muted);">🤝 сплит с ' + (p.referred_groomer_name || 'грумером') + (p.referred_groomer_code ? ' (' + p.referred_groomer_code + ')' : '') + ' — ' + (p.referred_groomer_amount ?? 0).toLocaleString('ru-RU') + ' ₽</span>' : '') + '</td></tr>');
     });
   });
   document.getElementById('mgr-points-tbody').innerHTML = rows.join('') || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1.5rem;">Точек пока нет</td></tr>';
@@ -5002,7 +5304,7 @@ function renderPayoutApprovalPreview(preview, changed) {
   payoutApprovalState.preview = preview;
   document.getElementById('payout-approval-meta').textContent =
     preview.recipient_name + ' · ' + Number(preview.amount || 0).toLocaleString('ru-RU') + ' ₽ · ' +
-    Number(preview.orders_count || 0) + ' заказов';
+    (preview.meta_label || (Number(preview.orders_count || 0) + ' заказов'));
   document.getElementById('payout-approval-message').value = preview.message || '';
   document.getElementById('payout-approval-channels').innerHTML =
     payoutChannelBadge('Telegram', !!preview.channels.telegram) +
@@ -5020,8 +5322,15 @@ function renderPayoutApprovalPreview(preview, changed) {
 
 async function openPayoutApproval(role, id) {
   closePartnerActions();
-  const base = role === 'partner' ? '/api/partners/' : '/api/salon-owners/';
-  payoutApprovalState = { role: role, id: Number(id), base: base, preview: null };
+  const routes = {
+    partner: { preview: '/api/partners/' + id + '/payout-preview', create: '/api/partners/' + id + '/payouts' },
+    owner: { preview: '/api/salon-owners/' + id + '/payout-preview', create: '/api/salon-owners/' + id + '/payouts' },
+    manager_commission: { preview: '/api/managers/' + id + '/payout-preview', create: '/api/managers/' + id + '/payouts' },
+    manager_launch_bonus: { preview: '/api/manager-points/' + id + '/launch-bonus-payout-preview', create: '/api/manager-points/' + id + '/launch-bonus-payouts' },
+  };
+  const route = routes[role];
+  if (!route) return alert('Неизвестный вид выплаты');
+  payoutApprovalState = { role: role, id: Number(id), previewUrl: route.preview, createUrl: route.create, preview: null };
   const modal = document.getElementById('payout-approval-modal');
   const confirmButton = document.getElementById('payout-approval-confirm');
   document.getElementById('payout-approval-error').style.display = 'none';
@@ -5033,7 +5342,7 @@ async function openPayoutApproval(role, id) {
   confirmButton.style.opacity = '.55';
   modal.style.display = 'flex';
   try {
-    const res = await authFetch(base + id + '/payout-preview');
+    const res = await authFetch(route.preview);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Не удалось подготовить выплату.');
     renderPayoutApprovalPreview(data.preview, false);
@@ -5070,7 +5379,7 @@ async function confirmPayoutApproval() {
   button.textContent = 'Фиксируем и отправляем…';
   errorBox.style.display = 'none';
   try {
-    const res = await authFetch(state.base + state.id + '/payouts', {
+    const res = await authFetch(state.createUrl, {
       method: 'POST',
       body: {
         expected_amount: preview.amount,
@@ -5091,7 +5400,8 @@ async function confirmPayoutApproval() {
       payoutDeliveryResult(data.deliveries)
     );
     if (role === 'partner') await renderPartners();
-    else await renderOwners();
+    else if (role === 'owner') await renderOwners();
+    else await renderManagers();
   } catch (error) {
     errorBox.textContent = error.message;
     errorBox.style.display = 'block';

@@ -862,9 +862,12 @@ async function loadMyPoints() {
     type: p.point_type,
     contact: '',
     rev: p.revenue,
-    rate: p.commission_rate ?? 0.05,
+    rate: p.commission_rate ?? 0.07,
     status: p.active ? 'active' : 'sleeping',
-    bonusPaid: !!p.bonus_paid,
+    bonusAccrued: !!p.bonus_paid,
+    bonusPaid: !!p.launch_bonus_payout_id,
+    bonusAmount: Number(p.bonus_manager_amount ?? LAUNCH_BONUS),
+    bonusPaidAt: p.launch_bonus_paid_at || null,
     cityId: p.actual_point_city_id || null,
     icon: p.actual_point_icon || '📍',
   }));
@@ -2170,7 +2173,7 @@ async function renderHome(){
   const activePts=LIVE_POINTS.filter(p=>p.status==='active');
   const totalRev=activePts.reduce((s,p)=>s+p.rev,0);
   const residual=Math.round(activePts.reduce((s,p)=>s+p.rev*p.rate,0));
-  const bonuses=MY_POINTS.filter(p=>p.bonusPaid).length*LAUNCH_BONUS;
+  const bonuses=MY_POINTS.filter(p=>p.bonusPaid).reduce((sum,p)=>sum+p.bonusAmount,0);
   const payout=residual+bonuses;
 
   document.getElementById('h-residual').textContent=residual.toLocaleString('ru-RU')+' ₽';
@@ -2254,7 +2257,7 @@ function renderPoints(){
           <div class="point-stat-lbl">Мой residual</div>
         </div>
         <div class="point-stat-item">
-          <div class="point-stat-val">${p.bonusPaid?'✓':'—'}</div>
+          <div class="point-stat-val">${p.bonusPaid?'✓':(p.bonusAccrued?'₽':'—')}</div>
           <div class="point-stat-lbl">Бонус</div>
         </div>
       </div>
@@ -2270,7 +2273,7 @@ function renderPoints(){
     <td class="r">${p.rev.toLocaleString('ru-RU')} ₽</td>
     <td class="r" style="font-weight:600;color:var(--amber)">${Math.round(p.rev*p.rate).toLocaleString('ru-RU')} ₽</td>
     <td><span class="pill ${pillClass[p.status]}">${statusLabel[p.status]}</span></td>
-    <td><span class="pill ${p.bonusPaid?'pill-green':'pill-amber'}">${p.bonusPaid?'✓ Выплачен':'Ожидает'}</span></td>
+    <td><span class="pill ${p.bonusPaid?'pill-green':'pill-amber'}">${p.bonusPaid?'✓ Выплачен':(p.bonusAccrued?'К выплате':'Ещё не начислен')}</span></td>
     <td>${p.pointId ? '<button class="row-btn" onclick="openSalonPageModal(\'' + p.pointId + '\')">🏠 Страница</button>' : ''}</td>
   </tr>`).join('');
 }
@@ -2353,7 +2356,7 @@ function renderEarnings(){
   const activePts=livePoints.filter(p=>p.status==='active');
   const totalRev=activePts.reduce((s,p)=>s+p.rev,0);
   const residual=Math.round(activePts.reduce((s,p)=>s+p.rev*p.rate,0));
-  const bonuses=MY_POINTS.filter(p=>p.bonusPaid).length*LAUNCH_BONUS;
+  const bonuses=MY_POINTS.filter(p=>p.bonusPaid).reduce((sum,p)=>sum+p.bonusAmount,0);
   document.getElementById('earn-payout').textContent=(residual+bonuses).toLocaleString('ru-RU')+' ₽';
   document.getElementById('earn-period-label').textContent='за '+days+' дней';
   document.getElementById('earn-hist-count').textContent=livePoints.length+' начислений';
@@ -2379,7 +2382,7 @@ function renderEarnings(){
       <td><span class="pill pill-purple">Бонус запуска</span></td>
       <td>${p.name}</td>
       <td class="r">—</td>
-      <td class="r" style="font-weight:600;color:var(--amber)">${LAUNCH_BONUS.toLocaleString('ru-RU')} ₽</td>
+      <td class="r" style="font-weight:600;color:var(--amber)">${p.bonusAmount.toLocaleString('ru-RU')} ₽</td>
       <td><span class="pill pill-green">Выплачено</span></td>
     </tr>`:''}
   `).join('');

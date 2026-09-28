@@ -6,6 +6,13 @@
 'use strict';
 
 const db = require('./db');
+const {
+  getTaskInbox,
+  handleTaskCallback,
+  handleTaskStatusMessage,
+  taskBotCard,
+  taskButtons,
+} = require('./task-bot-actions');
 
 const MAX_BOT_TOKEN = process.env.MAX_BOT_TOKEN || '';
 const MAX_API_BASE = 'https://platform-api2.max.ru';
@@ -60,6 +67,35 @@ async function sendMaxMessage(chatId, text, attachments) {
   } catch (error) {
     console.warn('Не удалось отправить сообщение в MAX:', error.message);
     return { ok: false, error: error.message };
+  }
+}
+
+async function answerMaxCallback(callbackId) {
+  if (!callbackId) return { ok: false, skipped: true };
+  try {
+    return await maxApi(`/answers?callback_id=${encodeURIComponent(String(callbackId))}`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  } catch (error) {
+    console.warn('Не удалось подтвердить нажатие кнопки MAX:', error.message);
+    return { ok: false, error: error.message };
+  }
+}
+
+async function sendTaskInbox(chatId) {
+  const inbox = getTaskInbox('max', chatId);
+  if (!inbox) {
+    await sendMaxMessage(chatId, 'Ваш MAX ещё не связан с ответственным. Подключите его в разделе «Поручения» админки.');
+    return;
+  }
+  if (!inbox.tasks.length) {
+    await sendMaxMessage(chatId, '✅ У вас нет активных поручений.');
+    return;
+  }
+  await sendMaxMessage(chatId, `Активные поручения: ${inbox.tasks.length}. Выберите действие под нужной задачей.`);
+  for (const task of inbox.tasks) {
+    await sendMaxMessage(chatId, taskBotCard(task), taskButtons(task, 'max'));
   }
 }
 
@@ -142,16 +178,44 @@ async function handleContactMessage(message) {
     WHERE id = ? AND verified = 0
   `).run(String(chatId), pending.id);
   await sendMaxMessage(chatId, '✅ Номер подтверждён. Вернитесь на сайт — личный кабинет откроется автоматически.');
+  if (pending.role === 'task_assignee') {
+    if (pending.account_id) {
+      db.prepare("UPDATE task_assignees SET max_chat_id = ?, updated_at = datetime('now') WHERE id = ? AND active = 1")
+        .run(String(chatId), pending.account_id);
+    } else {
+      const wantedPhone = normalizePhone(pending.phone);
+      const assignee = db.prepare('SELECT id, phone FROM task_assignees WHERE active = 1').all()
+        .find((row) => normalizePhone(row.phone) === wantedPhone);
+      if (assignee) {
+        db.prepare("UPDATE task_assignees SET max_chat_id = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(String(chatId), assignee.id);
+      }
+    }
+    await sendTaskInbox(chatId);
+  }
   return true;
 }
 
 async function processUpdate(update) {
   if (!update || typeof update !== 'object') return;
 
+  if (update.update_type === 'message_callback') {
+    const callback = update.callback || {};
+    const message = callback.message || update.message || {};
+    const payload = callback.payload || callback.data || (callback.button && callback.button.payload);
+    const chatId = update.chat_id || callback.chat_id || (message.recipient && message.recipient.chat_id);
+    const result = handleTaskCallback('max', chatId, payload);
+    if (result) {
+      await answerMaxCallback(callback.callback_id || update.callback_id);
+      if (chatId) await sendMaxMessage(chatId, result.message);
+    }
+    return;
+  }
+
   if (update.update_type === 'bot_started') {
     if (update.payload) await handleLoginStart(update.chat_id, update.payload);
     else if (update.chat_id) {
-      await sendMaxMessage(update.chat_id, 'Откройте личный кабинет на сайте «ХвостМаркет» и выберите «Войти через MAX».');
+      await sendMaxMessage(update.chat_id, 'Откройте личный кабинет на сайте «ХвостМаркет» и выберите «Войти через MAX». Сотрудникам: команда /tasks покажет активные поручения.');
     }
     return;
   }
@@ -161,6 +225,15 @@ async function processUpdate(update) {
 
   const text = update.message.body && update.message.body.text;
   const chatId = update.message.recipient && update.message.recipient.chat_id;
+  if (/^\/tasks$/i.test(String(text || '').trim()) || /^мои поручения$/i.test(String(text || '').trim())) {
+    await sendTaskInbox(chatId);
+    return;
+  }
+  const taskStatus = handleTaskStatusMessage('max', chatId, text);
+  if (taskStatus) {
+    await sendMaxMessage(chatId, taskStatus.message);
+    return;
+  }
   const match = String(text || '').match(/^\/start\s+([A-Za-z0-9_-]{1,128})$/);
   if (match) await handleLoginStart(chatId, match[1]);
 }
@@ -170,5 +243,6 @@ module.exports = {
   normalizePhone,
   phoneFromVcard,
   processUpdate,
+  answerMaxCallback,
   sendMaxMessage,
 };

@@ -13,14 +13,19 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function attemptSend(text, targetChatId) {
+async function attemptSend(text, targetChatId, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: targetChatId, text, parse_mode: 'HTML' }),
+      body: JSON.stringify({
+        chat_id: targetChatId,
+        text,
+        parse_mode: 'HTML',
+        ...(options.reply_markup ? { reply_markup: options.reply_markup } : {}),
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -32,13 +37,13 @@ async function attemptSend(text, targetChatId) {
   }
 }
 
-async function sendToChatWithRetry(targetChatId, text) {
+async function sendToChatWithRetry(targetChatId, text, options = {}) {
   if (!TG_TOKEN || !targetChatId) {
     return { ok: false, skipped: true };
   }
 
   const startedAt = Date.now();
-  let result = await attemptSend(text, targetChatId);
+  let result = await attemptSend(text, targetChatId, options);
   const elapsedMs = Date.now() - startedAt;
 
   // Повторяем только при БЫСТРОМ сетевом сбое (запрос почти наверняка не
@@ -49,7 +54,7 @@ async function sendToChatWithRetry(targetChatId, text) {
   if (!result.ok && result.error && elapsedMs < 7000) {
     console.warn('Telegram: быстрый сетевой сбой (' + elapsedMs + ' мс), пробуем ещё раз через 2 сек —', result.error);
     await sleep(2000);
-    result = await attemptSend(text, targetChatId);
+    result = await attemptSend(text, targetChatId, options);
   } else if (!result.ok && result.error) {
     console.warn('Telegram: сбой близко к тайм-ауту (' + elapsedMs + ' мс) — не повторяем, чтобы не задвоить сообщение —', result.error);
   }
@@ -71,13 +76,13 @@ async function sendTelegram(text) {
 // Отправка сообщения ПРОИЗВОЛЬНОМУ получателю (например, клиенту по его
 // telegram_chat_id) — в отличие от sendTelegram() выше, который всегда пишет
 // в фиксированный служебный чат владельца/команды.
-async function sendToChat(chatId, text) {
+async function sendToChat(chatId, text, options = {}) {
   if (!TG_TOKEN) {
     console.warn('Telegram не настроен (TG_TOKEN пуст) — сообщение получателю пропущено');
     return { ok: false, skipped: true };
   }
   if (!chatId) return { ok: false, skipped: true, error: 'chat_id не указан' };
-  return sendToChatWithRetry(chatId, text);
+  return sendToChatWithRetry(chatId, text, options);
 }
 
 // Отправка файла в служебный Telegram-чат. Используется для управленческих

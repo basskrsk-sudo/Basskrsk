@@ -39,8 +39,10 @@ const { registerPublicMessageRoutes } = require('./routes-public-messages');
 const { registerMaxWebhookRoutes } = require('./routes-max-webhook');
 const { registerWeeklyReportRoutes } = require('./routes-weekly-reports');
 const { registerBscRoutes } = require('./routes-bsc');
+const { registerTaskRoutes } = require('./routes-tasks');
 
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
+require('./task-seed').seedMeetingTasks();
 // Страницы партнёрских салонов дополнительно сохраняются отдельным снимком
 // в /data и при необходимости восстанавливаются до запуска HTTP-сервера.
 require('./salon-page-storage').initializeSalonPagePersistence();
@@ -99,6 +101,7 @@ registerPublicMessageRoutes(router);
 registerMaxWebhookRoutes(router);
 registerWeeklyReportRoutes(router);
 registerBscRoutes(router);
+registerTaskRoutes(router);
 
 function serveStatic(req, res, pathname) {
   const decoded = decodeURIComponent(pathname);
@@ -225,4 +228,5 @@ server.listen(PORT, () => {
   setInterval(() => { checkAllPartnerTiers().catch((e) => console.warn('Ошибка ежесуточной проверки уровней:', e.message)); }, 24 * 60 * 60 * 1000);
 
   require('./winback').scheduleWinback();
+  require('./task-reminders').scheduleTaskReminders();
 });

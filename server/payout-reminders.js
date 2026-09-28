@@ -7,6 +7,7 @@ const { sendToChat } = require('./telegram');
 const { sendMaxMessage } = require('./max-bot');
 const { getUnpaidOrders } = require('./partner-payouts');
 const { getOwnerUnpaidOrders } = require('./owner-payouts');
+const { getLaunchBonusSummary, getManagerUnpaidOrders } = require('./manager-payouts');
 const { getTierProgress, TIERS } = require('./partner-tiers');
 
 const TIME_ZONE = 'Asia/Krasnoyarsk';
@@ -144,6 +145,36 @@ function ownerMessage(owner, summary, paidAt) {
   return lines.join('\n');
 }
 
+function managerCommissionMessage(manager, summary, paidAt) {
+  return [
+    '✅ Выплата выполнена — ХвостМаркет',
+    '',
+    'Здравствуйте, ' + manager.full_name + '!',
+    'Дата выплаты: ' + dateLabel(paidAt),
+    '',
+    'Выплачено вознаграждение 7%: ' + money(summary.amount),
+    'Учтено оплаченных заказов: ' + summary.orders_count,
+    'Выручка этих заказов: ' + money(summary.revenue),
+    'Средний чек: ' + money(summary.average_check),
+    '',
+    'Открыть кабинет: ' + cabinetUrl('/taiga-manager.html'),
+  ].join('\n');
+}
+
+function managerLaunchBonusMessage(manager, bonus, paidAt) {
+  return [
+    '✅ Выплата выполнена — ХвостМаркет',
+    '',
+    'Здравствуйте, ' + manager.full_name + '!',
+    'Дата выплаты: ' + dateLabel(paidAt),
+    '',
+    'Бонус за запуск точки: ' + money(bonus.amount),
+    'Точка: ' + bonus.point_name,
+    '',
+    'Открыть кабинет: ' + cabinetUrl('/taiga-manager.html'),
+  ].join('\n');
+}
+
 function getPartnerAccount(partnerId) {
   return db.prepare(`
     SELECT id, full_name, point_id, point_name, commission_rate,
@@ -160,6 +191,13 @@ function getOwnerAccount(ownerId) {
     LEFT JOIN points p ON p.id = so.point_id
     WHERE so.id = ?
   `).get(ownerId);
+}
+
+function getManagerAccount(managerId) {
+  return db.prepare(`
+    SELECT id, full_name, mgr_code, telegram_chat_id, max_chat_id
+    FROM managers WHERE id = ?
+  `).get(managerId);
 }
 
 function previewPartnerPayout(partnerId) {
@@ -185,6 +223,37 @@ function previewOwnerPayout(ownerId) {
     orders_count: summary.orders_count,
     channels: { telegram: !!account.telegram_chat_id, max: !!account.max_chat_id },
     message: ownerMessage(account, summary, new Date()),
+  };
+}
+
+function previewManagerCommissionPayout(managerId) {
+  const account = getManagerAccount(managerId);
+  if (!account) return null;
+  const summary = summarize(getManagerUnpaidOrders(managerId));
+  return {
+    recipient_name: account.full_name,
+    amount: summary.amount,
+    orders_count: summary.orders_count,
+    meta_label: summary.orders_count + ' заказов · вознаграждение 7%',
+    channels: { telegram: !!account.telegram_chat_id, max: !!account.max_chat_id },
+    message: managerCommissionMessage(account, summary, new Date()),
+  };
+}
+
+function previewManagerLaunchBonusPayout(managerPointId) {
+  const bonus = getLaunchBonusSummary(managerPointId);
+  if (!bonus) return null;
+  const account = getManagerAccount(bonus.manager_id);
+  if (!account) return null;
+  return {
+    recipient_name: account.full_name,
+    amount: Number(bonus.amount || 0),
+    orders_count: 0,
+    meta_label: 'бонус за запуск · ' + bonus.point_name,
+    already_paid: !!bonus.payout_id,
+    bonus_accrued: !!bonus.bonus_accrued,
+    channels: { telegram: !!account.telegram_chat_id, max: !!account.max_chat_id },
+    message: managerLaunchBonusMessage(account, bonus, new Date()),
   };
 }
 
@@ -262,9 +331,22 @@ async function sendOwnerPayoutNotification(ownerId, payout, approvedMessage) {
   return deliveries;
 }
 
+async function sendManagerPayoutNotification(managerId, payout, approvedMessage, payoutType) {
+  const account = getManagerAccount(managerId);
+  if (!account) return [];
+  const role = payoutType === 'launch_bonus' ? 'manager_launch_bonus' : 'manager_commission';
+  const deliveries = [];
+  if (account.telegram_chat_id) deliveries.push(await deliver(role, account, payout.id, 'telegram', approvedMessage));
+  if (account.max_chat_id) deliveries.push(await deliver(role, account, payout.id, 'max', approvedMessage));
+  return deliveries;
+}
+
 module.exports = {
+  previewManagerCommissionPayout,
+  previewManagerLaunchBonusPayout,
   previewOwnerPayout,
   previewPartnerPayout,
+  sendManagerPayoutNotification,
   sendOwnerPayoutNotification,
   sendPartnerPayoutNotification,
 };

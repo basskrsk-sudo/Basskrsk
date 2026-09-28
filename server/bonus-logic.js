@@ -70,7 +70,7 @@ async function checkAndPayManagerBonus(pointId) {
   if (!pointId) return;
 
   const mgrPoint = db.prepare('SELECT * FROM manager_points WHERE point_id = ?').get(pointId);
-  if (!mgrPoint || mgrPoint.bonus_paid) return; // нет привязки к менеджеру или бонус уже выплачен
+  if (!mgrPoint || mgrPoint.bonus_paid) return; // нет привязки к менеджеру или бонус уже начислен
 
   const partner = db.prepare('SELECT * FROM partners WHERE point_id = ?').get(pointId);
   const profitSoFar = computePointProfitSoFar(pointId, partner ? partner.commission_rate : 0, mgrPoint.commission_rate);

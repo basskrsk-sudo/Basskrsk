@@ -195,6 +195,7 @@ CREATE TABLE IF NOT EXISTS managers (
   phone          TEXT NOT NULL,
   email          TEXT,
   telegram_chat_id TEXT,                    -- появляется после подтверждённого входа через Telegram
+  max_chat_id    TEXT,                       -- появляется после подтверждённого подключения MAX
   legal_form     TEXT,                        -- 'npd' | 'ip' | 'ooo' — для договора и налоговых рисков (см. партнёров)
   inn            TEXT,
   bank_details   TEXT,
@@ -211,11 +212,58 @@ CREATE TABLE IF NOT EXISTS manager_points (
   revenue                  INTEGER NOT NULL DEFAULT 0,
   commission_rate          REAL NOT NULL DEFAULT 0.07,  -- постоянная ставка 7% (см. routes-managers.js)
   active                   INTEGER NOT NULL DEFAULT 1,
-  bonus_paid               INTEGER NOT NULL DEFAULT 0,
-  bonus_manager_amount  INTEGER,           -- сколько реально получил менеджер (может быть уменьшено при сплите)
+  bonus_paid               INTEGER NOT NULL DEFAULT 0, -- историческое имя: бонус начислен, но ещё не обязательно выплачен
+  bonus_manager_amount  INTEGER,           -- начисленная сумма менеджеру (может быть уменьшена при сплите)
   referred_groomer_id      INTEGER REFERENCES partners(id),  -- если точку привёл другой грумер — сплит бонуса с ним
   referred_groomer_amount  INTEGER
 );
+
+-- Фактические выплаты менеджерам. Начисление 7% и бонуса за запуск отделено
+-- от отметки о реальном переводе денег. Заказ может попасть только в одну
+-- комиссионную выплату, а бонус конкретной точки — только в одну выплату.
+CREATE TABLE IF NOT EXISTS manager_commission_payouts (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  manager_id           INTEGER REFERENCES managers(id) ON DELETE SET NULL,
+  manager_name         TEXT NOT NULL,
+  manager_code         TEXT,
+  amount               INTEGER NOT NULL,
+  orders_count         INTEGER NOT NULL DEFAULT 0,
+  paid_by_admin_id     INTEGER,
+  paid_by_admin_login  TEXT,
+  paid_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS manager_commission_payout_items (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  payout_id          INTEGER NOT NULL REFERENCES manager_commission_payouts(id) ON DELETE CASCADE,
+  order_id           INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  order_code         TEXT NOT NULL,
+  point_id           TEXT,
+  point_name         TEXT,
+  commission_rate    REAL NOT NULL,
+  commission_amount  INTEGER NOT NULL,
+  UNIQUE(order_id)
+);
+
+CREATE TABLE IF NOT EXISTS manager_launch_bonus_payouts (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  manager_point_id     INTEGER REFERENCES manager_points(id) ON DELETE SET NULL,
+  manager_id           INTEGER REFERENCES managers(id) ON DELETE SET NULL,
+  manager_name         TEXT NOT NULL,
+  manager_code         TEXT,
+  point_id             TEXT,
+  point_name           TEXT NOT NULL,
+  amount               INTEGER NOT NULL,
+  paid_by_admin_id     INTEGER,
+  paid_by_admin_login  TEXT,
+  paid_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(manager_point_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_manager_commission_payouts_manager
+  ON manager_commission_payouts(manager_id, paid_at DESC);
+CREATE INDEX IF NOT EXISTS idx_manager_launch_payouts_manager
+  ON manager_launch_bonus_payouts(manager_id, paid_at DESC);
 
 -- ── СКЛАД И РАСПРОСТРАНЕНИЕ ЧЕРЕЗ МЕНЕДЖЕРОВ ───────────────────────
 -- Транзитная модель: раз в неделю менеджер забирает запас с центрального
@@ -663,7 +711,7 @@ CREATE TABLE IF NOT EXISTS partner_payout_items (
 -- повторно отправить одно и то же сообщение после рестарта приложения.
 CREATE TABLE IF NOT EXISTS payout_reminder_log (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  recipient_role TEXT NOT NULL, -- 'partner' | 'owner'
+  recipient_role TEXT NOT NULL, -- 'partner' | 'owner' | роли выплат менеджеру
   recipient_id   INTEGER NOT NULL,
   payout_date    TEXT NOT NULL, -- YYYY-MM-DD по часовому поясу Красноярска
   channel        TEXT NOT NULL, -- 'telegram' | 'max'
@@ -930,6 +978,7 @@ ensureColumn('orders', 'referral_code', 'TEXT');
 ensureColumn('partners', 'tier_confirmed_month', 'TEXT');
 ensureColumn('partners', 'telegram_chat_id', 'TEXT');
 ensureColumn('partners', 'max_chat_id', 'TEXT');
+ensureColumn('managers', 'max_chat_id', 'TEXT');
 ensureColumn('managers', 'telegram_chat_id', 'TEXT');
 ensureColumn('salon_owners', 'telegram_chat_id', 'TEXT');
 ensureColumn('salon_owners', 'max_chat_id', 'TEXT');
@@ -1259,6 +1308,84 @@ CREATE TABLE IF NOT EXISTS bsc_initiatives (
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Поручения планёрок: отдельный реестр исполнителей не привязан жёстко к
+-- типу аккаунта. Это позволяет включить в работу собственников, менеджера и
+-- внешних участников (например, поставщика), сохранив единый канал напоминаний.
+CREATE TABLE IF NOT EXISTS task_assignees (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  code             TEXT UNIQUE NOT NULL,
+  full_name        TEXT NOT NULL,
+  responsibility   TEXT,
+  phone            TEXT,
+  telegram_chat_id TEXT,
+  max_chat_id      TEXT,
+  active           INTEGER NOT NULL DEFAULT 1,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS meeting_tasks (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_key          TEXT UNIQUE,
+  meeting_date        TEXT,
+  title               TEXT NOT NULL,
+  description         TEXT,
+  assignee_id         INTEGER REFERENCES task_assignees(id) ON DELETE SET NULL,
+  due_date            TEXT,
+  priority            TEXT NOT NULL DEFAULT 'normal', -- low | normal | high | critical
+  status              TEXT NOT NULL DEFAULT 'new',    -- new | in_progress | blocked | done | cancelled
+  reminder_enabled    INTEGER NOT NULL DEFAULT 1,
+  recurrence_rule     TEXT, -- weekly:monday | monthly:10,25
+  created_by          TEXT,
+  completed_at        TEXT,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS meeting_task_history (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id      INTEGER NOT NULL REFERENCES meeting_tasks(id) ON DELETE CASCADE,
+  action       TEXT NOT NULL,
+  old_value    TEXT,
+  new_value    TEXT,
+  actor        TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS task_reminder_log (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id      INTEGER NOT NULL REFERENCES meeting_tasks(id) ON DELETE CASCADE,
+  assignee_id  INTEGER REFERENCES task_assignees(id) ON DELETE SET NULL,
+  reminder_key TEXT NOT NULL,
+  channel      TEXT NOT NULL, -- telegram | max
+  status       TEXT NOT NULL DEFAULT 'pending', -- pending | sent | failed
+  error        TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  sent_at      TEXT,
+  UNIQUE(task_id, reminder_key, channel)
+);
+
+-- После кнопки «Сообщить статус» следующее текстовое сообщение сотрудника
+-- относится к конкретному поручению. Одна активная форма на чат исключает
+-- неоднозначность и автоматически истекает через сутки.
+CREATE TABLE IF NOT EXISTS task_bot_pending_inputs (
+  channel      TEXT NOT NULL,
+  chat_id      TEXT NOT NULL,
+  task_id      INTEGER NOT NULL REFERENCES meeting_tasks(id) ON DELETE CASCADE,
+  expected_due TEXT,
+  expires_at   TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY(channel, chat_id)
+);
+
+CREATE TABLE IF NOT EXISTS task_seed_versions (
+  version      TEXT PRIMARY KEY,
+  applied_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_tasks_status_due ON meeting_tasks(status, due_date);
+CREATE INDEX IF NOT EXISTS idx_task_reminders_task ON task_reminder_log(task_id, created_at DESC);
 `);
 
 // ── МУЛЬТИГОРОДСКАЯ АРХИТЕКТУРА ──────────────────────────────────────

@@ -6,14 +6,21 @@
 
 const db = require('./db');
 const crypto = require('node:crypto');
+const {
+  getTaskInbox,
+  handleTaskCallback,
+  handleTaskStatusMessage,
+  taskBotCard,
+  taskButtons,
+} = require('./task-bot-actions');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
 let lastUpdateId = 0;
 let polling = false;
 
 const BOT_NAME = 'ХвостМаркет';
-const BOT_DESCRIPTION = 'Помогаю входить в личный кабинет ХвостМаркета и присылаю уведомления о заказах, продажах и вознаграждениях.';
-const BOT_SHORT_DESCRIPTION = 'Вход в кабинет и уведомления о заказах и вознаграждениях.';
+const BOT_DESCRIPTION = 'Помогаю входить в кабинет, работать с поручениями и получать уведомления ХвостМаркета.';
+const BOT_SHORT_DESCRIPTION = 'Кабинет, поручения и уведомления ХвостМаркета.';
 
 async function callBotApi(method, body) {
   const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, {
@@ -40,6 +47,7 @@ async function configureBotProfile() {
     ['setMyShortDescription', { short_description: BOT_SHORT_DESCRIPTION }],
     ['setMyCommands', { commands: [
       { command: 'start', description: 'Открыть помощника ХвостМаркета' },
+      { command: 'tasks', description: 'Мои активные поручения' },
       { command: 'help', description: 'Как пользоваться ботом' },
     ] }],
   ];
@@ -61,9 +69,13 @@ function generateLoginCode() {
   return String(crypto.randomInt(1000, 10000));
 }
 
-async function replyToChat(chatId, text) {
+async function replyToChat(chatId, text, replyMarkup) {
   try {
-    await callBotApi('sendMessage', { chat_id: chatId, text });
+    await callBotApi('sendMessage', {
+      chat_id: chatId,
+      text,
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    });
   } catch (e) {
     console.warn('Не удалось ответить в Telegram-чат:', e.message);
   }
@@ -75,8 +87,26 @@ function buildWelcomeMessage() {
     '',
     'Я помогу войти в личный кабинет и буду присылать важные уведомления о заказах, продажах и вознаграждениях.',
     '',
+    'Сотрудникам: команда /tasks покажет активные поручения и кнопки управления.',
+    '',
     'Чтобы подключить кабинет, откройте на сайте вход через Telegram и перейдите по созданной ссылке.',
   ].join('\n');
+}
+
+async function sendTaskInbox(chatId) {
+  const inbox = getTaskInbox('telegram', chatId);
+  if (!inbox) {
+    await replyToChat(chatId, 'Ваш Telegram ещё не связан с ответственным. Подключите его в разделе «Поручения» админки.');
+    return;
+  }
+  if (!inbox.tasks.length) {
+    await replyToChat(chatId, '✅ У вас нет активных поручений.');
+    return;
+  }
+  await replyToChat(chatId, `Активные поручения: ${inbox.tasks.length}. Выберите действие под нужной задачей.`);
+  for (const task of inbox.tasks) {
+    await replyToChat(chatId, taskBotCard(task), taskButtons(task, 'telegram'));
+  }
 }
 
 function accountRoleText(role) {
@@ -84,6 +114,7 @@ function accountRoleText(role) {
   if (role === 'manager') return 'менеджера';
   if (role === 'owner') return 'владельца салона';
   if (role === 'admin') return 'администратора';
+  if (role === 'task_assignee') return 'ответственного за поручения';
   return 'покупателя';
 }
 
@@ -94,6 +125,7 @@ function rememberChatForAccount(record, chatId) {
     manager: 'managers',
     owner: 'salon_owners',
     admin: 'admins',
+    task_assignee: 'task_assignees',
   };
   const table = tableByRole[record.role || 'customer'];
   if (!table) return;
@@ -119,9 +151,39 @@ function rememberChatForAccount(record, chatId) {
 }
 
 async function processUpdate(update) {
+  const callback = update.callback_query;
+  if (callback) {
+    const chatId = callback.message && callback.message.chat
+      ? callback.message.chat.id
+      : callback.from && callback.from.id;
+    const result = handleTaskCallback('telegram', chatId, callback.data);
+    if (result) {
+      try {
+        await callBotApi('answerCallbackQuery', {
+          callback_query_id: callback.id,
+          text: result.ok ? 'Готово' : String(result.message).slice(0, 180),
+          show_alert: !result.ok,
+        });
+      } catch (error) {
+        console.warn('Не удалось подтвердить нажатие кнопки Telegram:', error.message);
+      }
+      await replyToChat(chatId, result.message);
+    }
+    return;
+  }
+
   const msg = update.message;
   if (!msg || !msg.text) return;
   const text = msg.text.trim();
+  if (/^\/tasks(?:@\w+)?$/i.test(text) || /^мои поручения$/i.test(text)) {
+    await sendTaskInbox(msg.chat.id);
+    return;
+  }
+  const taskStatus = handleTaskStatusMessage('telegram', msg.chat.id, text);
+  if (taskStatus) {
+    await replyToChat(msg.chat.id, taskStatus.message);
+    return;
+  }
   const match = text.match(/^\/start(?:@\w+)?(?:\s+(\S+))?$/i);
   if (!match || !match[1]) {
     await replyToChat(msg.chat.id, buildWelcomeMessage());
@@ -148,6 +210,9 @@ async function processUpdate(update) {
     'Вернитесь на вкладку с сайтом «ХвостМаркета» — подключение завершится автоматически.\n\n' +
     'Если через несколько секунд ничего не произошло, введите на сайте код вручную: ' + code
   );
+  if (record.role === 'task_assignee') {
+    await sendTaskInbox(msg.chat.id);
+  }
 }
 
 async function pollOnce() {
