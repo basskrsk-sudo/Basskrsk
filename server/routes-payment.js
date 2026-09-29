@@ -14,7 +14,6 @@ const { recordCustomerOrder, normalizePhone } = require('./routes-customers');
 const { spendBones, computeMaxUsableBones, getMaxBonesShare } = require('./bones');
 const { sendEmail } = require('./email');
 const { checkAndPayManagerBonus } = require('./bonus-logic');
-const { sendUnpaidOrderAlert } = require('./unpaid-order-alerts');
 const { priceCatalogCart, calculateDeliveryFee, buildReceiptItems } = require('./order-pricing');
 const {
   RESERVATION_TTL_MINUTES,
@@ -26,14 +25,6 @@ const {
   consumeOrderReservation,
   listExpiredActiveReservations,
 } = require('./reservations');
-
-function releaseFailedOrderAndAlert(orderId, reason) {
-  const result = releaseOrderReservation(orderId, 'failed', reason);
-  sendUnpaidOrderAlert(orderId, 'failed', reason).catch((error) => {
-    console.warn('[unpaid-order] Не удалось обработать срочное оповещение:', error.message);
-  });
-  return result;
-}
 
 
 // Самозаказ определяется сервером по телефону активного грумера выбранной
@@ -264,7 +255,7 @@ async function reconcileExpiredReservations() {
   for (const order of expired) {
     try {
       if (!order.yookassa_payment_id) {
-        releaseFailedOrderAndAlert(order.id, 'Платёж не был создан, время резерва истекло');
+        releaseOrderReservation(order.id, 'failed');
         continue;
       }
       if (!yookassa.isConfigured()) {
@@ -280,7 +271,7 @@ async function reconcileExpiredReservations() {
         payment = await yookassa.cancelPayment(order.yookassa_payment_id);
       }
       if (payment.status === 'canceled') {
-        releaseFailedOrderAndAlert(order.id, 'ЮKassa отменила платёж');
+        releaseOrderReservation(order.id, 'failed');
       }
     } catch (e) {
       // При сетевой ошибке резерв намеренно остаётся активным: освобождать
@@ -500,7 +491,7 @@ function registerPaymentRoutes(router) {
       });
     } catch (e) {
       console.error(`[create-payment] Заказ ${orderId}: ОШИБКА создания платежа — ${e.message}`);
-      releaseFailedOrderAndAlert(orderRowId, 'Платёж не удалось создать: ' + e.message);
+      releaseOrderReservation(orderRowId, 'failed', 'Платёж не удалось создать — резерв освобождён');
       sendJson(res, e.statusCode || 502, { error: e.message });
     }
   });
@@ -519,7 +510,7 @@ function registerPaymentRoutes(router) {
         if (payment.status === 'succeeded') {
           await finalizePaidOrder(order.id);
         } else if (payment.status === 'canceled') {
-          releaseFailedOrderAndAlert(order.id, 'ЮKassa сообщила об отмене платежа');
+          releaseOrderReservation(order.id, 'failed', 'Платёж отменён — резерв освобождён');
           if (order.reservation_status === 'none') {
             db.prepare("UPDATE orders SET status = 'failed' WHERE id = ? AND status = 'pending'").run(order.id);
           }
@@ -552,7 +543,7 @@ function registerPaymentRoutes(router) {
         if (payment.status === 'succeeded') {
           await finalizePaidOrder(order.id);
         } else if (payment.status === 'canceled') {
-          releaseFailedOrderAndAlert(order.id, 'ЮKassa сообщила об отмене платежа');
+          releaseOrderReservation(order.id, 'failed', 'Платёж отменён — резерв освобождён');
         }
         order = db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id);
       } catch (e) {
@@ -595,7 +586,7 @@ function registerPaymentRoutes(router) {
     if (verified.status === 'succeeded' && order.status !== 'paid') {
       await finalizePaidOrder(order.id);
     } else if (verified.status === 'canceled') {
-      releaseFailedOrderAndAlert(order.id, 'ЮKassa сообщила об отмене платежа');
+      releaseOrderReservation(order.id, 'failed', 'Платёж отменён — резерв освобождён');
       if (order.reservation_status === 'none') {
         db.prepare("UPDATE orders SET status = 'failed' WHERE id = ? AND status = 'pending'").run(order.id);
       }

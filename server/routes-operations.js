@@ -6,7 +6,6 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { getAllPointLaunchSummaries } = require('./point-launch-checklist');
-const { buildGrowthPlanDashboard } = require('./growth-plan');
 
 function addIssue(issues, issue) {
   if (Number(issue.count || 0) > 0) issues.push(issue);
@@ -18,19 +17,6 @@ function money(value) {
 
 function buildOperationsCenter() {
   const issues = [];
-
-  const growthPlan = buildGrowthPlanDashboard();
-  const growthAlerts = growthPlan.alerts.filter((alert) => ['critical', 'warning'].includes(alert.severity));
-  if (growthAlerts.length) {
-    addIssue(issues, {
-      key: 'growth_plan',
-      severity: growthAlerts.some((alert) => alert.severity === 'critical') ? 'critical' : 'warning',
-      icon: '📍', title: 'План 1000 точек', count: growthAlerts.length,
-      summary: 'План: ' + growthPlan.progress.target_to_date + ' · активны 30 дней: ' + growthPlan.facts.active_30d + ' · прогноз года: ' + growthPlan.progress.forecast_year_end,
-      section: 'growth-plan', action_label: 'Открыть план',
-      details: growthAlerts.slice(0, 5).map((alert) => ({ title: alert.title, meta: alert.detail, badge: alert.owner })),
-    });
-  }
 
   // Только свежие проблемы оплаты: старые тестовые/отменённые заказы не
   // должны годами висеть красным на главной. Pending считаем проблемой через

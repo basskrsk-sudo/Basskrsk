@@ -13,7 +13,6 @@ const { getReviewSummary } = require('./routes-reviews');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
 const { writeSalonPagesSnapshot } = require('./salon-page-storage');
-const { geocodeAddress } = require('./geocoding');
 
 const PRODUCT_CATEGORIES = new Set(['treats', 'toys', 'accessories', 'care']);
 
@@ -285,8 +284,7 @@ function registerProductRoutes(router) {
     // При росте сети это реальный риск: точку легко было создать не в том
     // городе, просто не заметив, что поле осталось пустым/по умолчанию.
     if (!city_id) return sendJson(res, 400, { error: 'Укажите город точки' });
-    const cityRow = db.prepare('SELECT id, name FROM cities WHERE id = ?').get(city_id);
-    if (!cityRow) {
+    if (!db.prepare('SELECT id FROM cities WHERE id = ?').get(city_id)) {
       return sendJson(res, 400, { error: 'Неизвестный город: ' + city_id });
     }
     let managerRow = null;
@@ -300,48 +298,8 @@ function registerProductRoutes(router) {
     let candidate = base, i = 1;
     while (db.prepare('SELECT id FROM points WHERE id = ?').get(candidate)) candidate = base + '-' + (++i);
 
-    // Каждая новая точка должна сразу попасть на публичную карту. Если
-    // координаты не переданы явно (обычный сценарий из админки/кабинета
-    // менеджера), определяем их по городу и адресу до записи в БД. Не
-    // сохраняем «невидимую» точку, когда адрес распознать не удалось.
-    const hasLat = lat !== undefined && lat !== null && String(lat).trim() !== '';
-    const hasLng = lng !== undefined && lng !== null && String(lng).trim() !== '';
-    if (hasLat !== hasLng) {
-      return sendJson(res, 400, { error: 'Укажите одновременно широту и долготу' });
-    }
-
-    let pointLat;
-    let pointLng;
-    let geocoded = false;
-    let geocodedAddress = '';
-    if (hasLat && hasLng) {
-      pointLat = Number(lat);
-      pointLng = Number(lng);
-      if (!Number.isFinite(pointLat) || pointLat < -90 || pointLat > 90
-          || !Number.isFinite(pointLng) || pointLng < -180 || pointLng > 180) {
-        return sendJson(res, 400, { error: 'Некорректные координаты точки' });
-      }
-    } else {
-      try {
-        const result = await geocodeAddress(cityRow.name + ', ' + String(addr).trim());
-        pointLat = result.lat;
-        pointLng = result.lng;
-        geocodedAddress = result.formattedAddress;
-        geocoded = true;
-      } catch (e) {
-        console.error('Не удалось определить координаты новой точки:', e.code || e.message);
-        const unavailable = e.code === 'GEOCODER_UNAVAILABLE' || e.code === 'GEOCODER_NOT_CONFIGURED';
-        return sendJson(res, unavailable ? 503 : 422, {
-          error: unavailable
-            ? 'Сервис карты временно недоступен. Точка не создана — попробуйте ещё раз через минуту.'
-            : 'Не удалось найти адрес на карте. Уточните улицу и номер дома — точка не создана.',
-          code: e.code || 'GEOCODING_FAILED',
-        });
-      }
-    }
-
     db.prepare('INSERT INTO points (id, name, addr, icon, lat, lng, city_id, manager_id, is_hub, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)')
-      .run(candidate, name, addr, icon || '📍', pointLat, pointLng, city_id, manager_id || null);
+      .run(candidate, name, addr, icon || '📍', lat ?? null, lng ?? null, city_id, manager_id || null);
 
     // Если сразу назначили менеджера — заводим и связь в manager_points,
     // иначе точка физически не появится в его кабинете («Мои точки»,
@@ -364,6 +322,7 @@ function registerProductRoutes(router) {
       }
     }
 
+    const cityRow = db.prepare('SELECT name FROM cities WHERE id = ?').get(city_id);
     const creatorLine = payload.role === 'manager'
       ? '👤 Создал менеджер: ' + payload.login
       : '👤 Создал администратор: ' + payload.login;
@@ -373,7 +332,6 @@ function registerProductRoutes(router) {
       (icon || '📍') + ' ' + name,
       '🏠 ' + addr,
       '🏙 ' + (cityRow ? cityRow.name : city_id),
-      '🗺 Добавлена на карту' + (geocoded ? ' автоматически' : ''),
       creatorLine,
       '🕐 ' + new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Krasnoyarsk' }),
     ].join('\n'));
@@ -385,14 +343,7 @@ function registerProductRoutes(router) {
       });
     }
 
-    sendJson(res, 201, {
-      ok: true,
-      id: candidate,
-      lat: pointLat,
-      lng: pointLng,
-      geocoded,
-      formatted_address: geocodedAddress,
-    });
+    sendJson(res, 201, { ok: true, id: candidate });
   });
 
   // PUT /api/points/:id/manager — назначить/сменить/снять менеджера у уже

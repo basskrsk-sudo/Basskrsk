@@ -7,13 +7,11 @@ const db = require('./db');
 
 const SEED_VERSION = 'meetings-2026-09-20-27-v1';
 const PRICE_LIST_TASK_VERSION = 'task-2026-09-28-price-list-angelina-v1';
-const PRICE_LIST_DUE_VERSION = 'task-2026-09-28-price-list-angelina-due-2026-10-02-v1';
 
 function seedMeetingTasks() {
   const initialApplied = !!db.prepare('SELECT 1 FROM task_seed_versions WHERE version = ?').get(SEED_VERSION);
   const priceListApplied = !!db.prepare('SELECT 1 FROM task_seed_versions WHERE version = ?').get(PRICE_LIST_TASK_VERSION);
-  const priceListDueApplied = !!db.prepare('SELECT 1 FROM task_seed_versions WHERE version = ?').get(PRICE_LIST_DUE_VERSION);
-  if (initialApplied && priceListApplied && priceListDueApplied) return;
+  if (initialApplied && priceListApplied) return;
 
   const members = [
     ['alexey', 'Лакомых Алексей', 'Операционка, финансы, продажи, сайт, партнёры и команда'],
@@ -84,17 +82,9 @@ function seedMeetingTasks() {
         'Подготовить и разместить прейскурант ХвостМаркета',
         'Подготовить актуальный прейскурант с ценами на товары ХвостМаркета, распечатать его в цвете и разместить на всех стойках.',
         memberIds.get('angelina') || null,
-        '2026-10-02', 'high', 'new', 1, null, 'new'
+        null, 'high', 'new', 1, null, 'new'
       );
       db.prepare('INSERT INTO task_seed_versions (version) VALUES (?)').run(PRICE_LIST_TASK_VERSION);
-    }
-    if (!priceListDueApplied) {
-      // Не затираем срок, если администратор уже успел изменить его вручную.
-      db.prepare(`
-        UPDATE meeting_tasks SET due_date = '2026-10-02', updated_at = datetime('now')
-        WHERE source_key = '2809-01' AND due_date IS NULL
-      `).run();
-      db.prepare('INSERT INTO task_seed_versions (version) VALUES (?)').run(PRICE_LIST_DUE_VERSION);
     }
     db.exec('COMMIT');
   } catch (error) {
@@ -103,4 +93,4 @@ function seedMeetingTasks() {
   }
 }
 
-module.exports = { seedMeetingTasks, SEED_VERSION, PRICE_LIST_TASK_VERSION, PRICE_LIST_DUE_VERSION };
+module.exports = { seedMeetingTasks, SEED_VERSION, PRICE_LIST_TASK_VERSION };

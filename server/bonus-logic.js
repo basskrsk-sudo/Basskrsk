@@ -72,18 +72,7 @@ async function checkAndPayManagerBonus(pointId) {
   const mgrPoint = db.prepare('SELECT * FROM manager_points WHERE point_id = ?').get(pointId);
   if (!mgrPoint || mgrPoint.bonus_paid) return; // нет привязки к менеджеру или бонус уже начислен
 
-  // На одной точке может работать несколько грумеров. Для расчёта бонуса
-  // сначала берём того, у кого зафиксирован реферальный код: раньше обычный
-  // первый SELECT мог случайно выбрать другого грумера и реферер терял свою
-  // половину бонуса. Если реферала нет ни у кого — используем первого
-  // активного грумера только как резервный источник текущей ставки.
-  const partner = db.prepare(`
-    SELECT * FROM partners
-    WHERE point_id = ? AND active = 1
-    ORDER BY CASE WHEN referred_by_partner_id IS NOT NULL OR referred_by_owner_id IS NOT NULL THEN 0 ELSE 1 END,
-             id
-    LIMIT 1
-  `).get(pointId);
+  const partner = db.prepare('SELECT * FROM partners WHERE point_id = ?').get(pointId);
   const profitSoFar = computePointProfitSoFar(pointId, partner ? partner.commission_rate : 0, mgrPoint.commission_rate);
   if (profitSoFar < LAUNCH_BONUS) return; // точка ещё не "окупила" бонус
 
