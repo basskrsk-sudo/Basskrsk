@@ -123,43 +123,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 .section-context-tab:hover { color:var(--forest); background:rgba(255,255,255,.75); }
 .section-context-tab.active { color:#fff; background:var(--forest); }
 
-/* ── ПЛАН 1000 ТОЧЕК ───────────────────────────────────────────── */
-.growth-hero { background:linear-gradient(135deg,#17392C,#316448);color:#fff;border:0;overflow:hidden;position:relative; }
-.growth-hero:after { content:'1000';position:absolute;right:-.1rem;bottom:-2.3rem;font-size:8.5rem;font-weight:800;color:rgba(255,255,255,.055);line-height:1;pointer-events:none; }
-.growth-year-control { display:flex;align-items:center;justify-content:flex-end;gap:.55rem;margin-bottom:.65rem; }
-.growth-year-control label { font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.68);white-space:nowrap; }
-.growth-year-select { min-width:130px;padding:.48rem 2rem .48rem .7rem;border:1px solid rgba(255,255,255,.28);border-radius:8px;background:#fff;color:var(--forest);font:700 .78rem 'Inter',sans-serif;cursor:pointer; }
-.growth-focus-row { background:#FFF7E8;box-shadow:inset 3px 0 0 var(--amber); }
-.growth-status { display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .65rem;border-radius:99px;font-size:.72rem;font-weight:700; }
-.growth-status.green { background:#DDF5E4;color:#23673B; }
-.growth-status.yellow { background:#FFF1CC;color:#805600; }
-.growth-status.red { background:#FCE0E0;color:#972B38; }
-.growth-status.preparation,.growth-status.future { background:#E9EEF4;color:#526275; }
-.growth-progress-track { height:10px;background:#E6E0D7;border-radius:99px;overflow:hidden; }
-.growth-progress-fill { height:100%;background:linear-gradient(90deg,var(--amber),#E9B45C);border-radius:99px;transition:width .25s; }
-.growth-pipeline { display:grid;grid-template-columns:repeat(6,1fr);gap:.55rem; }
-.growth-pipeline-step { padding:.8rem;border:1px solid var(--border);border-radius:10px;background:#fff;min-width:0; }
-.growth-pipeline-value { font-size:1.35rem;font-weight:800;color:var(--forest); }
-.growth-pipeline-label { font-size:.68rem;color:var(--muted);line-height:1.25;margin-top:.25rem; }
-.growth-alert { padding:.8rem .9rem;border-radius:10px;border-left:4px solid var(--amber);background:#FFF8EB;margin-bottom:.55rem; }
-.growth-alert.critical { border-left-color:#9B2335;background:#FDECEA; }
-.growth-scenario { padding:.8rem;border:1px solid var(--border);border-radius:10px;margin-bottom:.55rem;background:#fff; }
-.growth-scenario.base { border-color:var(--amber);box-shadow:inset 3px 0 0 var(--amber); }
-.growth-capacity-row { display:grid;grid-template-columns:1fr auto;gap:.7rem;align-items:center;padding:.65rem 0;border-bottom:1px solid #F0ECE5; }
-.growth-capacity-row:last-child { border-bottom:0; }
-.growth-mini-track { height:5px;background:#E8E2D8;border-radius:99px;overflow:hidden;margin-top:.28rem; }
-.growth-mini-fill { height:100%;background:var(--deep);border-radius:99px; }
-.growth-decision { padding:1rem;border-radius:12px;border:1px solid var(--border); }
-.growth-decision.go { background:var(--green-bg);border-color:#BCDCC6; }
-.growth-decision.caution,.growth-decision.not_ready { background:#FFF8E8;border-color:#EBD6A1; }
-.growth-decision.stop { background:var(--red-bg);border-color:#EABDC3; }
-.growth-gates { display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.55rem;margin-top:.8rem; }
-.growth-gate { padding:.7rem;border:1px solid var(--border);border-radius:9px;background:#fff; }
-.growth-settings-grid { display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:.65rem; }
-.growth-settings-grid .admin-field { margin:0; }
-@media (max-width: 1050px) { .growth-pipeline{grid-template-columns:repeat(3,1fr)} .growth-settings-grid{grid-template-columns:repeat(2,1fr)} }
-@media (max-width: 600px) { .growth-pipeline{grid-template-columns:repeat(2,1fr)} .growth-settings-grid{grid-template-columns:1fr} .growth-year-control{justify-content:flex-start} }
-
 /* ── KPI CARDS ── */
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
 .kpi-card {
@@ -388,62 +351,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   font-size: .9rem; font-family: 'Inter', sans-serif; color: var(--text); outline: none; background: #fff;
 }
 
-/* ── ОПЕРАЦИОННЫЙ ЦЕНТР ─────────────────────────────────────────── */
-.ops-center {
-  margin-bottom:1rem; padding:1rem; border:1px solid var(--border);
-  border-radius:14px; background:linear-gradient(135deg,#fff 0%,#F7F7F2 100%);
-}
-.ops-head { display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.85rem; }
-.ops-head h2 { font-size:1.05rem;color:var(--deep);margin:0 0 .2rem; }
-.ops-subtitle { font-size:.78rem;color:var(--muted);line-height:1.45; }
-.ops-summary { display:flex;gap:.4rem;flex-wrap:wrap; }
-.ops-summary-pill { display:inline-flex;align-items:center;gap:.3rem;padding:.26rem .58rem;border-radius:50px;font-size:.72rem;font-weight:700; }
-.ops-summary-pill.critical { background:#FDECEA;color:#9B2335; }
-.ops-summary-pill.warning { background:#FFF4E5;color:#8A5700; }
-.ops-summary-pill.info { background:#E9F3ED;color:#276342; }
-.ops-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem; }
-.ops-card { background:#fff;border:1px solid var(--border);border-left:4px solid var(--border);border-radius:10px;padding:.8rem;min-width:0; }
-.ops-card.critical { border-left-color:#C8495B; }
-.ops-card.warning { border-left-color:#D4872A; }
-.ops-card.info { border-left-color:#4C8A68; }
-.ops-card-top { display:flex;align-items:flex-start;justify-content:space-between;gap:.6rem; }
-.ops-card-title { display:flex;align-items:center;gap:.45rem;font-size:.84rem;font-weight:700;color:var(--text); }
-.ops-card-count { min-width:27px;height:27px;padding:0 .4rem;border-radius:50px;display:flex;align-items:center;justify-content:center;background:#F0EEE8;font-size:.75rem;font-weight:800;color:var(--deep); }
-.ops-card-summary { font-size:.73rem;color:var(--muted);line-height:1.4;margin:.35rem 0 .55rem; }
-.ops-detail { display:flex;align-items:flex-start;justify-content:space-between;gap:.55rem;padding:.4rem 0;border-top:1px solid #EEEAE1;font-size:.72rem; }
-.ops-detail-main { min-width:0; }
-.ops-detail-title { color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-.ops-detail-meta { color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.08rem; }
-.ops-detail-badge { flex:0 0 auto;max-width:48%;text-align:right;color:#7A4A00;font-weight:600;font-size:.68rem;line-height:1.3; }
-.ops-card-action { margin-top:.55rem;border:0;background:none;color:var(--deep);font:700 .72rem 'Inter',sans-serif;padding:0;cursor:pointer; }
-.ops-card-action:hover { color:var(--amber); }
-.ops-ok { grid-column:1/-1;padding:1.25rem;text-align:center;color:#276342;background:#EDF6F0;border-radius:10px;font-size:.85rem; }
-.ops-error { grid-column:1/-1;padding:1rem;text-align:center;color:#9B2335;background:#FDECEA;border-radius:10px;font-size:.8rem; }
-
-/* ── ЧЕК-ЛИСТ ОТКРЫТИЯ ТОЧКИ ────────────────────────────────────── */
-.launch-checklist-card { margin-bottom:1rem;border-top:4px solid var(--amber); }
-.launch-checklist-head { display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap; }
-.launch-checklist-progress { height:9px;background:#E8E4DA;border-radius:50px;overflow:hidden;margin:.75rem 0 1rem; }
-.launch-checklist-progress > span { display:block;height:100%;background:var(--forest);border-radius:50px;transition:width .25s; }
-.launch-checklist-group { margin-top:.9rem; }
-.launch-checklist-group-title { font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:.35rem; }
-.launch-checklist-items { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem; }
-.launch-check-item { border:1px solid var(--border);border-radius:9px;padding:.65rem .7rem;background:#fff;display:flex;gap:.6rem;align-items:flex-start; }
-.launch-check-item.done { background:#F2F8F4;border-color:#CFE2D5; }
-.launch-check-item.important { border-color:#E8C17E;box-shadow:inset 0 0 0 1px rgba(212,135,42,.08); }
-.launch-check-icon { width:24px;height:24px;flex:0 0 24px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#F0EEE8;color:#9B958A;font-size:.72rem;font-weight:800; }
-.launch-check-item.done .launch-check-icon { background:#2D7D46;color:#fff; }
-.launch-check-body { min-width:0;flex:1; }
-.launch-check-title { font-size:.78rem;font-weight:700;color:var(--text);line-height:1.35; }
-.launch-check-desc { font-size:.68rem;color:var(--muted);line-height:1.4;margin-top:.18rem; }
-.launch-check-evidence { font-size:.67rem;color:#6D5630;background:#FFF8EA;border-radius:5px;padding:.28rem .4rem;margin-top:.35rem;line-height:1.35; }
-.launch-check-meta { font-size:.65rem;color:#5D7668;margin-top:.3rem;line-height:1.35; }
-.launch-check-action { border:0;background:none;color:var(--deep);font:700 .68rem 'Inter',sans-serif;padding:.3rem 0 0;cursor:pointer; }
-.launch-check-action:hover { color:var(--amber); }
-.launch-progress-pill { display:inline-flex;padding:.2rem .5rem;border-radius:50px;font-size:.68rem;font-weight:700;white-space:nowrap; }
-.launch-progress-pill.ready { background:#E9F3ED;color:#276342; }
-.launch-progress-pill.pending { background:#FFF4E5;color:#8A5700; }
-
 /* ── ADMIN LOGIN ── */
 #admin-login {
   position:fixed; inset:0; background:var(--forest);
@@ -542,10 +449,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   .admin-user-name, .admin-user-role { display:none; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  .ops-grid { grid-template-columns:1fr; }
-  .ops-center { padding:.8rem; }
-  .ops-detail-badge { max-width:42%; }
-  .launch-checklist-items { grid-template-columns:1fr; }
   .card { padding: .9rem; overflow-x: auto; }
   .tbl { font-size: .74rem; min-width: 480px; }
   .bsc-hero { grid-template-columns:1fr !important; }
@@ -616,8 +519,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   <div class="sidebar-logo" style="display:flex;align-items:center;gap:.6rem;"><span class="sidebar-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;line-height:.88;font-family:'Inter',sans-serif;font-size:1rem;font-weight:800;letter-spacing:0;"><span style="color:#fff;">Хвост</span><span style="color:#FF5A49;margin-top:.2rem;">Маркет</span></span><button class="mobile-menu-close" type="button" onclick="closeAdminMenu()" aria-label="Закрыть меню">×</button></div>
   <div class="sidebar-label">Разделы</div>
   <button class="nav-item active" data-group="home" onclick="showSection('dashboard')"><span class="nav-dot"></span> Главная</button>
-  <button class="nav-item" data-group="strategy" onclick="showSection('growth-plan')"><span class="nav-dot"></span> Стратегия</button>
-  <button class="nav-item" data-group="backlog" onclick="showSection('backlog')"><span class="nav-dot"></span> Бэклог</button>
+  <button class="nav-item" data-group="strategy" onclick="showSection('bsc')"><span class="nav-dot"></span> Стратегия</button>
   <button class="nav-item" data-group="tasks" onclick="showSection('tasks')"><span class="nav-dot"></span> Поручения</button>
   <button class="nav-item" data-group="sales" onclick="showSection('orders')"><span class="nav-dot"></span> Продажи</button>
   <button class="nav-item" data-group="inventory" onclick="showSection('products')"><span class="nav-dot"></span> Товары и склад</button>
@@ -734,19 +636,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
     </div>
 
     <div id="sec-dashboard">
-
-      <section class="ops-center" aria-labelledby="ops-center-title">
-        <div class="ops-head">
-          <div>
-            <h2 id="ops-center-title">⚡ Требует внимания</h2>
-            <div class="ops-subtitle">Только актуальные ситуации, по которым нужно принять решение или выполнить действие.</div>
-          </div>
-          <div class="ops-summary" id="ops-summary"><span class="ops-summary-pill info">Загрузка…</span></div>
-        </div>
-        <div class="ops-grid" id="ops-grid">
-          <div class="ops-ok" style="color:var(--muted);">Проверяем заказы, остатки, точки и поручения…</div>
-        </div>
-      </section>
 
       <div class="payout-schedule-card">
         <div class="payout-schedule-icon">📅</div>
@@ -882,108 +771,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
     </div>
 
-    <!-- ══ СТРАТЕГИЯ · ПЛАН 1000 ТОЧЕК ══ -->
-    <div id="sec-growth-plan" style="display:none;">
-      <div class="card growth-hero" style="margin-bottom:1rem;">
-        <div style="position:relative;z-index:1;display:flex;justify-content:space-between;align-items:flex-start;gap:1.5rem;flex-wrap:wrap;">
-          <div>
-            <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);margin-bottom:.4rem;">Стратегия 2027–2031</div>
-            <h2 style="font-size:1.55rem;margin-bottom:.45rem;">План роста до 1000 активных точек</h2>
-            <p style="font-size:.84rem;line-height:1.55;color:rgba(255,255,255,.76);max-width:700px;">Единый контур «цель → факт → прогноз → отклонение → поручение». В план засчитываются точки с оплаченной продажей за последние 30 дней.</p>
-          </div>
-          <div style="text-align:right;min-width:180px;">
-            <div class="growth-year-control">
-              <label for="growth-year-filter">Фокус плана</label>
-              <select id="growth-year-filter" class="growth-year-select" onchange="setGrowthYearFocus(this.value)" aria-label="Выбрать год плана"></select>
-            </div>
-            <span id="growth-status" class="growth-status preparation">Загрузка…</span>
-            <div id="growth-generated" style="font-size:.7rem;color:rgba(255,255,255,.58);margin-top:.55rem;"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));">
-        <div class="kpi-card"><div class="kpi-label">Активные 30 дней</div><div class="kpi-value" id="growth-kpi-active">—</div><div class="kpi-delta" id="growth-kpi-active-note"></div></div>
-        <div class="kpi-card"><div class="kpi-label" id="growth-kpi-plan-label">План на сегодня</div><div class="kpi-value" id="growth-kpi-plan">—</div><div class="kpi-delta" id="growth-kpi-gap"></div></div>
-        <div class="kpi-card"><div class="kpi-label" id="growth-kpi-pace-label">Нужно открывать</div><div class="kpi-value" id="growth-kpi-pace">—</div><div class="kpi-delta" id="growth-kpi-pace-note"></div></div>
-        <div class="kpi-card"><div class="kpi-label" id="growth-kpi-forecast-label">Прогноз на конец года</div><div class="kpi-value" id="growth-kpi-forecast">—</div><div class="kpi-delta" id="growth-kpi-forecast-note"></div></div>
-        <div class="kpi-card"><div class="kpi-label" id="growth-kpi-funding-label">Внешнее финансирование</div><div class="kpi-value" id="growth-kpi-funding">—</div><div class="kpi-delta">с резервом 20%</div></div>
-        <div class="kpi-card"><div class="kpi-label" id="growth-kpi-quarter-funding-label">Квартальный резерв</div><div class="kpi-value" id="growth-kpi-quarter-funding">—</div><div class="kpi-delta" id="growth-kpi-quarter-note"></div></div>
-      </div>
-
-      <div class="grid-2" style="align-items:stretch;">
-        <div class="card">
-          <div class="card-title"><span>Траектория сети <small style="font-weight:400;color:var(--muted);">план · факт · прогноз</small></span></div>
-          <div style="height:300px;"><canvas id="growth-plan-chart" role="img" aria-label="План и факт роста сети"></canvas></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Выполнение цели текущего года</div>
-          <div style="display:flex;justify-content:space-between;gap:1rem;align-items:end;margin-bottom:.55rem;"><strong id="growth-year-title" style="font-size:1.05rem;">—</strong><span id="growth-year-percent" style="font-size:.8rem;color:var(--muted);">—</span></div>
-          <div class="growth-progress-track"><div class="growth-progress-fill" id="growth-year-progress" style="width:0;"></div></div>
-          <div id="growth-year-explanation" style="font-size:.78rem;color:var(--muted);line-height:1.55;margin-top:.8rem;"></div>
-          <div style="margin-top:1rem;padding:.85rem;background:var(--cream);border-radius:10px;">
-            <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Прогноз достижения 1000</div>
-            <div id="growth-reach-date" style="font-size:1.05rem;font-weight:700;margin-top:.3rem;">—</div>
-            <div id="growth-reach-note" style="font-size:.74rem;color:var(--muted);margin-top:.25rem;"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:1rem;">
-        <div class="card-title">Воронка масштабирования</div>
-        <div id="growth-pipeline" class="growth-pipeline"></div>
-      </div>
-
-      <div class="grid-2" style="align-items:start;">
-        <div class="card">
-          <div class="card-title"><span>Сценарный коридор <small style="font-weight:400;color:var(--muted);">базовый план не изменяется</small></span></div>
-          <div id="growth-scenarios"></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Мощность команды и воронки</div>
-          <div id="growth-capacity"></div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:1rem;">
-        <div class="card-title">Контрольное решение о масштабировании</div>
-        <div id="growth-gates"></div>
-      </div>
-
-      <div class="card" style="margin-bottom:1rem;">
-        <div class="card-title"><span>План по годам <span style="font-size:.7rem;font-weight:400;color:var(--muted);">центральные расходы пока исключены</span></span></div>
-        <div style="overflow-x:auto;"><table class="tbl" style="min-width:1080px;"><thead><tr><th>Год</th><th class="r">Новых</th><th class="r">Цель сети</th><th class="r">Факт</th><th class="r">Темп / мес.</th><th class="r">Выручка модели</th><th class="r">Деньги бизнеса</th><th class="r">Запуски</th><th class="r">Поток</th><th class="r">Транш инвесторов</th><th>Статус</th></tr></thead><tbody id="growth-annual-tbody"></tbody></table></div>
-      </div>
-
-      <div class="card" style="margin-bottom:1rem;">
-        <div class="card-title"><span>Квартальный календарь запусков и финансирования <small id="growth-quarter-weights-label" style="font-weight:400;color:var(--muted);"></small></span></div>
-        <div style="overflow-x:auto;"><table class="tbl" style="min-width:980px;"><thead><tr><th>Квартал</th><th class="r">Новых точек</th><th class="r">Сеть</th><th class="r">Выручка</th><th class="r">Деньги бизнеса</th><th class="r">Запуски</th><th class="r">Поток</th><th class="r">Накоплено</th><th class="r">Транш</th></tr></thead><tbody id="growth-quarterly-tbody"></tbody></table></div>
-      </div>
-
-      <div class="grid-2" style="align-items:start;">
-        <div class="card">
-          <div class="card-title"><span>Отклонения и действия</span><button class="row-btn" onclick="syncGrowthPlanTasks()">Создать поручения</button></div>
-          <div id="growth-alerts"></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Контроль капитала</div>
-          <div id="growth-finance-summary"></div>
-          <p style="font-size:.72rem;line-height:1.5;color:var(--muted);margin-top:.8rem;">Валовые вложения показывают стоимость всех запусков. Внешнее финансирование — только пиковый дефицит после реинвестирования денег действующих точек.</p>
-        </div>
-      </div>
-
-      <div class="grid-2" style="align-items:start;">
-        <div class="card"><div class="card-title">Города</div><div style="overflow-x:auto;"><table class="tbl"><thead><tr><th>Город</th><th class="r">Включено</th><th class="r">Активны 30 дней</th></tr></thead><tbody id="growth-cities-tbody"></tbody></table></div></div>
-        <div class="card"><div class="card-title">Менеджеры</div><div style="overflow-x:auto;"><table class="tbl"><thead><tr><th>Менеджер</th><th class="r">Точки</th><th class="r">Активны</th><th class="r">Лиды</th></tr></thead><tbody id="growth-managers-tbody"></tbody></table></div></div>
-      </div>
-
-      <div class="card" id="growth-settings-card" style="display:none;margin-top:1rem;">
-        <div class="card-title"><span>Цели и допущения <span style="font-size:.72rem;font-weight:400;color:var(--muted);">только для супер-администратора</span></span><button class="row-btn" style="background:var(--forest);color:#fff;" onclick="saveGrowthPlanSettings()">Сохранить и пересчитать</button></div>
-        <p style="font-size:.78rem;color:var(--muted);line-height:1.5;margin-bottom:1rem;">Изменения влияют только на управленческий прогноз и не меняют реальные тарифы, начисления и выплаты.</p>
-        <div id="growth-settings"></div>
-      </div>
-    </div>
-
     <!-- ══ СТРАТЕГИЯ · BSC КАПЛАНА–НОРТОНА ══ -->
     <div id="sec-bsc" style="display:none;">
       <div class="card" style="background:linear-gradient(135deg,var(--forest),var(--deep));border:none;color:#fff;margin-bottom:1rem;">
@@ -1042,36 +829,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <p style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:1rem;">Веса четырёх направлений должны составлять 100%. Изменения сохраняются в истории.</p>
         <div id="bsc-settings"></div>
       </div>
-    </div>
-
-    <!-- ══ БЭКЛОГ ИДЕЙ И ИНИЦИАТИВ ══ -->
-    <div id="sec-backlog" style="display:none;">
-      <div class="card" style="background:linear-gradient(135deg,var(--forest),var(--deep));border:none;color:#fff;margin-bottom:1rem;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
-          <div>
-            <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);">Идеи на будущее</div>
-            <h2 style="font-size:1.45rem;margin:.35rem 0;">Бэклог ХвостМаркета</h2>
-            <p style="font-size:.84rem;line-height:1.55;color:rgba(255,255,255,.76);max-width:760px;">Инициативы, которые уже проработаны, но пока не запущены. В каждой карточке зафиксированы причина ожидания, условия возврата и следующий шаг.</p>
-          </div>
-          <div id="backlog-updated" style="font-size:.75rem;color:rgba(255,255,255,.65);padding-top:.25rem;"></div>
-        </div>
-      </div>
-
-      <div class="grid-4" style="margin-bottom:1rem;">
-        <div class="kpi-card"><div class="kpi-label">Всего инициатив</div><div class="kpi-value" id="backlog-kpi-total">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">Ждут внешнего решения</div><div class="kpi-value" id="backlog-kpi-waiting">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">Готовы к запуску</div><div class="kpi-value" id="backlog-kpi-ready">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">В работе</div><div class="kpi-value" id="backlog-kpi-active">—</div></div>
-      </div>
-
-      <div class="card" style="margin-bottom:1rem;">
-        <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:end;">
-          <div class="admin-field" style="margin:0;min-width:220px;flex:1;"><label>Поиск</label><input id="backlog-search" placeholder="Название, категория или текст" oninput="renderBacklogList()"></div>
-          <div class="admin-field" style="margin:0;min-width:220px;"><label>Статус</label><select id="backlog-status-filter" onchange="renderBacklogList()"><option value="">Все статусы</option><option value="waiting_external">Ждём внешнего решения</option><option value="planned">Запланировано</option><option value="ready">Готово к запуску</option><option value="in_progress">В работе</option><option value="done">Выполнено</option></select></div>
-        </div>
-      </div>
-
-      <div id="backlog-list"></div>
     </div>
 
     <!-- ══ ЭКОНОМИКА ПРОЕКТА ══ -->
@@ -1200,14 +957,13 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="kpi-card"><div class="kpi-label">Чистая прибыль</div><div class="kpi-value" id="wr-kpi-profit">—</div><div class="kpi-delta" id="wr-kpi-margin"></div></div>
         <div class="kpi-card"><div class="kpi-label">Конверсия в оплату</div><div class="kpi-value" id="wr-kpi-conversion">—</div></div>
         <div class="kpi-card"><div class="kpi-label">Индекс BSC</div><div class="kpi-value" id="wr-kpi-bsc">—</div><div class="kpi-delta" id="wr-kpi-bsc-status"></div></div>
-        <div class="kpi-card"><div class="kpi-label">План 1000 точек</div><div class="kpi-value" id="wr-kpi-growth">—</div><div class="kpi-delta" id="wr-kpi-growth-status"></div></div>
       </div>
 
       <div class="card">
         <div class="card-title">Архив отчётов <span id="weekly-reports-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></div>
         <div style="overflow-x:auto;">
-          <table class="tbl" style="min-width:920px;">
-            <thead><tr><th>Период</th><th>Сформирован</th><th class="r">Выручка</th><th class="r">Заказов</th><th class="r">Прибыль</th><th>План сети</th><th>Telegram</th><th>Сформировал</th><th class="r">Файлы</th></tr></thead>
+          <table class="tbl" style="min-width:820px;">
+            <thead><tr><th>Период</th><th>Сформирован</th><th class="r">Выручка</th><th class="r">Заказов</th><th class="r">Прибыль</th><th>Telegram</th><th>Сформировал</th><th class="r">Файлы</th></tr></thead>
             <tbody id="weekly-reports-tbody"></tbody>
           </table>
         </div>
@@ -1219,16 +975,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       <div class="card">
         <div class="card-title">
           <span>Последние заказы <span id="orders-count"></span></span>
-          <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
-            <select id="orders-status-filter" class="pm-select" style="width:auto;padding:.35rem .6rem;font-size:.75rem;" onchange="renderOrders()">
-              <option value="all">Все статусы</option>
-              <option value="problem">Требуют внимания</option>
-              <option value="pending">Ожидают оплату</option>
-              <option value="failed">Ошибка оплаты</option>
-              <option value="paid">Оплаченные</option>
-            </select>
-            <button class="row-btn danger" onclick="bulkDeleteOrders()">🗑 Удалить все неоплаченные</button>
-          </div>
+          <button class="row-btn danger" onclick="bulkDeleteOrders()">🗑 Удалить все неоплаченные</button>
         </div>
         <table class="tbl">
           <thead>
@@ -1365,7 +1112,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
         <table class="tbl">
           <thead>
-            <tr><th>Точка</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Открытие</th><th>Статус</th><th class="r">Действие</th></tr>
+            <tr><th>Точка</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Статус</th><th class="r">Действие</th></tr>
           </thead>
           <tbody id="points-mgmt-tbody"></tbody>
         </table>
@@ -1377,7 +1124,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <h3 style="margin-bottom:1rem;">Новая точка</h3>
           <div id="point-modal-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.5rem .7rem;border-radius:6px;margin-bottom:.8rem;"></div>
           <div class="admin-field"><label>Название</label><input type="text" id="pt-new-name" placeholder="Например, Груминг «Пушок»"></div>
-          <div class="admin-field"><label>Адрес</label><input type="text" id="pt-new-addr" placeholder="ул. Ленина, 1"><div style="font-size:.75rem;color:var(--muted);margin-top:.3rem;">Координаты определятся автоматически, и точка сразу появится на карте.</div></div>
+          <div class="admin-field"><label>Адрес</label><input type="text" id="pt-new-addr" placeholder="ул. Ленина, 1"></div>
           <div class="admin-field"><label>Иконка (эмодзи)</label><input type="text" id="pt-new-icon" placeholder="✂️" maxlength="4"></div>
           <div class="admin-field">
             <label>Город</label>
@@ -1390,7 +1137,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </div>
           <div style="display:flex;gap:.6rem;margin-top:1rem;">
             <button class="row-btn" style="flex:1;" onclick="closePointModal()">Отмена</button>
-            <button id="pt-new-submit" class="row-btn" style="flex:1;background:var(--forest);color:#fff;" onclick="savePointForm()">Создать</button>
+            <button class="row-btn" style="flex:1;background:var(--forest);color:#fff;" onclick="savePointForm()">Создать</button>
           </div>
         </div>
       </div>
@@ -1811,19 +1558,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <button class="row-btn" onclick="showSection('points')">Управление</button>
           <span class="point-badge badge-active" style="font-size:.75rem;padding:.3rem .8rem;">Активна</span>
         </div>
-      </div>
-
-      <!-- Чек-лист открытия конкретной точки -->
-      <div class="card launch-checklist-card" id="point-launch-checklist-card">
-        <div class="launch-checklist-head">
-          <div>
-            <div class="card-title" style="margin-bottom:.2rem;">Чек-лист открытия точки</div>
-            <div style="font-size:.74rem;color:var(--muted);">Автоматические пункты обновляются из реальных данных. Ручные подтверждения сохраняются в базе.</div>
-          </div>
-          <span id="point-launch-status" class="launch-progress-pill pending">Загрузка…</span>
-        </div>
-        <div class="launch-checklist-progress"><span id="point-launch-progress-bar" style="width:0;"></span></div>
-        <div id="point-launch-checklist-body" style="font-size:.78rem;color:var(--muted);">Загрузка чек-листа…</div>
       </div>
 
       <!-- Координаты для Яндекс.Карт -->
@@ -2962,118 +2696,17 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
   }
 }
 
-// ── БЭКЛОГ ───────────────────────────────────────────────────────────
-let BACKLOG_ITEMS = [];
-
-function escapeBacklogHtml(value) {
-  return String(value === undefined || value === null ? '' : value)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-}
-
-function formatBacklogDate(value) {
-  const parts = String(value || '').split('-');
-  return parts.length === 3 ? parts[2] + '.' + parts[1] + '.' + parts[0] : String(value || '');
-}
-
-function backlogListBlock(title, items, options) {
-  if (!Array.isArray(items) || !items.length) return '';
-  options = options || {};
-  const rows = items.map(function(item) {
-    const value = typeof item === 'object' ? item.text : item;
-    const marker = options.checks ? ((item && item.done) ? '☑' : '☐') : '•';
-    return '<li style="display:flex;gap:.55rem;align-items:flex-start;margin-bottom:.45rem;line-height:1.45;">' +
-      '<span style="color:' + (options.checks && item && item.done ? '#2D7D46' : 'var(--amber)') + ';font-weight:700;flex:0 0 auto;">' + marker + '</span>' +
-      '<span>' + escapeBacklogHtml(value) + '</span></li>';
-  }).join('');
-  return '<div style="min-width:0;"><div style="font-size:.78rem;font-weight:700;color:var(--deep);margin-bottom:.55rem;">' + escapeBacklogHtml(title) + '</div>' +
-    '<ul style="list-style:none;margin:0;padding:0;font-size:.8rem;color:var(--text);">' + rows + '</ul></div>';
-}
-
-async function loadBacklog() {
-  const listEl = document.getElementById('backlog-list');
-  if (listEl) listEl.innerHTML = '<div class="card" style="color:var(--muted);">Загружаем бэклог…</div>';
-  try {
-    const res = await authFetch('/api/backlog');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Не удалось загрузить бэклог');
-    BACKLOG_ITEMS = Array.isArray(data.items) ? data.items : [];
-    document.getElementById('backlog-updated').textContent = data.updated_at ? 'Обновлено ' + formatBacklogDate(data.updated_at) : '';
-    document.getElementById('backlog-kpi-total').textContent = BACKLOG_ITEMS.length;
-    document.getElementById('backlog-kpi-waiting').textContent = BACKLOG_ITEMS.filter(function(item) { return item.status === 'waiting_external'; }).length;
-    document.getElementById('backlog-kpi-ready').textContent = BACKLOG_ITEMS.filter(function(item) { return item.status === 'ready'; }).length;
-    document.getElementById('backlog-kpi-active').textContent = BACKLOG_ITEMS.filter(function(item) { return item.status === 'in_progress'; }).length;
-    renderBacklogList();
-  } catch (error) {
-    if (listEl) listEl.innerHTML = '<div class="card" style="color:#9B2335;">' + escapeBacklogHtml(error.message || 'Не удалось загрузить бэклог') + '</div>';
-  }
-}
-
-function renderBacklogList() {
-  const listEl = document.getElementById('backlog-list');
-  if (!listEl) return;
-  const searchEl = document.getElementById('backlog-search');
-  const statusEl = document.getElementById('backlog-status-filter');
-  const search = String(searchEl ? searchEl.value : '').trim().toLowerCase();
-  const status = statusEl ? statusEl.value : '';
-  const visible = BACKLOG_ITEMS.filter(function(item) {
-    if (status && item.status !== status) return false;
-    if (!search) return true;
-    return JSON.stringify(item).toLowerCase().includes(search);
-  });
-  if (!visible.length) {
-    listEl.innerHTML = '<div class="card" style="color:var(--muted);">По выбранным условиям инициативы не найдены.</div>';
-    return;
-  }
-  const statusColors = {
-    waiting_external: ['#FFF4E5', '#8A5600'], planned: ['#EEF4FA', '#315F85'],
-    ready: ['#EDF5EE', '#2D7D46'], in_progress: ['#F2ECF8', '#6B4291'], done: ['#E9F5EF', '#1F6E43']
-  };
-  listEl.innerHTML = visible.map(function(item) {
-    const colors = statusColors[item.status] || ['#F1EFEA', '#6F675E'];
-    const completed = (item.next_steps || []).filter(function(step) { return step.done; }).length;
-    const total = (item.next_steps || []).length;
-    return '<details class="card" open style="margin-bottom:1rem;border-top:4px solid var(--amber);">' +
-      '<summary style="list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap;">' +
-        '<div><div style="font-size:.72rem;color:var(--muted);margin-bottom:.3rem;">' + escapeBacklogHtml(item.category) + '</div>' +
-        '<div style="font-size:1.08rem;font-weight:700;color:var(--deep);">' + escapeBacklogHtml(item.title) + '</div></div>' +
-        '<div style="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;">' +
-          '<span style="background:' + colors[0] + ';color:' + colors[1] + ';border-radius:50px;padding:.3rem .65rem;font-size:.72rem;font-weight:700;">' + escapeBacklogHtml(item.status_label) + '</span>' +
-          '<span style="background:var(--cream);border-radius:50px;padding:.3rem .65rem;font-size:.72rem;color:var(--muted);">Приоритет: ' + escapeBacklogHtml(item.priority_label) + '</span>' +
-        '</div>' +
-      '</summary>' +
-      '<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">' +
-        '<p style="font-size:.84rem;line-height:1.6;color:var(--text);margin-bottom:1rem;">' + escapeBacklogHtml(item.summary) + '</p>' +
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.75rem;margin-bottom:1rem;">' +
-          '<div style="padding:.8rem;background:#FFF4E5;border-radius:9px;"><div style="font-size:.72rem;font-weight:700;color:#8A5600;margin-bottom:.25rem;">Сейчас блокирует</div><div style="font-size:.8rem;line-height:1.45;">' + escapeBacklogHtml(item.blocker) + '</div></div>' +
-          '<div style="padding:.8rem;background:var(--cream);border-radius:9px;"><div style="font-size:.72rem;font-weight:700;color:var(--deep);margin-bottom:.25rem;">Решение</div><div style="font-size:.8rem;line-height:1.45;">' + escapeBacklogHtml(item.decision) + '</div></div>' +
-          '<div style="padding:.8rem;background:#EDF5EE;border-radius:9px;"><div style="font-size:.72rem;font-weight:700;color:#2D7D46;margin-bottom:.25rem;">Ответственный</div><div style="font-size:.8rem;line-height:1.45;">' + escapeBacklogHtml(item.owner) + '<br>Создано: ' + formatBacklogDate(item.created_at) + '</div></div>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;align-items:start;">' +
-          backlogListBlock('Рекомендуемый пилот', item.pilot) +
-          backlogListBlock('Что сделать до запуска (' + completed + '/' + total + ')', item.next_steps, { checks: true }) +
-          backlogListBlock('Когда вернуться к задаче', item.return_conditions, { checks: true }) +
-          backlogListBlock('План для сайта', item.planned_site) +
-          backlogListBlock('План для админки', item.planned_admin) +
-          backlogListBlock('Критерии успешного пилота', item.success_criteria, { checks: true }) +
-        '</div>' +
-      '</div>' +
-    '</details>';
-  }).join('');
-}
-
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'guides', 'dashboard', 'growth-plan', 'bsc', 'backlog', 'tasks', 'economics', 'weekly-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
-const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', 'growth-plan': 'План 1000 точек', bsc: 'Стратегия и показатели', backlog: 'Бэклог', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
+const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'weekly-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
+const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
 const sectionGroups = {
-  dashboard:'home', 'growth-plan':'strategy', bsc:'strategy', backlog:'backlog', tasks:'tasks', orders:'sales', customers:'sales',
+  dashboard:'home', bsc:'strategy', tasks:'tasks', orders:'sales', customers:'sales',
   products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
   points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', leads:'network',
   news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'weekly-reports':'finance',
   launch:'system', guides:'system', audit:'system', admins:'system',
 };
 const contextTabs = {
-  strategy: [['growth-plan','План 1000 точек'], ['bsc','BSC и показатели']],
   sales: [['orders','Заказы'], ['customers','Клиенты']],
   inventory: [['products','Каталог'], ['stock','На точках'], ['warehouse','Центральный склад'], ['restock','Перемещения']],
   network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды'], ['leads','Прозвон']],
@@ -3140,10 +2773,8 @@ async function showSection(id) {
   });
 
   if (id === 'launch')      await renderLaunchTasks();
-  if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo(), loadOperationsCenter()]); renderDashboard(); }
-  if (id === 'growth-plan') await renderGrowthPlan();
+  if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo()]); renderDashboard(); }
   if (id === 'bsc')         await renderBscDashboard();
-  if (id === 'backlog')     await loadBacklog();
   if (id === 'tasks')       await loadTaskControl();
   if (id === 'economics')   await renderEconomics();
   if (id === 'weekly-reports') await renderWeeklyReports();
@@ -3205,8 +2836,6 @@ async function savePointLocation() {
   }
   msgEl.textContent = '✅ Сохранено';
   msgEl.style.color = '#2D7D46';
-  await loadPointLaunchChecklist(p.id);
-  loadOperationsCenter();
 }
 
 async function showPoint(idx) {
@@ -3236,7 +2865,7 @@ async function showPoint(idx) {
   document.getElementById('pt-lng').value = realPoint && realPoint.lng !== null ? realPoint.lng : '';
   document.getElementById('pt-location-msg').textContent = '';
 
-  await Promise.all([loadOrders(), loadPointLaunchChecklist(p.id)]);
+  await loadOrders();
   const days = periodDays();
   const periodOrders = ordersInPeriod(days);
   const pOrders = periodOrders.filter(function(o) { return o.point_id === p.id; });
@@ -3295,111 +2924,6 @@ async function showPoint(idx) {
       '<td class="r">' + r.price.toLocaleString('ru-RU') + ' ₽</td>' +
       '<td class="r">' + (r.qty * r.price).toLocaleString('ru-RU') + ' ₽</td></tr>';
   }).join('');
-}
-
-let pointLaunchChecklistData = null;
-
-async function loadPointLaunchChecklist(pointId) {
-  const body = document.getElementById('point-launch-checklist-body');
-  if (body) body.textContent = 'Загрузка чек-листа…';
-  try {
-    const res = await authFetch('/api/points/' + encodeURIComponent(pointId) + '/launch-checklist');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Не удалось загрузить чек-лист');
-    pointLaunchChecklistData = data;
-    renderPointLaunchChecklist();
-  } catch (error) {
-    if (body) body.innerHTML = '<span style="color:#9B2335;">' + opsEscapeHtml(error.message) + '</span>';
-  }
-}
-
-function renderPointLaunchChecklist() {
-  if (!pointLaunchChecklistData) return;
-  const summary = pointLaunchChecklistData.summary;
-  const status = document.getElementById('point-launch-status');
-  status.className = 'launch-progress-pill ' + (summary.ready ? 'ready' : 'pending');
-  status.textContent = summary.ready
-    ? '✓ Готова к работе · 100%'
-    : summary.completed + ' из ' + summary.total + ' · ' + summary.percent + '%';
-  document.getElementById('point-launch-progress-bar').style.width = summary.percent + '%';
-
-  const groups = {};
-  pointLaunchChecklistData.items.forEach(function(item) {
-    if (!groups[item.group]) groups[item.group] = [];
-    groups[item.group].push(item);
-  });
-  document.getElementById('point-launch-checklist-body').innerHTML = Object.keys(groups).map(function(group) {
-    return '<div class="launch-checklist-group"><div class="launch-checklist-group-title">' + opsEscapeHtml(group) + '</div>' +
-      '<div class="launch-checklist-items">' + groups[group].map(function(item) {
-        const important = item.key === 'referral_bonus_verified' || item.key === 'test_sale_verified';
-        const completedDate = item.completed_at
-          ? new Date(String(item.completed_at).replace(' ', 'T') + 'Z').toLocaleString('ru-RU')
-          : '';
-        const meta = item.mode === 'auto'
-          ? '<div class="launch-check-meta">Обновляется автоматически</div>'
-          : (item.completed
-              ? '<div class="launch-check-meta">Подтвердил: ' + opsEscapeHtml(item.completed_by || 'администратор') +
-                (completedDate ? ' · ' + opsEscapeHtml(completedDate) : '') +
-                (item.note ? '<br>Комментарий: ' + opsEscapeHtml(item.note) : '') + '</div>'
-              : '');
-        const action = item.mode === 'manual'
-          ? '<button class="launch-check-action" onclick="togglePointLaunchItem(\'' + item.key + '\',' + (!item.completed) + ')">' +
-            (item.completed ? 'Отменить отметку' : 'Отметить выполненным') + '</button>'
-          : '';
-        return '<div class="launch-check-item ' + (item.completed ? 'done ' : '') + (important ? 'important' : '') + '">' +
-          '<div class="launch-check-icon">' + (item.completed ? '✓' : '○') + '</div>' +
-          '<div class="launch-check-body"><div class="launch-check-title">' + opsEscapeHtml(item.title) + '</div>' +
-          '<div class="launch-check-desc">' + opsEscapeHtml(item.description) + '</div>' +
-          (item.evidence ? '<div class="launch-check-evidence">' + opsEscapeHtml(item.evidence) + '</div>' : '') +
-          meta + action + '</div></div>';
-      }).join('') + '</div></div>';
-  }).join('');
-}
-
-async function togglePointLaunchItem(itemKey, completed) {
-  if (!pointLaunchChecklistData) return;
-  let note = '';
-  if (completed && itemKey === 'referral_bonus_verified') {
-    const value = prompt(
-      'Зафиксируйте результат проверки бонуса.\n\nЕсли точку привёл грумер — укажите его. Если реферала не было — напишите, кто это проверил.',
-      ''
-    );
-    if (value === null) return;
-    note = value.trim();
-  }
-  if (completed && itemKey === 'test_sale_verified') {
-    const value = prompt(
-      'Подтвердите результат тестовой продажи:',
-      'Оплата, списание остатка, экран успеха и уведомления проверены'
-    );
-    if (value === null) return;
-    note = value.trim();
-  }
-  try {
-    const res = await authFetch(
-      '/api/points/' + encodeURIComponent(pointLaunchChecklistData.point.id) + '/launch-checklist/' + encodeURIComponent(itemKey),
-      { method: 'PUT', body: { completed: completed, note: note } }
-    );
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Не удалось сохранить отметку');
-    pointLaunchChecklistData = data.checklist;
-    renderPointLaunchChecklist();
-    loadOperationsCenter();
-  } catch (error) {
-    alert(error.message);
-  }
-}
-
-async function openPointChecklistById(pointId) {
-  await loadPointsInfo();
-  const idx = POINTS_INFO.findIndex(function(point) { return point.id === pointId; });
-  if (idx < 0) {
-    alert('Чек-лист доступен для активной точки. Сначала включите точку.');
-    return;
-  }
-  await showPoint(idx);
-  const card = document.getElementById('point-launch-checklist-card');
-  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function switchPointTab(tab) {
@@ -4174,377 +3698,6 @@ async function connectTaskMember(id, channel) {
   if (!popup) showToast('Откройте ссылку подключения в новой вкладке');
 }
 
-// ── СТРАТЕГИЯ · ПЛАН 1000 ТОЧЕК ───────────────────────────────────
-let growthPlanData = null;
-let growthPlanChart = null;
-let growthFocusYear = localStorage.getItem('hvost_growth_focus_year') || '';
-
-function growthEscape(value) {
-  return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-function growthMoney(value) { return Math.round(Number(value || 0)).toLocaleString('ru-RU') + ' ₽'; }
-function growthShortMoney(value) {
-  const number = Number(value || 0);
-  if (Math.abs(number) >= 1000000) return (number / 1000000).toLocaleString('ru-RU', { maximumFractionDigits:2 }) + ' млн ₽';
-  if (Math.abs(number) >= 1000) return (number / 1000).toLocaleString('ru-RU', { maximumFractionDigits:1 }) + ' тыс. ₽';
-  return growthMoney(number);
-}
-function growthStatusText(status) {
-  return { green:'По плану', yellow:'Требует внимания', red:'Отставание', preparation:'Подготовка к плану', future:'Будущий период' }[status] || status;
-}
-
-function setGrowthYearFocus(value) {
-  growthFocusYear = String(value || 'all');
-  localStorage.setItem('hvost_growth_focus_year', growthFocusYear);
-  if (growthPlanData) applyGrowthYearFocus(growthPlanData);
-}
-
-function setupGrowthYearFilter(data) {
-  const select = document.getElementById('growth-year-filter');
-  if (!select) return;
-  const years = data.settings.years.map(function(row) { return String(row.year); });
-  if (growthFocusYear !== 'all' && years.indexOf(growthFocusYear) === -1) growthFocusYear = String(data.progress.year || years[0]);
-  if (!growthFocusYear) growthFocusYear = String(data.progress.year || years[0]);
-  select.innerHTML = '<option value="all">Весь план</option>' + years.map(function(year) { return '<option value="' + year + '">' + year + ' год</option>'; }).join('');
-  select.value = growthFocusYear;
-  localStorage.setItem('hvost_growth_focus_year', growthFocusYear);
-}
-
-function growthCapacityRow(label, actual, required, suffix, coverage) {
-  const pct = Math.max(0, Math.min(100, Number(coverage == null ? (required ? actual/required*100 : 100) : coverage)));
-  const color = pct >= 100 ? 'var(--deep)' : (pct >= 80 ? 'var(--amber)' : '#9B2335');
-  return '<div class="growth-capacity-row"><div><strong style="font-size:.78rem;">' + label + '</strong><div class="growth-mini-track"><div class="growth-mini-fill" style="width:' + pct + '%;background:' + color + ';"></div></div></div><div style="text-align:right;font-size:.76rem;white-space:nowrap;"><strong>' + actual + '</strong> / ' + required + ' ' + (suffix||'') + '<div style="font-size:.64rem;color:' + color + ';">' + Math.round(pct) + '% покрытия</div></div></div>';
-}
-
-function applyGrowthYearFocus(data) {
-  const p = data.progress;
-  const isAll = growthFocusYear === 'all';
-  const year = isAll ? null : Number(growthFocusYear);
-  const financialRow = year === null ? null : data.financial.rows.find(function(row) { return Number(row.year) === year; });
-  const annualFact = year === null ? null : data.annual.find(function(row) { return Number(row.year) === year; });
-  const settingsRow = year === null ? null : data.settings.years.find(function(row) { return Number(row.year) === year; });
-  if (!isAll && (!financialRow || !settingsRow)) return;
-
-  const status = document.getElementById('growth-status');
-  const focusStatus = isAll ? p.status : ((annualFact && annualFact.status) || 'future');
-  status.className = 'growth-status ' + focusStatus;
-  status.textContent = isAll ? 'Весь план' : growthStatusText(focusStatus);
-
-  document.getElementById('growth-kpi-plan-label').textContent = isAll ? 'Цель к 2031 году' : 'Цель ' + year + ' года';
-  document.getElementById('growth-kpi-pace-label').textContent = isAll ? 'Средний темп плана' : 'Нужно открывать в ' + year;
-  document.getElementById('growth-kpi-forecast-label').textContent = isAll ? 'Результат плана' : (year === Number(p.year) ? 'Прогноз на конец года' : 'План на конец года');
-  document.getElementById('growth-kpi-funding-label').textContent = isAll ? 'Финансирование за 5 лет' : 'Финансирование ' + year;
-  document.getElementById('growth-kpi-quarter-funding-label').textContent = isAll ? 'Квартальный резерв за 5 лет' : 'Квартальный резерв ' + year;
-
-  if (isAll) {
-    const finalRow = data.financial.rows[data.financial.rows.length - 1];
-    const totalNew = data.financial.rows.reduce(function(sum, row) { return sum + Number(row.new_points || 0); }, 0);
-    const averageMonthly = totalNew / (data.financial.rows.length * 12);
-    const peakRow = data.financial.rows.reduce(function(best, row) { return !best || Number(row.launches_per_month) > Number(best.launches_per_month) ? row : best; }, null);
-    document.getElementById('growth-kpi-plan').textContent = Number(finalRow.target_points).toLocaleString('ru-RU');
-    document.getElementById('growth-kpi-gap').textContent = '+' + totalNew.toLocaleString('ru-RU') + ' новых точек за 5 лет';
-    document.getElementById('growth-kpi-gap').className = 'kpi-delta';
-    document.getElementById('growth-kpi-pace').textContent = averageMonthly.toLocaleString('ru-RU', {maximumFractionDigits:1}) + ' / мес.';
-    document.getElementById('growth-kpi-pace-note').textContent = 'пиковый темп ' + peakRow.launches_per_month + ' / мес. в ' + peakRow.year;
-    document.getElementById('growth-kpi-forecast').textContent = Number(finalRow.target_points).toLocaleString('ru-RU');
-    document.getElementById('growth-kpi-forecast-note').textContent = 'цель при выполнении базового сценария';
-    document.getElementById('growth-kpi-funding').textContent = growthShortMoney(data.financial.totals.external_funding);
-    document.getElementById('growth-kpi-quarter-funding').textContent = growthShortMoney(data.quarterly.totals.external_funding);
-    document.getElementById('growth-kpi-quarter-note').textContent = data.quarterly.first_funding ? 'первый транш ' + data.quarterly.first_funding.period + ': ' + growthShortMoney(data.quarterly.first_funding.amount) : 'внешние транши не требуются';
-    const totalPct = finalRow.target_points ? Math.min(100, Math.round(Number(data.facts.active_30d) / Number(finalRow.target_points) * 100)) : 0;
-    document.getElementById('growth-year-title').textContent = '2027–2031: ' + finalRow.target_points + ' активных точек';
-    document.getElementById('growth-year-percent').textContent = data.facts.active_30d + ' сейчас · ' + totalPct + '% цели';
-    document.getElementById('growth-year-progress').style.width = totalPct + '%';
-    document.getElementById('growth-year-explanation').textContent = 'Пятилетний план предусматривает запуск ' + totalNew + ' новых точек. Выберите конкретный год, чтобы увидеть его темп, команду и квартальные транши.';
-  } else {
-    const isCurrent = year === Number(p.year);
-    const previousTarget = year === Number(data.settings.years[0].year)
-      ? Number(data.settings.start_points)
-      : Number((data.settings.years.find(function(row) { return Number(row.year) === year - 1; }) || {}).target_points || data.settings.start_points);
-    const target = Number(financialRow.target_points);
-    const newPoints = Number(financialRow.new_points);
-    const monthly = isCurrent ? Number(p.required_per_month) : Number(financialRow.launches_per_month);
-    const weekly = isCurrent ? Number(p.required_per_week) : newPoints / 52;
-    const yearQuarters = data.quarterly.quarters.filter(function(row) { return Number(row.year) === year; });
-    const quarterFunding = yearQuarters.reduce(function(sum, row) { return sum + Number(row.investor_tranche || 0); }, 0);
-    const firstFunding = yearQuarters.find(function(row) { return Number(row.investor_tranche || 0) > 0; });
-    document.getElementById('growth-kpi-plan').textContent = target.toLocaleString('ru-RU');
-    document.getElementById('growth-kpi-gap').textContent = '+' + newPoints.toLocaleString('ru-RU') + ' новых точек за год';
-    document.getElementById('growth-kpi-gap').className = 'kpi-delta';
-    document.getElementById('growth-kpi-pace').textContent = monthly.toLocaleString('ru-RU', {maximumFractionDigits:1}) + ' / мес.';
-    document.getElementById('growth-kpi-pace-note').textContent = weekly.toLocaleString('ru-RU', {maximumFractionDigits:1}) + ' в неделю · база ' + previousTarget;
-    document.getElementById('growth-kpi-forecast').textContent = Number(isCurrent ? p.forecast_year_end : target).toLocaleString('ru-RU');
-    document.getElementById('growth-kpi-forecast-note').textContent = isCurrent ? (p.current_monthly_pace ? 'текущий темп ' + p.current_monthly_pace + ' / мес.' : 'недостаточно запусков за 90 дней') : 'плановая цель выбранного года';
-    document.getElementById('growth-kpi-funding').textContent = growthShortMoney(financialRow.investor_tranche);
-    document.getElementById('growth-kpi-quarter-funding').textContent = growthShortMoney(quarterFunding);
-    document.getElementById('growth-kpi-quarter-note').textContent = firstFunding ? 'первый транш ' + firstFunding.period + ': ' + growthShortMoney(firstFunding.investor_tranche) : 'в этом году транши не требуются';
-    if (isCurrent) {
-      const pct = p.target_year_end ? Math.min(100, Math.round(p.actual_active / p.target_year_end * 100)) : 0;
-      document.getElementById('growth-year-title').textContent = year + ': ' + p.actual_active + ' из ' + p.target_year_end;
-      document.getElementById('growth-year-percent').textContent = pct + '% годовой цели';
-      document.getElementById('growth-year-progress').style.width = pct + '%';
-      document.getElementById('growth-year-explanation').textContent = p.phase === 'preparation' ? 'До начала плана система фиксирует базу, готовность чек-листов и продажи действующих точек.' : 'До конца года осталось ' + p.days_remaining + ' дн. Нужно добавить ' + p.remaining_to_year_target + ' активных точек.';
-    } else {
-      const maxLaunches = Math.max.apply(null, data.financial.rows.map(function(row) { return Number(row.new_points); }));
-      const loadPct = maxLaunches ? Math.round(newPoints / maxLaunches * 100) : 0;
-      document.getElementById('growth-year-title').textContent = year + ': +' + newPoints + ' новых точек';
-      document.getElementById('growth-year-percent').textContent = target + ' точек к концу года';
-      document.getElementById('growth-year-progress').style.width = loadPct + '%';
-      document.getElementById('growth-year-explanation').textContent = 'Годовой фокус: ' + settingsRow.cities + ' городов, команда ' + settingsRow.team + ' чел., средний темп ' + financialRow.launches_per_month + ' запуска в месяц.';
-    }
-  }
-
-  const cap = data.capacity;
-  let focusedCap = cap;
-  if (!isAll && year !== Number(p.year)) {
-    const monthly = Number(financialRow.launches_per_month);
-    const norm = data.settings.capacity;
-    const requiredManagers = Math.max(1, Math.ceil(monthly / Number(norm.launches_per_manager_month)));
-    const requiredLeads = Math.ceil(monthly * Number(norm.leads_per_launch));
-    const requiredMeetings = Math.ceil(monthly * Number(norm.meetings_per_launch));
-    const requiredAgreements = Math.ceil(monthly * Number(norm.agreements_per_launch));
-    focusedCap = {
-      current_team:cap.current_team, team_target:settingsRow.team, active_managers:cap.active_managers, required_managers:requiredManagers,
-      leads:{actual:cap.leads.actual,required:requiredLeads}, meetings:{actual:cap.meetings.actual,required:requiredMeetings}, agreements:{actual:cap.agreements.actual,required:requiredAgreements},
-      required_launches_month:Number(financialRow.launches_per_month), launches_per_manager_month:norm.launches_per_manager_month,
-    };
-  }
-  document.getElementById('growth-capacity').innerHTML =
-    growthCapacityRow('Команда всего', focusedCap.current_team, focusedCap.team_target, 'чел.') +
-    growthCapacityRow('Активные менеджеры', focusedCap.active_managers, focusedCap.required_managers, 'чел.') +
-    growthCapacityRow('Лиды на месяц', focusedCap.leads.actual, focusedCap.leads.required, '', focusedCap.leads.coverage_percent) +
-    growthCapacityRow('Встречи на месяц', focusedCap.meetings.actual, focusedCap.meetings.required, '', focusedCap.meetings.coverage_percent) +
-    growthCapacityRow('Согласования на месяц', focusedCap.agreements.actual, focusedCap.agreements.required, '', focusedCap.agreements.coverage_percent) +
-    '<div style="font-size:.7rem;color:var(--muted);line-height:1.45;margin-top:.65rem;">Расчёт для темпа ' + focusedCap.required_launches_month + ' запуска в месяц. Норма: ' + focusedCap.launches_per_manager_month + ' запуска на менеджера.</div>';
-
-  document.getElementById('growth-annual-tbody').innerHTML = data.financial.rows.map(function(row) {
-    const fact = data.annual.find(function(item) { return item.year === row.year; }) || {};
-    const focused = !isAll && Number(row.year) === year;
-    return '<tr' + (focused ? ' class="growth-focus-row"' : '') + '><td><strong>' + row.year + (focused ? ' · Фокус' : '') + '</strong></td><td class="r">' + row.new_points + '</td><td class="r"><strong>' + row.target_points + '</strong></td>' +
-      '<td class="r">' + (fact.actual_points === null ? '—' : Number(fact.actual_points).toLocaleString('ru-RU')) + '</td><td class="r">' + row.launches_per_month + '</td>' +
-      '<td class="r">' + growthShortMoney(row.revenue) + '</td><td class="r">' + growthShortMoney(row.business_cash) + '</td><td class="r">' + growthShortMoney(row.expansion_investment) + '</td>' +
-      '<td class="r" style="color:' + (row.net_cash >= 0 ? 'var(--deep)' : '#9B2335') + ';font-weight:700;">' + growthShortMoney(row.net_cash) + '</td><td class="r">' + growthShortMoney(row.investor_tranche) + '</td>' +
-      '<td><span class="growth-status ' + growthEscape(fact.status || 'future') + '">' + growthStatusText(fact.status || 'future') + '</span></td></tr>';
-  }).join('');
-
-  const visibleQuarters = isAll ? data.quarterly.quarters : data.quarterly.quarters.filter(function(row) { return Number(row.year) === year; });
-  document.getElementById('growth-quarterly-tbody').innerHTML = visibleQuarters.map(function(row) {
-    return '<tr><td><strong>' + growthEscape(row.period) + '</strong></td><td class="r">' + row.new_points + '</td><td class="r">' + row.target_points + '</td><td class="r">' + growthShortMoney(row.revenue) + '</td><td class="r">' + growthShortMoney(row.business_cash) + '</td><td class="r">' + growthShortMoney(row.expansion_investment) + '</td><td class="r" style="color:' + (row.net_cash >= 0 ? 'var(--deep)' : '#9B2335') + ';font-weight:700;">' + growthShortMoney(row.net_cash) + '</td><td class="r">' + growthShortMoney(row.cumulative_cash) + '</td><td class="r" style="font-weight:' + (row.investor_tranche ? '800' : '400') + ';color:' + (row.investor_tranche ? 'var(--amber)' : 'var(--muted)') + ';">' + (row.investor_tranche ? growthShortMoney(row.investor_tranche) : '—') + '</td></tr>';
-  }).join('');
-  document.getElementById('growth-quarter-weights-label').textContent = (isAll ? '2027–2031 · ' : year + ' · ') + 'распределение ' + data.quarterly.weights.map(function(value) { return Math.round(value*100) + '%'; }).join(' / ');
-}
-
-function renderGrowthChart(data) {
-  const canvas = document.getElementById('growth-plan-chart');
-  if (!canvas || typeof Chart === 'undefined') return;
-  const labels = ['Старт'].concat(data.annual.map(function(row) { return String(row.year); }));
-  const plan = [Number(data.settings.start_points)].concat(data.annual.map(function(row) { return Number(row.target_points); }));
-  const actual = [data.progress.phase === 'preparation' ? Number(data.facts.active_30d) : null].concat(data.annual.map(function(row) { return row.actual_points === null ? null : Number(row.actual_points); }));
-  const forecast = new Array(labels.length).fill(null);
-  const currentIndex = data.annual.findIndex(function(row) { return Number(row.year) === Number(data.progress.year); }) + 1;
-  if (currentIndex >= 1) {
-    forecast[Math.max(0, currentIndex - 1)] = currentIndex === 1 ? Number(data.settings.start_points) : Number(data.annual[currentIndex - 2].target_points);
-    forecast[currentIndex] = Number(data.progress.forecast_year_end);
-  }
-  if (growthPlanChart) growthPlanChart.destroy();
-  growthPlanChart = new Chart(canvas, {
-    type: 'line',
-    data: { labels: labels, datasets: [
-      { label:'План', data:plan, borderColor:'#D4872A', backgroundColor:'rgba(212,135,42,.10)', borderWidth:3, pointRadius:4, tension:.22, fill:true },
-      { label:'Факт', data:actual, borderColor:'#2D5A3F', backgroundColor:'#2D5A3F', borderWidth:3, pointRadius:5, tension:.18, spanGaps:false },
-      { label:'Прогноз', data:forecast, borderColor:'#6B7C93', borderDash:[6,5], borderWidth:2, pointRadius:4, spanGaps:true },
-    ]},
-    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}}, scales:{ y:{beginAtZero:true,ticks:{precision:0}}, x:{grid:{display:false}} } },
-  });
-}
-
-function renderGrowthSettings(data) {
-  const card = document.getElementById('growth-settings-card');
-  card.style.display = currentAdminRole === 'super' ? 'block' : 'none';
-  if (currentAdminRole !== 'super') return;
-  const s = data.settings;
-  const e = s.economics;
-  const capacity = s.capacity;
-  const launch = s.launch_costs;
-  const fields = [
-    ['growth-set-stand','Стойка, ₽',launch.stand,100], ['growth-set-stock','Первичное наполнение, ₽',launch.initial_stock,100], ['growth-set-other','Прочие расходы запуска, ₽',launch.other,100],
-    ['growth-set-check','Средний чек, ₽',e.average_check,10], ['growth-set-orders','Заказов на зрелую точку / мес.',e.orders_per_month,1], ['growth-set-margin','Валовая маржа, %',e.gross_margin_rate*100,.1],
-    ['growth-set-groomer','Грумер, %',e.groomer_rate*100,.1], ['growth-set-manager','Менеджер, %',e.manager_rate*100,.1], ['growth-set-owner','Владелец точки, %',e.owner_rate*100,.1],
-    ['growth-set-acquiring','Эквайринг, %',e.acquiring_rate*100,.1], ['growth-set-logistics','Логистика, %',e.logistics_rate*100,.1], ['growth-set-writeoff','Списания, %',e.writeoff_rate*100,.1],
-    ['growth-set-it','Бонусы и переменный IT, %',e.variable_it_rate*100,.1], ['growth-set-tax','Налоговый резерв, %',e.tax_rate*100,.1], ['growth-set-launch-bonus','Бонус менеджеру за запуск, ₽',e.manager_launch_bonus,100],
-    ['growth-set-reserve','Резерв финансирования, %',e.funding_reserve_rate*100,1],
-    ['growth-set-base-team','Команда без менеджеров, чел.',capacity.base_team_without_managers,1],
-    ['growth-set-launches-manager','Запусков на менеджера / мес.',capacity.launches_per_manager_month,.1],
-    ['growth-set-leads-launch','Лидов на один запуск',capacity.leads_per_launch,.1],
-    ['growth-set-meetings-launch','Встреч на один запуск',capacity.meetings_per_launch,.1],
-    ['growth-set-agreements-launch','Согласований на один запуск',capacity.agreements_per_launch,.1],
-    ['growth-set-q1','Доля запусков в Q1, %',s.quarter_weights[0]*100,1],
-    ['growth-set-q2','Доля запусков в Q2, %',s.quarter_weights[1]*100,1],
-    ['growth-set-q3','Доля запусков в Q3, %',s.quarter_weights[2]*100,1],
-    ['growth-set-q4','Доля запусков в Q4, %',s.quarter_weights[3]*100,1],
-  ];
-  const fieldHtml = fields.map(function(field) {
-    return '<div class="admin-field"><label>' + field[1] + '</label><input type="number" min="0" step="' + field[3] + '" id="' + field[0] + '" value="' + Number(field[2]) + '"></div>';
-  }).join('');
-  const years = s.years.map(function(row) {
-    return '<tr><td><strong>' + row.year + '</strong></td>' +
-      '<td><input type="number" min="1" id="growth-year-points-' + row.year + '" value="' + row.target_points + '" style="width:95px;"></td>' +
-      '<td><input type="number" min="1" id="growth-year-cities-' + row.year + '" value="' + row.cities + '" style="width:80px;"></td>' +
-      '<td><input type="number" min="1" id="growth-year-team-' + row.year + '" value="' + row.team + '" style="width:80px;"></td>' +
-      '<td><input type="number" min="1" max="100" step="1" id="growth-year-maturity-' + row.year + '" value="' + Math.round(row.maturity*100) + '" style="width:80px;"></td>' +
-      '<td><input type="number" min="0" step="1000" id="growth-year-central-' + row.year + '" value="' + Number(row.central_costs||0) + '" style="width:120px;"></td></tr>';
-  }).join('');
-  document.getElementById('growth-settings').innerHTML =
-    '<div class="growth-settings-grid">' + fieldHtml + '</div>' +
-    '<div style="margin-top:1.2rem;font-weight:700;font-size:.83rem;">Годовая траектория</div>' +
-    '<div style="overflow-x:auto;margin-top:.55rem;"><table class="tbl" style="min-width:720px;"><thead><tr><th>Год</th><th>Точек</th><th>Городов</th><th>Команда</th><th>Зрелость, %</th><th>Центральные расходы, ₽</th></tr></thead><tbody>' + years + '</tbody></table></div>';
-}
-
-function renderGrowthPlanData(data) {
-  growthPlanData = data;
-  const p = data.progress;
-  const status = document.getElementById('growth-status');
-  status.className = 'growth-status ' + p.status;
-  status.textContent = growthStatusText(p.status);
-  document.getElementById('growth-generated').textContent = 'Обновлено: ' + new Date(data.generated_at).toLocaleString('ru-RU');
-  document.getElementById('growth-kpi-active').textContent = Number(data.facts.active_30d).toLocaleString('ru-RU');
-  document.getElementById('growth-kpi-active-note').textContent = 'включено ' + data.facts.active_system + ' · стабильны 90 дней: ' + data.facts.stable_90d;
-  document.getElementById('growth-kpi-plan').textContent = Number(p.target_to_date).toLocaleString('ru-RU');
-  const gap = Number(p.gap_to_date);
-  document.getElementById('growth-kpi-gap').textContent = p.phase === 'preparation' ? 'план стартует в 2027 году' : ((gap >= 0 ? '+' : '−') + Math.abs(gap) + ' к плану');
-  document.getElementById('growth-kpi-gap').className = 'kpi-delta ' + (gap >= 0 ? 'delta-up' : 'delta-dn');
-  document.getElementById('growth-kpi-pace').textContent = Number(p.required_per_month).toLocaleString('ru-RU') + ' / мес.';
-  document.getElementById('growth-kpi-pace-note').textContent = Number(p.required_per_week).toLocaleString('ru-RU') + ' в неделю до цели ' + p.target_year_end;
-  document.getElementById('growth-kpi-forecast').textContent = Number(p.forecast_year_end).toLocaleString('ru-RU');
-  document.getElementById('growth-kpi-forecast-note').textContent = p.current_monthly_pace ? 'текущий темп ' + p.current_monthly_pace + ' / мес.' : 'недостаточно запусков за 90 дней';
-  document.getElementById('growth-kpi-funding').textContent = growthShortMoney(data.financial.totals.external_funding);
-  document.getElementById('growth-kpi-quarter-funding').textContent = growthShortMoney(data.quarterly.totals.external_funding);
-  document.getElementById('growth-kpi-quarter-note').textContent = data.quarterly.first_funding
-    ? 'первый транш ' + data.quarterly.first_funding.period + ': ' + growthShortMoney(data.quarterly.first_funding.amount)
-    : 'внешние транши не требуются';
-  const percent = p.target_year_end ? Math.min(100, Math.round(p.actual_active / p.target_year_end * 100)) : 0;
-  document.getElementById('growth-year-title').textContent = p.year + ': ' + p.actual_active + ' из ' + p.target_year_end;
-  document.getElementById('growth-year-percent').textContent = percent + '% годовой цели';
-  document.getElementById('growth-year-progress').style.width = percent + '%';
-  document.getElementById('growth-year-explanation').textContent = p.phase === 'preparation'
-    ? 'До начала пятилетнего плана система фиксирует базу, готовность чек-листов и продажи действующих точек.'
-    : 'До конца года осталось ' + p.days_remaining + ' дн. Нужно добавить ' + p.remaining_to_year_target + ' активных точек.';
-  document.getElementById('growth-reach-date').textContent = p.forecast_reach_1000 || 'Темп ещё не сформирован';
-  document.getElementById('growth-reach-note').textContent = p.forecast_reach_1000 ? 'расчёт по темпу запусков последних 90 дней' : 'дата появится после первых запусков в расчётном окне';
-
-  document.getElementById('growth-pipeline').innerHTML = data.pipeline.map(function(item) {
-    return '<div class="growth-pipeline-step"><div class="growth-pipeline-value">' + Number(item.value||0).toLocaleString('ru-RU') + '</div><div class="growth-pipeline-label">' + growthEscape(item.label) + '</div></div>';
-  }).join('');
-
-  document.getElementById('growth-scenarios').innerHTML = data.scenarios.map(function(item) {
-    const targetColor = item.target_2031 >= 1000 ? 'var(--deep)' : '#9B2335';
-    return '<div class="growth-scenario ' + growthEscape(item.key) + '">' +
-      '<div style="display:flex;justify-content:space-between;gap:.7rem;align-items:start;"><div><strong>' + growthEscape(item.name) + '</strong><div style="font-size:.7rem;color:var(--muted);line-height:1.35;margin-top:.2rem;">' + growthEscape(item.description) + '</div></div><div style="text-align:right;white-space:nowrap;"><strong style="color:' + targetColor + ';font-size:1.05rem;">' + Number(item.target_2031).toLocaleString('ru-RU') + '</strong><div style="font-size:.65rem;color:var(--muted);">точек в 2031</div></div></div>' +
-      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-top:.65rem;font-size:.68rem;color:var(--muted);"><div>Запуски<br><strong style="color:var(--text);">' + growthShortMoney(item.expansion_investment) + '</strong></div><div>Внешний капитал<br><strong style="color:var(--text);">' + growthShortMoney(item.external_funding) + '</strong></div><div>Поток 5 лет<br><strong style="color:' + (item.net_cash >= 0 ? 'var(--deep)' : '#9B2335') + ';">' + growthShortMoney(item.net_cash) + '</strong></div></div></div>';
-  }).join('');
-
-  const cap = data.capacity;
-  function capacityRow(label, actual, required, suffix, coverage) {
-    const pct = Math.max(0, Math.min(100, Number(coverage == null ? (required ? actual/required*100 : 100) : coverage)));
-    const color = pct >= 100 ? 'var(--deep)' : (pct >= 80 ? 'var(--amber)' : '#9B2335');
-    return '<div class="growth-capacity-row"><div><strong style="font-size:.78rem;">' + label + '</strong><div class="growth-mini-track"><div class="growth-mini-fill" style="width:' + pct + '%;background:' + color + ';"></div></div></div><div style="text-align:right;font-size:.76rem;white-space:nowrap;"><strong>' + actual + '</strong> / ' + required + ' ' + (suffix||'') + '<div style="font-size:.64rem;color:' + color + ';">' + Math.round(pct) + '% покрытия</div></div></div>';
-  }
-  document.getElementById('growth-capacity').innerHTML =
-    capacityRow('Команда всего', cap.current_team, cap.team_target, 'чел.') +
-    capacityRow('Активные менеджеры', cap.active_managers, cap.required_managers, 'чел.') +
-    capacityRow('Лиды на месяц', cap.leads.actual, cap.leads.required, '', cap.leads.coverage_percent) +
-    capacityRow('Встречи на месяц', cap.meetings.actual, cap.meetings.required, '', cap.meetings.coverage_percent) +
-    capacityRow('Согласования на месяц', cap.agreements.actual, cap.agreements.required, '', cap.agreements.coverage_percent) +
-    '<div style="font-size:.7rem;color:var(--muted);line-height:1.45;margin-top:.65rem;">Расчёт для темпа ' + cap.required_launches_month + ' запуска в месяц. Норма: ' + cap.launches_per_manager_month + ' запуска на менеджера.</div>';
-
-  const gates = data.gates;
-  const gateStatus = { green:'Выполнено', yellow:'Внимание', red:'Стоп-сигнал', no_data:'Нет данных' };
-  const gateColor = { green:'#2D7D46', yellow:'#A66A00', red:'#9B2335', no_data:'#7A7165' };
-  document.getElementById('growth-gates').innerHTML = '<div class="growth-decision ' + growthEscape(gates.decision) + '"><div style="display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;"><div><div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Решение системы</div><strong style="font-size:1.12rem;">' + growthEscape(gates.title) + '</strong></div><div style="font-size:.72rem;color:var(--muted);">Решение принимает собственник KPI</div></div><div class="growth-gates">' + gates.gates.map(function(item) {
-    const actual = item.actual === null ? '—' : Number(item.actual).toLocaleString('ru-RU') + ' ' + item.unit;
-    const condition = item.direction === 'lower' ? 'цель ≤ ' + item.target + '; стоп > ' + item.stop : 'цель ≥ ' + item.target + '; стоп < ' + item.stop;
-    return '<div class="growth-gate"><div style="display:flex;justify-content:space-between;gap:.5rem;"><strong style="font-size:.72rem;line-height:1.3;">' + growthEscape(item.name) + '</strong><span style="font-size:.65rem;font-weight:700;color:' + gateColor[item.status] + ';white-space:nowrap;">' + gateStatus[item.status] + '</span></div><div style="font-size:1rem;font-weight:800;margin-top:.35rem;">' + actual + '</div><div style="font-size:.62rem;color:var(--muted);margin-top:.2rem;">' + condition + ' · ' + growthEscape(item.owner) + '</div></div>';
-  }).join('') + '</div></div>';
-
-  document.getElementById('growth-annual-tbody').innerHTML = data.financial.rows.map(function(row) {
-    const fact = data.annual.find(function(item) { return item.year === row.year; }) || {};
-    return '<tr><td><strong>' + row.year + '</strong></td><td class="r">' + row.new_points + '</td><td class="r"><strong>' + row.target_points + '</strong></td>' +
-      '<td class="r">' + (fact.actual_points === null ? '—' : Number(fact.actual_points).toLocaleString('ru-RU')) + '</td><td class="r">' + row.launches_per_month + '</td>' +
-      '<td class="r">' + growthShortMoney(row.revenue) + '</td><td class="r">' + growthShortMoney(row.business_cash) + '</td><td class="r">' + growthShortMoney(row.expansion_investment) + '</td>' +
-      '<td class="r" style="color:' + (row.net_cash >= 0 ? 'var(--deep)' : '#9B2335') + ';font-weight:700;">' + growthShortMoney(row.net_cash) + '</td><td class="r">' + growthShortMoney(row.investor_tranche) + '</td>' +
-      '<td><span class="growth-status ' + growthEscape(fact.status || 'future') + '">' + growthStatusText(fact.status || 'future') + '</span></td></tr>';
-  }).join('');
-
-  document.getElementById('growth-quarterly-tbody').innerHTML = data.quarterly.quarters.map(function(row) {
-    return '<tr><td><strong>' + growthEscape(row.period) + '</strong></td><td class="r">' + row.new_points + '</td><td class="r">' + row.target_points + '</td><td class="r">' + growthShortMoney(row.revenue) + '</td><td class="r">' + growthShortMoney(row.business_cash) + '</td><td class="r">' + growthShortMoney(row.expansion_investment) + '</td><td class="r" style="color:' + (row.net_cash >= 0 ? 'var(--deep)' : '#9B2335') + ';font-weight:700;">' + growthShortMoney(row.net_cash) + '</td><td class="r">' + growthShortMoney(row.cumulative_cash) + '</td><td class="r" style="font-weight:' + (row.investor_tranche ? '800' : '400') + ';color:' + (row.investor_tranche ? 'var(--amber)' : 'var(--muted)') + ';">' + (row.investor_tranche ? growthShortMoney(row.investor_tranche) : '—') + '</td></tr>';
-  }).join('');
-  document.getElementById('growth-quarter-weights-label').textContent = 'распределение ' + data.quarterly.weights.map(function(value) { return Math.round(value*100) + '%'; }).join(' / ');
-
-  document.getElementById('growth-alerts').innerHTML = data.alerts.length ? data.alerts.map(function(alert) {
-    return '<div class="growth-alert ' + growthEscape(alert.severity) + '"><div style="display:flex;justify-content:space-between;gap:.7rem;"><strong>' + growthEscape(alert.title) + '</strong><span style="font-size:.68rem;color:var(--muted);white-space:nowrap;">' + growthEscape(alert.owner) + '</span></div><div style="font-size:.75rem;color:var(--muted);line-height:1.45;margin-top:.25rem;">' + growthEscape(alert.detail) + '</div></div>';
-  }).join('') : '<div style="padding:1rem;border-radius:10px;background:var(--green-bg);color:var(--green-text);">Критичных отклонений сейчас нет.</div>';
-
-  document.getElementById('growth-finance-summary').innerHTML =
-    '<div class="point-stat"><div class="point-stat-item"><div class="point-stat-val">' + growthShortMoney(data.financial.launch_cost) + '</div><div class="point-stat-lbl">одна точка</div></div>' +
-    '<div class="point-stat-item"><div class="point-stat-val">' + growthShortMoney(data.financial.totals.expansion_investment) + '</div><div class="point-stat-lbl">998 запусков</div></div>' +
-    '<div class="point-stat-item"><div class="point-stat-val">' + growthShortMoney(data.financial.totals.external_funding) + '</div><div class="point-stat-lbl">внешние деньги</div></div></div>' +
-    '<div style="margin-top:1rem;font-size:.78rem;line-height:1.65;"><div>Деньги бизнеса за 5 лет: <strong>' + growthMoney(data.financial.totals.business_cash) + '</strong></div><div>Поток после расширения: <strong>' + growthMoney(data.financial.totals.net_cash) + '</strong></div><div>Маржинальный доход после переменных затрат: <strong>' + data.financial.contribution_rate_percent + '%</strong></div></div>';
-
-  const emptyRow = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1rem;">Данных пока нет</td></tr>';
-  document.getElementById('growth-cities-tbody').innerHTML = data.breakdowns.cities.length ? data.breakdowns.cities.map(function(row) { return '<tr><td><strong>' + growthEscape(row.name) + '</strong></td><td class="r">' + row.system_points + '</td><td class="r">' + row.active_points + '</td></tr>'; }).join('') : emptyRow;
-  document.getElementById('growth-managers-tbody').innerHTML = data.breakdowns.managers.length ? data.breakdowns.managers.map(function(row) { return '<tr><td><strong>' + growthEscape(row.name) + '</strong></td><td class="r">' + row.system_points + '</td><td class="r">' + row.active_points + '</td><td class="r">' + row.open_leads + '</td></tr>'; }).join('') : emptyRow;
-  renderGrowthSettings(data);
-  renderGrowthChart(data);
-  setupGrowthYearFilter(data);
-  applyGrowthYearFocus(data);
-}
-
-async function renderGrowthPlan() {
-  document.getElementById('growth-status').textContent = 'Загрузка…';
-  const res = await authFetch('/api/growth-plan');
-  const data = await res.json();
-  if (!res.ok) {
-    document.getElementById('growth-status').className = 'growth-status red';
-    document.getElementById('growth-status').textContent = data.error || 'Ошибка загрузки';
-    return;
-  }
-  renderGrowthPlanData(data);
-}
-
-function growthNumber(id) { return Number(document.getElementById(id).value || 0); }
-async function saveGrowthPlanSettings() {
-  if (!growthPlanData || currentAdminRole !== 'super') return;
-  const years = growthPlanData.settings.years.map(function(row) {
-    return { year:row.year, target_points:growthNumber('growth-year-points-'+row.year), cities:growthNumber('growth-year-cities-'+row.year), team:growthNumber('growth-year-team-'+row.year), maturity:growthNumber('growth-year-maturity-'+row.year)/100, central_costs:growthNumber('growth-year-central-'+row.year) };
-  });
-  const body = {
-    version:growthPlanData.settings.version,
-    start_points:growthPlanData.settings.start_points,
-    launch_costs:{ stand:growthNumber('growth-set-stand'), initial_stock:growthNumber('growth-set-stock'), other:growthNumber('growth-set-other') },
-    economics:{
-      average_check:growthNumber('growth-set-check'), orders_per_month:growthNumber('growth-set-orders'), gross_margin_rate:growthNumber('growth-set-margin')/100,
-      groomer_rate:growthNumber('growth-set-groomer')/100, manager_rate:growthNumber('growth-set-manager')/100, owner_rate:growthNumber('growth-set-owner')/100,
-      acquiring_rate:growthNumber('growth-set-acquiring')/100, logistics_rate:growthNumber('growth-set-logistics')/100, writeoff_rate:growthNumber('growth-set-writeoff')/100,
-      variable_it_rate:growthNumber('growth-set-it')/100, tax_rate:growthNumber('growth-set-tax')/100, manager_launch_bonus:growthNumber('growth-set-launch-bonus'), funding_reserve_rate:growthNumber('growth-set-reserve')/100,
-    },
-    capacity:{ base_team_without_managers:growthNumber('growth-set-base-team'), launches_per_manager_month:growthNumber('growth-set-launches-manager'), leads_per_launch:growthNumber('growth-set-leads-launch'), meetings_per_launch:growthNumber('growth-set-meetings-launch'), agreements_per_launch:growthNumber('growth-set-agreements-launch') },
-    quarter_weights:[growthNumber('growth-set-q1')/100,growthNumber('growth-set-q2')/100,growthNumber('growth-set-q3')/100,growthNumber('growth-set-q4')/100],
-    years:years,
-  };
-  const res = await authFetch('/api/growth-plan/settings', { method:'PUT', body:body });
-  const data = await res.json();
-  if (!res.ok) return alert(data.error || 'Не удалось сохранить план.');
-  renderGrowthPlanData(data.dashboard);
-  alert('План сохранён. Прогноз, финансирование и темп пересчитаны.');
-}
-
-async function syncGrowthPlanTasks() {
-  const res = await authFetch('/api/growth-plan/tasks/sync', { method:'POST', body:{} });
-  const data = await res.json();
-  if (!res.ok) return alert(data.error || 'Не удалось создать поручения.');
-  alert(data.created ? 'Создано поручений: ' + data.created + '. Они появились в разделе «Поручения».' : 'Новых поручений нет: действующие задачи по этим отклонениям уже существуют.');
-}
-
 // ── СТРАТЕГИЯ · BSC КАПЛАНА–НОРТОНА ───────────────────────────────
 let bscDashboardData = null;
 
@@ -4823,10 +3976,6 @@ function renderLatestWeeklyReport(report) {
   document.getElementById('wr-kpi-conversion').textContent = summary ? Number(summary.payment_conversion || 0).toLocaleString('ru-RU') + '%' : '—';
   document.getElementById('wr-kpi-bsc').textContent = summary && summary.bsc_score !== undefined ? Number(summary.bsc_score).toLocaleString('ru-RU') + ' / 100' : '—';
   document.getElementById('wr-kpi-bsc-status').textContent = summary ? (summary.bsc_readiness || '') : '';
-  document.getElementById('wr-kpi-growth').textContent = summary && summary.growth_active_points !== undefined
-    ? Number(summary.growth_active_points).toLocaleString('ru-RU') + ' / ' + Number(summary.growth_target_to_date || 0).toLocaleString('ru-RU') : '—';
-  document.getElementById('wr-kpi-growth-status').textContent = summary && summary.growth_status
-    ? growthStatusText(summary.growth_status) + ' · прогноз ' + Number(summary.growth_forecast_year_end || 0).toLocaleString('ru-RU') + (summary.growth_scale_decision ? ' · ' + summary.growth_scale_decision : '') : '';
   document.getElementById('wr-kpi-revenue-change').textContent = summary ? weeklyReportChange(summary.revenue_change_percent) : '';
   document.getElementById('wr-kpi-revenue-change').className = 'kpi-delta ' + (summary && Number(summary.revenue_change_percent) >= 0 ? 'delta-up' : 'delta-down');
   document.getElementById('wr-kpi-margin').textContent = summary ? 'маржа ' + Number(summary.margin_percent || 0).toLocaleString('ru-RU') + '%' : '';
@@ -4834,11 +3983,11 @@ function renderLatestWeeklyReport(report) {
 
 async function renderWeeklyReports() {
   const tbody = document.getElementById('weekly-reports-tbody');
-  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:1.5rem;">Загружаем архив…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:1.5rem;">Загружаем архив…</td></tr>';
   const res = await authFetch('/api/weekly-reports?limit=50');
   const data = await res.json();
   if (!res.ok) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#9B2335;padding:1.5rem;">' + weeklyReportEscape(data.error || 'Не удалось загрузить отчёты') + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#9B2335;padding:1.5rem;">' + weeklyReportEscape(data.error || 'Не удалось загрузить отчёты') + '</td></tr>';
     return;
   }
   const period = data.period || {};
@@ -4865,14 +4014,13 @@ async function renderWeeklyReports() {
       '<td class="r">' + Number(summary.revenue || 0).toLocaleString('ru-RU') + ' ₽</td>' +
       '<td class="r">' + Number(summary.orders_count || 0).toLocaleString('ru-RU') + '</td>' +
       '<td class="r" style="font-weight:700;color:' + (Number(summary.net_profit || 0) >= 0 ? 'var(--deep)' : '#9B2335') + ';">' + Number(summary.net_profit || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + (summary.growth_active_points !== undefined ? Number(summary.growth_active_points) + ' / ' + Number(summary.growth_target_to_date || 0) : '—') + '</td>' +
       '<td>' + weeklyTelegramStatus(report) + '</td>' +
       '<td>' + weeklyReportEscape(report.generated_by_admin_login || 'Администратор') + '</td>' +
       '<td class="r" style="white-space:nowrap;">' +
         '<button class="row-btn" onclick="downloadWeeklyReport(' + report.id + ',\'pdf\')">PDF</button> ' +
         '<button class="row-btn" onclick="downloadWeeklyReport(' + report.id + ',\'excel\')">Excel</button>' +
       '</td></tr>';
-  }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem;">Отчёты ещё не формировались.</td></tr>';
+  }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">Отчёты ещё не формировались.</td></tr>';
 }
 
 async function generateWeeklyReport() {
@@ -4935,67 +4083,6 @@ async function downloadWeeklyReport(id, format) {
   setTimeout(function() { URL.revokeObjectURL(link.href); }, 1000);
 }
 
-function opsEscapeHtml(value) {
-  return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
-    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
-  });
-}
-
-async function loadOperationsCenter() {
-  const grid = document.getElementById('ops-grid');
-  const summaryEl = document.getElementById('ops-summary');
-  if (!grid || !summaryEl) return;
-  try {
-    const res = await authFetch('/api/operations-center');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Не удалось загрузить операционный центр');
-    renderOperationsCenter(data);
-  } catch (e) {
-    summaryEl.innerHTML = '<span class="ops-summary-pill critical">Ошибка загрузки</span>';
-    grid.innerHTML = '<div class="ops-error">' + opsEscapeHtml(e.message) +
-      ' <button class="ops-card-action" onclick="loadOperationsCenter()">Повторить</button></div>';
-  }
-}
-
-function renderOperationsCenter(data) {
-  const summary = data.summary || {};
-  const issues = data.issues || [];
-  document.getElementById('ops-summary').innerHTML =
-    '<span class="ops-summary-pill critical">Критичных: ' + Number(summary.critical || 0) + '</span>' +
-    '<span class="ops-summary-pill warning">Внимание: ' + Number(summary.warning || 0) + '</span>' +
-    '<span class="ops-summary-pill info">Начислений: ' + Number(summary.info || 0) + '</span>';
-
-  if (!issues.length) {
-    document.getElementById('ops-grid').innerHTML = '<div class="ops-ok">✓ Актуальных проблем не найдено. Все контролируемые процессы в порядке.</div>';
-    return;
-  }
-
-  document.getElementById('ops-grid').innerHTML = issues.map(function(issue) {
-    const details = (issue.details || []).map(function(detail) {
-      return '<div class="ops-detail">' +
-        '<div class="ops-detail-main"><div class="ops-detail-title">' + opsEscapeHtml(detail.title) + '</div>' +
-        '<div class="ops-detail-meta">' + opsEscapeHtml(detail.meta) + '</div></div>' +
-        '<div class="ops-detail-badge">' + opsEscapeHtml(detail.badge) + '</div></div>';
-    }).join('');
-    const section = String(issue.section || 'dashboard').replace(/'/g, '');
-    const filter = issue.key === 'payments' ? 'problem' : '';
-    return '<article class="ops-card ' + opsEscapeHtml(issue.severity) + '">' +
-      '<div class="ops-card-top"><div class="ops-card-title"><span>' + opsEscapeHtml(issue.icon) + '</span>' +
-      '<span>' + opsEscapeHtml(issue.title) + '</span></div><div class="ops-card-count">' + Number(issue.count || 0) + '</div></div>' +
-      '<div class="ops-card-summary">' + opsEscapeHtml(issue.summary) + '</div>' + details +
-      '<button class="ops-card-action" onclick="openOpsTarget(\'' + section + '\',\'' + filter + '\')">' +
-      opsEscapeHtml(issue.action_label || 'Открыть') + ' →</button></article>';
-  }).join('');
-}
-
-async function openOpsTarget(section, filter) {
-  await showSection(section);
-  if (section === 'orders' && filter) {
-    const select = document.getElementById('orders-status-filter');
-    if (select) { select.value = filter; renderOrders(); }
-  }
-}
-
 function renderDashboard() {
   const days = periodDays();
   const orders = ordersInPeriod(days);
@@ -5055,18 +4142,9 @@ function escapeOrderCell(value) {
 }
 
 function renderOrders() {
-  const filterEl = document.getElementById('orders-status-filter');
-  const statusFilter = filterEl ? filterEl.value : 'all';
-  const visibleOrders = allOrders.filter(function(order) {
-    if (statusFilter === 'all') return true;
-    if (statusFilter === 'problem') return order.status === 'pending' || order.status === 'failed';
-    return order.status === statusFilter;
-  });
-  document.getElementById('orders-count').textContent = statusFilter === 'all'
-    ? allOrders.length + ' шт.'
-    : visibleOrders.length + ' из ' + allOrders.length;
+  document.getElementById('orders-count').textContent = allOrders.length + ' шт.';
   const statusMap = { paid: ['✓ Оплачен', 'stock-ok'], pending: ['⏳ Ожидание', 'stock-low'], failed: ['✕ Не оплачен', 'stock-out'] };
-  document.getElementById('orders-tbody').innerHTML = visibleOrders.length ? visibleOrders.map(function(o) {
+  document.getElementById('orders-tbody').innerHTML = allOrders.length ? allOrders.map(function(o) {
     const itemsText = o.items.map(function(i) { return i.name + ' ×' + i.qty; }).join(', ');
     const st = statusMap[o.status] || [o.status, 'stock-low'];
     const isRefunded = o.refund_status === 'refunded';
@@ -5103,7 +4181,7 @@ function renderOrders() {
       '<td>' + (o.payment_method === 'sbp' ? 'СБП' : (o.payment_method === 'yookassa' ? 'ЮKassa' : 'Карта')) + '</td>' +
       '<td>' + statusCell + '</td>' +
       '<td class="r">' + actionCell + '</td></tr>';
-  }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Заказов с выбранным статусом нет</td></tr>';
+  }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Заказов пока нет</td></tr>';
 }
 
 // ── УДАЛЕНИЕ ЗАКАЗОВ (для очистки тестовых данных) ──────────────────
@@ -5552,32 +4630,20 @@ async function renderPointsManagement() {
 
   const cityFilter = filterSel.value;
   const url = '/api/points?all=1' + (cityFilter ? '&city=' + encodeURIComponent(cityFilter) : '');
-  const responses = await Promise.all([
-    authFetch(url),
-    authFetch('/api/point-launch-checklists?all=1'),
-  ]);
-  const data = await responses[0].json();
-  const checklistData = await responses[1].json();
+  const res = await authFetch(url);
+  const data = await res.json();
   adminAllPoints = data.points || [];
-  const launchByPoint = new Map((checklistData.points || []).map(function(row) { return [row.point_id, row]; }));
   const cityName = (id) => (ADMIN_CITIES_CACHE || []).find((c) => c.id === id)?.name || id;
   document.getElementById('points-mgmt-count').textContent = adminAllPoints.length + ' шт.';
   document.getElementById('points-mgmt-tbody').innerHTML = adminAllPoints.map(function(p) {
     const type = p.is_hub ? 'Хаб' : (p.manager_id ? 'Через менеджера №' + p.manager_id : 'Добавлена вручную');
-    const launch = launchByPoint.get(p.id);
-    const launchCell = launch
-      ? '<span class="launch-progress-pill ' + (launch.ready ? 'ready' : 'pending') + '">' +
-        (launch.ready ? '✓ Готова' : launch.percent + '% · осталось ' + launch.remaining) + '</span>'
-      : '<span style="color:var(--muted);">—</span>';
     return '<tr>' +
       '<td style="font-weight:500;">' + p.icon + ' ' + p.name + '</td>' +
       '<td style="font-size:.82rem;color:var(--muted);">' + cityName(p.city_id) + '</td>' +
       '<td style="font-size:.82rem;color:var(--muted);">' + p.addr + '</td>' +
       '<td style="font-size:.8rem;">' + type + '</td>' +
-      '<td>' + launchCell + '</td>' +
       '<td><span class="toggle-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '🟢 Активна' : '⚪ Отключена') + '</span></td>' +
       '<td class="r">' +
-        (p.active ? '<button class="row-btn" onclick="openPointChecklistById(\'' + p.id + '\')">✓ Чек-лист</button> ' : '') +
         '<button class="row-btn" onclick="openAssignManagerModal(\'' + p.id + '\')">👤 Менеджер</button> ' +
         '<button class="row-btn" onclick="openSalonPageModal(\'' + p.id + '\', \'' + p.name.replace(/'/g, "\\'") + '\')">🏠 Страница</button> ' +
         '<button class="row-btn" onclick="togglePointActive(\'' + p.id + '\')">' + (p.active ? 'Отключить' : 'Включить') + '</button> ' +
@@ -5651,11 +4717,6 @@ async function saveSalonPageModal() {
     document.getElementById('sm-published').checked = data.published;
     msgEl.textContent = data.published ? '✅ Сохранено и опубликовано!' : '✅ Сохранено (пока не опубликовано).';
     msgEl.style.display = 'block';
-    const currentPoint = POINTS_INFO[currentPointIdx];
-    if (currentPoint && currentPoint.id === salonModalPointId) {
-      await loadPointLaunchChecklist(salonModalPointId);
-    }
-    loadOperationsCenter();
   } catch (e) {
     errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
     errEl.style.display = 'block';
@@ -5709,28 +4770,15 @@ async function savePointForm() {
     errEl.style.display = 'block';
     return;
   }
-  const submitBtn = document.getElementById('pt-new-submit');
-  errEl.style.display = 'none';
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Определяем адрес…';
-  try {
-    const res = await authFetch('/api/points', { method: 'POST', body: { name, addr, icon: icon || '📍', city_id, manager_id } });
-    const data = await res.json();
-    if (!res.ok) {
-      errEl.textContent = data.error || 'Не удалось создать точку.';
-      errEl.style.display = 'block';
-      return;
-    }
-    closePointModal();
-    await renderPointsManagement();
-    if (typeof showToast === 'function') showToast('Точка создана и добавлена на карту');
-  } catch (e) {
-    errEl.textContent = e.message || 'Не удалось создать точку.';
+  const res = await authFetch('/api/points', { method: 'POST', body: { name, addr, icon: icon || '📍', city_id, manager_id } });
+  const data = await res.json();
+  if (!res.ok) {
+    errEl.textContent = data.error || 'Не удалось создать точку.';
     errEl.style.display = 'block';
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Создать';
+    return;
   }
+  closePointModal();
+  await renderPointsManagement();
 }
 
 async function togglePointActive(id) {

@@ -575,11 +575,11 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <div class="field"><label>Иконка (эмодзи)</label><input type="text" id="newpt-icon" placeholder="✂️"></div>
         </div>
         <div class="form-row" style="display:grid;grid-template-columns:2fr 1fr;gap:.8rem;">
-          <div class="field"><label>Адрес</label><input type="text" id="newpt-addr" placeholder="ул. Ленина, 1"><div style="font-size:.75rem;color:var(--muted);margin-top:.3rem;">Координаты определятся автоматически, и точка сразу появится на карте.</div></div>
+          <div class="field"><label>Адрес</label><input type="text" id="newpt-addr" placeholder="ул. Ленина, 1"></div>
           <div class="field"><label>Город</label><select id="newpt-city"><option value="">Загружаем...</option></select></div>
         </div>
         <div id="newpt-msg" style="font-size:.85rem;margin-bottom:.8rem;min-height:1.1em;"></div>
-        <button id="newpt-submit" class="btn-primary" onclick="submitNewPoint()">Добавить точку</button>
+        <button class="btn-primary" onclick="submitNewPoint()">Добавить точку</button>
       </div>
 
       <!-- Регистрация партнёра и владельца салона прямо из кабинета менеджера —
@@ -943,16 +943,13 @@ async function submitNewPoint() {
   }
 
   try {
-    const submitBtn = document.getElementById('newpt-submit');
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Определяем адрес…';
     const res = await authFetch('/api/points', {
       method: 'POST',
       body: { name, addr, icon: icon || undefined, city_id: cityId },
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Не удалось добавить точку');
-    setRegFormMsg('newpt-msg', '✅ Точка добавлена, закреплена за вами и уже отображается на карте.', false);
+    setRegFormMsg('newpt-msg', '✅ Точка добавлена и закреплена за вами.', false);
     document.getElementById('newpt-name').value = '';
     document.getElementById('newpt-addr').value = '';
     document.getElementById('newpt-icon').value = '';
@@ -960,10 +957,6 @@ async function submitNewPoint() {
     await loadPointsForRegistrationForms();
   } catch (e) {
     setRegFormMsg('newpt-msg', '⚠ ' + e.message, true);
-  } finally {
-    const submitBtn = document.getElementById('newpt-submit');
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Добавить точку';
   }
 }
 
