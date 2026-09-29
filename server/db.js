@@ -681,6 +681,23 @@ CREATE TABLE IF NOT EXISTS order_items (
   is_custom   INTEGER NOT NULL DEFAULT 0
 );
 
+-- Оперативные уведомления о проблемах с оплатой. Один заказ получает не
+-- больше одного предупреждения каждого типа, в том числе после рестарта.
+CREATE TABLE IF NOT EXISTS unpaid_order_alert_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id    INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  alert_type  TEXT NOT NULL, -- pending | failed
+  reason      TEXT,
+  status      TEXT NOT NULL DEFAULT 'pending', -- pending | sent | failed | skipped
+  error       TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  sent_at     TEXT,
+  UNIQUE(order_id, alert_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_unpaid_order_alert_status
+  ON unpaid_order_alert_log(status, created_at);
+
 -- Реестр фактически выплаченных комиссий грумерам. Отдельная таблица
 -- partner_payout_items связывает выплату с конкретными заказами и не даёт
 -- повторно включить один и тот же заказ в следующую выплату.
@@ -1309,6 +1326,18 @@ CREATE TABLE IF NOT EXISTS bsc_initiatives (
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- История изменений пятилетнего плана масштабирования. Актуальная версия
+-- хранится в site_settings, а журнал позволяет увидеть, кто и когда менял
+-- цели или финансовые допущения.
+CREATE TABLE IF NOT EXISTS growth_plan_settings_log (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_id      INTEGER,
+  admin_login   TEXT,
+  previous_json TEXT,
+  settings_json TEXT NOT NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Поручения планёрок: отдельный реестр исполнителей не привязан жёстко к
 -- типу аккаунта. Это позволяет включить в работу собственников, менеджера и
 -- внешних участников (например, поставщика), сохранив единый канал напоминаний.
@@ -1386,6 +1415,26 @@ CREATE TABLE IF NOT EXISTS task_seed_versions (
 
 CREATE INDEX IF NOT EXISTS idx_meeting_tasks_status_due ON meeting_tasks(status, due_date);
 CREATE INDEX IF NOT EXISTS idx_task_reminders_task ON task_reminder_log(task_id, created_at DESC);
+`);
+
+// ── ЧЕК-ЛИСТ ОТКРЫТИЯ КАЖДОЙ ТОЧКИ ─────────────────────────────────
+// Автоматические пункты (менеджер, грумер, остатки и т.п.) вычисляются из
+// источников истины и сюда не записываются. Таблица хранит только ручные
+// подтверждения администратора — их нельзя потерять при новом деплое.
+db.exec(`
+CREATE TABLE IF NOT EXISTS point_launch_checklist (
+  point_id      TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+  item_key      TEXT NOT NULL,
+  completed     INTEGER NOT NULL DEFAULT 0,
+  note          TEXT,
+  completed_by  TEXT,
+  completed_at  TEXT,
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (point_id, item_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_point_launch_checklist_point
+  ON point_launch_checklist(point_id, completed);
 `);
 
 // ── МУЛЬТИГОРОДСКАЯ АРХИТЕКТУРА ──────────────────────────────────────

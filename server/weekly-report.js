@@ -10,6 +10,7 @@ const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 const { sendTelegram, sendTelegramDocument } = require('./telegram');
 const { calculateBsc } = require('./bsc');
+const { buildGrowthPlanDashboard, syncGrowthPlanTasks } = require('./growth-plan');
 
 const REPORTS_DIR = path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'reports');
 const KRASNOYARSK_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -348,6 +349,9 @@ function buildAlerts(report) {
   if (report.operations.stock.out_positions) alerts.push('На активных точках отсутствуют ' + report.operations.stock.out_positions + ' товарных позиций.');
   if (report.operations.stock.low_positions) alerts.push('Критически низкий остаток (1–2 шт.) у ' + report.operations.stock.low_positions + ' позиций.');
   if (report.operations.movements.pending) alerts.push('Ожидают проверки отчёты о перемещении товара: ' + report.operations.movements.pending + '.');
+  if (report.growth_plan && report.growth_plan.progress.status === 'red') {
+    alerts.push('План 1000 точек: отставание от цели на текущую дату — ' + Math.abs(report.growth_plan.progress.gap_to_date) + ' активных точек.');
+  }
   if (!alerts.length) alerts.push('Критических отклонений по данным системы за неделю не выявлено.');
   return alerts;
 }
@@ -373,6 +377,7 @@ function collectWeeklyReportForPeriod(period) {
     },
     generated_at: new Date().toISOString(),
   };
+  report.growth_plan = buildGrowthPlanDashboard();
   report.alerts = buildAlerts(report);
   report.bsc = calculateBsc(report);
   return report;
@@ -401,6 +406,38 @@ function xlsSheet(name, rows, widths) {
 function changeLabel(value) { return value === null ? 'нет базы' : (value > 0 ? '+' : '') + value + '%'; }
 
 function buildSpreadsheet(report) {
+  const growthRows = [
+    xlsRow(['План 1000 активных точек', 'Факт на дату формирования'], 'Title'),
+    xlsRow(['Активные 30 дней', report.growth_plan.facts.active_30d]),
+    xlsRow(['Включено в системе', report.growth_plan.facts.active_system]),
+    xlsRow(['План на текущую дату', report.growth_plan.progress.target_to_date]),
+    xlsRow(['Прогноз на конец года', report.growth_plan.progress.forecast_year_end]),
+    xlsRow(['Требуемый темп в месяц', report.growth_plan.progress.required_per_month]),
+    xlsRow(['Вложения в 998 запусков, ₽', report.growth_plan.financial.totals.expansion_investment]),
+    xlsRow(['Расчётное внешнее финансирование, ₽', report.growth_plan.financial.totals.external_funding]),
+    xlsRow([]),
+    xlsRow(['Год','Новых точек','Цель сети','Темп / мес.','Выручка модели, ₽','Деньги бизнеса, ₽','Запуски, ₽','Денежный поток, ₽','Транш инвесторов, ₽'], 'Header'),
+    ...report.growth_plan.financial.rows.map((row) => xlsRow([
+      row.year, row.new_points, row.target_points, row.launches_per_month, row.revenue,
+      row.business_cash, row.expansion_investment, row.net_cash, row.investor_tranche,
+    ])),
+    xlsRow([]),
+    xlsRow(['Сценарий','Точек в 2031','Выручка за 5 лет, ₽','Вложения в запуски, ₽','Внешний капитал, ₽','Поток после расширения, ₽'], 'Header'),
+    ...report.growth_plan.scenarios.map((row) => xlsRow([row.name,row.target_2031,row.revenue_5y,row.expansion_investment,row.external_funding,row.net_cash])),
+    xlsRow([]),
+    xlsRow(['Мощность команды и воронки','Факт','Требуется','Покрытие'], 'Header'),
+    xlsRow(['Команда всего', report.growth_plan.capacity.current_team, report.growth_plan.capacity.team_target, '']),
+    xlsRow(['Активные менеджеры', report.growth_plan.capacity.active_managers, report.growth_plan.capacity.required_managers, report.growth_plan.capacity.manager_gap >= 0 ? 'достаточно' : 'дефицит ' + Math.abs(report.growth_plan.capacity.manager_gap)]),
+    xlsRow(['Лиды на месяц', report.growth_plan.capacity.leads.actual, report.growth_plan.capacity.leads.required, report.growth_plan.capacity.leads.coverage_percent + '%']),
+    xlsRow(['Встречи на месяц', report.growth_plan.capacity.meetings.actual, report.growth_plan.capacity.meetings.required, report.growth_plan.capacity.meetings.coverage_percent + '%']),
+    xlsRow(['Согласования на месяц', report.growth_plan.capacity.agreements.actual, report.growth_plan.capacity.agreements.required, report.growth_plan.capacity.agreements.coverage_percent + '%']),
+    xlsRow([]),
+    xlsRow(['Квартальный календарь','Новых точек','Сеть','Выручка, ₽','Деньги бизнеса, ₽','Запуски, ₽','Поток, ₽','Накоплено, ₽','Транш, ₽'], 'Header'),
+    ...report.growth_plan.quarterly.quarters.map((row) => xlsRow([row.period,row.new_points,row.target_points,row.revenue,row.business_cash,row.expansion_investment,row.net_cash,row.cumulative_cash,row.investor_tranche])),
+    xlsRow([]),
+    xlsRow(['Условия масштабирования','Факт','Цель','Стоп-сигнал','Статус','Ответственный'], 'Header'),
+    ...report.growth_plan.gates.gates.map((row) => xlsRow([row.name,row.actual === null ? 'нет данных' : row.actual + ' ' + row.unit,row.target + ' ' + row.unit,row.stop + ' ' + row.unit,row.status,row.owner])),
+  ];
   const bscRows = [
     xlsRow(['Сбалансированная система показателей', report.period.start_local + ' — ' + report.period.end_local], 'Title'),
     xlsRow(['Общий индекс', report.bsc.overall_score + ' из 100']),
@@ -501,6 +538,7 @@ function buildSpreadsheet(report) {
       '<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1C3A2F" ss:Pattern="Solid"/></Style>' +
       '<Style ss:ID="Strong"><Font ss:Bold="1"/><Interior ss:Color="#FFF1D6" ss:Pattern="Solid"/></Style>' +
     '</Styles>' +
+    xlsSheet('План 1000 точек', growthRows, [90,95,90,90,125,125,105,125,125]) +
     xlsSheet('BSC · Стратегия', bscRows, [190, 70, 75, 115, 230, 100, 100]) +
     xlsSheet('Резюме', summary, [220, 120, 120, 100]) +
     xlsSheet('Точки', pointRows, [180, 110, 80, 65, 80, 85, 80, 80, 80, 105]) +
@@ -737,6 +775,55 @@ function buildPdfPages(report, font) {
   ], { rowHeight: 60, fontSize: 18 });
   fourth.wrapped(62, 1390, 'Примечание: остатки приведены на момент формирования отчёта. Прибыль является управленческой оценкой на основе внесённых расходов, налога 6%, эквайринга 2% и действующих ставок комиссий.', 105, 17, '#7A7165', 25, false);
   pages.push(fourth.finish());
+
+  const growth = report.growth_plan;
+  const fifth = new ReportPage(font, 'План 1000 активных точек', subtitle);
+  fifth.text(62, 225, 'План-факт-прогноз', 27, '#1C3A2F', true);
+  const growthCards = [
+    ['Активны 30 дней', String(growth.facts.active_30d)],
+    ['План на дату', String(growth.progress.target_to_date)],
+    ['Прогноз года', String(growth.progress.forecast_year_end)],
+    ['Нужно / месяц', String(growth.progress.required_per_month)],
+    ['Валовые запуски', rub(growth.financial.totals.expansion_investment)],
+    ['Внешний капитал', rub(growth.financial.totals.external_funding)],
+  ];
+  growthCards.forEach((card, index) => {
+    const x = 62 + (index % 3) * 382;
+    const y = 255 + Math.floor(index / 3) * 145;
+    fifth.card(x, y, 350, 118, card[0], card[1], index === 5 ? '#D4872A' : '#1C3A2F');
+  });
+  fifth.text(62, 570, 'Пятилетняя траектория', 27, '#1C3A2F', true);
+  fifth.table(62, 600, [110,130,150,180,200,200], ['Год','Новых','Сеть','Темп / мес.','Запуски','Поток'],
+    growth.financial.rows.map((row) => [row.year,row.new_points,row.target_points,row.launches_per_month,rub(row.expansion_investment),rub(row.net_cash)]),
+    { rowHeight:68, fontSize:17 });
+  fifth.text(62, 1080, 'Сценарии и мощность команды', 27, '#1C3A2F', true);
+  fifth.table(62, 1110, [250,150,220,220], ['Сценарий','Точки 2031','Внешний капитал','Поток 5 лет'],
+    growth.scenarios.map((row) => [row.name,row.target_2031,rub(row.external_funding),rub(row.net_cash)]),
+    { rowHeight:58, fontSize:16 });
+  const cap = growth.capacity;
+  fifth.text(62, 1395, 'Менеджеры: ' + cap.active_managers + ' из ' + cap.required_managers + ' · лиды: ' + cap.leads.actual + ' из ' + cap.leads.required + ' (' + cap.leads.coverage_percent + '%)', 19, cap.manager_gap >= 0 && cap.leads.coverage_percent >= 80 ? '#1C3A2F' : '#9B2335', true);
+  const primaryGrowthAlert = growth.alerts[0];
+  fifth.wrapped(62, 1450, primaryGrowthAlert ? primaryGrowthAlert.title + ': ' + primaryGrowthAlert.detail : 'Критичных отклонений пятилетнего плана нет.', 105, 17, '#2A2218', 25, false);
+  fifth.wrapped(62, 1630, 'Базовая модель: запуск одной точки 20 000 ₽; центральные расходы временно равны нулю. Активной считается включённая точка с оплаченной продажей за последние 30 дней.', 110, 15, '#7A7165', 22, false);
+  pages.push(fifth.finish());
+
+  const quarterPage = new ReportPage(font, 'Квартальный план и условия роста', subtitle);
+  const firstFunding = growth.quarterly.first_funding;
+  const decisionShort = { stop:'Стоп', caution:'Осторожно', not_ready:'Нет данных', go:'Можно расти' }[growth.gates.decision] || growth.gates.title;
+  quarterPage.card(62, 225, 350, 125, 'Квартальный резерв', rub(growth.quarterly.totals.external_funding), '#D4872A');
+  quarterPage.card(445, 225, 350, 125, 'Первый транш', firstFunding ? firstFunding.period : 'не требуется', '#1C3A2F');
+  quarterPage.card(828, 225, 350, 125, 'Решение', decisionShort, growth.gates.decision === 'stop' ? '#9B2335' : '#1C3A2F');
+  quarterPage.text(62, 400, 'Календарь 2027-2031', 27, '#1C3A2F', true);
+  quarterPage.table(62, 430, [145,110,110,190,190,190], ['Квартал','Новых','Сеть','Запуски','Поток','Транш'],
+    growth.quarterly.quarters.map((row) => [row.period,row.new_points,row.target_points,rub(row.expansion_investment),rub(row.net_cash),row.investor_tranche ? rub(row.investor_tranche) : '-']),
+    { rowHeight:45, fontSize:14 });
+  const failedGates = growth.gates.gates.filter((row) => row.status === 'red');
+  quarterPage.text(62, 1435, 'Условия масштабирования', 25, '#1C3A2F', true);
+  quarterPage.wrapped(62, 1480, failedGates.length
+    ? 'Стоп-сигналы: ' + failedGates.map((row) => row.name).join('; ')
+    : growth.gates.title + '. Красных стоп-сигналов нет.', 110, 17, failedGates.length ? '#9B2335' : '#2D7D46', 25, true);
+  quarterPage.wrapped(62, 1640, 'Квартальный резерв учитывает внутригодовую потребность в ликвидности. Он может отличаться от годовой модели даже при тех же целях и полном реинвестировании.', 110, 15, '#7A7165', 22, false);
+  pages.push(quarterPage.finish());
   return pages;
 }
 
@@ -850,6 +937,10 @@ function telegramSummary(report) {
     'Чистая расчётная прибыль: <b>' + rub(report.current.net_profit) + '</b> · маржа ' + report.current.margin_percent + '%',
     'Платёжная конверсия: <b>' + report.current.payment_conversion + '%</b>',
     'Индекс BSC: <b>' + report.bsc.overall_score + ' из 100</b> · ' + telegramEscape(report.bsc.readiness.title),
+    'План 1000 точек: <b>' + report.growth_plan.facts.active_30d + ' активных</b> при плане на дату ' + report.growth_plan.progress.target_to_date + ' · прогноз года ' + report.growth_plan.progress.forecast_year_end,
+    'Мощность: <b>' + report.growth_plan.capacity.active_managers + ' из ' + report.growth_plan.capacity.required_managers + ' менеджеров</b> · лиды закрывают ' + report.growth_plan.capacity.leads.coverage_percent + '% потребности',
+    'Квартальный резерв: <b>' + rub(report.growth_plan.quarterly.totals.external_funding) + '</b>' + (report.growth_plan.quarterly.first_funding ? ' · первый транш ' + report.growth_plan.quarterly.first_funding.period : ''),
+    'Решение по масштабированию: <b>' + telegramEscape(report.growth_plan.gates.title) + '</b>',
     '',
     '<b>Главный фокус:</b> ' + telegramEscape(report.alerts[0]),
     '',
@@ -868,6 +959,9 @@ async function createWeeklyReport(adminPayload, options = {}) {
   const report = options.period
     ? collectWeeklyReportForPeriod(options.period)
     : collectWeeklyReport(options.now || new Date());
+  // Красные и жёлтые отклонения пятилетнего плана превращаются в поручения.
+  // source_key не позволяет создавать дубли при повторном формировании отчёта.
+  syncGrowthPlanTasks(report.growth_plan, adminPayload.login || 'Отчёт ГД');
   const baseName = 'weekly-gd-' + report.period.start_local + '_' + report.period.end_local;
   const excelName = baseName + '.xls';
   const pdfName = baseName + '.pdf';
@@ -922,6 +1016,13 @@ async function createWeeklyReport(adminPayload, options = {}) {
       bsc_score: report.bsc.overall_score,
       bsc_readiness: report.bsc.readiness.title,
       primary_alert: report.alerts[0],
+      growth_active_points: report.growth_plan.facts.active_30d,
+      growth_target_to_date: report.growth_plan.progress.target_to_date,
+      growth_forecast_year_end: report.growth_plan.progress.forecast_year_end,
+      growth_status: report.growth_plan.progress.status,
+      growth_quarterly_funding: report.growth_plan.quarterly.totals.external_funding,
+      growth_first_funding_period: report.growth_plan.quarterly.first_funding && report.growth_plan.quarterly.first_funding.period,
+      growth_scale_decision: report.growth_plan.gates.title,
     }),
     telegramStatus, telegramError
   );

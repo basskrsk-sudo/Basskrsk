@@ -79,6 +79,7 @@ WORKDIR /app
 
 # Сам сервер и статические файлы сайта
 COPY package.json ./
+COPY backlog.json ./
 COPY server ./server
 COPY public ./public
 

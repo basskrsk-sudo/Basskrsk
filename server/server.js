@@ -40,6 +40,10 @@ const { registerMaxWebhookRoutes } = require('./routes-max-webhook');
 const { registerWeeklyReportRoutes } = require('./routes-weekly-reports');
 const { registerBscRoutes } = require('./routes-bsc');
 const { registerTaskRoutes } = require('./routes-tasks');
+const { registerOperationsRoutes } = require('./routes-operations');
+const { registerPointLaunchRoutes } = require('./routes-point-launch');
+const { registerBacklogRoutes } = require('./routes-backlog');
+const { registerGrowthPlanRoutes } = require('./routes-growth-plan');
 
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
 require('./task-seed').seedMeetingTasks();
@@ -102,6 +106,10 @@ registerMaxWebhookRoutes(router);
 registerWeeklyReportRoutes(router);
 registerBscRoutes(router);
 registerTaskRoutes(router);
+registerOperationsRoutes(router);
+registerPointLaunchRoutes(router);
+registerBacklogRoutes(router);
+registerGrowthPlanRoutes(router);
 
 function serveStatic(req, res, pathname) {
   const decoded = decodeURIComponent(pathname);
@@ -229,4 +237,5 @@ server.listen(PORT, () => {
 
   require('./winback').scheduleWinback();
   require('./task-reminders').scheduleTaskReminders();
+  require('./unpaid-order-alerts').scheduleUnpaidOrderAlerts();
 });

@@ -4805,26 +4805,38 @@ async function renderPointsMap() {
     container.innerHTML = '<span style="color:var(--muted);font-size:.85rem;padding:1rem;text-align:center;">Карта пока не подключена — нужен бесплатный ключ Яндекс.Карт.</span>';
     return;
   }
-  if (pointsMapInstance) return; // карта уже построена — не пересоздаём при повторном открытии вкладки
-
   try {
     await loadYandexMapsScript(apiKey);
     window.ymaps.ready(async function() {
       try {
         const res = await fetch('/api/points');
         const data = await res.json();
-        const points = (data.points || []).filter(function(p) { return p.lat && p.lng; });
+        const points = (data.points || []).filter(function(p) {
+          if (p.lat === null || p.lat === undefined || p.lat === ''
+              || p.lng === null || p.lng === undefined || p.lng === '') return false;
+          const lat = Number(p.lat);
+          const lng = Number(p.lng);
+          return Number.isFinite(lat) && lat >= -90 && lat <= 90
+            && Number.isFinite(lng) && lng >= -180 && lng <= 180;
+        });
         if (points.length === 0) {
           container.innerHTML = '<span style="color:var(--muted);font-size:.85rem;">Координаты точек ещё не заданы в админке.</span>';
           return;
         }
-        container.innerHTML = '';
-        const map = new window.ymaps.Map(container, {
-          center: [points[0].lat, points[0].lng],
-          zoom: 12,
-          controls: ['zoomControl'],
-        });
-        pointsMapInstance = map;
+        let map = pointsMapInstance;
+        if (!map) {
+          container.innerHTML = '';
+          map = new window.ymaps.Map(container, {
+            center: [Number(points[0].lat), Number(points[0].lng)],
+            zoom: 12,
+            controls: ['zoomControl'],
+          });
+          pointsMapInstance = map;
+        } else {
+          // Список точек перечитывается при каждом открытии раздела, поэтому
+          // новая точка появляется без очистки кеша или полной перезагрузки.
+          map.geoObjects.removeAll();
+        }
         points.forEach(function(p) {
           const lat = Number(p.lat);
           const lng = Number(p.lng);
@@ -4847,6 +4859,8 @@ async function renderPointsMap() {
         });
         if (points.length > 1) {
           map.setBounds(map.geoObjects.getBounds(), { checkZoomRange: true, zoomMargin: 30 });
+        } else {
+          map.setCenter([Number(points[0].lat), Number(points[0].lng)], 12);
         }
       } catch (e) {
         container.innerHTML = '<span style="color:var(--muted);font-size:.85rem;">Не удалось загрузить точки для карты.</span>';
