@@ -1145,7 +1145,6 @@
   <section class="hero">
     <div class="hero-inner">
       <div class="hero-copy">
-        <div class="hero-tag">✨ Деплой работает — обновление 29 сентября</div>
         <h1>Товары для питомцев уже <em>рядом</em></h1>
         <p>Выберите ближайший минимаркет, оплатите товар онлайн и заберите его сразу — без доставки и ожидания курьера.</p>
         <div class="hero-cta">
@@ -5702,7 +5701,7 @@ async function checkPointGroomers(pointId) {
 
   const reset = () => {
     wrap.style.display = 'none';
-    groomerSel.innerHTML = '<option value="">— Выберите —</option><option value="self">Выбрал всё сам</option>';
+    groomerSel.innerHTML = '<option value="">— Выберите —</option>';
     linkHint.style.display = 'none';
     linkHint.textContent = '';
   };
@@ -5723,6 +5722,10 @@ async function checkPointGroomers(pointId) {
       option.textContent = partner.full_name;
       groomerSel.appendChild(option);
     });
+    const selfOption = document.createElement('option');
+    selfOption.value = 'self';
+    selfOption.textContent = 'Выбрал всё сам';
+    groomerSel.appendChild(selfOption);
     wrap.style.display = 'block';
 
     const linkedPartnerId = String(window._groomerPartnerIdFromLink || '');
