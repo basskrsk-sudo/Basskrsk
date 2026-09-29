@@ -11,8 +11,15 @@ const { requireAuth } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 
 const STATUSES = ['to_call', 'no_answer', 'meeting_scheduled', 'meeting_held', 'signed', 'declined'];
-const CATEGORIES = ['groomer', 'vet', 'kennel', 'hotel', 'other'];
-const CATEGORY_LABEL = { groomer: 'Груминг-салон', vet: 'Ветклиника', kennel: 'Кинолог', hotel: 'Зоогостиница', other: 'Другое' };
+const CATEGORIES = ['groomer', 'vet', 'training_center', 'kennel', 'hotel', 'other'];
+const CATEGORY_LABEL = {
+  groomer: 'Груминг-салон',
+  vet: 'Ветклиника',
+  training_center: 'Центр дрессировки',
+  kennel: 'Кинолог',
+  hotel: 'Зоогостиница',
+  other: 'Другое',
+};
 
 // Публичная форма «Стать партнёром» на главной — без авторизации, поэтому
 // защищаем тем же простым способом, что и routes-public-messages.js: не

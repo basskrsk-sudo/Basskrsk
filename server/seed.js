@@ -152,11 +152,11 @@ function seed() {
     tasks.forEach((t, i) => insTask.run(t[0], t[1], t[2], t[3], i));
   }
 
-  // ── Беклог по итогам технического аудита ───────────────────────────
+  // ── Постоянный беклог ──────────────────────────────────────────────
   // Эти задачи должны добавиться и в уже работающую базу, где стартовый
   // план запуска давно создан. Проверка по точному заголовку делает
   // добавление идемпотентным: повторный запуск сервера не создаст дубли.
-  const auditBacklogTasks = [
+  const backlogTasks = [
     [
       'Безопасность',
       'Перевыпустить токен Telegram-бота и удалить его из public/config.js',
@@ -187,17 +187,104 @@ function seed() {
       'Доделать уведомление РКН и трансграничную передачу',
       'Перед подачей: утвердить локальные акты по ПДн и назначить ответственного; уточнить ОФД и почтового провайдера; получить у Amvera юридическое лицо, ИНН, адрес ЦОД и сведения о резервных копиях; сменить стандартный пароль администратора и задать отдельный TOKEN_SECRET; подготовить отдельное уведомление о трансграничной передаче через Telegram; после запуска входа через MAX добавить MAX в перечень обработчиков и способов авторизации. Дата начала обработки по первому заказу — 10.09.2026.',
     ],
+    [
+      'Развитие сети',
+      'Проработать размещение минимаркетов в pet-friendly ЖК Красноярска',
+      'Связаться с застройщиками и управляющими компаниями. В первую очередь проработать «Арбан» как единого партнёра для нескольких объектов: SCANDIS / SCANDIS OZERO, «Покровка-Life», «Бульвар Цветов», «Барбарис» и «Калина Долина»; отдельно проверить ЖК «Мята» и микрорайон «Тихие Зори». Для каждой локации оценить число жителей с питомцами, трафик у площадки для собак, доступное помещение, электричество, видеонаблюдение, защиту от погоды, стоимость размещения и готовность запустить пилот.',
+    ],
   ];
   const findLaunchTaskByTitle = db.prepare('SELECT id FROM launch_tasks WHERE title = ? LIMIT 1');
   const insertAuditTask = db.prepare(
     'INSERT INTO launch_tasks (category, title, note, done, sort_order) VALUES (?, ?, ?, 0, ?)'
   );
   let nextTaskSortOrder = db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM launch_tasks').get().n;
-  for (const task of auditBacklogTasks) {
+  for (const task of backlogTasks) {
     if (findLaunchTaskByTitle.get(task[1])) continue;
     insertAuditTask.run(task[0], task[1], task[2], nextTaskSortOrder++);
   }
   db.prepare("UPDATE launch_tasks SET done = 1 WHERE title = 'Удалить автоматический сброс пароля администратора'").run();
+
+  // ── Центры дрессировки Красноярска для раздела «Прозвон» ───────────
+  // Начальный список потенциальных площадок добавляется и в уже работающую
+  // базу при первом запуске новой версии. По названию и городу находим уже
+  // созданную вручную карточку, помечаем её правильной категорией и не
+  // сбрасываем накопленный статус, ответственного или историю переговоров.
+  const trainingCenters = [
+    {
+      name: 'Дог Шоу Центр', address: 'Каучуковый переулок, 6, стр. 2',
+      phone: '+7 (391) 251-03-17',
+      note: 'Центр дрессировки. Комплексная площадка: дрессировка, хендлинг, груминг, бассейн, фитнес и гостиница. Приоритет для первого контакта.',
+    },
+    {
+      name: 'Дрессируй-ка!', address: 'улица Устиновича, 24д',
+      phone: '+7 (923) 307-12-05',
+      note: 'Центр дрессировки. Постоянный тренировочный зал, которым пользуются разные инструкторы и школы.',
+    },
+    {
+      name: 'Dog Sapiens', address: 'улица Карла Маркса, 21',
+      phone: '+7 (913) 562-77-91',
+      note: 'Центр дрессировки и груминг-студия. Перед звонком проверить актуальный адрес: в открытых справочниках встречается ещё одна площадка в Покровском.',
+    },
+    {
+      name: 'Show Craft', address: '2-я Брянская улица, 28а, стр. 2',
+      phone: '+7 (902) 979-36-11',
+      note: 'Центр дрессировки. Стационарная площадка; подходит для компактной стойки.',
+    },
+    {
+      name: 'Пёс-Босс', address: 'Вокзальная улица, 14', phone: null,
+      note: 'Центр бесконфликтной дрессировки. Перед звонком найти и проверить актуальный телефон, площадь и режим занятий.',
+    },
+    {
+      name: 'Красноярский центр дрессировки собак', address: 'остров Татышев, 5',
+      phone: '+7 (963) 191-51-41',
+      note: 'Центр дрессировки. Вероятно уличная площадка: заранее обсудить помещение, защиту стойки от погоды и сезонность.',
+    },
+    {
+      name: 'Красный Яр', address: 'улица Декабристов, 36',
+      phone: '+7 (391) 221-48-77',
+      note: 'Кинологический клуб / центр дрессировки. Перед встречей уточнить клиентский поток именно по этому адресу.',
+    },
+    {
+      name: 'Зал для дрессировки собак', address: 'улица Вильского, 16',
+      phone: '+7 (908) 015-90-89',
+      note: 'Центр дрессировки. Стационарный зал; перед звонком уточнить посещаемость и лицо, принимающее решение.',
+    },
+  ];
+  const findTrainingCenterLead = db.prepare(`
+    SELECT id, address, phone FROM partner_leads
+    WHERE lower(trim(salon_name)) = lower(trim(?)) AND city_id = 'krsk'
+    LIMIT 1
+  `);
+  const insertTrainingCenterLead = db.prepare(`
+    INSERT INTO partner_leads (salon_name, category, city_id, address, phone, status)
+    VALUES (?, 'training_center', 'krsk', ?, ?, 'to_call')
+  `);
+  const updateTrainingCenterLead = db.prepare(`
+    UPDATE partner_leads SET
+      category = 'training_center',
+      address = CASE WHEN address IS NULL OR trim(address) = '' THEN ? ELSE address END,
+      phone = CASE WHEN phone IS NULL OR trim(phone) = '' THEN ? ELSE phone END
+    WHERE id = ?
+  `);
+  const findTrainingCenterNote = db.prepare(
+    'SELECT id FROM partner_lead_notes WHERE lead_id = ? AND note = ? LIMIT 1'
+  );
+  const insertTrainingCenterNote = db.prepare(
+    "INSERT INTO partner_lead_notes (lead_id, author, note) VALUES (?, 'Система', ?)"
+  );
+  for (const center of trainingCenters) {
+    let lead = findTrainingCenterLead.get(center.name);
+    let leadId;
+    if (lead) {
+      leadId = lead.id;
+      updateTrainingCenterLead.run(center.address, center.phone, leadId);
+    } else {
+      leadId = insertTrainingCenterLead.run(center.name, center.address, center.phone).lastInsertRowid;
+    }
+    if (!findTrainingCenterNote.get(leadId, center.note)) {
+      insertTrainingCenterNote.run(leadId, center.note);
+    }
+  }
 
   console.log('База наполнена начальными данными.');
 }
