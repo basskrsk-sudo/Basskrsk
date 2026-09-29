@@ -351,6 +351,62 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   font-size: .9rem; font-family: 'Inter', sans-serif; color: var(--text); outline: none; background: #fff;
 }
 
+/* ── ОПЕРАЦИОННЫЙ ЦЕНТР ─────────────────────────────────────────── */
+.ops-center {
+  margin-bottom:1rem; padding:1rem; border:1px solid var(--border);
+  border-radius:14px; background:linear-gradient(135deg,#fff 0%,#F7F7F2 100%);
+}
+.ops-head { display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.85rem; }
+.ops-head h2 { font-size:1.05rem;color:var(--deep);margin:0 0 .2rem; }
+.ops-subtitle { font-size:.78rem;color:var(--muted);line-height:1.45; }
+.ops-summary { display:flex;gap:.4rem;flex-wrap:wrap; }
+.ops-summary-pill { display:inline-flex;align-items:center;gap:.3rem;padding:.26rem .58rem;border-radius:50px;font-size:.72rem;font-weight:700; }
+.ops-summary-pill.critical { background:#FDECEA;color:#9B2335; }
+.ops-summary-pill.warning { background:#FFF4E5;color:#8A5700; }
+.ops-summary-pill.info { background:#E9F3ED;color:#276342; }
+.ops-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem; }
+.ops-card { background:#fff;border:1px solid var(--border);border-left:4px solid var(--border);border-radius:10px;padding:.8rem;min-width:0; }
+.ops-card.critical { border-left-color:#C8495B; }
+.ops-card.warning { border-left-color:#D4872A; }
+.ops-card.info { border-left-color:#4C8A68; }
+.ops-card-top { display:flex;align-items:flex-start;justify-content:space-between;gap:.6rem; }
+.ops-card-title { display:flex;align-items:center;gap:.45rem;font-size:.84rem;font-weight:700;color:var(--text); }
+.ops-card-count { min-width:27px;height:27px;padding:0 .4rem;border-radius:50px;display:flex;align-items:center;justify-content:center;background:#F0EEE8;font-size:.75rem;font-weight:800;color:var(--deep); }
+.ops-card-summary { font-size:.73rem;color:var(--muted);line-height:1.4;margin:.35rem 0 .55rem; }
+.ops-detail { display:flex;align-items:flex-start;justify-content:space-between;gap:.55rem;padding:.4rem 0;border-top:1px solid #EEEAE1;font-size:.72rem; }
+.ops-detail-main { min-width:0; }
+.ops-detail-title { color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.ops-detail-meta { color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.08rem; }
+.ops-detail-badge { flex:0 0 auto;max-width:48%;text-align:right;color:#7A4A00;font-weight:600;font-size:.68rem;line-height:1.3; }
+.ops-card-action { margin-top:.55rem;border:0;background:none;color:var(--deep);font:700 .72rem 'Inter',sans-serif;padding:0;cursor:pointer; }
+.ops-card-action:hover { color:var(--amber); }
+.ops-ok { grid-column:1/-1;padding:1.25rem;text-align:center;color:#276342;background:#EDF6F0;border-radius:10px;font-size:.85rem; }
+.ops-error { grid-column:1/-1;padding:1rem;text-align:center;color:#9B2335;background:#FDECEA;border-radius:10px;font-size:.8rem; }
+
+/* ── ЧЕК-ЛИСТ ОТКРЫТИЯ ТОЧКИ ────────────────────────────────────── */
+.launch-checklist-card { margin-bottom:1rem;border-top:4px solid var(--amber); }
+.launch-checklist-head { display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap; }
+.launch-checklist-progress { height:9px;background:#E8E4DA;border-radius:50px;overflow:hidden;margin:.75rem 0 1rem; }
+.launch-checklist-progress > span { display:block;height:100%;background:var(--forest);border-radius:50px;transition:width .25s; }
+.launch-checklist-group { margin-top:.9rem; }
+.launch-checklist-group-title { font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:.35rem; }
+.launch-checklist-items { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem; }
+.launch-check-item { border:1px solid var(--border);border-radius:9px;padding:.65rem .7rem;background:#fff;display:flex;gap:.6rem;align-items:flex-start; }
+.launch-check-item.done { background:#F2F8F4;border-color:#CFE2D5; }
+.launch-check-item.important { border-color:#E8C17E;box-shadow:inset 0 0 0 1px rgba(212,135,42,.08); }
+.launch-check-icon { width:24px;height:24px;flex:0 0 24px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#F0EEE8;color:#9B958A;font-size:.72rem;font-weight:800; }
+.launch-check-item.done .launch-check-icon { background:#2D7D46;color:#fff; }
+.launch-check-body { min-width:0;flex:1; }
+.launch-check-title { font-size:.78rem;font-weight:700;color:var(--text);line-height:1.35; }
+.launch-check-desc { font-size:.68rem;color:var(--muted);line-height:1.4;margin-top:.18rem; }
+.launch-check-evidence { font-size:.67rem;color:#6D5630;background:#FFF8EA;border-radius:5px;padding:.28rem .4rem;margin-top:.35rem;line-height:1.35; }
+.launch-check-meta { font-size:.65rem;color:#5D7668;margin-top:.3rem;line-height:1.35; }
+.launch-check-action { border:0;background:none;color:var(--deep);font:700 .68rem 'Inter',sans-serif;padding:.3rem 0 0;cursor:pointer; }
+.launch-check-action:hover { color:var(--amber); }
+.launch-progress-pill { display:inline-flex;padding:.2rem .5rem;border-radius:50px;font-size:.68rem;font-weight:700;white-space:nowrap; }
+.launch-progress-pill.ready { background:#E9F3ED;color:#276342; }
+.launch-progress-pill.pending { background:#FFF4E5;color:#8A5700; }
+
 /* ── ADMIN LOGIN ── */
 #admin-login {
   position:fixed; inset:0; background:var(--forest);
@@ -449,6 +505,10 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   .admin-user-name, .admin-user-role { display:none; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .ops-grid { grid-template-columns:1fr; }
+  .ops-center { padding:.8rem; }
+  .ops-detail-badge { max-width:42%; }
+  .launch-checklist-items { grid-template-columns:1fr; }
   .card { padding: .9rem; overflow-x: auto; }
   .tbl { font-size: .74rem; min-width: 480px; }
   .bsc-hero { grid-template-columns:1fr !important; }
@@ -636,6 +696,19 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
     </div>
 
     <div id="sec-dashboard">
+
+      <section class="ops-center" aria-labelledby="ops-center-title">
+        <div class="ops-head">
+          <div>
+            <h2 id="ops-center-title">⚡ Требует внимания</h2>
+            <div class="ops-subtitle">Только актуальные ситуации, по которым нужно принять решение или выполнить действие.</div>
+          </div>
+          <div class="ops-summary" id="ops-summary"><span class="ops-summary-pill info">Загрузка…</span></div>
+        </div>
+        <div class="ops-grid" id="ops-grid">
+          <div class="ops-ok" style="color:var(--muted);">Проверяем заказы, остатки, точки и поручения…</div>
+        </div>
+      </section>
 
       <div class="payout-schedule-card">
         <div class="payout-schedule-icon">📅</div>
@@ -975,7 +1048,16 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       <div class="card">
         <div class="card-title">
           <span>Последние заказы <span id="orders-count"></span></span>
-          <button class="row-btn danger" onclick="bulkDeleteOrders()">🗑 Удалить все неоплаченные</button>
+          <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+            <select id="orders-status-filter" class="pm-select" style="width:auto;padding:.35rem .6rem;font-size:.75rem;" onchange="renderOrders()">
+              <option value="all">Все статусы</option>
+              <option value="problem">Требуют внимания</option>
+              <option value="pending">Ожидают оплату</option>
+              <option value="failed">Ошибка оплаты</option>
+              <option value="paid">Оплаченные</option>
+            </select>
+            <button class="row-btn danger" onclick="bulkDeleteOrders()">🗑 Удалить все неоплаченные</button>
+          </div>
         </div>
         <table class="tbl">
           <thead>
@@ -1112,7 +1194,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
         <table class="tbl">
           <thead>
-            <tr><th>Точка</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Статус</th><th class="r">Действие</th></tr>
+            <tr><th>Точка</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Открытие</th><th>Статус</th><th class="r">Действие</th></tr>
           </thead>
           <tbody id="points-mgmt-tbody"></tbody>
         </table>
@@ -1124,7 +1206,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <h3 style="margin-bottom:1rem;">Новая точка</h3>
           <div id="point-modal-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.5rem .7rem;border-radius:6px;margin-bottom:.8rem;"></div>
           <div class="admin-field"><label>Название</label><input type="text" id="pt-new-name" placeholder="Например, Груминг «Пушок»"></div>
-          <div class="admin-field"><label>Адрес</label><input type="text" id="pt-new-addr" placeholder="ул. Ленина, 1"></div>
+          <div class="admin-field"><label>Адрес</label><input type="text" id="pt-new-addr" placeholder="ул. Ленина, 1"><div style="font-size:.75rem;color:var(--muted);margin-top:.3rem;">Координаты определятся автоматически, и точка сразу появится на карте.</div></div>
           <div class="admin-field"><label>Иконка (эмодзи)</label><input type="text" id="pt-new-icon" placeholder="✂️" maxlength="4"></div>
           <div class="admin-field">
             <label>Город</label>
@@ -1137,7 +1219,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </div>
           <div style="display:flex;gap:.6rem;margin-top:1rem;">
             <button class="row-btn" style="flex:1;" onclick="closePointModal()">Отмена</button>
-            <button class="row-btn" style="flex:1;background:var(--forest);color:#fff;" onclick="savePointForm()">Создать</button>
+            <button id="pt-new-submit" class="row-btn" style="flex:1;background:var(--forest);color:#fff;" onclick="savePointForm()">Создать</button>
           </div>
         </div>
       </div>
@@ -1316,7 +1398,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
     <div id="sec-leads" style="display:none;">
       <div class="card">
         <div class="card-title">
-          <span>Прозвон грумерских и ветклиник <span id="leads-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
+          <span>Прозвон потенциальных партнёров <span id="leads-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
           <button class="add-product-btn" onclick="openLeadModal()">+ Добавить заведение</button>
         </div>
         <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Учёт переговоров о размещении стойки в груминг-салонах, ветклиниках, у кинологов и в зоогостиницах — см. «Скрипт первого звонка» в разделе «Инструкции».</p>
@@ -1560,6 +1642,19 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
 
+      <!-- Чек-лист открытия конкретной точки -->
+      <div class="card launch-checklist-card" id="point-launch-checklist-card">
+        <div class="launch-checklist-head">
+          <div>
+            <div class="card-title" style="margin-bottom:.2rem;">Чек-лист открытия точки</div>
+            <div style="font-size:.74rem;color:var(--muted);">Автоматические пункты обновляются из реальных данных. Ручные подтверждения сохраняются в базе.</div>
+          </div>
+          <span id="point-launch-status" class="launch-progress-pill pending">Загрузка…</span>
+        </div>
+        <div class="launch-checklist-progress"><span id="point-launch-progress-bar" style="width:0;"></span></div>
+        <div id="point-launch-checklist-body" style="font-size:.78rem;color:var(--muted);">Загрузка чек-листа…</div>
+      </div>
+
       <!-- Координаты для Яндекс.Карт -->
       <div class="card" style="margin-bottom:1rem;">
         <div class="card-title">Координаты (для карты на сайте)</div>
@@ -1745,6 +1840,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <select id="lm-category" class="pm-select">
               <option value="groomer">Груминг-салон</option>
               <option value="vet">Ветклиника</option>
+              <option value="training_center">Центр дрессировки</option>
               <option value="kennel">Кинолог</option>
               <option value="hotel">Зоогостиница</option>
               <option value="other">Другое</option>
@@ -2773,7 +2869,7 @@ async function showSection(id) {
   });
 
   if (id === 'launch')      await renderLaunchTasks();
-  if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo()]); renderDashboard(); }
+  if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo(), loadOperationsCenter()]); renderDashboard(); }
   if (id === 'bsc')         await renderBscDashboard();
   if (id === 'tasks')       await loadTaskControl();
   if (id === 'economics')   await renderEconomics();
@@ -2836,6 +2932,8 @@ async function savePointLocation() {
   }
   msgEl.textContent = '✅ Сохранено';
   msgEl.style.color = '#2D7D46';
+  await loadPointLaunchChecklist(p.id);
+  loadOperationsCenter();
 }
 
 async function showPoint(idx) {
@@ -2865,7 +2963,7 @@ async function showPoint(idx) {
   document.getElementById('pt-lng').value = realPoint && realPoint.lng !== null ? realPoint.lng : '';
   document.getElementById('pt-location-msg').textContent = '';
 
-  await loadOrders();
+  await Promise.all([loadOrders(), loadPointLaunchChecklist(p.id)]);
   const days = periodDays();
   const periodOrders = ordersInPeriod(days);
   const pOrders = periodOrders.filter(function(o) { return o.point_id === p.id; });
@@ -2924,6 +3022,111 @@ async function showPoint(idx) {
       '<td class="r">' + r.price.toLocaleString('ru-RU') + ' ₽</td>' +
       '<td class="r">' + (r.qty * r.price).toLocaleString('ru-RU') + ' ₽</td></tr>';
   }).join('');
+}
+
+let pointLaunchChecklistData = null;
+
+async function loadPointLaunchChecklist(pointId) {
+  const body = document.getElementById('point-launch-checklist-body');
+  if (body) body.textContent = 'Загрузка чек-листа…';
+  try {
+    const res = await authFetch('/api/points/' + encodeURIComponent(pointId) + '/launch-checklist');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось загрузить чек-лист');
+    pointLaunchChecklistData = data;
+    renderPointLaunchChecklist();
+  } catch (error) {
+    if (body) body.innerHTML = '<span style="color:#9B2335;">' + opsEscapeHtml(error.message) + '</span>';
+  }
+}
+
+function renderPointLaunchChecklist() {
+  if (!pointLaunchChecklistData) return;
+  const summary = pointLaunchChecklistData.summary;
+  const status = document.getElementById('point-launch-status');
+  status.className = 'launch-progress-pill ' + (summary.ready ? 'ready' : 'pending');
+  status.textContent = summary.ready
+    ? '✓ Готова к работе · 100%'
+    : summary.completed + ' из ' + summary.total + ' · ' + summary.percent + '%';
+  document.getElementById('point-launch-progress-bar').style.width = summary.percent + '%';
+
+  const groups = {};
+  pointLaunchChecklistData.items.forEach(function(item) {
+    if (!groups[item.group]) groups[item.group] = [];
+    groups[item.group].push(item);
+  });
+  document.getElementById('point-launch-checklist-body').innerHTML = Object.keys(groups).map(function(group) {
+    return '<div class="launch-checklist-group"><div class="launch-checklist-group-title">' + opsEscapeHtml(group) + '</div>' +
+      '<div class="launch-checklist-items">' + groups[group].map(function(item) {
+        const important = item.key === 'referral_bonus_verified' || item.key === 'test_sale_verified';
+        const completedDate = item.completed_at
+          ? new Date(String(item.completed_at).replace(' ', 'T') + 'Z').toLocaleString('ru-RU')
+          : '';
+        const meta = item.mode === 'auto'
+          ? '<div class="launch-check-meta">Обновляется автоматически</div>'
+          : (item.completed
+              ? '<div class="launch-check-meta">Подтвердил: ' + opsEscapeHtml(item.completed_by || 'администратор') +
+                (completedDate ? ' · ' + opsEscapeHtml(completedDate) : '') +
+                (item.note ? '<br>Комментарий: ' + opsEscapeHtml(item.note) : '') + '</div>'
+              : '');
+        const action = item.mode === 'manual'
+          ? '<button class="launch-check-action" onclick="togglePointLaunchItem(\'' + item.key + '\',' + (!item.completed) + ')">' +
+            (item.completed ? 'Отменить отметку' : 'Отметить выполненным') + '</button>'
+          : '';
+        return '<div class="launch-check-item ' + (item.completed ? 'done ' : '') + (important ? 'important' : '') + '">' +
+          '<div class="launch-check-icon">' + (item.completed ? '✓' : '○') + '</div>' +
+          '<div class="launch-check-body"><div class="launch-check-title">' + opsEscapeHtml(item.title) + '</div>' +
+          '<div class="launch-check-desc">' + opsEscapeHtml(item.description) + '</div>' +
+          (item.evidence ? '<div class="launch-check-evidence">' + opsEscapeHtml(item.evidence) + '</div>' : '') +
+          meta + action + '</div></div>';
+      }).join('') + '</div></div>';
+  }).join('');
+}
+
+async function togglePointLaunchItem(itemKey, completed) {
+  if (!pointLaunchChecklistData) return;
+  let note = '';
+  if (completed && itemKey === 'referral_bonus_verified') {
+    const value = prompt(
+      'Зафиксируйте результат проверки бонуса.\n\nЕсли точку привёл грумер — укажите его. Если реферала не было — напишите, кто это проверил.',
+      ''
+    );
+    if (value === null) return;
+    note = value.trim();
+  }
+  if (completed && itemKey === 'test_sale_verified') {
+    const value = prompt(
+      'Подтвердите результат тестовой продажи:',
+      'Оплата, списание остатка, экран успеха и уведомления проверены'
+    );
+    if (value === null) return;
+    note = value.trim();
+  }
+  try {
+    const res = await authFetch(
+      '/api/points/' + encodeURIComponent(pointLaunchChecklistData.point.id) + '/launch-checklist/' + encodeURIComponent(itemKey),
+      { method: 'PUT', body: { completed: completed, note: note } }
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось сохранить отметку');
+    pointLaunchChecklistData = data.checklist;
+    renderPointLaunchChecklist();
+    loadOperationsCenter();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function openPointChecklistById(pointId) {
+  await loadPointsInfo();
+  const idx = POINTS_INFO.findIndex(function(point) { return point.id === pointId; });
+  if (idx < 0) {
+    alert('Чек-лист доступен для активной точки. Сначала включите точку.');
+    return;
+  }
+  await showPoint(idx);
+  const card = document.getElementById('point-launch-checklist-card');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function switchPointTab(tab) {
@@ -4083,6 +4286,67 @@ async function downloadWeeklyReport(id, format) {
   setTimeout(function() { URL.revokeObjectURL(link.href); }, 1000);
 }
 
+function opsEscapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
+  });
+}
+
+async function loadOperationsCenter() {
+  const grid = document.getElementById('ops-grid');
+  const summaryEl = document.getElementById('ops-summary');
+  if (!grid || !summaryEl) return;
+  try {
+    const res = await authFetch('/api/operations-center');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось загрузить операционный центр');
+    renderOperationsCenter(data);
+  } catch (e) {
+    summaryEl.innerHTML = '<span class="ops-summary-pill critical">Ошибка загрузки</span>';
+    grid.innerHTML = '<div class="ops-error">' + opsEscapeHtml(e.message) +
+      ' <button class="ops-card-action" onclick="loadOperationsCenter()">Повторить</button></div>';
+  }
+}
+
+function renderOperationsCenter(data) {
+  const summary = data.summary || {};
+  const issues = data.issues || [];
+  document.getElementById('ops-summary').innerHTML =
+    '<span class="ops-summary-pill critical">Критичных: ' + Number(summary.critical || 0) + '</span>' +
+    '<span class="ops-summary-pill warning">Внимание: ' + Number(summary.warning || 0) + '</span>' +
+    '<span class="ops-summary-pill info">Начислений: ' + Number(summary.info || 0) + '</span>';
+
+  if (!issues.length) {
+    document.getElementById('ops-grid').innerHTML = '<div class="ops-ok">✓ Актуальных проблем не найдено. Все контролируемые процессы в порядке.</div>';
+    return;
+  }
+
+  document.getElementById('ops-grid').innerHTML = issues.map(function(issue) {
+    const details = (issue.details || []).map(function(detail) {
+      return '<div class="ops-detail">' +
+        '<div class="ops-detail-main"><div class="ops-detail-title">' + opsEscapeHtml(detail.title) + '</div>' +
+        '<div class="ops-detail-meta">' + opsEscapeHtml(detail.meta) + '</div></div>' +
+        '<div class="ops-detail-badge">' + opsEscapeHtml(detail.badge) + '</div></div>';
+    }).join('');
+    const section = String(issue.section || 'dashboard').replace(/'/g, '');
+    const filter = issue.key === 'payments' ? 'problem' : '';
+    return '<article class="ops-card ' + opsEscapeHtml(issue.severity) + '">' +
+      '<div class="ops-card-top"><div class="ops-card-title"><span>' + opsEscapeHtml(issue.icon) + '</span>' +
+      '<span>' + opsEscapeHtml(issue.title) + '</span></div><div class="ops-card-count">' + Number(issue.count || 0) + '</div></div>' +
+      '<div class="ops-card-summary">' + opsEscapeHtml(issue.summary) + '</div>' + details +
+      '<button class="ops-card-action" onclick="openOpsTarget(\'' + section + '\',\'' + filter + '\')">' +
+      opsEscapeHtml(issue.action_label || 'Открыть') + ' →</button></article>';
+  }).join('');
+}
+
+async function openOpsTarget(section, filter) {
+  await showSection(section);
+  if (section === 'orders' && filter) {
+    const select = document.getElementById('orders-status-filter');
+    if (select) { select.value = filter; renderOrders(); }
+  }
+}
+
 function renderDashboard() {
   const days = periodDays();
   const orders = ordersInPeriod(days);
@@ -4142,9 +4406,18 @@ function escapeOrderCell(value) {
 }
 
 function renderOrders() {
-  document.getElementById('orders-count').textContent = allOrders.length + ' шт.';
+  const filterEl = document.getElementById('orders-status-filter');
+  const statusFilter = filterEl ? filterEl.value : 'all';
+  const visibleOrders = allOrders.filter(function(order) {
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'problem') return order.status === 'pending' || order.status === 'failed';
+    return order.status === statusFilter;
+  });
+  document.getElementById('orders-count').textContent = statusFilter === 'all'
+    ? allOrders.length + ' шт.'
+    : visibleOrders.length + ' из ' + allOrders.length;
   const statusMap = { paid: ['✓ Оплачен', 'stock-ok'], pending: ['⏳ Ожидание', 'stock-low'], failed: ['✕ Не оплачен', 'stock-out'] };
-  document.getElementById('orders-tbody').innerHTML = allOrders.length ? allOrders.map(function(o) {
+  document.getElementById('orders-tbody').innerHTML = visibleOrders.length ? visibleOrders.map(function(o) {
     const itemsText = o.items.map(function(i) { return i.name + ' ×' + i.qty; }).join(', ');
     const st = statusMap[o.status] || [o.status, 'stock-low'];
     const isRefunded = o.refund_status === 'refunded';
@@ -4181,7 +4454,7 @@ function renderOrders() {
       '<td>' + (o.payment_method === 'sbp' ? 'СБП' : (o.payment_method === 'yookassa' ? 'ЮKassa' : 'Карта')) + '</td>' +
       '<td>' + statusCell + '</td>' +
       '<td class="r">' + actionCell + '</td></tr>';
-  }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Заказов пока нет</td></tr>';
+  }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Заказов с выбранным статусом нет</td></tr>';
 }
 
 // ── УДАЛЕНИЕ ЗАКАЗОВ (для очистки тестовых данных) ──────────────────
@@ -4630,20 +4903,32 @@ async function renderPointsManagement() {
 
   const cityFilter = filterSel.value;
   const url = '/api/points?all=1' + (cityFilter ? '&city=' + encodeURIComponent(cityFilter) : '');
-  const res = await authFetch(url);
-  const data = await res.json();
+  const responses = await Promise.all([
+    authFetch(url),
+    authFetch('/api/point-launch-checklists?all=1'),
+  ]);
+  const data = await responses[0].json();
+  const checklistData = await responses[1].json();
   adminAllPoints = data.points || [];
+  const launchByPoint = new Map((checklistData.points || []).map(function(row) { return [row.point_id, row]; }));
   const cityName = (id) => (ADMIN_CITIES_CACHE || []).find((c) => c.id === id)?.name || id;
   document.getElementById('points-mgmt-count').textContent = adminAllPoints.length + ' шт.';
   document.getElementById('points-mgmt-tbody').innerHTML = adminAllPoints.map(function(p) {
     const type = p.is_hub ? 'Хаб' : (p.manager_id ? 'Через менеджера №' + p.manager_id : 'Добавлена вручную');
+    const launch = launchByPoint.get(p.id);
+    const launchCell = launch
+      ? '<span class="launch-progress-pill ' + (launch.ready ? 'ready' : 'pending') + '">' +
+        (launch.ready ? '✓ Готова' : launch.percent + '% · осталось ' + launch.remaining) + '</span>'
+      : '<span style="color:var(--muted);">—</span>';
     return '<tr>' +
       '<td style="font-weight:500;">' + p.icon + ' ' + p.name + '</td>' +
       '<td style="font-size:.82rem;color:var(--muted);">' + cityName(p.city_id) + '</td>' +
       '<td style="font-size:.82rem;color:var(--muted);">' + p.addr + '</td>' +
       '<td style="font-size:.8rem;">' + type + '</td>' +
+      '<td>' + launchCell + '</td>' +
       '<td><span class="toggle-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '🟢 Активна' : '⚪ Отключена') + '</span></td>' +
       '<td class="r">' +
+        (p.active ? '<button class="row-btn" onclick="openPointChecklistById(\'' + p.id + '\')">✓ Чек-лист</button> ' : '') +
         '<button class="row-btn" onclick="openAssignManagerModal(\'' + p.id + '\')">👤 Менеджер</button> ' +
         '<button class="row-btn" onclick="openSalonPageModal(\'' + p.id + '\', \'' + p.name.replace(/'/g, "\\'") + '\')">🏠 Страница</button> ' +
         '<button class="row-btn" onclick="togglePointActive(\'' + p.id + '\')">' + (p.active ? 'Отключить' : 'Включить') + '</button> ' +
@@ -4717,6 +5002,11 @@ async function saveSalonPageModal() {
     document.getElementById('sm-published').checked = data.published;
     msgEl.textContent = data.published ? '✅ Сохранено и опубликовано!' : '✅ Сохранено (пока не опубликовано).';
     msgEl.style.display = 'block';
+    const currentPoint = POINTS_INFO[currentPointIdx];
+    if (currentPoint && currentPoint.id === salonModalPointId) {
+      await loadPointLaunchChecklist(salonModalPointId);
+    }
+    loadOperationsCenter();
   } catch (e) {
     errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
     errEl.style.display = 'block';
@@ -4770,15 +5060,28 @@ async function savePointForm() {
     errEl.style.display = 'block';
     return;
   }
-  const res = await authFetch('/api/points', { method: 'POST', body: { name, addr, icon: icon || '📍', city_id, manager_id } });
-  const data = await res.json();
-  if (!res.ok) {
-    errEl.textContent = data.error || 'Не удалось создать точку.';
+  const submitBtn = document.getElementById('pt-new-submit');
+  errEl.style.display = 'none';
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Определяем адрес…';
+  try {
+    const res = await authFetch('/api/points', { method: 'POST', body: { name, addr, icon: icon || '📍', city_id, manager_id } });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Не удалось создать точку.';
+      errEl.style.display = 'block';
+      return;
+    }
+    closePointModal();
+    await renderPointsManagement();
+    if (typeof showToast === 'function') showToast('Точка создана и добавлена на карту');
+  } catch (e) {
+    errEl.textContent = e.message || 'Не удалось создать точку.';
     errEl.style.display = 'block';
-    return;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Создать';
   }
-  closePointModal();
-  await renderPointsManagement();
 }
 
 async function togglePointActive(id) {
@@ -6667,7 +6970,7 @@ const LEAD_STATUS_CLASS = {
   meeting_scheduled: 'stock-ok', meeting_held: 'stock-ok',
   signed: 'stock-ok', declined: 'stock-out',
 };
-const LEAD_CATEGORY_LABEL = { groomer: 'Груминг-салон', vet: 'Ветклиника', kennel: 'Кинолог', hotel: 'Зоогостиница', other: 'Другое' };
+const LEAD_CATEGORY_LABEL = { groomer: 'Груминг-салон', vet: 'Ветклиника', training_center: 'Центр дрессировки', kennel: 'Кинолог', hotel: 'Зоогостиница', other: 'Другое' };
 let leadsData = [];
 let leadsManagersCache = null;
 let currentLeadId = null;
