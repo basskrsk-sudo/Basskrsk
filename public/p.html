@@ -400,7 +400,8 @@ function showPhoneStep() {
       + '<option value="self">Выбрал всё сам</option></select>';
   }
   state('<div class="panel"><h2>Почти готово</h2>'
-    + '<p class="small muted" style="margin-bottom:14px">' + esc(CTX.product.name) + ' · ' + esc(v.weight) + ' · <b>' + fmtPrice(v.price) + '</b>'
+    + '<p class="small muted" style="margin-bottom:8px">' + esc(CTX.product.name) + ' · ' + esc(v.weight) + ' · <b>' + fmtPrice(v.price) + '</b>'
+    + '<div style="background:#E9F4EC;color:#143d35;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.45">🐾 ХвостМаркет направит 10 ₽ на помощь животным — цена товара не увеличивается</div>'
     + (CTX.point ? '<br>Забрать: ' + esc(CTX.point.name) + (CTX.point.addr ? ', ' + esc(CTX.point.addr) : '') : '') + '</p>'
     + '<label for="phone">Номер телефона</label>'
     + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(knownPhone()) + '" oninput="checkQrSelfOrder()" onblur="checkQrSelfOrder()">'

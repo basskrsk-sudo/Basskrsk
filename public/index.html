@@ -872,6 +872,40 @@
   .quick-buy-strip {
     max-width: 1180px; margin: 0 auto; padding: 30px 5vw 0;
   }
+  .charity-strip {
+    max-width: 1180px; margin: 0 auto; padding: 30px 5vw 0;
+  }
+  .charity-card {
+    position: relative; overflow: hidden;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 1.35rem; align-items: center;
+    padding: 1.5rem 1.65rem; border-radius: 18px;
+    background: linear-gradient(135deg, #FFF4E5 0%, #FDF8ED 58%, #E9F4EC 100%);
+    border: 1px solid #EACD9A; box-shadow: 0 8px 24px rgba(106,72,22,.10);
+  }
+  .charity-card::after {
+    content: ''; position: absolute; right: -45px; top: -65px;
+    width: 180px; height: 180px; border-radius: 50%; background: rgba(7,86,66,.06);
+  }
+  .charity-amount {
+    position: relative; z-index: 1; min-width: 104px; min-height: 86px;
+    display: grid; place-items: center; padding: .65rem 1rem;
+    border-radius: 16px; background: var(--forest); color: var(--white);
+    font-family: 'Baloo 2', sans-serif; font-size: 2rem; font-weight: 700; line-height: 1;
+    box-shadow: 0 7px 18px rgba(7,86,66,.18);
+  }
+  .charity-copy { position: relative; z-index: 1; }
+  .charity-kicker {
+    display: inline-flex; align-items: center; gap: .35rem; margin-bottom: .35rem;
+    color: #986018; font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  }
+  .charity-card h2 { color: var(--deep); font-size: 1.32rem; margin-bottom: .35rem; }
+  .charity-card p { max-width: 670px; color: var(--muted); font-size: .87rem; line-height: 1.55; }
+  .charity-note {
+    position: relative; z-index: 1; max-width: 220px; padding: .72rem .9rem;
+    border-radius: 12px; background: rgba(255,255,255,.72); color: var(--forest);
+    font-size: .76rem; font-weight: 700; line-height: 1.45; text-align: center; text-decoration: none;
+  }
+  .charity-note:hover, .charity-note:focus-visible { background: #fff; text-decoration: underline; }
   .quick-buy-card {
     display: grid; grid-template-columns: auto 1fr auto; gap: 1.25rem; align-items: center;
     padding: 1.35rem 1.55rem; border: 1px solid var(--border); border-radius: 16px;
@@ -948,6 +982,10 @@
     .quick-buy-strip { padding: 20px 10px 0; }
     .quick-buy-card { grid-template-columns: auto 1fr; gap: .85rem; padding: 1rem; }
     .quick-buy-card .btn-primary { grid-column: 1 / -1; width: 100%; }
+    .charity-strip { padding: 20px 10px 0; }
+    .charity-card { grid-template-columns: auto 1fr; gap: .9rem; padding: 1.1rem; }
+    .charity-amount { min-width: 78px; min-height: 72px; font-size: 1.55rem; }
+    .charity-note { grid-column: 1 / -1; max-width: none; width: 100%; text-align: left; }
     .home-actions-grid { grid-template-columns: 1fr; padding: 0 10px 42px; }
     .home-action-card { padding: 1.35rem; }
     .partner-recruit-hero { width: calc(100% - 20px); margin-top: 10px; border-radius: 20px; }
@@ -1152,6 +1190,18 @@
           <button class="btn-outline" onclick="showPage('catalog')">Смотреть все товары</button>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section class="charity-strip" aria-labelledby="charity-title">
+    <div class="charity-card">
+      <div class="charity-amount" aria-label="Десять рублей">10 ₽</div>
+      <div class="charity-copy">
+        <div class="charity-kicker">🐾 Покупая здесь, вы помогаете</div>
+        <h2 id="charity-title">С каждой покупки — в фонд «Хвост помощи»</h2>
+        <p>Мы направляем 10 ₽ с каждого оплаченного товара на помощь животным. Покупатель ничего не доплачивает — сумма выделяется из средств «ХвостМаркета».</p>
+      </div>
+      <a class="charity-note" href="/hvost-pomoshchi.html">Подробнее об акции →</a>
     </div>
   </section>
 
@@ -5885,6 +5935,10 @@ async function goToPayment() {
       <span>🦴 Косточки</span><span>−${bonesToUse} ₽</span>
     </div>` : ''}
     ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 Самозаказ: вознаграждение по тарифу; косточки не списываются и не начисляются.</div>' : ''}
+    <div style="margin-top:.75rem;padding:.7rem .8rem;border-radius:10px;background:#E9F4EC;color:var(--deep);display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;">
+      <span>🐾 «Хвост помощи»<br><small style="color:var(--muted);">Из средств «ХвостМаркета» — сумма заказа не увеличивается</small></span>
+      <strong>${cart.reduce((sum, item) => sum + item.qty, 0) * 10} ₽</strong>
+    </div>
     <div style="border-top:1px solid var(--border);margin-top:.75rem;padding-top:.75rem;display:flex;justify-content:space-between;font-weight:700;font-size:1rem;">
       <span>Итого</span><span style="color:var(--amber);">${total} ₽</span>
     </div>
