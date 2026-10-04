@@ -198,6 +198,9 @@ var CTX = { point: null, product: null, variants: [], selVariant: null, checkout
 var SUCCESS_PHONE = '';
 var SUCCESS_ORDER_ID = '';
 var QR_SELF_ORDER = false;
+var QR_PROMO_VALID = false;
+var QR_PROMO_PERCENT = 0;
+var QR_PROMO_CODE = '';
 var YOOKASSA_WIDGET_URL = 'https://yookassa.ru/checkout-widget/v1/checkout-widget.js';
 var widgetLoadPromise = null;
 
@@ -404,8 +407,11 @@ function showPhoneStep() {
     + '<div style="background:#E9F4EC;color:#143d35;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.45">🐾 ХвостМаркет направит 10 ₽ на помощь животным — цена товара не увеличивается</div>'
     + (CTX.point ? '<br>Забрать: ' + esc(CTX.point.name) + (CTX.point.addr ? ', ' + esc(CTX.point.addr) : '') : '') + '</p>'
     + '<label for="phone">Номер телефона</label>'
-    + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(knownPhone()) + '" oninput="checkQrSelfOrder()" onblur="checkQrSelfOrder()">'
+    + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(knownPhone()) + '" oninput="invalidateQrPromo();checkQrSelfOrder()" onblur="checkQrSelfOrder();validateQrPromo(false)">'
     + '<p class="small muted" id="qrBonesNote" style="margin-top:6px">Свяжем заказ с вашим номером и начислим косточки-бонусы.</p>'
+    + '<label for="qrPromo">Промокод грумера −20% на первую покупку</label>'
+    + '<div style="display:flex;gap:8px;margin-bottom:4px"><input id="qrPromo" value="' + esc(new URLSearchParams(location.search).get('promo') || '') + '" placeholder="HVOST20-001" oninput="this.value=this.value.toUpperCase();invalidateQrPromo()" style="margin-bottom:0;flex:1;min-width:0"><button type="button" class="variant" onclick="validateQrPromo(true)" style="white-space:nowrap">Применить</button></div>'
+    + '<p class="small" id="qrPromoMsg" style="min-height:18px;margin-bottom:8px"></p>'
     + advisorField
     + '<div class="note" style="display:block">📍 Точка уже определена по QR-коду товара. Повторно выбирать её не нужно.</div>'
     + '<button class="cta" id="payBtn" onclick="startPayment()">Оплатить ' + fmtPrice(v.price) + '</button>'
@@ -414,6 +420,58 @@ function showPhoneStep() {
   var inp = document.getElementById('phone');
   inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
   checkQrSelfOrder();
+}
+
+function qrPayAmount() {
+  return CTX.selVariant.price - (QR_PROMO_VALID ? Math.round(CTX.selVariant.price * QR_PROMO_PERCENT / 100) : 0);
+}
+
+function updateQrPayButton() {
+  var btn = document.getElementById('payBtn');
+  if (btn && !btn.disabled) btn.textContent = 'Оплатить ' + fmtPrice(qrPayAmount());
+}
+
+function invalidateQrPromo() {
+  QR_PROMO_VALID = false;
+  QR_PROMO_PERCENT = 0;
+  QR_PROMO_CODE = '';
+  var msg = document.getElementById('qrPromoMsg');
+  if (msg) msg.textContent = '';
+  updateQrPayButton();
+}
+
+async function validateQrPromo(showEmptyError) {
+  var input = document.getElementById('qrPromo');
+  var phoneInput = document.getElementById('phone');
+  var msg = document.getElementById('qrPromoMsg');
+  if (!input || !phoneInput) return true;
+  var code = input.value.trim().toUpperCase();
+  var phone = normPhone(phoneInput.value);
+  if (!code) {
+    invalidateQrPromo();
+    if (showEmptyError && msg) { msg.textContent = 'Введите промокод'; msg.style.color = '#9B2335'; }
+    return !showEmptyError;
+  }
+  if (!phone) {
+    if (msg) { msg.textContent = 'Сначала укажите номер телефона'; msg.style.color = '#9B2335'; }
+    return false;
+  }
+  try {
+    var res = await fetch('/api/first-purchase-promo/validate?code=' + encodeURIComponent(code) + '&phone=' + encodeURIComponent(phone));
+    var data = await res.json();
+    QR_PROMO_VALID = !!data.valid;
+    QR_PROMO_PERCENT = data.valid ? data.discount_percent : 0;
+    QR_PROMO_CODE = data.valid ? data.promo_code : '';
+    if (msg) {
+      msg.textContent = data.valid ? '✓ Скидка ' + data.discount_percent + '% применена' : '⚠ ' + (data.error || 'Промокод недействителен');
+      msg.style.color = data.valid ? '#2D7D46' : '#9B2335';
+    }
+    updateQrPayButton();
+    return !!data.valid;
+  } catch (e) {
+    if (msg) { msg.textContent = 'Не удалось проверить промокод'; msg.style.color = '#9B2335'; }
+    return false;
+  }
 }
 
 async function checkQrSelfOrder() {
@@ -452,6 +510,8 @@ async function startPayment() {
     return;
   }
   var selectedPartnerId = advisorValue && advisorValue !== 'self' ? Number(advisorValue) : null;
+  var promoInput = document.getElementById('qrPromo');
+  if (promoInput && promoInput.value.trim() && !(await validateQrPromo(false))) return;
   await checkQrSelfOrder();
   rememberPhone(phone);
   var btn = document.getElementById('payBtn');
@@ -459,13 +519,14 @@ async function startPayment() {
 
   var orderId = 'TG-' + Date.now();
   var v = CTX.selVariant;
+  var paymentAmount = qrPayAmount();
   var funnelKey = 'qr:' + CTX.pointId + ':' + v.id;
   trackGoalOnce('phone_entered', funnelKey, {
     scenario: 'qr', product_id: CTX.product.id, variant_id: v.id, point_id: CTX.pointId,
   });
   trackGoalOnce('checkout_to_payment', funnelKey, {
     scenario: 'qr', product_id: CTX.product.id, variant_id: v.id,
-    point_id: CTX.pointId, revenue: v.price, items_count: 1,
+    point_id: CTX.pointId, revenue: paymentAmount, items_count: 1,
   });
   try {
     // Сначала проверяем внешний модуль и только затем резервируем товар.
@@ -477,7 +538,7 @@ async function startPayment() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         orderId: orderId,
-        amount: v.price,
+        amount: paymentAmount,
         // Способ оплаты клиент выбирает в защищённой форме ЮKassa.
         method: 'yookassa',
         customerPhone: phone,
@@ -494,6 +555,7 @@ async function startPayment() {
         deliveryAddress: null,
         cityId: null,
         referralCode: null,
+        promoCode: QR_PROMO_VALID ? QR_PROMO_CODE : null,
         confirmationMode: confirmationMode,
         returnPath: location.pathname,
         cartItems: [{ variantId: v.id, qty: 1 }]
@@ -504,7 +566,7 @@ async function startPayment() {
 
     trackGoalOnce('payment_created', orderId, {
       scenario: 'qr', order_id: orderId, product_id: CTX.product.id,
-      variant_id: v.id, point_id: CTX.pointId, revenue: v.price,
+      variant_id: v.id, point_id: CTX.pointId, revenue: paymentAmount,
       confirmation_mode: confirmationMode,
     });
 
@@ -549,7 +611,7 @@ async function startPayment() {
           finished = true; if (stopTimer) clearInterval(stopTimer); try { checkout.destroy(); } catch (e) {}
           box.style.display = 'none';
           noteEl.textContent = 'Оплата не прошла. Можно безопасно попробовать оплатить заказ заново.';
-          btn.style.display = 'block'; btn.disabled = false; btn.textContent = 'Оплатить ' + fmtPrice(v.price);
+          btn.style.display = 'block'; btn.disabled = false; btn.textContent = 'Оплатить ' + fmtPrice(paymentAmount);
           trackGoalOnce('payment_cancelled', orderId, {
             scenario: 'qr', order_id: orderId, status: st.status, revenue: v.price,
           });
@@ -574,7 +636,7 @@ async function startPayment() {
     console.error('Не удалось запустить оплату:', e);
     showErr('Не удалось открыть оплату. Проверьте интернет и попробуйте ещё раз.');
     trackGoal('payment_create_error', { scenario: 'qr', order_id: orderId, point_id: CTX.pointId });
-    btn.disabled = false; btn.textContent = 'Оплатить ' + fmtPrice(v.price);
+    btn.disabled = false; btn.textContent = 'Оплатить ' + fmtPrice(paymentAmount);
   }
 }
 

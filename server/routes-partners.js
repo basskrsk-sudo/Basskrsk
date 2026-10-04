@@ -142,6 +142,8 @@ function registerPartnerRoutes(router) {
       referrerPartner ? referrerPartner.id : null, referrerOwner ? referrerOwner.id : null,
       dStand ? 1 : 0, dPoster ? 1 : 0, dBasket ? 1 : 0
     );
+    db.prepare('UPDATE partners SET first_purchase_promo_code = ? WHERE id = ?')
+      .run('HVOST20-' + String(info.lastInsertRowid).padStart(3, '0'), info.lastInsertRowid);
 
     // Привязываем ту же точку к менеджеру — раньше это приходилось делать
     // вручную по Telegram-уведомлению. Если точку создавал администратор

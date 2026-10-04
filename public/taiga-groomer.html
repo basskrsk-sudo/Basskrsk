@@ -636,6 +636,16 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       </div>
 
       <div class="ref-card">
+        <div class="ref-title">Промокод −20% на первую покупку</div>
+        <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Ваш персональный код для новых покупателей</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка применяется один раз по номеру телефона и действует на товары. Ваша ссылка для покупателей уже содержит этот код.</div>
+        <div class="ref-link-wrap">
+          <span class="ref-link" id="first-purchase-promo-text">Код появится после входа</span>
+          <button class="copy-btn" onclick="copyLink('first-purchase-promo-text', this)">Скопировать</button>
+        </div>
+      </div>
+
+      <div class="ref-card">
         <div class="ref-title">Мой промокод для привлечения новых точек</div>
         <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Приглашайте партнёров — получайте 1 000 ₽ за каждого</div>
         <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Бонус за запуск точки — 2 000 ₽ — делится поровну между вами и менеджером, который нашёл саму точку: вам 1 000 ₽, когда точка приглашённого партнёра заработает «Тайге» 2 000 ₽ прибыли.</div>
@@ -1146,10 +1156,15 @@ async function onPartnerLoginSuccess(data) {
     refLinkEl.textContent = 'тайга-корм.рф/taiga-register.html?ref=' + data.user.partner_code;
   }
   const customerLinkEl = document.getElementById('customer-link-text');
+  const firstPurchasePromoEl = document.getElementById('first-purchase-promo-text');
+  if (firstPurchasePromoEl && data.user.first_purchase_promo_code) {
+    firstPurchasePromoEl.textContent = data.user.first_purchase_promo_code;
+  }
   if (customerLinkEl && data.user.id && data.user.point_id) {
     const customerUrl = new URL('/', window.location.origin);
     customerUrl.searchParams.set('ref', data.user.point_id);
     customerUrl.searchParams.set('partner', data.user.id);
+    if (data.user.first_purchase_promo_code) customerUrl.searchParams.set('promo', data.user.first_purchase_promo_code);
     if (data.user.city_id) customerUrl.searchParams.set('city', data.user.city_id);
     customerLinkEl.textContent = customerUrl.toString();
   }

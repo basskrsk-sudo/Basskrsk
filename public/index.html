@@ -78,8 +78,8 @@
     color: var(--white); letter-spacing: .04em;
   }
   .nav-logo span { color: var(--amber); }
-  .nav-logo-mark { width: 64px; height: 64px; box-sizing: border-box; overflow: hidden; flex: 0 0 64px; display:flex; align-items:center; justify-content:center; }
-  .nav-logo-image { width: 60px; height: 60px; object-fit: contain; display: block; image-rendering:auto; }
+  .nav-logo-mark { width: 64px; height: 64px; box-sizing: border-box; overflow: visible; flex: 0 0 64px; display:flex; align-items:center; justify-content:center; }
+  .nav-logo-image { width: 58px; height: 58px; object-fit: contain; object-position:center; display: block; image-rendering:auto; }
   .nav-logo-word {
     display: flex; flex-direction: column; justify-content: center;
     font-size: 1.18rem; font-weight: 800; line-height: .88; letter-spacing: .01em;
@@ -955,7 +955,7 @@
     #citySwitcher { display: none !important; }
     .nav-inner { height: 64px; }
     .nav-logo-mark { width: 48px; height: 48px; flex-basis: 48px; }
-    .nav-logo-image { width: 46px; height: 46px; }
+    .nav-logo-image { width: 44px; height: 46px; }
     .nav-logo-word { font-size: .78rem; line-height: .84; }
     .nav-logo-word span { margin-top: .18rem; }
     nav { padding: 0 3vw; }
@@ -1142,7 +1142,7 @@
 <nav>
   <div class="nav-inner">
     <div class="nav-logo" onclick="showPage('home')" style="cursor:pointer;display:flex;align-items:center;">
-      <span class="nav-logo-mark"><img class="nav-logo-image" src="/images/hvostmarket-primary-logo.png?v=35" alt="Собака с геоточкой — логотип ХвостМаркет"></span>
+      <span class="nav-logo-mark"><img class="nav-logo-image" src="/images/hvostmarket-mark-v3-transparent.png?v=36" alt="Собака с геоточкой — логотип ХвостМаркет"></span>
       <span class="nav-logo-word"><span style="color:var(--white);margin-top:0;">Хвост</span><span>Маркет</span></span>
     </div>
     <ul class="nav-links" id="navLinks">
@@ -2480,8 +2480,16 @@
         <h2>Покупка за минуту</h2>
         <img class="mascot-checkout" src="images/mascot/checkout.png" alt="">
       </div>
-      <div class="form-group"><label>Телефон *</label><input type="tel" id="oPhone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this); scheduleCheckoutTelegramOffer();" onblur="liveValidatePhone(this); checkLoyaltyByPhone(); checkSelfOrderWarning(); showCheckoutTelegramOffer();" autocomplete="new-password"></div>
+      <div class="form-group"><label>Телефон *</label><input type="tel" id="oPhone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this); scheduleCheckoutTelegramOffer(); onFirstPurchasePromoContextChange();" onblur="liveValidatePhone(this); checkLoyaltyByPhone(); checkSelfOrderWarning(); showCheckoutTelegramOffer(); validateFirstPurchasePromo();" autocomplete="new-password"></div>
       <div id="loyalty-msg" style="font-size:.82rem;margin:-.6rem 0 1rem;min-height:1.1em;color:#2D7D46;"></div>
+      <div class="form-group">
+        <label>Промокод грумера −20% на первую покупку</label>
+        <div style="display:flex;gap:.5rem;">
+          <input type="text" id="oFirstPurchasePromo" placeholder="HVOST20-001" oninput="this.value=this.value.toUpperCase(); onFirstPurchasePromoContextChange();" style="flex:1;min-width:0;">
+          <button type="button" onclick="validateFirstPurchasePromo(true)" style="border:0;border-radius:8px;background:var(--deep);color:#fff;padding:0 .9rem;font-weight:600;cursor:pointer;">Применить</button>
+        </div>
+        <div id="first-purchase-promo-msg" style="font-size:.8rem;margin-top:.4rem;min-height:1.1em;"></div>
+      </div>
       <input type="hidden" id="oName" value="">
       <input type="hidden" id="oLname" value="">
       <input type="hidden" id="oEmail" value="">
@@ -2901,6 +2909,66 @@ let petNameCheckout = '';
 let referralBonesAwarded = 0; // сколько косточек начислят другу за код — только для показа в чекауте, на сумму заказа НЕ влияет
 let referralCodeValid = false;
 let referralReferrerName = '';
+let firstPurchasePromoValid = false;
+let firstPurchasePromoPercent = 0;
+let firstPurchasePromoPartnerName = '';
+let lastCheckedFirstPurchasePromoKey = '';
+
+function onFirstPurchasePromoContextChange() {
+  firstPurchasePromoValid = false;
+  firstPurchasePromoPercent = 0;
+  firstPurchasePromoPartnerName = '';
+  lastCheckedFirstPurchasePromoKey = '';
+  const msg = document.getElementById('first-purchase-promo-msg');
+  if (msg) msg.textContent = '';
+  renderBonesBlock();
+}
+
+async function validateFirstPurchasePromo(showEmptyError = false) {
+  const codeInput = document.getElementById('oFirstPurchasePromo');
+  const phoneInput = document.getElementById('oPhone');
+  const msg = document.getElementById('first-purchase-promo-msg');
+  if (!codeInput || !phoneInput) return true;
+  const code = codeInput.value.trim().toUpperCase();
+  const phone = phoneInput.value.trim();
+  if (!code) {
+    onFirstPurchasePromoContextChange();
+    if (showEmptyError && msg) { msg.textContent = 'Введите промокод'; msg.style.color = '#9B2335'; }
+    return !showEmptyError;
+  }
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 10) {
+    firstPurchasePromoValid = false;
+    if (msg) { msg.textContent = 'Сначала укажите номер телефона'; msg.style.color = '#9B2335'; }
+    return false;
+  }
+  const key = code + ':' + digits.slice(-10);
+  if (firstPurchasePromoValid && key === lastCheckedFirstPurchasePromoKey) return true;
+  try {
+    const res = await fetch('/api/first-purchase-promo/validate?code=' + encodeURIComponent(code) + '&phone=' + encodeURIComponent(phone));
+    const data = await res.json();
+    lastCheckedFirstPurchasePromoKey = key;
+    firstPurchasePromoValid = !!data.valid;
+    firstPurchasePromoPercent = data.valid ? data.discount_percent : 0;
+    firstPurchasePromoPartnerName = data.valid ? data.partner_name : '';
+    if (msg) {
+      msg.textContent = data.valid
+        ? '✓ Скидка ' + data.discount_percent + '% применена' + (data.partner_name ? ' · код от ' + data.partner_name : '')
+        : '⚠ ' + (data.error || 'Промокод недействителен');
+      msg.style.color = data.valid ? '#2D7D46' : '#9B2335';
+    }
+    renderBonesBlock();
+    return !!data.valid;
+  } catch (e) {
+    firstPurchasePromoValid = false;
+    if (msg) { msg.textContent = 'Не удалось проверить промокод. Попробуйте ещё раз.'; msg.style.color = '#9B2335'; }
+    return false;
+  }
+}
+
+function getFirstPurchasePromoDiscount(subtotal) {
+  return firstPurchasePromoValid ? Math.round(subtotal * firstPurchasePromoPercent / 100) : 0;
+}
 
 function onWantReceiptChange() {
   const checked = document.getElementById('oWantReceipt').checked;
@@ -4169,12 +4237,11 @@ function setFulfillmentType(type) {
 
 // Стоимость доставки считается от суммы товаров (лояльность/ДР питомца не
 // уменьшают сумму — это кэшбэк, начисляется после оплаты), и без скидки за
-// СБП — она к доставке отдельно не применяется.
+// СБП и промокода — они к доставке отдельно не применяются.
 function getDeliveryFee() {
   if (fulfillmentType !== 'home_delivery') return 0;
   const subtotal = getCartSubtotal();
-  const afterDiscount = subtotal; // скидок по промокоду больше нет, только косточки-кэшбэк
-  return afterDiscount >= FREE_DELIVERY_THRESHOLD ? 0 : HOME_DELIVERY_FEE;
+  return subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : HOME_DELIVERY_FEE;
 }
 
 function updateDeliveryFeeNote() {
@@ -4189,7 +4256,7 @@ function updateDeliveryFeeNote() {
 
 function getCartTotal() {
   const subtotal = getCartSubtotal();
-  const afterDiscount = subtotal; // скидок по промокоду больше нет, только косточки-кэшбэк
+  const afterDiscount = subtotal - getFirstPurchasePromoDiscount(subtotal);
   return afterDiscount - getSbpDiscountAmount(afterDiscount);
 }
 
@@ -4216,7 +4283,7 @@ function getMaxUsableBones() {
   if (isCurrentOrderSelfOrder) return 0;
   if (!customerBonesBalance) return 0;
   const subtotal = getCartSubtotal();
-  const afterDiscount = subtotal; // скидок по промокоду больше нет, только косточки-кэшбэк
+  const afterDiscount = subtotal - getFirstPurchasePromoDiscount(subtotal);
   const sbpDiscount = getSbpDiscountAmount(afterDiscount);
   const goodsTotal = afterDiscount - sbpDiscount;
   const deliveryFee = getDeliveryFee();
@@ -5624,6 +5691,10 @@ async function openModal() {
   referralBonesAwarded = 0;
   referralReferrerName = '';
   lastCheckedReferralKey = '';
+  firstPurchasePromoValid = false;
+  firstPurchasePromoPercent = 0;
+  firstPurchasePromoPartnerName = '';
+  lastCheckedFirstPurchasePromoKey = '';
   customerBonesBalance = 0;
   useBones = false;
   bonesToUse = 0;
@@ -5631,6 +5702,10 @@ async function openModal() {
   if (refInput) refInput.value = window._referralCodeFromLink || '';
   const refMsg = document.getElementById('referral-msg');
   if (refMsg) refMsg.textContent = '';
+  const promoInput = document.getElementById('oFirstPurchasePromo');
+  if (promoInput) promoInput.value = window._firstPurchasePromoFromLink || '';
+  const promoMsg = document.getElementById('first-purchase-promo-msg');
+  if (promoMsg) promoMsg.textContent = '';
   document.getElementById('loyalty-msg').textContent = '';
   renderBonesBlock();
   await prefillCheckoutFromAccount();
@@ -5893,6 +5968,9 @@ async function goToPayment() {
   if (!document.getElementById('oConsentPD').checked) { setFieldError('oConsentPD', 'Необходимо согласие на обработку персональных данных'); ok = false; }
   if (!ok) return;
 
+  const promoInput = document.getElementById('oFirstPurchasePromo');
+  if (promoInput && promoInput.value.trim() && !(await validateFirstPurchasePromo())) return;
+
   // Сохраняем корректный номер уже при переходе к оплате: даже если клиент
   // отложит платёж, в следующий раз вводить телефон заново не придётся.
   rememberPhone(phone);
@@ -5906,7 +5984,8 @@ async function goToPayment() {
   await checkLoyaltyByPhone(); // на случай если onblur не сработал (автозаполнение и т.п.)
   await checkSelfOrderWarning(); // сервер всё равно перепроверит, но итог на экране должен быть точным
   const subtotal = getCartSubtotal();
-  const afterDiscount = subtotal; // скидок по промокоду больше нет, только косточки-кэшбэк
+  const promoDiscount = getFirstPurchasePromoDiscount(subtotal);
+  const afterDiscount = subtotal - promoDiscount;
   const sbpDiscount = getSbpDiscountAmount(afterDiscount);
   const deliveryFee = getDeliveryFee();
   const maxUsableBones = getMaxUsableBones();
@@ -5933,6 +6012,10 @@ async function goToPayment() {
     ${bonesToUse > 0 ? `
     <div style="display:flex;justify-content:space-between;color:#2D7D46;">
       <span>🦴 Косточки</span><span>−${bonesToUse} ₽</span>
+    </div>` : ''}
+    ${promoDiscount > 0 ? `
+    <div style="display:flex;justify-content:space-between;color:#2D7D46;">
+      <span>🏷️ Промокод грумера −${firstPurchasePromoPercent}%</span><span>−${promoDiscount} ₽</span>
     </div>` : ''}
     ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 Самозаказ: вознаграждение по тарифу; косточки не списываются и не начисляются.</div>' : ''}
     <div style="margin-top:.75rem;padding:.7rem .8rem;border-radius:10px;background:#E9F4EC;color:var(--deep);display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;">
@@ -6135,13 +6218,19 @@ async function launchYooKassaPayment() {
   const email   = document.getElementById('oEmail').value.trim();
   rememberPhone(phone);
   await checkSelfOrderWarning();
+  const promoInput = document.getElementById('oFirstPurchasePromo');
+  if (promoInput && promoInput.value.trim() && !(await validateFirstPurchasePromo())) {
+    backToStep1();
+    return;
+  }
   if (isCurrentOrderSelfOrder) { useBones = false; bonesToUse = 0; }
   const isDelivery = fulfillmentType === 'home_delivery';
   const deliveryAddress = document.getElementById('oDeliveryAddress').value.trim();
   const pickup  = isDelivery ? ('🚚 Доставка на дом — ' + deliveryAddress) : document.getElementById('oPickup').value;
   const comment = document.getElementById('oComment').value.trim();
   const subtotal = getCartSubtotal();
-  const afterDiscount = subtotal; // скидок по промокоду больше нет, только косточки-кэшбэк
+  const promoDiscount = getFirstPurchasePromoDiscount(subtotal);
+  const afterDiscount = subtotal - promoDiscount;
   const sbpDiscount = getSbpDiscountAmount(afterDiscount);
   const deliveryFee = getDeliveryFee();
   const goodsTotal = afterDiscount - sbpDiscount;
@@ -6213,6 +6302,7 @@ async function launchYooKassaPayment() {
         deliveryAddress: isDelivery ? deliveryAddress : null,
         cityId: getCurrentCity(),
         referralCode: referralCodeValid ? document.getElementById('oReferralCode').value.trim().toUpperCase() : null,
+        promoCode: firstPurchasePromoValid ? promoInput.value.trim().toUpperCase() : null,
         confirmationMode,
         cartItems: cart.map((i) => ({ variantId: i.variantId, qty: i.qty })),
       }),
@@ -6554,6 +6644,7 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
       ${!isCurrentOrderSelfOrder && referralCodeValid ? `<div>🎁 <strong>Код друга (${escapeHtml(referralReferrerName)}):</strong> +${referralBonesAwarded} 🦴 начислим на баланс</div>` : ''}
       ${!isCurrentOrderSelfOrder && getLoyaltyCashbackAmount(subtotal) > 0 ? `<div>${isPetBirthdayCheckout ? '🎂' : '🎉'} <strong>Кэшбэк ${loyaltyPercent}%:</strong> +${getLoyaltyCashbackAmount(subtotal)} 🦴 начислим на баланс</div>` : ''}
       ${bonesToUse > 0 ? `<div>🦴 <strong>Оплачено косточками:</strong> −${bonesToUse} ₽</div>` : ''}
+      ${firstPurchasePromoValid ? `<div>🏷️ <strong>Промокод грумера:</strong> скидка ${firstPurchasePromoPercent}%</div>` : ''}
       ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 <strong>Самозаказ:</strong> вознаграждение начислено по вашему тарифу; косточки не списываются и не начисляются.</div>' : ''}
       <div style="border-top:1px solid var(--border);margin-top:.5rem;padding-top:.5rem;">
         💳 <strong>Оплачено через ЮKassa:</strong> <span style="color:var(--amber);font-weight:700;">${subtotal} ₽</span>
@@ -6570,6 +6661,10 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
   referralBonesAwarded = 0;
   referralReferrerName = '';
   lastCheckedReferralKey = '';
+  firstPurchasePromoValid = false;
+  firstPurchasePromoPercent = 0;
+  firstPurchasePromoPartnerName = '';
+  lastCheckedFirstPurchasePromoKey = '';
   customerBonesBalance = 0;
   useBones = false;
   bonesToUse = 0;
@@ -6592,7 +6687,7 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
 // чтобы данные предыдущего покупателя не оставались в полях для следующего заказа
 // в этой же вкладке (без обновления страницы).
 function resetCheckoutForm() {
-  ['oName', 'oLname', 'oPhone', 'oComment', 'oEmail'].forEach(id => {
+  ['oName', 'oLname', 'oPhone', 'oComment', 'oEmail', 'oFirstPurchasePromo'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -6873,6 +6968,7 @@ function initFromQR() {
   const friend  = params.get('friend');
   const salon   = params.get('salon');
   const linkedPartner = params.get('partner') || params.get('groomer') || params.get('partner_id');
+  const firstPurchasePromo = params.get('promo');
 
   // Прямая ссылка на страницу салона-партнёра — открываем сразу, остальной
   // разбор параметров (точка самовывоза, товар) в этом случае не нужен.
@@ -6886,6 +6982,7 @@ function initFromQR() {
   window._qrProductId = product || '';
   window._referralCodeFromLink = friend || '';
   window._groomerPartnerIdFromLink = /^\d+$/.test(linkedPartner || '') ? linkedPartner : '';
+  window._firstPurchasePromoFromLink = firstPurchasePromo || '';
 
   // Подставить точку самовывоза
   applyPickupFromRef(ref);

@@ -17,6 +17,12 @@ const { checkAndPayManagerBonus } = require('./bonus-logic');
 const { sendUnpaidOrderAlert } = require('./unpaid-order-alerts');
 const { priceCatalogCart, calculateDeliveryFee, buildReceiptItems } = require('./order-pricing');
 const {
+  FIRST_PURCHASE_DISCOUNT_PERCENT,
+  validateFirstPurchasePromo,
+  claimFirstPurchasePromo,
+  releaseFirstPurchasePromoClaim,
+} = require('./first-purchase-promo');
+const {
   RESERVATION_TTL_MINUTES,
   newReservationExpiry,
   withImmediateTransaction,
@@ -29,6 +35,7 @@ const {
 
 function releaseFailedOrderAndAlert(orderId, reason) {
   const result = releaseOrderReservation(orderId, 'failed', reason);
+  if (result.released) releaseFirstPurchasePromoClaim(orderId);
   sendUnpaidOrderAlert(orderId, 'failed', reason).catch((error) => {
     console.warn('[unpaid-order] Не удалось обработать срочное оповещение:', error.message);
   });
@@ -162,7 +169,7 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
       orderData.orderId, orderData.customerName, orderData.customerLname || null,
       orderData.customerPhone, orderData.customerEmail || null, orderData.pickupPoint,
       orderData.pointId || null, orderData.partnerId || null, orderData.partnerName || null, orderData.comment || null,
-      orderData.subtotal, 0, orderData.total, orderData.promoCode || null,
+      orderData.subtotal, orderData.discount || 0, orderData.total, orderData.promoCode || null,
       orderData.method || 'yookassa', orderData.needsDelivery ? 1 : 0, 0,
       orderData.fulfillmentType, orderData.deliveryAddress || null, orderData.deliveryFee,
       orderData.referralCode || null, orderData.bonesUsed, orderData.commissionRate, orderData.isSelfOrder ? 1 : 0,
@@ -175,6 +182,7 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
     for (const item of pricedItems) {
       insertItem.run(orderRowId, item.variantId, item.name, item.weight, item.price, item.qty);
     }
+    claimFirstPurchasePromo(orderData.promoValidation, orderRowId);
     reserveForOrder(orderRowId, inventorySource, pricedItems, bonesCustomerId, orderData.bonesUsed);
     return orderRowId;
   });
@@ -301,6 +309,17 @@ function startReservationCleanup() {
 
 function registerPaymentRoutes(router) {
   startReservationCleanup();
+  router.get('/api/first-purchase-promo/validate', (req, res, ctx) => {
+    const result = validateFirstPurchasePromo(ctx.query.code, ctx.query.phone);
+    if (!result.valid) return sendJson(res, 200, result);
+    sendJson(res, 200, {
+      valid: true,
+      promo_code: result.promoCode,
+      partner_name: result.partnerName,
+      discount_percent: result.discountPercent,
+    });
+  });
+
   // POST /api/create-payment — создаёт заказ (pending) и платёж в ЮKassa
   router.post('/api/create-payment', async (req, res, ctx) => {
     const {
@@ -332,6 +351,19 @@ function registerPaymentRoutes(router) {
     }
     const authoritativeFulfillment = fulfillmentType === 'home_delivery' ? 'home_delivery' : 'pickup';
     const authoritativeDeliveryFee = calculateDeliveryFee(authoritativeFulfillment, pricedCart.subtotal);
+    let promoValidation = null;
+    let promoDiscount = 0;
+    if (String(promoCode || '').trim()) {
+      promoValidation = validateFirstPurchasePromo(promoCode, customerPhone);
+      if (!promoValidation.valid) {
+        return sendJson(res, 409, {
+          error: promoValidation.error,
+          code: 'FIRST_PURCHASE_PROMO_INVALID',
+        });
+      }
+      promoDiscount = Math.round(pricedCart.subtotal * FIRST_PURCHASE_DISCOUNT_PERCENT / 100);
+    }
+    const goodsAfterPromo = pricedCart.subtotal - promoDiscount;
     // Довоз недостающего веса в точку больше не предлагается. Не доверяем
     // устаревшим клиентам, которые ещё могут прислать needsDelivery=true.
     const authoritativeNeedsDelivery = false;
@@ -401,7 +433,7 @@ function registerPaymentRoutes(router) {
       if (bonesCustomer.phone !== normalizePhone(customerPhone)) {
         return sendJson(res, 400, { error: 'Косточками можно оплатить заказ только на свой номер телефона' });
       }
-      const amountBeforeBones = pricedCart.subtotal + authoritativeDeliveryFee;
+      const amountBeforeBones = goodsAfterPromo + authoritativeDeliveryFee;
       const maxUsable = computeMaxUsableBones(bonesCustomer.bones_balance, amountBeforeBones, isSelfOrder);
       if (requestedBones > maxUsable) {
         const actualSharePercent = Math.round(getMaxBonesShare(amountBeforeBones) * 100);
@@ -412,7 +444,7 @@ function registerPaymentRoutes(router) {
       bonesCustomerId = bonesCustomer.id;
     }
 
-    const authoritativeAmount = pricedCart.subtotal + authoritativeDeliveryFee - bonesToDeduct;
+    const authoritativeAmount = goodsAfterPromo + authoritativeDeliveryFee - bonesToDeduct;
     if (!Number.isSafeInteger(authoritativeAmount) || authoritativeAmount < 1) {
       return sendJson(res, 400, { error: 'Некорректная итоговая сумма заказа', code: 'INVALID_ORDER_TOTAL' });
     }
@@ -423,11 +455,11 @@ function registerPaymentRoutes(router) {
       return sendJson(res, 409, {
         error: 'Цена заказа изменилась. Корзина обновлена — проверьте новый итог и подтвердите оплату ещё раз.',
         code: 'ORDER_TOTAL_CHANGED',
-        pricing: { subtotal: pricedCart.subtotal, deliveryFee: authoritativeDeliveryFee, bonesUsed: bonesToDeduct, total: authoritativeAmount, items: pricedCart.items },
+        pricing: { subtotal: pricedCart.subtotal, discount: promoDiscount, deliveryFee: authoritativeDeliveryFee, bonesUsed: bonesToDeduct, total: authoritativeAmount, items: pricedCart.items },
       });
     }
-    const bonesAgainstGoods = Math.min(bonesToDeduct, pricedCart.subtotal);
-    const adjustedGoodsTotal = pricedCart.subtotal - bonesAgainstGoods;
+    const bonesAgainstGoods = Math.min(bonesToDeduct, goodsAfterPromo);
+    const adjustedGoodsTotal = goodsAfterPromo - bonesAgainstGoods;
     const adjustedDeliveryFee = authoritativeDeliveryFee - (bonesToDeduct - bonesAgainstGoods);
     const authoritativeReceiptItems = buildReceiptItems(pricedCart.items, adjustedGoodsTotal, adjustedDeliveryFee);
 
@@ -456,7 +488,8 @@ function registerPaymentRoutes(router) {
       orderRowId = createReservedOrder({
         orderId, customerName: String(customerName || 'Клиент').trim() || 'Клиент', customerLname, customerPhone, customerEmail,
         pickupPoint: authoritativePickupPoint, pointId, partnerId: authoritativePartnerId, partnerName: selectedPartnerName, comment,
-        subtotal: pricedCart.subtotal, total: authoritativeAmount, promoCode, method,
+        subtotal: pricedCart.subtotal, discount: promoDiscount, total: authoritativeAmount,
+        promoCode: promoValidation ? promoValidation.promoCode : null, promoValidation, method,
         needsDelivery: authoritativeNeedsDelivery, fulfillmentType: authoritativeFulfillment,
         deliveryAddress: authoritativeFulfillment === 'home_delivery' ? String(deliveryAddress).trim() : null,
         deliveryFee: authoritativeDeliveryFee, referralCode, bonesUsed: bonesToDeduct,

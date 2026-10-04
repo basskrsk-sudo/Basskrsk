@@ -464,7 +464,7 @@ function registerManagerRoutes(router) {
     const points = db.prepare('SELECT id, name, icon FROM points WHERE manager_id = ? ORDER BY name').all(payload.id);
     const result = points.map((point) => {
       const partners = db.prepare(`
-        SELECT id, partner_code, full_name, phone, commission_rate, active
+        SELECT id, partner_code, first_purchase_promo_code, full_name, phone, commission_rate, active
         FROM partners WHERE point_id = ? ORDER BY full_name
       `).all(point.id);
       const withStats = partners.map((p) => {
@@ -476,6 +476,7 @@ function registerManagerRoutes(router) {
         return {
           id: p.id,
           partner_code: p.partner_code,
+          first_purchase_promo_code: p.first_purchase_promo_code,
           full_name: p.full_name,
           phone: p.phone,
           commission_rate: p.commission_rate,

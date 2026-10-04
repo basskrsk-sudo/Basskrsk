@@ -292,6 +292,14 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 .row-btn:hover { border-color: var(--deep); color: var(--deep); }
 .row-btn.danger { color: var(--red-text); border-color: #F0C9C9; }
 .row-btn.danger:hover { background: var(--red-bg); border-color: var(--red-text); }
+.password-input-wrap { position: relative; }
+.password-input-wrap input { padding-right: 2.8rem; }
+.password-visibility-btn {
+  position: absolute; right: .45rem; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; cursor: pointer; padding: .25rem;
+  font-size: 1rem; line-height: 1; border-radius: 5px;
+}
+.password-visibility-btn:focus-visible { outline: 2px solid var(--deep); outline-offset: 1px; }
 .partner-actions-toggle {
   width: 34px; height: 30px; padding: 0; border: 1px solid var(--border);
   border-radius: 7px; background: var(--white); color: var(--text);
@@ -1538,7 +1546,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div id="admin-create-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.5rem .7rem;border-radius:6px;margin-bottom:.8rem;"></div>
         <div class="admin-field"><label>ФИО</label><input type="text" id="am-create-name"></div>
         <div class="admin-field"><label>Логин</label><input type="text" id="am-create-login" autocomplete="off"></div>
-        <div class="admin-field"><label>Пароль</label><input type="password" id="am-create-password" autocomplete="new-password"></div>
+        <div class="admin-field"><label>Пароль</label><div class="password-input-wrap"><input type="password" id="am-create-password" autocomplete="new-password"><button type="button" class="password-visibility-btn" onclick="togglePasswordVisibility('am-create-password',this)" aria-label="Показать пароль" title="Показать пароль">👁️</button></div></div>
         <div class="admin-field" style="display:flex;align-items:center;gap:.5rem;">
           <input type="checkbox" id="am-create-super" style="width:auto;">
           <label style="margin:0;">Тоже супер-админ (может управлять другими админами)</label>
@@ -1558,7 +1566,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="admin-field"><label>ФИО</label><input type="text" id="om-name"></div>
         <div class="admin-field"><label>Телефон</label><input type="text" id="om-phone"></div>
         <div class="admin-field"><label>Логин</label><input type="text" id="om-login" autocomplete="off"></div>
-        <div class="admin-field"><label>Пароль</label><input type="password" id="om-password" autocomplete="new-password"></div>
+        <div class="admin-field"><label>Пароль</label><div class="password-input-wrap"><input type="password" id="om-password" autocomplete="new-password"><button type="button" class="password-visibility-btn" onclick="togglePasswordVisibility('om-password',this)" aria-label="Показать пароль" title="Показать пароль">👁️</button></div></div>
         <div class="admin-field">
           <label>Точка (какой салон видит)</label>
           <select id="om-point-select" class="pm-select"><option value="">— Выберите точку —</option></select>
@@ -1592,7 +1600,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="admin-field"><label>ИНН</label><input type="text" id="am-inn"></div>
         <div class="admin-field"><label>Реквизиты для выплат (счёт, банк, БИК)</label><input type="text" id="am-bank-details"></div>
         <div class="admin-field"><label>Логин</label><input type="text" id="am-login" autocomplete="off"></div>
-        <div class="admin-field"><label>Пароль</label><input type="password" id="am-password" autocomplete="new-password"></div>
+        <div class="admin-field"><label>Пароль</label><div class="password-input-wrap"><input type="password" id="am-password" autocomplete="new-password"><button type="button" class="password-visibility-btn" onclick="togglePasswordVisibility('am-password',this)" aria-label="Показать пароль" title="Показать пароль">👁️</button></div></div>
         <div style="display:flex;gap:.6rem;margin-top:1rem;">
           <button class="row-btn" style="flex:1;" onclick="closeManagerModal()">Отмена</button>
           <button class="row-btn" style="flex:1;background:var(--forest,#1C3A2F);color:#fff;" onclick="saveManagerForm()">Создать</button>
@@ -2044,7 +2052,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <table class="tbl">
           <thead>
             <tr>
-              <th>Партнёр</th><th>Точка</th><th class="r">Тариф</th><th>Формат</th>
+              <th>Партнёр</th><th>Промокод −20%</th><th>Точка</th><th class="r">Тариф</th><th>Формат</th>
               <th>Приведён грумером</th><th class="r" id="partners-earnings-heading">К выплате</th><th>Статус</th><th class="r">Действия</th>
             </tr>
           </thead>
@@ -5726,6 +5734,7 @@ async function openOwnerModal() {
   document.getElementById('om-phone').value = '';
   document.getElementById('om-login').value = '';
   document.getElementById('om-password').value = '';
+  resetPasswordVisibility('om-password');
   document.getElementById('owner-modal-error').style.display = 'none';
 
   const res = await authFetch('/api/points');
@@ -6244,6 +6253,7 @@ async function renderPartners() {
     const isRisky = p.active && p.commission_rate >= 0.18;
     return '<tr>' +
       '<td style="font-weight:500;">' + p.full_name + '<br><span style="font-size:.72rem;color:var(--muted);font-family:monospace;">' + p.partner_code + ' · ' + p.login + '</span></td>' +
+      '<td><button type="button" class="row-btn" style="margin-left:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(p.first_purchase_promo_code || '') + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + (p.first_purchase_promo_code ? escapeOrderCell(p.first_purchase_promo_code) : '—') + '</button></td>' +
       '<td>' + p.point_name + (p.point_address ? '<br><span style="font-size:.75rem;color:var(--muted);">' + p.point_address + '</span>' : '') +
         (samePoint.length ? '<br><span style="font-size:.72rem;color:var(--amber);">👥 Также на точке: ' + samePoint.map(function(x) { return x.full_name; }).join(', ') + '</span>' : '') + '</td>' +
       '<td class="r" style="font-weight:600;' + (isRisky ? 'color:#7A4A00;' : '') + '">' + Math.round(p.commission_rate * 100) + '%' + (isRisky ? ' ⚠️' : '') + '</td>' +
@@ -6255,9 +6265,28 @@ async function renderPartners() {
       '<td><span class="toggle-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '🟢 Активен' : '⏳ Ожидает') + '</span></td>' +
       '<td class="r"><button class="partner-actions-toggle" aria-label="Действия с партнёром" aria-expanded="false" onclick="openPartnerActions(' + p.id + ', this, event)">⋯</button></td>' +
       '</tr>';
-  }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">Партнёров пока нет</td></tr>';
+  }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem;">Партнёров пока нет</td></tr>';
 
   renderPartnerPayoutHistory(payoutData.payouts || []);
+}
+
+async function copyAdminPartnerPromoCode(code, button) {
+  if (!code) return;
+  try {
+    await navigator.clipboard.writeText(code);
+  } catch (e) {
+    const input = document.createElement('textarea');
+    input.value = code;
+    input.style.position = 'fixed';
+    input.style.opacity = '0';
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    input.remove();
+  }
+  const original = button.textContent;
+  button.textContent = '✓ Скопировано';
+  setTimeout(function() { button.textContent = original; }, 1500);
 }
 
 function renderPartnerPayoutHistory(payouts) {
@@ -6677,6 +6706,7 @@ function openAdminModal() {
   document.getElementById('am-create-name').value = '';
   document.getElementById('am-create-login').value = '';
   document.getElementById('am-create-password').value = '';
+  resetPasswordVisibility('am-create-password');
   document.getElementById('am-create-super').checked = false;
   document.getElementById('admin-create-error').style.display = 'none';
   document.getElementById('admin-create-modal').style.display = 'flex';
@@ -6747,6 +6777,7 @@ function openManagerModal() {
   document.getElementById('am-bank-details').value = '';
   document.getElementById('am-login').value = '';
   document.getElementById('am-password').value = '';
+  resetPasswordVisibility('am-password');
   document.getElementById('manager-modal-error').style.display = 'none';
   document.getElementById('manager-modal').style.display = 'flex';
   loadCitiesIntoSelect('am-city');
@@ -7261,6 +7292,20 @@ function togglePasswordVisibility(inputId, btnEl) {
   const isHidden = input.type === 'password';
   input.type = isHidden ? 'text' : 'password';
   btnEl.textContent = isHidden ? '🙈' : '👁️';
+  const label = isHidden ? 'Скрыть пароль' : 'Показать пароль';
+  btnEl.setAttribute('aria-label', label);
+  btnEl.title = label;
+}
+
+function resetPasswordVisibility(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  input.type = 'password';
+  const button = input.parentNode.querySelector('.password-visibility-btn');
+  if (!button) return;
+  button.textContent = '👁️';
+  button.setAttribute('aria-label', 'Показать пароль');
+  button.title = 'Показать пароль';
 }
 
 async function doAdminLogin() {

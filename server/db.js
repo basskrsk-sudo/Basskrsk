@@ -992,6 +992,21 @@ ensureColumn('order_items', 'variant_id', 'INTEGER REFERENCES product_variants(i
 ensureColumn('orders', 'delivery_address', 'TEXT');
 ensureColumn('orders', 'delivery_fee', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'referral_code', 'TEXT');
+ensureColumn('partners', 'first_purchase_promo_code', 'TEXT');
+db.exec(`
+  UPDATE partners
+  SET first_purchase_promo_code = printf('HVOST20-%03d', id)
+  WHERE first_purchase_promo_code IS NULL OR TRIM(first_purchase_promo_code) = '';
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_partners_first_purchase_promo
+    ON partners(first_purchase_promo_code);
+  CREATE TABLE IF NOT EXISTS first_purchase_promo_claims (
+    phone       TEXT PRIMARY KEY,
+    partner_id  INTEGER NOT NULL REFERENCES partners(id),
+    promo_code  TEXT NOT NULL,
+    order_id    INTEGER NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
 ensureColumn('partners', 'tier_confirmed_month', 'TEXT');
 ensureColumn('partners', 'telegram_chat_id', 'TEXT');
 ensureColumn('partners', 'max_chat_id', 'TEXT');

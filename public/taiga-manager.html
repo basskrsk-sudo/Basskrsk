@@ -225,6 +225,10 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 .recruit-link-wrap{display:flex;align-items:center;gap:.5rem;background:rgba(83,74,183,.1);border-radius:6px;padding:.55rem .8rem;margin:.65rem 0;}
 .recruit-link{font-size:.82rem;color:var(--purple);flex:1;font-family:monospace;word-break:break-all;}
 .copy-btn{background:var(--purple);color:#fff;border:none;border-radius:5px;padding:.3rem .7rem;font-size:.75rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;}
+.password-input-wrap{position:relative;}
+.password-input-wrap input{padding-right:2.8rem;}
+.password-visibility-btn{position:absolute;right:.45rem;top:50%;transform:translateY(-50%);border:0;background:transparent;cursor:pointer;padding:.25rem;font-size:1rem;line-height:1;border-radius:5px;}
+.password-visibility-btn:focus-visible{outline:2px solid var(--deep);outline-offset:1px;}
 /* news/notifications */
 .notif{display:flex;gap:.6rem;padding:.6rem 0;border-bottom:1px solid var(--border);}
 .notif:last-child{border-bottom:none;}
@@ -602,7 +606,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
         </div>
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;">
           <div class="field"><label>Логин</label><input type="text" id="np-login" placeholder="maria_groomer"></div>
-          <div class="field"><label>Пароль</label><input type="password" id="np-password" placeholder="Не короче 6 символов"></div>
+          <div class="field"><label>Пароль</label><div class="password-input-wrap"><input type="password" id="np-password" placeholder="Не короче 6 символов" autocomplete="new-password"><button type="button" class="password-visibility-btn" onclick="togglePasswordVisibility('np-password',this)" aria-label="Показать пароль" title="Показать пароль">👁️</button></div></div>
         </div>
         <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-weight:400;font-size:.82rem;color:var(--text);margin-bottom:.9rem;">
           <input type="checkbox" id="np-consent-pd" style="margin-top:.15rem;width:16px;height:16px;flex-shrink:0;">
@@ -625,7 +629,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
         </div>
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;">
           <div class="field"><label>Логин</label><input type="text" id="no-login" placeholder="svetlana_owner"></div>
-          <div class="field"><label>Пароль</label><input type="password" id="no-password" placeholder="Не короче 6 символов"></div>
+          <div class="field"><label>Пароль</label><div class="password-input-wrap"><input type="password" id="no-password" placeholder="Не короче 6 символов" autocomplete="new-password"><button type="button" class="password-visibility-btn" onclick="togglePasswordVisibility('no-password',this)" aria-label="Показать пароль" title="Показать пароль">👁️</button></div></div>
         </div>
         <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-weight:400;font-size:.82rem;color:var(--text);margin-bottom:.9rem;">
           <input type="checkbox" id="no-consent-pd" style="margin-top:.15rem;width:16px;height:16px;flex-shrink:0;">
@@ -1001,6 +1005,7 @@ async function submitNewPartner() {
     if (!res.ok) throw new Error(data.error || 'Не удалось зарегистрировать партнёра');
     setRegFormMsg('np-msg', '✅ Партнёр зарегистрирован, код ' + data.partner_code + '. Уже может входить в свой кабинет.', false);
     ['np-fname','np-lname','np-phone','np-refcode','np-login','np-password'].forEach(id => document.getElementById(id).value = '');
+    resetPasswordVisibility('np-password');
     document.getElementById('np-consent-pd').checked = false;
     loadPointsForRegistrationForms();
   } catch (e) {
@@ -1037,6 +1042,7 @@ async function submitNewOwner() {
     if (!res.ok) throw new Error(data.error || 'Не удалось зарегистрировать владельца');
     setRegFormMsg('no-msg', '✅ Владелец зарегистрирован и уже может входить в свой кабинет.', false);
     ['no-fname','no-phone','no-login','no-password'].forEach(id => document.getElementById(id).value = '');
+    resetPasswordVisibility('no-password');
     document.getElementById('no-consent-pd').checked = false;
     loadPointsForRegistrationForms();
   } catch (e) {
@@ -1204,6 +1210,20 @@ function togglePasswordVisibility(inputId, btnEl) {
   const isHidden = input.type === 'password';
   input.type = isHidden ? 'text' : 'password';
   btnEl.textContent = isHidden ? '🙈' : '👁️';
+  const label = isHidden ? 'Скрыть пароль' : 'Показать пароль';
+  btnEl.setAttribute('aria-label', label);
+  btnEl.title = label;
+}
+
+function resetPasswordVisibility(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  input.type = 'password';
+  const button = input.parentNode.querySelector('.password-visibility-btn');
+  if (!button) return;
+  button.textContent = '👁️';
+  button.setAttribute('aria-label', 'Показать пароль');
+  button.title = 'Показать пароль';
 }
 
 async function doLogin(){
@@ -2035,6 +2055,7 @@ async function renderPartnersSection() {
         : '<span class="pill pill-red">Отключён</span>';
       return '<tr>' +
         '<td style="font-weight:500;">' + p.full_name + '<br><span style="font-size:.72rem;color:var(--muted);">' + p.partner_code + ' · ' + p.phone + '</span></td>' +
+        '<td><button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(p.first_purchase_promo_code || '') + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + (p.first_purchase_promo_code ? escapeManagerPayoutCell(p.first_purchase_promo_code) : '—') + '</button></td>' +
         '<td class="r">' + Math.round(p.commission_rate * 100) + '%</td>' +
         '<td class="r">' + p.orders_count + '</td>' +
         '<td class="r">' + p.revenue.toLocaleString('ru-RU') + ' ₽</td>' +
@@ -2042,14 +2063,33 @@ async function renderPartnersSection() {
         '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(p.unpaid_earnings || 0).toLocaleString('ru-RU') + ' ₽</td>' +
         '<td>' + statusBadge + '</td>' +
         '</tr>';
-    }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1rem;">На этой точке пока нет партнёра — можно зарегистрировать в разделе «Привлечение точек»</td></tr>';
+    }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:1rem;">На этой точке пока нет партнёра — можно зарегистрировать в разделе «Привлечение точек»</td></tr>';
     return '<div class="card" style="margin-bottom:1rem;">' +
       '<div class="card-title">' + (pt.point_icon || '📍') + ' ' + pt.point_name + '</div>' +
       '<table class="tbl"><thead><tr>' +
-        '<th>Партнёр</th><th class="r">Тариф</th><th class="r">Заказов</th><th class="r">Выручка</th><th class="r">Начислено</th><th class="r">К выплате</th><th>Статус</th>' +
+        '<th>Партнёр</th><th>Промокод −20%</th><th class="r">Тариф</th><th class="r">Заказов</th><th class="r">Выручка</th><th class="r">Начислено</th><th class="r">К выплате</th><th>Статус</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
       '</div>';
   }).join('') + renderManagerPartnerPayoutHistory((payoutData && payoutData.payouts) || []);
+}
+
+async function copyPartnerPromoCode(code, button) {
+  if (!code) return;
+  try {
+    await navigator.clipboard.writeText(code);
+  } catch (e) {
+    const input = document.createElement('textarea');
+    input.value = code;
+    input.style.position = 'fixed';
+    input.style.opacity = '0';
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    input.remove();
+  }
+  const original = button.textContent;
+  button.textContent = '✓ Скопировано';
+  setTimeout(function() { button.textContent = original; }, 1500);
 }
 
 function escapeManagerPayoutCell(value) {

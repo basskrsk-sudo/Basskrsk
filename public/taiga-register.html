@@ -72,6 +72,10 @@ nav{background:var(--forest);padding:0 5vw;}
 .field input.error,.field select.error{border-color:var(--red);}
 .field-error{font-size:.75rem;color:var(--red);margin-top:.3rem;}
 .field-hint{font-size:.74rem;color:var(--muted);margin-top:.3rem;}
+.password-input-wrap{position:relative;}
+.password-input-wrap input{padding-right:2.8rem;}
+.password-visibility-btn{position:absolute;right:.45rem;top:50%;transform:translateY(-50%);border:0;background:transparent;cursor:pointer;padding:.25rem;font-size:1rem;line-height:1;border-radius:5px;}
+.password-visibility-btn:focus-visible{outline:2px solid var(--deep);outline-offset:1px;}
 
 /* radio group */
 .radio-group{display:flex;gap:.65rem;flex-wrap:wrap;}
@@ -230,7 +234,10 @@ canvas#sigCanvas.has-sig{border-color:var(--deep);}
     </div>
     <div class="field">
       <label>Пароль <span class="req">*</span></label>
-      <input type="password" id="f-password" placeholder="Не короче 6 символов" autocomplete="new-password">
+      <div class="password-input-wrap">
+        <input type="password" id="f-password" placeholder="Не короче 6 символов" autocomplete="new-password">
+        <button type="button" class="password-visibility-btn" onclick="togglePasswordVisibility('f-password',this)" aria-label="Показать пароль" title="Показать пароль">👁️</button>
+      </div>
     </div>
 
     <div id="extra-codes-toggle" style="margin-bottom:1.2rem;">
@@ -316,16 +323,28 @@ function fmtPhone(el) {
 }
 document.getElementById('f-phone').addEventListener('input', function() { fmtPhone(this); });
 
+function togglePasswordVisibility(inputId, btnEl) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const isHidden = input.type === 'password';
+  input.type = isHidden ? 'text' : 'password';
+  btnEl.textContent = isHidden ? '🙈' : '👁️';
+  const label = isHidden ? 'Скрыть пароль' : 'Показать пароль';
+  btnEl.setAttribute('aria-label', label);
+  btnEl.title = label;
+}
+
 function setFieldError(id, msg) {
   const el = document.getElementById(id);
   if (!el) return;
   el.classList.toggle('error', !!msg);
-  let hint = el.parentNode.querySelector('.field-error');
+  const hintHost = el.parentNode.classList.contains('password-input-wrap') ? el.parentNode.parentNode : el.parentNode;
+  let hint = hintHost.querySelector('.field-error');
   if (msg) {
     if (!hint) {
       hint = document.createElement('div');
       hint.className = 'field-error';
-      el.parentNode.appendChild(hint);
+      hintHost.appendChild(hint);
     }
     hint.textContent = msg;
   } else if (hint) {
