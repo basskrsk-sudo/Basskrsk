@@ -8,8 +8,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0A4A38">
 <title>ХвостМаркет — лакомства и товары для питомцев в минимаркетах рядом с вами</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="/fonts/site-fonts.css" rel="stylesheet">
 <!-- Виджет ЮKassa загружается перед оплатой с проверкой и повторной попыткой.
      Так сбой внешнего скрипта не создаёт заказ, который клиент не может оплатить. -->
 <link rel="preconnect" href="https://yookassa.ru">
@@ -1142,7 +1141,7 @@
 <nav>
   <div class="nav-inner">
     <div class="nav-logo" onclick="showPage('home')" style="cursor:pointer;display:flex;align-items:center;">
-      <span class="nav-logo-mark"><img class="nav-logo-image" src="/images/hvostmarket-mark-v4-transparent.png?v=37" alt="Собака с геоточкой — логотип ХвостМаркет"></span>
+      <span class="nav-logo-mark"><img class="nav-logo-image" src="/images/hvostmarket-mark-v4-transparent.webp" alt="Собака с геоточкой — логотип ХвостМаркет" width="430" height="382" decoding="async" fetchpriority="high"></span>
       <span class="nav-logo-word"><span style="color:var(--white);margin-top:0;">Хвост</span><span>Маркет</span></span>
     </div>
     <ul class="nav-links" id="navLinks">
@@ -1342,7 +1341,7 @@
         <h2>Каталог «Тайга»</h2>
         <p>Лакомства, игрушки, аксессуары и товары для ухода</p>
       </div>
-      <img class="mascot-catalog" src="images/mascot/catalog-v2.png" alt="" loading="lazy">
+      <img class="mascot-catalog" src="images/mascot/catalog-v2.webp" alt="" width="396" height="600" loading="lazy" decoding="async">
     </div>
     <div style="max-width:420px;margin:0 auto 1rem;position:relative;">
       <input type="text" id="catalogSearch" placeholder="Поиск по каталогу..." oninput="renderCatalog()"
@@ -1662,7 +1661,7 @@
         <h1>🦴 Косточки ХвостМаркета</h1>
         <p>Внутренняя валюта «ХвостМаркета» — 1 косточка = 1 ₽ при оплате любого заказа. Зарабатывайте их, оставаясь с нами, и тратьте, когда захотите.</p>
       </div>
-      <img class="mascot-bones" src="images/mascot/bones.png" alt="" loading="lazy">
+      <img class="mascot-bones" src="images/mascot/bones.webp" alt="" width="370" height="280" loading="lazy" decoding="async">
     </div>
   </div>
 
@@ -1847,7 +1846,7 @@
     </div>
     <div>
       <button class="back-btn" onclick="showPage('catalog')">← Назад к каталогу</button>
-      <img class="mascot-product" src="images/mascot/product.png" alt="" loading="lazy">
+      <img class="mascot-product" src="images/mascot/product.webp" alt="" width="360" height="300" loading="lazy" decoding="async">
       <h1 id="detailName">Название</h1>
       <div id="detailRatingBadge" style="font-size:.9rem;color:var(--muted);margin-bottom:.4rem;cursor:pointer;"></div>
       <div class="detail-meta" id="detailMeta"></div>
@@ -2262,7 +2261,7 @@
         </div>
       </div>
       <div class="map-mascot-callout">
-        <img class="map-mascot" src="images/mascot/locations.png" alt="" loading="lazy">
+        <img class="map-mascot" src="images/mascot/locations.webp" alt="" width="385" height="275" loading="lazy" decoding="async">
         <div class="map-mascot-copy">
           <strong>Найдите ближайший минимаркет</strong>
           <p>Нажмите на метку точки, чтобы посмотреть адрес, а затем постройте маршрут в Яндекс Картах.</p>
@@ -2478,7 +2477,7 @@
     <div id="modal-step-1">
       <div class="checkout-mascot-row">
         <h2>Покупка за минуту</h2>
-        <img class="mascot-checkout" src="/images/mascot/checkout-v2-clean.png" alt="">
+        <img class="mascot-checkout" src="/images/mascot/checkout-v2-clean.webp" alt="" width="600" height="383" loading="lazy" decoding="async">
       </div>
       <div class="form-group"><label>Телефон *</label><input type="tel" id="oPhone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this); scheduleCheckoutTelegramOffer(); onFirstPurchasePromoContextChange();" onblur="liveValidatePhone(this); checkLoyaltyByPhone(); checkSelfOrderWarning(); showCheckoutTelegramOffer(); validateFirstPurchasePromo();" autocomplete="new-password"></div>
       <div id="loyalty-msg" style="font-size:.82rem;margin:-.6rem 0 1rem;min-height:1.1em;color:#2D7D46;"></div>
@@ -2590,7 +2589,7 @@
 </div>
 <div class="page" id="page-success">
   <div style="max-width:560px;margin:0 auto;padding:80px 5vw;text-align:center;">
-    <img class="mascot-success" src="/images/mascot/purchase-success-v2.png" alt="Довольный хаски на четырёх лапах рядом с пакетом покупок">
+    <img class="mascot-success" src="/images/mascot/purchase-success-v2.webp" alt="Довольный хаски на четырёх лапах рядом с пакетом покупок" width="640" height="601" loading="lazy" decoding="async">
     <h1 style="color:var(--deep);margin-bottom:1rem;">Оплата прошла!</h1>
     <p id="success-subtitle" style="color:var(--muted);line-height:1.8;margin-bottom:1.4rem;">Товар оплачен — заберите его из минимаркета самостоятельно.</p>
     <div id="success-products" class="success-product-list"></div>
@@ -4370,6 +4369,7 @@ let currentSalonPointId = null;
 
 // ── NAVIGATION ────────────────────────────────────────
 function showPage(id) {
+  if (id !== 'payment-result' && id !== 'success') startBrowsingData();
   closeMenu(); // переход по ссылке должен закрывать открытое мобильное меню, а не оставлять его поверх новой страницы
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
@@ -4410,6 +4410,7 @@ function showPage(id) {
   if (id === 'wishlist') renderWishlist();
   if (id === 'contacts') renderPointsMap();
   if (id === 'account') renderAccountPage();
+  if (id === 'about' && !('IntersectionObserver' in window)) loadPublicNews();
   if (id === 'quiz') { loadQuizLeaderboard(); prefillKnownPhone(document.getElementById('quiz-phone')); updateQuizPrizeHint(); }
   if (id === 'register') resetRegisterPage();
   if (id === 'chess') { prefillKnownPhone(document.getElementById('chess-phone')); updateChessPrizeHint(); loadChessLeaderboard(); }
@@ -4490,10 +4491,8 @@ function formatCatalogPointDistance(distanceKm) {
 }
 
 async function selectNearestCatalogPoint(latitude, longitude) {
-  const response = await fetch('/api/points');
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Не удалось загрузить список минимаркетов.');
-  const candidates = (data.points || []).map(function(point) {
+  const directory = await loadPointDirectory();
+  const candidates = directory.map(function(point) {
     if (point.lat === null || point.lat === undefined || point.lat === '' ||
         point.lng === null || point.lng === undefined || point.lng === '') return null;
     const lat = Number(point.lat);
@@ -4936,9 +4935,8 @@ async function renderPointsMap() {
     await loadYandexMapsScript(apiKey);
     window.ymaps.ready(async function() {
       try {
-        const res = await fetch('/api/points');
-        const data = await res.json();
-        const points = (data.points || []).filter(function(p) {
+        const directory = await loadPointDirectory();
+        const points = directory.filter(function(p) {
           if (p.lat === null || p.lat === undefined || p.lat === ''
               || p.lng === null || p.lng === undefined || p.lng === '') return false;
           const lat = Number(p.lat);
@@ -5382,7 +5380,7 @@ function changeCartQty(cartKey, d) {
 function renderCart() {
   const c = document.getElementById('cartContent');
   if (cart.length === 0) {
-    c.innerHTML = `<div class="cart-empty"><img class="mascot-empty" src="images/mascot/cart-empty.png" alt="Хаски заглядывает в пустую корзину"><p>Ваша корзина пуста</p><button class="btn-primary" onclick="showPage('catalog')">Перейти в каталог</button>
+    c.innerHTML = `<div class="cart-empty"><img class="mascot-empty" src="images/mascot/cart-empty.webp" alt="Хаски заглядывает в пустую корзину" width="360" height="280" loading="lazy" decoding="async"><p>Ваша корзина пуста</p><button class="btn-primary" onclick="showPage('catalog')">Перейти в каталог</button>
       <div style="margin-top:1rem;">
         <button onclick="showPage('wishlist')" style="background:none;border:none;color:var(--muted);font-size:.85rem;text-decoration:underline;cursor:pointer;font-family:'Manrope',sans-serif;">Не нашли товар? Оставить заявку</button>
       </div></div>`;
@@ -5413,7 +5411,7 @@ function renderCart() {
       </div>
     </div>`).join('') + `
     <div class="cart-summary has-mascot">
-      <img class="cart-summary-mascot" src="/images/mascot/cart-full-v2-clean.png" alt="">
+      <img class="cart-summary-mascot" src="/images/mascot/cart-full-v2-clean.webp" alt="" width="600" height="430" loading="lazy" decoding="async">
       <div class="cart-summary-row"><span>Товаров</span><span>${cart.reduce((s,x)=>s+x.qty,0)} шт.</span></div>
 
       <div style="background:rgba(45,125,70,.18);border-radius:6px;padding:.5rem .7rem;margin:.6rem 0;font-size:.82rem;color:#8FD9A8;">
@@ -6407,6 +6405,12 @@ async function launchYooKassaPayment() {
     const stopPaymentStatusPolling = function() {
       if (paymentStatusTimer) clearInterval(paymentStatusTimer);
       paymentStatusTimer = null;
+      document.removeEventListener('visibilitychange', resumeWidgetPayment);
+      window.removeEventListener('pageshow', resumeWidgetPayment);
+    };
+
+    const resumeWidgetPayment = function() {
+      if (document.visibilityState !== 'hidden') refreshPaymentStatus();
     };
 
     const restorePayButton = function() {
@@ -6469,6 +6473,8 @@ async function launchYooKassaPayment() {
     });
 
     await checkout.render('yk-payment-element');
+    document.addEventListener('visibilitychange', resumeWidgetPayment);
+    window.addEventListener('pageshow', resumeWidgetPayment);
 
     // Основной канал показа результата: опрашиваем наш сервер независимо от
     // того, прислал ли iframe ЮKassa событие success. Сервер, в свою очередь,
@@ -6495,6 +6501,9 @@ async function handleRedirectPaymentReturn() {
   const url = new URL(window.location.href);
   const orderCode = url.searchParams.get('payment_return');
   if (!orderCode) return;
+  if (window._paymentReturnCheckRunning) return;
+  window._paymentReturnCheckRunning = true;
+  try {
 
   // Оставляем номер заказа в URL: обновление во время сверки должно
   // повторять проверку платежа, а не возвращать покупателя на главную.
@@ -6568,6 +6577,9 @@ async function handleRedirectPaymentReturn() {
   document.getElementById('payment-result-title').textContent = 'Платёж ещё обрабатывается';
   document.getElementById('payment-result-message').textContent = 'Подтверждение пока не получено. Проверьте статус ещё раз; повторно оплачивать заказ не нужно.';
   retryButton.style.display = 'inline-flex';
+  } finally {
+    window._paymentReturnCheckRunning = false;
+  }
 }
 
 function simulatePaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment) {
@@ -7241,6 +7253,23 @@ async function renderPartnerWorkingPoints() {
 
 let SITE_POINTS = [];
 
+async function loadPointDirectory() {
+  const now = Date.now();
+  const cache = window._pointDirectory || (window._pointDirectory = {});
+  if (cache.data && now - cache.loadedAt < 60000) return cache.data;
+  if (cache.promise) return cache.promise;
+  cache.promise = (async function() {
+    const res = await fetch('/api/points', { cache: 'no-store' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось загрузить минимаркеты.');
+    cache.data = data.points || [];
+    cache.loadedAt = Date.now();
+    return cache.data;
+  })();
+  try { return await cache.promise; }
+  finally { cache.promise = null; }
+}
+
 // Выбранный город хранится в localStorage — переживает перезагрузку страницы.
 // 'krsk' — город по умолчанию (первый и пока основной).
 function getCurrentCity() {
@@ -7254,9 +7283,9 @@ async function loadSitePoints() {
   renderCatalogPointChoices();
   try {
     const city = getCurrentCity();
-    const res = await fetch('/api/points?city=' + encodeURIComponent(city));
-    const data = await res.json();
-    SITE_POINTS = data.points || [];
+    const directory = await loadPointDirectory();
+    if (city !== getCurrentCity()) return;
+    SITE_POINTS = directory.filter(function(point) { return String(point.city_id) === String(city); });
 
     // Убираем ранее добавленные динамические опции перед повторным
     // заполнением — иначе при смене города список задвоится.
@@ -7886,28 +7915,68 @@ async function claimChessWinPrize() {
   if (cityFromQr) localStorage.setItem('taiga_city', cityFromQr);
 })();
 
-Promise.all([loadProducts(), loadSitePoints(), loadSiteCities()]).then(function() {
-  // Возврат из банка имеет приоритет над QR и обычной навигацией.
-  if (new URLSearchParams(window.location.search).has('payment_return')) return;
-  initFromQR();
-  renderHeroProductExamples();
-  renderFeatured();
-  renderCatalog(); // на случай, если каталог уже был открыт до того, как товары успели загрузиться
+function startBrowsingData() {
+  if (window._browsingDataPromise) return window._browsingDataPromise;
+  window._browsingDataPromise = Promise.all([loadProducts(), loadSitePoints(), loadSiteCities(), loadDiscountSettings()]).then(function() {
+    renderHeroProductExamples();
+    renderFeatured();
+    renderCatalog();
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('payment_return') && params.get('page') !== 'account' && !params.has('customer_reset_token')) initFromQR();
+  });
+  return window._browsingDataPromise;
+}
+
+function setupDeferredNews() {
+  const target = document.querySelector('#page-about .values-grid');
+  if (!target || !('IntersectionObserver' in window)) return;
+  const observer = new IntersectionObserver(function(entries) {
+    if (!entries.some(function(entry) { return entry.isIntersecting; })) return;
+    observer.disconnect();
+    loadPublicNews();
+  }, { rootMargin: '400px' });
+  observer.observe(target);
+}
+
+async function initializeStorefront() {
   const initialParams = new URLSearchParams(window.location.search);
+  if (initialParams.has('payment_return')) {
+    await handleRedirectPaymentReturn();
+    // Каталог не конкурирует с проверкой платежа за мобильное соединение.
+    startBrowsingData();
+    return;
+  }
   const initialPage = initialParams.get('page');
-  if (initialPage === 'account') {
+  if (initialPage === 'account' || initialParams.has('customer_reset_token')) {
     if (initialParams.get('open_orders') === '1') window._openOrdersAfterAccountLogin = true;
     showPage('account');
+    return;
   }
-  else if (initialPage === 'salon' && initialParams.get('salon')) showSalonPage(initialParams.get('salon'));
+  await startBrowsingData();
+  if (initialPage === 'salon' && initialParams.get('salon')) showSalonPage(initialParams.get('salon'));
   else if (['catalog', 'contacts', 'bones', 'partners', 'salons'].includes(initialPage)) showPage(initialPage);
+}
+
+setupDeferredNews();
+initializeStorefront();
+function resumePaymentCheck() {
+  if (document.visibilityState === 'hidden') return;
+  if (document.getElementById('page-payment-result').classList.contains('active')) handleRedirectPaymentReturn();
+}
+document.addEventListener('visibilitychange', resumePaymentCheck);
+window.addEventListener('pageshow', resumePaymentCheck);
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'hidden') {
+    window._storefrontHiddenAt = Date.now();
+    return;
+  }
+  const hiddenAt = window._storefrontHiddenAt;
+  window._storefrontHiddenAt = 0;
+  // Обновляем остатки только в открытом каталоге, не трогая форму оплаты.
+  if (hiddenAt && Date.now() - hiddenAt >= 30000 && document.getElementById('page-catalog').classList.contains('active')) {
+    loadProducts().then(renderCatalog);
+  }
 });
-handleRedirectPaymentReturn();
-loadPublicNews();
-loadDiscountSettings();
-// Если клиент уже входил раньше (токен сохранён в localStorage) — сразу
-// показываем его имя на кнопке «Кабинет» в шапке, не дожидаясь клика по ней.
-renderAccountPage();
 </script>
 </body>
 </html>

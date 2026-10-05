@@ -11,6 +11,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { URL } = require('node:url');
+const { createStaticCache } = require('./static-cache');
 
 const { Router, readBinaryBody, parseJsonBody, sendJson } = require('./http-utils');
 const { registerAuthRoutes, requireSuperAdmin } = require('./routes-auth');
@@ -107,6 +108,8 @@ registerTaskRoutes(router);
 registerOperationsRoutes(router);
 registerPointLaunchRoutes(router);
 
+const staticCache = createStaticCache(PUBLIC_DIR);
+
 function serveStatic(req, res, pathname) {
   const decoded = decodeURIComponent(pathname);
   // Фото товаров — особый случай: физически лежат в постоянном хранилище
@@ -141,16 +144,24 @@ function serveStatic(req, res, pathname) {
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
-    const fileName = path.basename(filePath);
-    // config.js хранит настройки/ключи, которые иногда меняются и должны
-    // подхватываться сразу — как и sw.js (service worker). Остальное
-    // (картинки, иконки, HTML) кэшируется как раньше.
-    const noCache = ext === '.html' || fileName === 'config.js' || fileName === 'sw.js';
-    res.writeHead(200, {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': noCache ? 'no-store' : 'public, max-age=604800',
-    });
-    fs.createReadStream(filePath).pipe(res);
+    // Uploaded originals can be large and must not fill the asset memory cache.
+    if (decoded.startsWith('/images/uploads/')) {
+      res.writeHead(200, {
+        'Content-Type': MIME[ext] || 'application/octet-stream',
+        'Cache-Control': 'no-cache',
+      });
+      if (req.method === 'HEAD') return res.end();
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+    try {
+      const result = staticCache.response(filePath, req, MIME[ext] || 'application/octet-stream');
+      res.writeHead(result.status, result.headers);
+      res.end(result.status === 304 || req.method === 'HEAD' ? undefined : result.body);
+    } catch (error) {
+      res.writeHead(500, { 'Cache-Control': 'no-store' });
+      res.end('Не удалось загрузить страницу');
+    }
   });
 }
 
