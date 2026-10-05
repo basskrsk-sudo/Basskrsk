@@ -90,6 +90,7 @@
 
   .success { text-align:center; padding:32px 16px; }
   .success .big { font-size:56px; margin-bottom:12px; }
+  .success .mascot-success { display:block; width:min(260px, 78vw); max-width:100%; height:auto; max-height:230px; object-fit:contain; margin:0 auto 12px; }
   .success h2 { font-size:24px; color:var(--forest); margin-bottom:8px; }
   .success p { font-size:15px; line-height:1.6; color:var(--muted); }
   .take-product { font-size:20px; line-height:1.3; font-weight:800; color:var(--forest); margin:16px 0 6px; }
@@ -311,6 +312,14 @@ async function boot() {
 
     CTX.variants = (prod.variants || []).filter(function(v) { return v.active; })
       .map(function(v) { return { id: v.id, weight: v.weight, price: v.price, qty: (v.stock && typeof v.stock[p.point] === 'number') ? v.stock[p.point] : 0 }; });
+    var paymentReturn = new URLSearchParams(location.search).get('payment_return');
+    if (paymentReturn) {
+      // Оплаченная последняя единица уже списана: остатки не должны
+      // блокировать подтверждение существующего заказа.
+      CTX.selVariant = CTX.variants[0] || { id: '', weight: '', price: 0 };
+      await handlePaymentReturn(paymentReturn);
+      return;
+    }
     var avail = CTX.variants.filter(function(v) { return v.qty > 0; });
     if (!avail.length) {
       var alts = findAlts(products, prod, p.point);
@@ -318,11 +327,6 @@ async function boot() {
       return;
     }
     CTX.selVariant = avail[0];
-    var paymentReturn = new URLSearchParams(location.search).get('payment_return');
-    if (paymentReturn) {
-      handlePaymentReturn(paymentReturn);
-      return;
-    }
     renderCard();
   } catch (e) {
     failState('Не удалось загрузить', 'Проверьте интернет и обновите страницу.');
@@ -595,7 +599,12 @@ async function startPayment() {
     var stopTimer = null;
     var checkout = new window.YooMoneyCheckoutWidget({
       confirmation_token: data.confirmation_token,
-      return_url: location.href.split('?')[0],
+      return_url: (function() {
+        var returnUrl = new URL(location.href);
+        returnUrl.searchParams.set('payment_return', orderId);
+        returnUrl.hash = '';
+        return returnUrl.href;
+      })(),
       error_callback: function() { showErr('⚠️ Ошибка инициализации оплаты, попробуйте ещё раз.'); }
     });
     CTX.checkout = checkout;
@@ -652,7 +661,7 @@ function showSuccess(orderId, phone, isSelfOrder) {
   trackGoalOnce('purchase', orderId, {
     order_id: orderId, revenue: CTX.selVariant.price, payment_method: 'yookassa', scenario: 'qr',
   });
-  state('<div class="panel success"><div class="big">✅</div>'
+  state('<div class="panel success"><img class="mascot-success" src="/images/mascot/purchase-success-v2.png" alt="Довольный хаски на четырёх лапах рядом с пакетом покупок">'
     + '<h2>Оплачено</h2>'
     + '<div class="take-product">Возьмите товар с полки</div>'
     + '<p>Обращаться к сотруднику не нужно.</p>'
@@ -739,9 +748,7 @@ async function connectSuccessChannel(channel) {
 }
 
 async function handlePaymentReturn(orderCode) {
-  var cleanUrl = new URL(location.href);
-  cleanUrl.searchParams.delete('payment_return');
-  history.replaceState({}, '', cleanUrl.pathname + (cleanUrl.searchParams.toString() ? '?' + cleanUrl.searchParams.toString() : ''));
+  // Сохраняем payment_return, чтобы обновление страницы повторяло сверку.
   loadState('Подтверждаем оплату…', '⏳');
 
   for (var attempt = 0; attempt < 15; attempt += 1) {

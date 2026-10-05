@@ -814,7 +814,7 @@
   .checkout-mascot-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
   .checkout-mascot-row h2 { margin: 0 !important; }
   .mascot-checkout { width: 150px; max-width: 40%; flex: 0 1 150px; }
-  .mascot-success { width: min(280px, 78vw); margin: 0 auto 1rem; }
+  .mascot-success { width: min(280px, 78vw); max-height: 240px; margin: 0 auto 1rem; }
   .map-mascot-wrap { position: relative; isolation: isolate; }
   .map-mascot-callout {
     display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 1rem;
@@ -1142,7 +1142,7 @@
 <nav>
   <div class="nav-inner">
     <div class="nav-logo" onclick="showPage('home')" style="cursor:pointer;display:flex;align-items:center;">
-      <span class="nav-logo-mark"><img class="nav-logo-image" src="/images/hvostmarket-mark-v3-transparent.png?v=36" alt="Собака с геоточкой — логотип ХвостМаркет"></span>
+      <span class="nav-logo-mark"><img class="nav-logo-image" src="/images/hvostmarket-mark-v4-transparent.png?v=37" alt="Собака с геоточкой — логотип ХвостМаркет"></span>
       <span class="nav-logo-word"><span style="color:var(--white);margin-top:0;">Хвост</span><span>Маркет</span></span>
     </div>
     <ul class="nav-links" id="navLinks">
@@ -2579,9 +2579,18 @@
 </div>
 
 <!-- СТРАНИЦА УСПЕШНОЙ ОПЛАТЫ -->
+<div class="page" id="page-payment-result">
+  <div style="max-width:560px;margin:0 auto;padding:80px 5vw;text-align:center;">
+    <div style="font-size:3rem;margin-bottom:1rem;">⏳</div>
+    <h1 id="payment-result-title" style="color:var(--deep);margin-bottom:1rem;">Подтверждаем оплату…</h1>
+    <p id="payment-result-message" style="color:var(--muted);line-height:1.8;">Проверяем статус заказа на сервере. Дождитесь результата.</p>
+    <button id="payment-result-retry" class="btn-primary" style="display:none;margin-top:1rem;">Проверить оплату</button>
+    <button class="btn-outline" style="margin-top:1rem;" onclick="showPage('catalog')">Открыть каталог</button>
+  </div>
+</div>
 <div class="page" id="page-success">
   <div style="max-width:560px;margin:0 auto;padding:80px 5vw;text-align:center;">
-    <img class="mascot-success" src="images/mascot/order-success.png" alt="Радостный хаски рядом с готовым заказом">
+    <img class="mascot-success" src="/images/mascot/purchase-success-v2.png" alt="Довольный хаски на четырёх лапах рядом с пакетом покупок">
     <h1 style="color:var(--deep);margin-bottom:1rem;">Оплата прошла!</h1>
     <p id="success-subtitle" style="color:var(--muted);line-height:1.8;margin-bottom:1.4rem;">Товар оплачен — заберите его из минимаркета самостоятельно.</p>
     <div id="success-products" class="success-product-list"></div>
@@ -4376,6 +4385,7 @@ function showPage(id) {
   // салонов. При переходе в другой раздел параметр удаляется, чтобы обновление
   // страницы не возвращало пользователя в уже закрытую вкладку.
   const pageUrl = new URL(window.location.href);
+  if (id !== 'success' && id !== 'payment-result') pageUrl.searchParams.delete('payment_return');
   const shareablePages = ['catalog', 'contacts', 'bones', 'account', 'partners', 'salons'];
   if (shareablePages.includes(id)) {
     pageUrl.searchParams.set('page', id);
@@ -6373,7 +6383,13 @@ async function launchYooKassaPayment() {
 
     const checkout = new window.YooMoneyCheckoutWidget({
       confirmation_token: data.confirmation_token,
-      return_url: location.href.split('?')[0],
+      return_url: (() => {
+        const returnUrl = new URL(location.href);
+        returnUrl.searchParams.set('payment_return', orderId);
+        returnUrl.searchParams.delete('page');
+        returnUrl.hash = '';
+        return returnUrl.href;
+      })(),
       error_callback: function(error) {
         console.error('Ошибка виджета ЮKassa:', error);
         showToast('⚠️ Ошибка инициализации оплаты, попробуйте ещё раз');
@@ -6480,11 +6496,15 @@ async function handleRedirectPaymentReturn() {
   const orderCode = url.searchParams.get('payment_return');
   if (!orderCode) return;
 
-  // Одноразовый служебный параметр не должен оставаться в адресной строке:
-  // иначе обновление страницы снова запустит проверку результата.
-  url.searchParams.delete('payment_return');
-  history.replaceState({}, '', url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '') + url.hash);
-  showToast('Проверяем результат оплаты…');
+  // Оставляем номер заказа в URL: обновление во время сверки должно
+  // повторять проверку платежа, а не возвращать покупателя на главную.
+  closeModal();
+  showPage('payment-result');
+  document.getElementById('payment-result-title').textContent = 'Подтверждаем оплату…';
+  document.getElementById('payment-result-message').textContent = 'Проверяем статус заказа ' + orderCode + ' на сервере. Дождитесь результата.';
+  const retryButton = document.getElementById('payment-result-retry');
+  retryButton.style.display = 'none';
+  retryButton.onclick = handleRedirectPaymentReturn;
 
   for (let attempt = 0; attempt < 15; attempt += 1) {
     try {
@@ -6535,7 +6555,8 @@ async function handleRedirectPaymentReturn() {
         trackGoalOnce('payment_cancelled', orderCode, {
           scenario: 'catalog', order_id: orderCode, status: data.status,
         });
-        showToast('Оплата не завершена. Корзина сохранена — можно попробовать ещё раз.');
+        document.getElementById('payment-result-title').textContent = 'Оплата не завершена';
+        document.getElementById('payment-result-message').textContent = 'Платёж отменён. Можно открыть каталог и попробовать оплатить заново.';
         return;
       }
     } catch (error) {
@@ -6544,7 +6565,9 @@ async function handleRedirectPaymentReturn() {
     await new Promise(function(resolve) { setTimeout(resolve, 2000); });
   }
 
-  showToast('Платёж ещё обрабатывается. Подтверждение придёт в Telegram.');
+  document.getElementById('payment-result-title').textContent = 'Платёж ещё обрабатывается';
+  document.getElementById('payment-result-message').textContent = 'Подтверждение пока не получено. Проверьте статус ещё раз; повторно оплачивать заказ не нужно.';
+  retryButton.style.display = 'inline-flex';
 }
 
 function simulatePaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment) {
@@ -7864,6 +7887,8 @@ async function claimChessWinPrize() {
 })();
 
 Promise.all([loadProducts(), loadSitePoints(), loadSiteCities()]).then(function() {
+  // Возврат из банка имеет приоритет над QR и обычной навигацией.
+  if (new URLSearchParams(window.location.search).has('payment_return')) return;
   initFromQR();
   renderHeroProductExamples();
   renderFeatured();
