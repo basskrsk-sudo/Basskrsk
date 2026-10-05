@@ -150,6 +150,7 @@ function registerManagerRoutes(router) {
       const expectedAmount = Number(ctx.body && ctx.body.expected_amount);
       const expectedOrders = Number(ctx.body && ctx.body.expected_orders_count);
       const expectedMessage = String((ctx.body && ctx.body.expected_message) || '');
+      const sendNotifications = !(ctx.body && ctx.body.send_notifications === false);
       if (preview.amount !== expectedAmount || preview.orders_count !== expectedOrders || preview.message !== expectedMessage) {
         return sendJson(res, 409, {
           code: 'PAYOUT_CHANGED',
@@ -159,12 +160,14 @@ function registerManagerRoutes(router) {
       }
       const payout = createManagerCommissionPayout(managerId, payload);
       let deliveries = [];
-      try {
-        deliveries = await sendManagerPayoutNotification(managerId, payout, expectedMessage, 'commission');
-      } catch (error) {
-        console.error('[manager-payout] Выплата записана, но уведомление не обработано:', error);
+      if (sendNotifications) {
+        try {
+          deliveries = await sendManagerPayoutNotification(managerId, payout, expectedMessage, 'commission');
+        } catch (error) {
+          console.error('[manager-payout] Выплата записана, но уведомление не обработано:', error);
+        }
       }
-      sendJson(res, 201, { ok: true, payout, deliveries });
+      sendJson(res, 201, { ok: true, payout, deliveries, notifications_skipped: !sendNotifications });
     } catch (error) {
       if (error.code === 'MANAGER_NOT_FOUND') return sendJson(res, 404, { error: error.message });
       if (error.code === 'NOTHING_TO_PAY') return sendJson(res, 409, { error: error.message });
@@ -192,6 +195,7 @@ function registerManagerRoutes(router) {
       if (!preview) return sendJson(res, 404, { error: 'Точка менеджера не найдена' });
       const expectedAmount = Number(ctx.body && ctx.body.expected_amount);
       const expectedMessage = String((ctx.body && ctx.body.expected_message) || '');
+      const sendNotifications = !(ctx.body && ctx.body.send_notifications === false);
       if (preview.amount !== expectedAmount || preview.message !== expectedMessage || preview.already_paid || !preview.bonus_accrued) {
         return sendJson(res, 409, {
           code: 'PAYOUT_CHANGED',
@@ -201,12 +205,14 @@ function registerManagerRoutes(router) {
       }
       const payout = createManagerLaunchBonusPayout(managerPointId, payload);
       let deliveries = [];
-      try {
-        deliveries = await sendManagerPayoutNotification(payout.manager_id, payout, expectedMessage, 'launch_bonus');
-      } catch (error) {
-        console.error('[manager-launch-bonus] Выплата записана, но уведомление не обработано:', error);
+      if (sendNotifications) {
+        try {
+          deliveries = await sendManagerPayoutNotification(payout.manager_id, payout, expectedMessage, 'launch_bonus');
+        } catch (error) {
+          console.error('[manager-launch-bonus] Выплата записана, но уведомление не обработано:', error);
+        }
       }
-      sendJson(res, 201, { ok: true, payout, deliveries });
+      sendJson(res, 201, { ok: true, payout, deliveries, notifications_skipped: !sendNotifications });
     } catch (error) {
       if (error.code === 'POINT_NOT_FOUND') return sendJson(res, 404, { error: error.message });
       if (['NOT_ACCRUED', 'ALREADY_PAID'].includes(error.code)) return sendJson(res, 409, { error: error.message });

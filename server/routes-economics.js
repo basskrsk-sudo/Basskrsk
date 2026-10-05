@@ -28,6 +28,17 @@ function parseDateParam(value, fallback) {
   return Number.isNaN(d.getTime()) ? fallback : d.toISOString();
 }
 
+function normalizeExpenseDate(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return date.toISOString().slice(0, 10);
+}
+
 function registerEconomicsRoutes(router) {
   // Плановая юнит-экономика не влияет на реальные начисления. Доступ к
   // допущениям и результатам есть только у супер-администратора.
@@ -178,10 +189,41 @@ function registerEconomicsRoutes(router) {
     const from = ctx.query.from || '2000-01-01';
     const to = ctx.query.to || '2100-01-01';
     const cityFilter = ctx.query.city || null;
-    const rows = cityFilter
-      ? db.prepare('SELECT * FROM expenses WHERE expense_date BETWEEN ? AND ? AND city_id = ? ORDER BY expense_date DESC, id DESC').all(from, to, cityFilter)
-      : db.prepare('SELECT * FROM expenses WHERE expense_date BETWEEN ? AND ? ORDER BY expense_date DESC, id DESC').all(from, to);
-    sendJson(res, 200, { expenses: rows });
+    const investorFilter = String(ctx.query.investor || '').trim();
+    const clauses = ['expense_date BETWEEN ? AND ?'];
+    const params = [from, to];
+    if (cityFilter) {
+      clauses.push('city_id = ?');
+      params.push(cityFilter);
+    }
+    if (investorFilter) {
+      clauses.push('investor_name LIKE ?');
+      params.push('%' + investorFilter + '%');
+    }
+    const rows = db.prepare(`
+      SELECT e.*, c.name AS city_name
+      FROM expenses e
+      LEFT JOIN cities c ON c.id = e.city_id
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY expense_date DESC, e.id DESC
+    `).all(...params);
+    const investorTotals = db.prepare(`
+      SELECT COALESCE(NULLIF(TRIM(investor_name), ''), 'Не указан') AS investor_name,
+             SUM(amount) AS total, COUNT(*) AS entries_count
+      FROM expenses
+      WHERE ${clauses.join(' AND ')}
+      GROUP BY COALESCE(NULLIF(TRIM(investor_name), ''), 'Не указан')
+      ORDER BY total DESC, investor_name
+    `).all(...params);
+    sendJson(res, 200, {
+      expenses: rows,
+      summary: {
+        total: rows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+        entries_count: rows.length,
+        investors_count: investorTotals.filter((row) => row.investor_name !== 'Не указан').length,
+        by_investor: investorTotals,
+      },
+    });
   });
 
   // POST /api/economics/expenses — добавить расход (город обязателен — расход
@@ -189,19 +231,25 @@ function registerEconomicsRoutes(router) {
   router.post('/api/economics/expenses', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    const { expense_date, category, amount, note, city_id } = ctx.body || {};
+    const { expense_date, category, amount, note, city_id, investor_name } = ctx.body || {};
     const amountNum = Math.round(Number(amount));
-    if (!expense_date || !Number.isFinite(amountNum) || amountNum <= 0) {
+    const expenseDate = normalizeExpenseDate(expense_date);
+    if (!expenseDate || !Number.isFinite(amountNum) || amountNum <= 0) {
       return sendJson(res, 400, { error: 'Укажите дату и сумму расхода (больше нуля)' });
     }
     const cityId = city_id || 'krsk';
     if (!db.prepare('SELECT id FROM cities WHERE id = ?').get(cityId)) {
       return sendJson(res, 400, { error: 'Неизвестный город: ' + cityId });
     }
+    const investorName = String(investor_name || '').trim().slice(0, 200);
+    if (!investorName) return sendJson(res, 400, { error: 'Укажите ФИО инвестора' });
+    const purpose = String(category || '').trim().slice(0, 500);
+    if (!purpose) return sendJson(res, 400, { error: 'Укажите назначение траты' });
     const info = db.prepare(`
-      INSERT INTO expenses (expense_date, category, amount, note, created_by, city_id)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(expense_date, (category || 'Закуп товара').trim(), amountNum, (note || '').trim() || null, payload.login || null, cityId);
+      INSERT INTO expenses
+        (expense_date, category, amount, investor_name, note, created_by, source, city_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'admin', ?)
+    `).run(expenseDate, purpose, amountNum, investorName, String(note || '').trim().slice(0, 1000) || null, payload.login || null, cityId);
     sendJson(res, 201, { ok: true, id: info.lastInsertRowid });
   });
 

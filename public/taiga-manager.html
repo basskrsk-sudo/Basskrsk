@@ -2004,7 +2004,27 @@ async function renderStockSection() {
       renderManagerPartnerPayoutHistory((payoutData && payoutData.payouts) || []);
     return;
   }
-  container.innerHTML = points.map(function(pt) {
+  const promoRows = [];
+  points.forEach(function(pt) {
+    pt.partners.forEach(function(p) {
+      if (p.first_purchase_promo_code) promoRows.push({ partner: p, point: pt });
+    });
+  });
+  const promoListHtml = '<div class="card" style="margin-bottom:1rem;">' +
+    '<div class="card-title">Промокоды грумеров на первую покупку</div>' +
+    '<p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка 20% применяется один раз по номеру телефона. Нажмите на код, чтобы скопировать.</p>' +
+    (promoRows.length ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.65rem;">' +
+      promoRows.map(function(item) {
+        const p = item.partner;
+        const pt = item.point;
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:.7rem;border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;background:#FAFAF7;">' +
+          '<div style="min-width:0;"><div style="font-weight:600;font-size:.84rem;">' + escapeManagerPayoutCell(p.full_name) + '</div>' +
+          '<div style="font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeManagerPayoutCell(pt.point_name) + (p.active ? '' : ' · отключён') + '</div></div>' +
+          '<button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(p.first_purchase_promo_code) + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)">' + escapeManagerPayoutCell(p.first_purchase_promo_code) + '</button>' +
+        '</div>';
+      }).join('') + '</div>' : '<p style="color:var(--muted);font-size:.82rem;">Промокоды пока не созданы.</p>') +
+    '</div>';
+  container.innerHTML = promoListHtml + points.map(function(pt) {
     const outCount = pt.items.filter(function(i) { return i.qty === 0; }).length;
     const rows = pt.items.map(function(i) {
       const color = i.qty === 0 ? '#9B2335' : i.qty <= 3 ? '#7A4A00' : 'var(--text)';

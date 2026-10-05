@@ -1266,8 +1266,10 @@ CREATE TABLE IF NOT EXISTS expenses (
   expense_date  TEXT NOT NULL,                        -- дата самого расхода (может отличаться от даты внесения)
   category      TEXT NOT NULL DEFAULT 'Закуп товара',
   amount        INTEGER NOT NULL,
+  investor_name TEXT,                                 -- кто фактически оплатил расход
   note          TEXT,
   created_by    TEXT,                                 -- логин администратора, кто внёс запись
+  source        TEXT NOT NULL DEFAULT 'admin',         -- admin | telegram
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -1411,6 +1413,42 @@ CREATE TABLE IF NOT EXISTS task_bot_pending_inputs (
   PRIMARY KEY(channel, chat_id)
 );
 
+-- Черновик пошагового создания поручения из Telegram. Храним его в базе,
+-- а не в памяти процесса: перезапуск или деплой между шагами не потеряет
+-- уже введённое название и выбранного ответственного.
+CREATE TABLE IF NOT EXISTS task_bot_create_drafts (
+  channel             TEXT NOT NULL,
+  chat_id             TEXT NOT NULL,
+  creator_assignee_id INTEGER NOT NULL REFERENCES task_assignees(id) ON DELETE CASCADE,
+  step                TEXT NOT NULL, -- title | assignee | due_date
+  title               TEXT,
+  assignee_id         INTEGER REFERENCES task_assignees(id) ON DELETE SET NULL,
+  expires_at          TEXT NOT NULL,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY(channel, chat_id)
+);
+
+-- Черновик пошагового внесения траты из Telegram. Отдельная таблица не даёт
+-- смешать финансовый диалог с созданием поручения или отчётом по задаче.
+CREATE TABLE IF NOT EXISTS expense_bot_drafts (
+  channel          TEXT NOT NULL,
+  chat_id          TEXT NOT NULL,
+  creator_role     TEXT NOT NULL,
+  creator_id       INTEGER NOT NULL,
+  creator_name     TEXT NOT NULL,
+  step             TEXT NOT NULL, -- date | investor | amount | purpose | confirm
+  expense_date     TEXT,
+  investor_name    TEXT,
+  amount           INTEGER,
+  purpose          TEXT,
+  city_id          TEXT NOT NULL DEFAULT 'krsk',
+  expires_at       TEXT NOT NULL,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY(channel, chat_id)
+);
+
 CREATE TABLE IF NOT EXISTS task_seed_versions (
   version      TEXT PRIMARY KEY,
   applied_at   TEXT NOT NULL DEFAULT (datetime('now'))
@@ -1466,6 +1504,8 @@ ensureColumn('warehouse_keepers', 'city_id', "TEXT NOT NULL DEFAULT 'krsk'");
 ensureColumn('warehouse_receipts', 'city_id', "TEXT NOT NULL DEFAULT 'krsk'");
 ensureColumn('restock_requests', 'city_id', "TEXT NOT NULL DEFAULT 'krsk'");
 ensureColumn('expenses', 'city_id', "TEXT NOT NULL DEFAULT 'krsk'");
+ensureColumn('expenses', 'investor_name', 'TEXT');
+ensureColumn('expenses', 'source', "TEXT NOT NULL DEFAULT 'admin'");
 
 // ── РЕФЕРАЛЬНЫЙ КОД ВЛАДЕЛЬЦА САЛОНА ─────────────────────────────────
 // Раньше приводить новых партнёров (и получать за это бонус) мог только

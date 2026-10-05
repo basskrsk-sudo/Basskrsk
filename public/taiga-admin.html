@@ -970,39 +970,65 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
 
-      <div class="card" style="margin-top:1rem;">
-        <div class="card-title" style="margin-bottom:1rem;">Добавить расход</div>
-        <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;">
-          <div class="admin-field" style="margin-bottom:0;"><label>Дата</label><input type="date" id="exp-date"></div>
-          <div class="admin-field" style="margin-bottom:0;">
-            <label>Город</label>
-            <select id="exp-city" style="min-width:140px;"></select>
-          </div>
-          <div class="admin-field" style="margin-bottom:0;">
-            <label>Категория</label>
-            <select id="exp-category-select" onchange="onExpCategoryChange()" style="min-width:180px;">
-              <option value="Закуп товара">Закуп товара</option>
-              <option value="Непредвиденные расходы">Непредвиденные расходы</option>
-              <option value="__other__">Другое (указать)…</option>
-            </select>
-            <input type="text" id="exp-category-custom" placeholder="Название статьи расхода" style="display:none;margin-top:.4rem;min-width:180px;">
-          </div>
-          <div class="admin-field" style="margin-bottom:0;"><label>Сумма, ₽</label><input type="number" id="exp-amount" min="1" step="1" style="width:120px;"></div>
-          <div class="admin-field" style="margin-bottom:0;flex:1;min-width:160px;"><label>Примечание (необязательно)</label><input type="text" id="exp-note" placeholder=""></div>
-          <button class="row-btn" style="background:var(--forest,#1C3A2F);height:38px;color:#fff;" onclick="addExpense()">Добавить</button>
+      <div class="card" style="margin-top:1rem;display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;">
+        <div><div class="card-title" style="margin-bottom:.35rem;">Подробный реестр трат вынесен в отдельный раздел</div><div style="font-size:.8rem;color:var(--muted);line-height:1.5;">Здесь расходы продолжают автоматически учитываться в P&amp;L.</div></div>
+        <button class="row-btn" style="background:var(--forest);color:#fff;" onclick="showSection('business-expenses')">Открыть траты бизнеса →</button>
+      </div>
+    </div>
+
+    <!-- ══ ТРАТЫ БИЗНЕСА ══ -->
+    <div id="sec-business-expenses" style="display:none;">
+      <div class="card" style="background:linear-gradient(135deg,var(--forest),var(--deep));border:none;color:#fff;margin-bottom:1rem;">
+        <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap;">
+          <div><div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);">Управленческий учёт</div><h2 style="font-size:1.45rem;margin:.35rem 0;">Все траты бизнеса</h2><p style="font-size:.82rem;color:rgba(255,255,255,.75);max-width:720px;line-height:1.55;">Единый журнал расходов из админки и Telegram: дата, инвестор, сумма и назначение. Каждая запись участвует в расчёте P&amp;L.</p></div>
+          <div style="font-size:.78rem;color:rgba(255,255,255,.72);text-align:right;">Telegram-команда<br><strong style="font-size:1rem;color:#fff;">/expense</strong></div>
         </div>
       </div>
 
-      <div class="card" style="margin-top:1rem;">
-        <div class="card-title" style="margin-bottom:.8rem;">Расходы за период</div>
-        <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr style="text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">
-              <th style="padding:.5rem 0;">Дата</th><th>Категория</th><th>Сумма</th><th>Примечание</th><th>Кто внёс</th><th></th>
-            </tr>
-          </thead>
-          <tbody id="econ-expenses-tbody"></tbody>
-        </table>
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Фильтры</div>
+        <div style="display:flex;gap:.65rem;flex-wrap:wrap;align-items:flex-end;">
+          <div class="admin-field" style="margin-bottom:0;"><label>С даты</label><input type="date" id="biz-exp-from" onchange="renderBusinessExpenses()"></div>
+          <div class="admin-field" style="margin-bottom:0;"><label>По дату</label><input type="date" id="biz-exp-to" onchange="renderBusinessExpenses()"></div>
+          <div class="admin-field" style="margin-bottom:0;flex:1;min-width:210px;"><label>Инвестор</label><input type="search" id="biz-exp-investor-filter" placeholder="ФИО или часть имени" oninput="scheduleBusinessExpensesRender()"></div>
+          <div class="admin-field" style="margin-bottom:0;"><label>Город</label><select id="biz-exp-city-filter" onchange="renderBusinessExpenses()" style="min-width:160px;"><option value="">Все города</option></select></div>
+          <button class="row-btn" onclick="resetBusinessExpenseFilters()">Сбросить</button>
+        </div>
+      </div>
+
+      <div class="kpi-grid" style="margin-bottom:1rem;">
+        <div class="kpi"><div class="kpi-label">Всего трат</div><div class="kpi-value" id="biz-exp-total">0 ₽</div><div class="kpi-delta" id="biz-exp-period-label">за выбранный период</div></div>
+        <div class="kpi"><div class="kpi-label">Записей</div><div class="kpi-value" id="biz-exp-count">0</div><div class="kpi-delta">операций в журнале</div></div>
+        <div class="kpi"><div class="kpi-label">Инвесторов</div><div class="kpi-value" id="biz-exp-investors-count">0</div><div class="kpi-delta">участвовали в расходах</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Добавить трату</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem;align-items:end;">
+          <div class="admin-field" style="margin-bottom:0;"><label>Дата *</label><input type="date" id="biz-exp-date"></div>
+          <div class="admin-field" style="margin-bottom:0;"><label>ФИО инвестора *</label><input type="text" id="biz-exp-investor" list="biz-exp-investor-suggestions" placeholder="Кто оплатил"><datalist id="biz-exp-investor-suggestions"></datalist></div>
+          <div class="admin-field" style="margin-bottom:0;"><label>Сумма, ₽ *</label><input type="number" id="biz-exp-amount" min="1" step="1" placeholder="0"></div>
+          <div class="admin-field" style="margin-bottom:0;"><label>Город *</label><select id="biz-exp-city"></select></div>
+          <div class="admin-field" style="margin-bottom:0;grid-column:span 2;"><label>Назначение *</label><input type="text" id="biz-exp-purpose" placeholder="Например: закуп лакомств или изготовление стойки"></div>
+          <div class="admin-field" style="margin-bottom:0;"><label>Примечание</label><input type="text" id="biz-exp-note" placeholder="Необязательно"></div>
+          <button class="row-btn" style="height:38px;background:var(--forest);color:#fff;" onclick="addBusinessExpense()">Добавить трату</button>
+        </div>
+        <div id="biz-exp-form-error" style="display:none;margin-top:.7rem;padding:.6rem .75rem;border-radius:6px;background:#FDECEA;color:#9B2335;font-size:.8rem;"></div>
+      </div>
+
+      <div class="grid-2" style="align-items:start;margin-bottom:1rem;">
+        <div class="card"><div class="card-title">По инвесторам</div><div id="biz-exp-by-investor"></div></div>
+        <div class="card"><div class="card-title">Что фиксируется</div><div style="font-size:.82rem;color:var(--muted);line-height:1.65;">Запись хранит дату самой траты, ФИО оплатившего инвестора, сумму, назначение, город, источник и автора внесения. Удаление доступно администратору для исправления ошибочных записей.</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>Журнал трат <span id="biz-exp-table-count" style="font-size:.72rem;font-weight:400;color:var(--muted);"></span></span></div>
+        <div style="overflow-x:auto;">
+          <table class="tbl" style="min-width:980px;">
+            <thead><tr><th>Дата</th><th>Инвестор</th><th>Назначение</th><th>Город</th><th class="r">Сумма</th><th>Источник</th><th>Кто внёс</th><th class="r"></th></tr></thead>
+            <tbody id="biz-expenses-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -1801,11 +1827,15 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div id="payout-approval-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.6rem .75rem;border-radius:6px;margin-bottom:.8rem;line-height:1.45;"></div>
         <div id="payout-approval-channels" style="display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.8rem;"></div>
         <div id="payout-approval-warning" style="display:none;background:#FFF5DA;color:#79520A;font-size:.8rem;padding:.6rem .75rem;border-radius:6px;margin-bottom:.8rem;line-height:1.45;"></div>
-        <div class="admin-field">
-          <label>Сообщение, которое получит партнёр</label>
+        <label id="payout-notification-choice" style="display:none;align-items:flex-start;gap:.65rem;padding:.75rem;background:#F7F5EF;border:1px solid var(--border);border-radius:8px;margin-bottom:.8rem;cursor:pointer;">
+          <input type="checkbox" id="payout-send-notifications" checked onchange="updatePayoutNotificationChoice()" style="margin-top:.15rem;accent-color:var(--forest);">
+          <span><strong style="display:block;font-size:.84rem;color:var(--text);">Отправить уведомление о выплате</strong><span style="display:block;font-size:.75rem;color:var(--muted);line-height:1.4;margin-top:.15rem;">Сообщение уйдёт во все подключённые каналы: Telegram и MAX.</span></span>
+        </label>
+        <div class="admin-field" id="payout-approval-message-field">
+          <label id="payout-approval-message-label">Сообщение, которое получит партнёр</label>
           <textarea id="payout-approval-message" readonly rows="16" style="width:100%;resize:vertical;padding:.75rem;border:1.5px solid var(--border);border-radius:8px;background:#F7F5EF;font-family:'Inter',sans-serif;font-size:.82rem;line-height:1.5;color:var(--text);"></textarea>
         </div>
-        <p style="font-size:.75rem;color:var(--muted);line-height:1.45;margin-top:.2rem;">После подтверждения выплата будет зафиксирована без возможности повторно включить эти заказы. Сообщение отправится во все подключённые каналы.</p>
+        <p id="payout-approval-note" style="font-size:.75rem;color:var(--muted);line-height:1.45;margin-top:.2rem;">После подтверждения выплата будет зафиксирована без возможности повторно включить эти заказы. Сообщение отправится во все подключённые каналы.</p>
         <div style="display:flex;gap:.6rem;margin-top:1rem;flex-wrap:wrap;">
           <button class="row-btn" style="flex:1;min-width:130px;" onclick="closePayoutApproval()">Отмена</button>
           <button class="row-btn" id="payout-approval-confirm" style="flex:2;min-width:230px;background:var(--forest);color:#fff;" onclick="confirmPayoutApproval()">Подтвердить выплату и отправить</button>
@@ -2045,6 +2075,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
       <div id="partners-risk-banner" style="display:none;background:#FFF4E5;border:1px solid #F0DDB8;border-radius:8px;padding:.9rem 1.1rem;margin-bottom:1rem;font-size:.85rem;color:#7A4A00;line-height:1.6;"></div>
+      <div id="partners-promo-list"></div>
       <div class="card">
         <div class="card-title">
           <span>Партнёры (грумеры) <span id="partners-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
@@ -2801,13 +2832,13 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
 }
 
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'weekly-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
-const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
+const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'weekly-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
+const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
 const sectionGroups = {
   dashboard:'home', bsc:'strategy', tasks:'tasks', orders:'sales', customers:'sales',
   products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
   points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', leads:'network',
-  news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'weekly-reports':'finance',
+  news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'business-expenses':'finance', 'weekly-reports':'finance',
   launch:'system', guides:'system', audit:'system', admins:'system',
 };
 const contextTabs = {
@@ -2815,7 +2846,7 @@ const contextTabs = {
   inventory: [['products','Каталог'], ['stock','На точках'], ['warehouse','Центральный склад'], ['restock','Перемещения']],
   network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды'], ['leads','Прозвон']],
   promotion: [['news','Новости'], ['reviews','Отзывы'], ['winback','Возврат клиентов']],
-  finance: [['economics','Экономика'], ['weekly-reports','Отчёт ГД']],
+  finance: [['economics','Экономика'], ['business-expenses','Траты бизнеса'], ['weekly-reports','Отчёт ГД']],
   system: [['launch','План запуска'], ['guides','Инструкции'], ['audit','Журнал действий',true], ['admins','Администраторы',true]],
 };
 
@@ -2881,6 +2912,7 @@ async function showSection(id) {
   if (id === 'bsc')         await renderBscDashboard();
   if (id === 'tasks')       await loadTaskControl();
   if (id === 'economics')   await renderEconomics();
+  if (id === 'business-expenses') await renderBusinessExpenses();
   if (id === 'weekly-reports') await renderWeeklyReports();
   if (id === 'orders')      { await loadOrders(); renderOrders(); }
   if (id === 'customers')   { await loadCustomers(); renderCustomers(); }
@@ -3575,10 +3607,6 @@ async function renderEconomics() {
     filterSel.insertAdjacentHTML('afterbegin', '<option value="">Все города</option>');
     filterSel.value = currentFilterValue || '';
   }
-  // Город в форме добавления расхода по умолчанию совпадает с текущим
-  // фильтром экономики (если он задан) — так реже придётся выбирать вручную.
-  await loadCitiesIntoSelect('exp-city', currentFilterValue || undefined);
-
   const { from, to } = econPeriodRange();
   const params = new URLSearchParams();
   if (from) params.set('from', from);
@@ -3610,71 +3638,133 @@ async function renderEconomics() {
   document.getElementById('econ-revenue-inline').textContent = data.revenue.toLocaleString('ru-RU') + ' ₽';
   document.getElementById('econ-orders-inline').textContent = data.orders_count;
 
-  await renderExpensesList(from, to, filterSel ? filterSel.value : '');
 }
 
-async function renderExpensesList(from, to, cityFilter) {
+let businessExpenseRenderTimer = null;
+
+function businessExpenseEsc(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
+  });
+}
+
+function scheduleBusinessExpensesRender() {
+  clearTimeout(businessExpenseRenderTimer);
+  businessExpenseRenderTimer = setTimeout(renderBusinessExpenses, 250);
+}
+
+async function renderBusinessExpenses() {
+  const cityFilter = document.getElementById('biz-exp-city-filter');
+  const currentCity = cityFilter.value;
+  await loadCitiesIntoSelect('biz-exp-city-filter', currentCity || undefined);
+  cityFilter.insertAdjacentHTML('afterbegin', '<option value="">Все города</option>');
+  cityFilter.value = currentCity || '';
+  await loadCitiesIntoSelect('biz-exp-city', document.getElementById('biz-exp-city').value || 'krsk');
+
+  const dateInput = document.getElementById('biz-exp-date');
+  if (!dateInput.value) {
+    dateInput.value = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Krasnoyarsk', year:'numeric', month:'2-digit', day:'2-digit'
+    }).format(new Date());
+  }
   const params = new URLSearchParams();
-  if (from) params.set('from', from.slice(0, 10));
-  if (to) params.set('to', to.slice(0, 10));
-  if (cityFilter) params.set('city', cityFilter);
+  const from = document.getElementById('biz-exp-from').value;
+  const to = document.getElementById('biz-exp-to').value;
+  const investor = document.getElementById('biz-exp-investor-filter').value.trim();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (cityFilter.value) params.set('city', cityFilter.value);
+  if (investor) params.set('investor', investor);
   const res = await authFetch('/api/economics/expenses' + (params.toString() ? '?' + params.toString() : ''));
   const data = await res.json();
-  const tbody = document.getElementById('econ-expenses-tbody');
+  if (!res.ok) return alert(data.error || 'Не удалось загрузить журнал трат.');
+  const summary = data.summary || { total:0, entries_count:0, investors_count:0, by_investor:[] };
+  document.getElementById('biz-exp-total').textContent = Number(summary.total || 0).toLocaleString('ru-RU') + ' ₽';
+  document.getElementById('biz-exp-count').textContent = Number(summary.entries_count || 0).toLocaleString('ru-RU');
+  document.getElementById('biz-exp-investors-count').textContent = Number(summary.investors_count || 0).toLocaleString('ru-RU');
+  document.getElementById('biz-exp-period-label').textContent = from || to
+    ? (from || 'с начала') + ' — ' + (to || 'сегодня')
+    : 'за весь период';
+  document.getElementById('biz-exp-table-count').textContent = data.expenses.length + ' записей';
+
+  const knownInvestors = (summary.by_investor || []).map(function(row) { return row.investor_name; })
+    .filter(function(name) { return name && name !== 'Не указан'; });
+  ['Лакомых Алексей', 'Соколов Виталий', 'Кучкин Николай'].forEach(function(name) {
+    if (!knownInvestors.includes(name)) knownInvestors.push(name);
+  });
+  document.getElementById('biz-exp-investor-suggestions').innerHTML = knownInvestors.map(function(name) {
+    return '<option value="' + businessExpenseEsc(name) + '"></option>';
+  }).join('');
+
+  const byInvestor = document.getElementById('biz-exp-by-investor');
+  byInvestor.innerHTML = (summary.by_investor || []).length ? summary.by_investor.map(function(row) {
+    return '<div style="display:flex;justify-content:space-between;gap:.8rem;padding:.55rem 0;border-bottom:1px solid var(--border);font-size:.84rem;">' +
+      '<span>' + businessExpenseEsc(row.investor_name) + '<small style="display:block;color:var(--muted);margin-top:.15rem;">' + Number(row.entries_count || 0) + ' записей</small></span>' +
+      '<strong style="color:var(--deep);white-space:nowrap;">' + Number(row.total || 0).toLocaleString('ru-RU') + ' ₽</strong></div>';
+  }).join('') : '<div style="color:var(--muted);font-size:.84rem;">За выбранный период трат нет.</div>';
+
+  const tbody = document.getElementById('biz-expenses-tbody');
   if (!data.expenses.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="padding:1rem 0;color:var(--muted);font-size:.85rem;">Расходов за этот период пока нет.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:var(--muted);">Трат за выбранный период пока нет.</td></tr>';
     return;
   }
   tbody.innerHTML = data.expenses.map(function(e) {
-    return '<tr style="border-top:1px solid var(--border);">' +
-      '<td style="padding:.5rem 0;font-size:.85rem;">' + e.expense_date + '</td>' +
-      '<td style="font-size:.85rem;">' + e.category + '</td>' +
-      '<td style="font-size:.85rem;font-weight:600;">' + e.amount.toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td style="font-size:.85rem;color:var(--muted);">' + (e.note || '—') + '</td>' +
-      '<td style="font-size:.85rem;color:var(--muted);">' + (e.created_by || '—') + '</td>' +
-      '<td><button class="row-btn" style="padding:.25rem .6rem;font-size:.75rem;" onclick="deleteExpense(' + e.id + ')">✕</button></td>' +
+    const source = e.source === 'telegram' ? 'Telegram' : 'Админка';
+    return '<tr>' +
+      '<td style="white-space:nowrap;">' + businessExpenseEsc(e.expense_date) + '</td>' +
+      '<td style="font-weight:600;">' + businessExpenseEsc(e.investor_name || 'Не указан') + '</td>' +
+      '<td>' + businessExpenseEsc(e.category) + (e.note ? '<br><span style="font-size:.72rem;color:var(--muted);">' + businessExpenseEsc(e.note) + '</span>' : '') + '</td>' +
+      '<td>' + businessExpenseEsc(e.city_name || e.city_id || '—') + '</td>' +
+      '<td class="r" style="font-weight:700;color:var(--deep);white-space:nowrap;">' + Number(e.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
+      '<td><span class="stock-pill ' + (e.source === 'telegram' ? 'stock-ok' : '') + '">' + source + '</span></td>' +
+      '<td style="color:var(--muted);">' + businessExpenseEsc(e.created_by || '—') + '</td>' +
+      '<td class="r"><button class="row-btn danger" onclick="deleteBusinessExpense(' + Number(e.id) + ')">✕</button></td>' +
       '</tr>';
   }).join('');
 }
 
-// Показывает свободное поле ввода, только если выбрано «Другое» —
-// иначе категория берётся прямо из списка.
-function onExpCategoryChange() {
-  const select = document.getElementById('exp-category-select');
-  const custom = document.getElementById('exp-category-custom');
-  const isOther = select.value === '__other__';
-  custom.style.display = isOther ? 'block' : 'none';
-  if (isOther) custom.focus();
+function resetBusinessExpenseFilters() {
+  document.getElementById('biz-exp-from').value = '';
+  document.getElementById('biz-exp-to').value = '';
+  document.getElementById('biz-exp-investor-filter').value = '';
+  document.getElementById('biz-exp-city-filter').value = '';
+  renderBusinessExpenses();
 }
 
-async function addExpense() {
-  const expense_date = document.getElementById('exp-date').value;
-  const city_id = document.getElementById('exp-city').value;
-  const select = document.getElementById('exp-category-select');
-  const category = select.value === '__other__'
-    ? document.getElementById('exp-category-custom').value.trim()
-    : select.value;
-  const amount = parseInt(document.getElementById('exp-amount').value, 10);
-  const note = document.getElementById('exp-note').value.trim();
-  if (!expense_date || !amount || amount <= 0) {
-    alert('Укажите дату и сумму расхода (больше нуля)');
+async function addBusinessExpense() {
+  const payload = {
+    expense_date: document.getElementById('biz-exp-date').value,
+    investor_name: document.getElementById('biz-exp-investor').value.trim(),
+    amount: Number(document.getElementById('biz-exp-amount').value),
+    category: document.getElementById('biz-exp-purpose').value.trim(),
+    note: document.getElementById('biz-exp-note').value.trim(),
+    city_id: document.getElementById('biz-exp-city').value,
+  };
+  const error = document.getElementById('biz-exp-form-error');
+  error.style.display = 'none';
+  if (!payload.expense_date || !payload.investor_name || !payload.category || !payload.amount || payload.amount <= 0) {
+    error.textContent = 'Заполните дату, ФИО инвестора, сумму и назначение траты.';
+    error.style.display = 'block';
     return;
   }
-  if (!category) {
-    alert('Укажите название статьи расхода');
+  const res = await authFetch('/api/economics/expenses', { method:'POST', body:payload });
+  const data = await res.json();
+  if (!res.ok) {
+    error.textContent = data.error || 'Не удалось сохранить трату.';
+    error.style.display = 'block';
     return;
   }
-  await authFetch('/api/economics/expenses', { method: 'POST', body: { expense_date, category, amount, note, city_id } });
-  document.getElementById('exp-amount').value = '';
-  document.getElementById('exp-note').value = '';
-  document.getElementById('exp-category-custom').value = '';
-  renderEconomics();
+  document.getElementById('biz-exp-amount').value = '';
+  document.getElementById('biz-exp-purpose').value = '';
+  document.getElementById('biz-exp-note').value = '';
+  await renderBusinessExpenses();
 }
 
-async function deleteExpense(id) {
-  if (!confirm('Удалить эту запись расхода?')) return;
-  await authFetch('/api/economics/expenses/' + id, { method: 'DELETE' });
-  renderEconomics();
+async function deleteBusinessExpense(id) {
+  if (!confirm('Удалить эту запись траты? Она перестанет учитываться в P&L.')) return;
+  const res = await authFetch('/api/economics/expenses/' + id, { method:'DELETE' });
+  if (!res.ok) return alert('Не удалось удалить запись.');
+  await renderBusinessExpenses();
 }
 
 // ── КОНТРОЛЬ ПОРУЧЕНИЙ ─────────────────────────────────────────────
@@ -5611,6 +5701,38 @@ function payoutChannelBadge(label, connected) {
     (connected ? '✓ ' : '— ') + label + ': ' + (connected ? 'подключён' : 'не подключён') + '</span>';
 }
 
+function updatePayoutNotificationChoice() {
+  if (!payoutApprovalState) return;
+  const choice = document.getElementById('payout-notification-choice');
+  const checkbox = document.getElementById('payout-send-notifications');
+  const messageField = document.getElementById('payout-approval-message-field');
+  const messageLabel = document.getElementById('payout-approval-message-label');
+  const warning = document.getElementById('payout-approval-warning');
+  const note = document.getElementById('payout-approval-note');
+  const button = document.getElementById('payout-approval-confirm');
+  const canSkip = payoutApprovalState.role === 'partner' || payoutApprovalState.role.indexOf('manager_') === 0;
+  choice.style.display = canSkip ? 'flex' : 'none';
+  const sendNotifications = !canSkip || checkbox.checked;
+  payoutApprovalState.sendNotifications = sendNotifications;
+  messageField.style.opacity = sendNotifications ? '1' : '.5';
+  messageLabel.textContent = sendNotifications
+    ? 'Сообщение, которое получит партнёр'
+    : 'Сообщение отключено — отправлено не будет';
+  note.textContent = sendNotifications
+    ? 'После подтверждения выплата будет зафиксирована без возможности повторно включить эти заказы. Сообщение отправится во все подключённые каналы.'
+    : 'После подтверждения выплата будет зафиксирована без отправки сообщений в Telegram и MAX.';
+  button.textContent = sendNotifications ? 'Подтвердить выплату и отправить' : 'Подтвердить без уведомления';
+  if (!sendNotifications) {
+    warning.style.display = 'block';
+    warning.textContent = 'Уведомление отключено. Выплата сохранится в истории, но получатель не получит сообщение.';
+  } else {
+    const preview = payoutApprovalState.preview;
+    const hasChannel = preview && (!!preview.channels.telegram || !!preview.channels.max);
+    warning.style.display = hasChannel ? 'none' : 'block';
+    warning.textContent = 'Telegram и MAX не подключены. Выплату можно зафиксировать, но сообщение отправлено не будет.';
+  }
+}
+
 function renderPayoutApprovalPreview(preview, changed) {
   payoutApprovalState.preview = preview;
   document.getElementById('payout-approval-meta').textContent =
@@ -5620,10 +5742,7 @@ function renderPayoutApprovalPreview(preview, changed) {
   document.getElementById('payout-approval-channels').innerHTML =
     payoutChannelBadge('Telegram', !!preview.channels.telegram) +
     payoutChannelBadge('MAX', !!preview.channels.max);
-  const warning = document.getElementById('payout-approval-warning');
-  const hasChannel = !!preview.channels.telegram || !!preview.channels.max;
-  warning.style.display = hasChannel ? 'none' : 'block';
-  warning.textContent = 'Telegram и MAX не подключены. Выплату можно зафиксировать, но сообщение отправлено не будет.';
+  updatePayoutNotificationChoice();
   const error = document.getElementById('payout-approval-error');
   error.style.display = changed ? 'block' : 'none';
   error.textContent = changed
@@ -5641,7 +5760,7 @@ async function openPayoutApproval(role, id) {
   };
   const route = routes[role];
   if (!route) return alert('Неизвестный вид выплаты');
-  payoutApprovalState = { role: role, id: Number(id), previewUrl: route.preview, createUrl: route.create, preview: null };
+  payoutApprovalState = { role: role, id: Number(id), previewUrl: route.preview, createUrl: route.create, preview: null, sendNotifications: true };
   const modal = document.getElementById('payout-approval-modal');
   const confirmButton = document.getElementById('payout-approval-confirm');
   document.getElementById('payout-approval-error').style.display = 'none';
@@ -5649,6 +5768,8 @@ async function openPayoutApproval(role, id) {
   document.getElementById('payout-approval-meta').textContent = 'Загружаем данные…';
   document.getElementById('payout-approval-channels').innerHTML = '';
   document.getElementById('payout-approval-message').value = '';
+  document.getElementById('payout-send-notifications').checked = true;
+  updatePayoutNotificationChoice();
   confirmButton.disabled = true;
   confirmButton.style.opacity = '.55';
   modal.style.display = 'flex';
@@ -5683,11 +5804,12 @@ async function confirmPayoutApproval() {
   if (!payoutApprovalState || !payoutApprovalState.preview) return;
   const state = payoutApprovalState;
   const preview = state.preview;
+  const sendNotifications = state.sendNotifications !== false;
   const button = document.getElementById('payout-approval-confirm');
   const errorBox = document.getElementById('payout-approval-error');
   button.disabled = true;
   button.style.opacity = '.55';
-  button.textContent = 'Фиксируем и отправляем…';
+  button.textContent = sendNotifications ? 'Фиксируем и отправляем…' : 'Фиксируем выплату…';
   errorBox.style.display = 'none';
   try {
     const res = await authFetch(state.createUrl, {
@@ -5696,6 +5818,7 @@ async function confirmPayoutApproval() {
         expected_amount: preview.amount,
         expected_orders_count: preview.orders_count,
         expected_message: preview.message,
+        send_notifications: sendNotifications,
       },
     });
     const data = await res.json();
@@ -5708,7 +5831,7 @@ async function confirmPayoutApproval() {
     closePayoutApproval();
     alert(
       'Выплата ' + Number(data.payout.amount || 0).toLocaleString('ru-RU') + ' ₽ зафиксирована.\n\n' +
-      payoutDeliveryResult(data.deliveries)
+      (data.notifications_skipped ? 'Уведомление не отправлялось.' : payoutDeliveryResult(data.deliveries))
     );
     if (role === 'partner') await renderPartners();
     else if (role === 'owner') await renderOwners();
@@ -5720,7 +5843,9 @@ async function confirmPayoutApproval() {
     if (document.getElementById('payout-approval-modal').style.display !== 'none') {
       button.disabled = false;
       button.style.opacity = '1';
-      button.textContent = 'Подтвердить выплату и отправить';
+      button.textContent = payoutApprovalState && payoutApprovalState.sendNotifications === false
+        ? 'Подтвердить без уведомления'
+        : 'Подтвердить выплату и отправить';
     }
   }
 }
@@ -6244,6 +6369,21 @@ async function renderPartners() {
   } else {
     riskBanner.style.display = 'none';
   }
+
+  const promoList = document.getElementById('partners-promo-list');
+  const partnersWithPromo = adminPartners.filter(function(p) { return p.first_purchase_promo_code; });
+  promoList.innerHTML = '<div class="card" style="margin-bottom:1rem;">' +
+    '<div class="card-title">Промокоды грумеров на первую покупку</div>' +
+    '<p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка 20% применяется один раз по номеру телефона. Нажмите на код, чтобы скопировать.</p>' +
+    (partnersWithPromo.length ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.65rem;">' +
+      partnersWithPromo.map(function(p) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:.7rem;border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;background:#FAFBF8;">' +
+          '<div style="min-width:0;"><div style="font-weight:600;font-size:.84rem;">' + escapeOrderCell(p.full_name) + '</div>' +
+          '<div style="font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeOrderCell(p.point_name || 'Точка не указана') + (p.active ? '' : ' · отключён') + '</div></div>' +
+          '<button type="button" class="row-btn" style="margin:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(p.first_purchase_promo_code) + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)">' + escapeOrderCell(p.first_purchase_promo_code) + '</button>' +
+        '</div>';
+      }).join('') + '</div>' : '<p style="color:var(--muted);font-size:.82rem;">Промокоды пока не созданы.</p>') +
+    '</div>';
 
   document.getElementById('partners-tbody').innerHTML = adminPartners.length ? adminPartners.map(function(p) {
     const referrer = p.referred_by_partner_id ? byId[p.referred_by_partner_id] : null;

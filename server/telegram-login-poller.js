@@ -13,6 +13,18 @@ const {
   taskBotCard,
   taskButtons,
 } = require('./task-bot-actions');
+const {
+  cancelTaskCreation,
+  handleTaskCreateCallback,
+  handleTaskCreateMessage,
+  startTaskCreation,
+} = require('./task-bot-create');
+const {
+  cancelExpenseCreation,
+  handleExpenseCallback,
+  handleExpenseMessage,
+  startExpenseCreation,
+} = require('./expense-bot-create');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
 let lastUpdateId = 0;
@@ -48,6 +60,9 @@ async function configureBotProfile() {
     ['setMyCommands', { commands: [
       { command: 'start', description: 'Открыть помощника ХвостМаркета' },
       { command: 'tasks', description: 'Мои активные поручения' },
+      { command: 'newtask', description: 'Создать новую задачу' },
+      { command: 'expense', description: 'Добавить трату бизнеса' },
+      { command: 'cancel', description: 'Отменить текущее действие' },
       { command: 'help', description: 'Как пользоваться ботом' },
     ] }],
   ];
@@ -87,10 +102,19 @@ function buildWelcomeMessage() {
     '',
     'Я помогу войти в личный кабинет и буду присылать важные уведомления о заказах, продажах и вознаграждениях.',
     '',
-    'Сотрудникам: команда /tasks покажет активные поручения и кнопки управления.',
+    'Сотрудникам: /tasks покажет активные поручения, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     '',
     'Чтобы подключить кабинет, откройте на сайте вход через Telegram и перейдите по созданной ссылке.',
   ].join('\n');
+}
+
+function botActionButtons() {
+  return {
+    inline_keyboard: [[
+      { text: '➕ Новая задача', callback_data: 'newtsk:start' },
+      { text: '💳 Добавить трату', callback_data: 'expense:start' },
+    ]],
+  };
 }
 
 async function sendTaskInbox(chatId) {
@@ -100,10 +124,14 @@ async function sendTaskInbox(chatId) {
     return;
   }
   if (!inbox.tasks.length) {
-    await replyToChat(chatId, '✅ У вас нет активных поручений.');
+    await replyToChat(chatId, '✅ У вас нет активных поручений.', botActionButtons());
     return;
   }
-  await replyToChat(chatId, `Активные поручения: ${inbox.tasks.length}. Выберите действие под нужной задачей.`);
+  await replyToChat(
+    chatId,
+    `Активные поручения: ${inbox.tasks.length}. Выберите действие под нужной задачей.`,
+    botActionButtons()
+  );
   for (const task of inbox.tasks) {
     await replyToChat(chatId, taskBotCard(task), taskButtons(task, 'telegram'));
   }
@@ -156,7 +184,9 @@ async function processUpdate(update) {
     const chatId = callback.message && callback.message.chat
       ? callback.message.chat.id
       : callback.from && callback.from.id;
-    const result = handleTaskCallback('telegram', chatId, callback.data);
+    const result = handleExpenseCallback('telegram', chatId, callback.data)
+      || handleTaskCreateCallback('telegram', chatId, callback.data)
+      || handleTaskCallback('telegram', chatId, callback.data);
     if (result) {
       try {
         await callBotApi('answerCallbackQuery', {
@@ -167,7 +197,14 @@ async function processUpdate(update) {
       } catch (error) {
         console.warn('Не удалось подтвердить нажатие кнопки Telegram:', error.message);
       }
-      await replyToChat(chatId, result.message);
+      await replyToChat(chatId, result.message, result.replyMarkup);
+      if (result.created && result.task && result.assignee && result.assignee.telegram_chat_id) {
+        await replyToChat(
+          result.assignee.telegram_chat_id,
+          '🆕 Вам назначена новая задача\n\n' + taskBotCard(result.task),
+          taskButtons(result.task, 'telegram')
+        );
+      }
     }
     return;
   }
@@ -175,8 +212,48 @@ async function processUpdate(update) {
   const msg = update.message;
   if (!msg || !msg.text) return;
   const text = msg.text.trim();
+  if (/^\/newtask(?:@\w+)?$/i.test(text) || /^новая задача$/i.test(text)) {
+    cancelExpenseCreation('telegram', msg.chat.id);
+    const result = startTaskCreation('telegram', msg.chat.id);
+    await replyToChat(msg.chat.id, result.message, result.replyMarkup);
+    return;
+  }
+  if (/^\/expense(?:@\w+)?$/i.test(text) || /^добавить трату$/i.test(text)) {
+    const result = startExpenseCreation('telegram', msg.chat.id);
+    await replyToChat(msg.chat.id, result.message, result.replyMarkup);
+    return;
+  }
+  if (/^\/cancel(?:@\w+)?$/i.test(text)) {
+    const createCancelled = cancelTaskCreation('telegram', msg.chat.id);
+    const expenseCancelled = cancelExpenseCreation('telegram', msg.chat.id);
+    const statusCancelled = db.prepare('DELETE FROM task_bot_pending_inputs WHERE channel = ? AND chat_id = ?')
+      .run('telegram', String(msg.chat.id)).changes > 0;
+    await replyToChat(
+      msg.chat.id,
+      createCancelled || expenseCancelled || statusCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
+      botActionButtons()
+    );
+    return;
+  }
   if (/^\/tasks(?:@\w+)?$/i.test(text) || /^мои поручения$/i.test(text)) {
     await sendTaskInbox(msg.chat.id);
+    return;
+  }
+  const expenseCreation = handleExpenseMessage('telegram', msg.chat.id, text);
+  if (expenseCreation) {
+    await replyToChat(msg.chat.id, expenseCreation.message, expenseCreation.replyMarkup);
+    return;
+  }
+  const taskCreation = handleTaskCreateMessage('telegram', msg.chat.id, text);
+  if (taskCreation) {
+    await replyToChat(msg.chat.id, taskCreation.message, taskCreation.replyMarkup);
+    if (taskCreation.created && taskCreation.task && taskCreation.assignee && taskCreation.assignee.telegram_chat_id) {
+      await replyToChat(
+        taskCreation.assignee.telegram_chat_id,
+        '🆕 Вам назначена новая задача\n\n' + taskBotCard(taskCreation.task),
+        taskButtons(taskCreation.task, 'telegram')
+      );
+    }
     return;
   }
   const taskStatus = handleTaskStatusMessage('telegram', msg.chat.id, text);
@@ -186,7 +263,7 @@ async function processUpdate(update) {
   }
   const match = text.match(/^\/start(?:@\w+)?(?:\s+(\S+))?$/i);
   if (!match || !match[1]) {
-    await replyToChat(msg.chat.id, buildWelcomeMessage());
+    await replyToChat(msg.chat.id, buildWelcomeMessage(), botActionButtons());
     return;
   }
 

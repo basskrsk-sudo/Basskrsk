@@ -285,6 +285,7 @@ function registerPartnerRoutes(router) {
       const expectedAmount = Number(ctx.body && ctx.body.expected_amount);
       const expectedOrders = Number(ctx.body && ctx.body.expected_orders_count);
       const expectedMessage = String((ctx.body && ctx.body.expected_message) || '');
+      const sendNotifications = !(ctx.body && ctx.body.send_notifications === false);
       if (
         preview.amount !== expectedAmount ||
         preview.orders_count !== expectedOrders ||
@@ -297,14 +298,16 @@ function registerPartnerRoutes(router) {
         });
       }
       const payout = createPartnerPayout(partnerId, payload);
-      let deliveries;
-      try {
-        deliveries = await sendPartnerPayoutNotification(partnerId, payout, expectedMessage);
-      } catch (notificationError) {
-        console.error('[partner-payout] Выплата записана, но уведомление не обработано:', notificationError);
-        deliveries = [{ channel: 'system', ok: false, error: 'Не удалось обработать отправку уведомлений' }];
+      let deliveries = [];
+      if (sendNotifications) {
+        try {
+          deliveries = await sendPartnerPayoutNotification(partnerId, payout, expectedMessage);
+        } catch (notificationError) {
+          console.error('[partner-payout] Выплата записана, но уведомление не обработано:', notificationError);
+          deliveries = [{ channel: 'system', ok: false, error: 'Не удалось обработать отправку уведомлений' }];
+        }
       }
-      sendJson(res, 201, { ok: true, payout, deliveries });
+      sendJson(res, 201, { ok: true, payout, deliveries, notifications_skipped: !sendNotifications });
     } catch (error) {
       if (error.code === 'PARTNER_NOT_FOUND') return sendJson(res, 404, { error: error.message });
       if (error.code === 'NOTHING_TO_PAY') return sendJson(res, 409, { error: error.message });
