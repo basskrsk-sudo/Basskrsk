@@ -241,8 +241,11 @@ function registerEconomicsRoutes(router) {
     if (!db.prepare('SELECT id FROM cities WHERE id = ?').get(cityId)) {
       return sendJson(res, 400, { error: 'Неизвестный город: ' + cityId });
     }
+    const allowedInvestors = new Set(['Лакомых Алексей', 'Соколов Виталий', 'Кучкин Николай']);
     const investorName = String(investor_name || '').trim().slice(0, 200);
-    if (!investorName) return sendJson(res, 400, { error: 'Укажите ФИО инвестора' });
+    if (!allowedInvestors.has(investorName)) {
+      return sendJson(res, 400, { error: 'Выберите инвестора: Алексей, Виталий или Николай' });
+    }
     const purpose = String(category || '').trim().slice(0, 500);
     if (!purpose) return sendJson(res, 400, { error: 'Укажите назначение траты' });
     const info = db.prepare(`

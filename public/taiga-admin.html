@@ -1006,7 +1006,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="card-title">Добавить трату</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem;align-items:end;">
           <div class="admin-field" style="margin-bottom:0;"><label>Дата *</label><input type="date" id="biz-exp-date"></div>
-          <div class="admin-field" style="margin-bottom:0;"><label>ФИО инвестора *</label><input type="text" id="biz-exp-investor" list="biz-exp-investor-suggestions" placeholder="Кто оплатил"><datalist id="biz-exp-investor-suggestions"></datalist></div>
+          <div class="admin-field" style="margin-bottom:0;"><label>Инвестор *</label><select id="biz-exp-investor"><option value="">Выберите инвестора</option><option value="Лакомых Алексей">Алексей</option><option value="Соколов Виталий">Виталий</option><option value="Кучкин Николай">Николай</option></select></div>
           <div class="admin-field" style="margin-bottom:0;"><label>Сумма, ₽ *</label><input type="number" id="biz-exp-amount" min="1" step="1" placeholder="0"></div>
           <div class="admin-field" style="margin-bottom:0;"><label>Город *</label><select id="biz-exp-city"></select></div>
           <div class="admin-field" style="margin-bottom:0;grid-column:span 2;"><label>Назначение *</label><input type="text" id="biz-exp-purpose" placeholder="Например: закуп лакомств или изготовление стойки"></div>
@@ -3687,15 +3687,6 @@ async function renderBusinessExpenses() {
     : 'за весь период';
   document.getElementById('biz-exp-table-count').textContent = data.expenses.length + ' записей';
 
-  const knownInvestors = (summary.by_investor || []).map(function(row) { return row.investor_name; })
-    .filter(function(name) { return name && name !== 'Не указан'; });
-  ['Лакомых Алексей', 'Соколов Виталий', 'Кучкин Николай'].forEach(function(name) {
-    if (!knownInvestors.includes(name)) knownInvestors.push(name);
-  });
-  document.getElementById('biz-exp-investor-suggestions').innerHTML = knownInvestors.map(function(name) {
-    return '<option value="' + businessExpenseEsc(name) + '"></option>';
-  }).join('');
-
   const byInvestor = document.getElementById('biz-exp-by-investor');
   byInvestor.innerHTML = (summary.by_investor || []).length ? summary.by_investor.map(function(row) {
     return '<div style="display:flex;justify-content:space-between;gap:.8rem;padding:.55rem 0;border-bottom:1px solid var(--border);font-size:.84rem;">' +
@@ -3743,7 +3734,7 @@ async function addBusinessExpense() {
   const error = document.getElementById('biz-exp-form-error');
   error.style.display = 'none';
   if (!payload.expense_date || !payload.investor_name || !payload.category || !payload.amount || payload.amount <= 0) {
-    error.textContent = 'Заполните дату, ФИО инвестора, сумму и назначение траты.';
+    error.textContent = 'Выберите инвестора и заполните дату, сумму и назначение траты.';
     error.style.display = 'block';
     return;
   }

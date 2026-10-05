@@ -5,6 +5,11 @@ const db = require('./db');
 const { localDate } = require('./task-reminders');
 
 const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+const INVESTORS = Object.freeze({
+  alexey: 'Лакомых Алексей',
+  vitaly: 'Соколов Виталий',
+  nikolay: 'Кучкин Николай',
+});
 
 function actorForChat(channel, chatId) {
   if (channel !== 'telegram' || !chatId) return null;
@@ -35,6 +40,19 @@ function dateButtons() {
         { text: 'Сегодня', callback_data: 'expense:date:today' },
         { text: 'Вчера', callback_data: 'expense:date:yesterday' },
       ],
+      [{ text: '✕ Отмена', callback_data: 'expense:cancel' }],
+    ],
+  };
+}
+
+function investorButtons() {
+  return {
+    inline_keyboard: [
+      [
+        { text: 'Алексей', callback_data: 'expense:investor:alexey' },
+        { text: 'Виталий', callback_data: 'expense:investor:vitaly' },
+      ],
+      [{ text: 'Николай', callback_data: 'expense:investor:nikolay' }],
       [{ text: '✕ Отмена', callback_data: 'expense:cancel' }],
     ],
   };
@@ -139,7 +157,28 @@ function setDraftDate(channel, chatId, expenseDate) {
     SET expense_date = ?, step = 'investor', updated_at = datetime('now')
     WHERE channel = ? AND chat_id = ?
   `).run(expenseDate, channel, String(chatId));
-  return { ok: true, message: 'Дата: ' + expenseDate + '.\n\nВведите ФИО инвестора, который оплатил эту трату.' };
+  return {
+    ok: true,
+    message: 'Дата: ' + expenseDate + '.\n\nВыберите инвестора, который оплатил эту трату.',
+    replyMarkup: investorButtons(),
+  };
+}
+
+function setDraftInvestor(channel, chatId, investorKey) {
+  const draft = draftForChat(channel, chatId);
+  const investorName = INVESTORS[investorKey];
+  if (!draft || draft.step !== 'investor') {
+    return { ok: false, message: 'Черновик траты устарел. Начните заново командой /expense.' };
+  }
+  if (!investorName) {
+    return { ok: false, message: 'Выберите инвестора одной из кнопок.', replyMarkup: investorButtons() };
+  }
+  db.prepare(`
+    UPDATE expense_bot_drafts
+    SET investor_name = ?, step = 'amount', updated_at = datetime('now')
+    WHERE channel = ? AND chat_id = ?
+  `).run(investorName, channel, String(chatId));
+  return { ok: true, message: 'Инвестор: ' + investorName + '.\n\nВведите сумму в рублях, например 12500.' };
 }
 
 function confirmationMessage(draft) {
@@ -198,6 +237,9 @@ function handleExpenseCallback(channel, chatId, rawPayload) {
   }
   if (payload === 'expense:date:today') return setDraftDate(channel, chatId, localDate());
   if (payload === 'expense:date:yesterday') return setDraftDate(channel, chatId, addDays(localDate(), -1));
+  if (payload.startsWith('expense:investor:')) {
+    return setDraftInvestor(channel, chatId, payload.slice('expense:investor:'.length));
+  }
   if (payload === 'expense:confirm') return finishExpenseCreation(channel, chatId);
   return { ok: false, message: 'Неизвестное действие. Начните заново командой /expense.' };
 }
@@ -216,13 +258,7 @@ function handleExpenseMessage(channel, chatId, text) {
     return setDraftDate(channel, chatId, expenseDate);
   }
   if (draft.step === 'investor') {
-    const investorName = value.slice(0, 200);
-    db.prepare(`
-      UPDATE expense_bot_drafts
-      SET investor_name = ?, step = 'amount', updated_at = datetime('now')
-      WHERE channel = ? AND chat_id = ?
-    `).run(investorName, channel, String(chatId));
-    return { ok: true, message: 'Инвестор: ' + investorName + '.\n\nВведите сумму в рублях, например 12500.' };
+    return { ok: false, message: 'Выберите инвестора одной из кнопок.', replyMarkup: investorButtons() };
   }
   if (draft.step === 'amount') {
     const amount = parseAmount(value);
@@ -253,6 +289,7 @@ function handleExpenseMessage(channel, chatId, text) {
 module.exports = {
   cancelExpenseCreation,
   expenseButton,
+  investorButtons,
   handleExpenseCallback,
   handleExpenseMessage,
   parseAmount,

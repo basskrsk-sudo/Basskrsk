@@ -31,7 +31,7 @@ test('неподключённый пользователь не может вн
 test('пошагово создаёт трату с обязательными реквизитами', () => {
   assert.equal(startExpenseCreation('telegram', '501').ok, true);
   assert.equal(handleExpenseMessage('telegram', '501', '05.10.2026').ok, true);
-  assert.equal(handleExpenseMessage('telegram', '501', 'Соколов Виталий').ok, true);
+  assert.equal(handleExpenseCallback('telegram', '501', 'expense:investor:vitaly').ok, true);
   assert.equal(handleExpenseMessage('telegram', '501', '15 500 ₽').ok, true);
   const purpose = handleExpenseMessage('telegram', '501', 'Изготовление металлической стойки');
   assert.equal(purpose.ok, true);
@@ -72,7 +72,12 @@ test('Telegram-команда /expense сохраняет подтверждён
         message: { chat: { id: 501 } }, from: { id: 501 },
       },
     });
-    await processUpdate({ message: { chat: { id: 501 }, text: 'Кучкин Николай' } });
+    await processUpdate({
+      callback_query: {
+        id: 'investor', data: 'expense:investor:nikolay',
+        message: { chat: { id: 501 } }, from: { id: 501 },
+      },
+    });
     await processUpdate({ message: { chat: { id: 501 }, text: '7000' } });
     await processUpdate({ message: { chat: { id: 501 }, text: 'Юридическая консультация' } });
     await processUpdate({
