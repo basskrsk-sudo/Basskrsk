@@ -15,24 +15,41 @@ function catalogContext(status) {
   const elements = new Map();
   const pages = [];
   const context = {
-    URL, console,
+    URL, console, AbortController,
     window: { location: { href: 'https://example.test/?payment_return=TG-test' } },
     document: { getElementById(id) {
       if (!elements.has(id)) elements.set(id, { style: {}, textContent: '', innerHTML: '' });
       return elements.get(id);
     } },
     closeModal() {}, showPage(id) { pages.push(id); },
-    fetchWithTimeout: async () => ({ ok: true, json: async () => status }),
+    fetch: async () => ({ ok: true, status: 200, text: async () => JSON.stringify(status) }),
     readPendingSuccess: () => ({ fulfillmentType: 'pickup', items: [], phone: '+79990000000', pickup: 'Точка', total: 100 }),
     configureSuccessFulfillment() {}, renderSuccessProducts() {},
     getKnownPhone: () => '', escapeHtml: String,
     trackGoalOnce() {}, showCheckoutMessagingOffers() {}, clearPendingSuccess() {},
-    checkoutPaymentMethod: 'yookassa', setTimeout(resolve) { resolve(); },
+    checkoutPaymentMethod: 'yookassa',
+    setTimeout(resolve, ms) { if (ms < 8000) resolve(); return 1; },
+    clearTimeout() {},
   };
   vm.createContext(context);
+  vm.runInContext(source('index.html', 'async function fetchWithTimeout(', '\nasync function sendTelegram('), context);
+  vm.runInContext(source('index.html', 'async function checkConfirmedPayment(', '\nfunction successItemsFromCart('), context);
   vm.runInContext(source('index.html', 'async function handleRedirectPaymentReturn()', '\nfunction simulatePaymentSuccess('), context);
   return { context, elements, pages };
 }
+
+test('встроенный виджет распознаёт paid через настоящий сетевой helper', async () => {
+  const { context } = catalogContext({ paid: true, status: 'paid', is_partner_self_order: false });
+  const result = await context.checkConfirmedPayment('payment-test');
+  assert.equal(result.paid, true);
+  assert.equal(result.status, 'paid');
+});
+
+test('невалидный ответ сервера не считается подтверждённой оплатой', async () => {
+  const { context } = catalogContext({});
+  context.fetch = async () => ({ ok: true, status: 200, text: async () => '<html>temporary error</html>' });
+  assert.equal((await context.checkConfirmedPayment('payment-test')).paid, false);
+});
 
 test('возврат из банка открывает подтверждение только после paid от сервера', async () => {
   const { context, elements, pages } = catalogContext({ paid: true, order_code: 'TG-test' });

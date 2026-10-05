@@ -2478,7 +2478,7 @@
     <div id="modal-step-1">
       <div class="checkout-mascot-row">
         <h2>Покупка за минуту</h2>
-        <img class="mascot-checkout" src="images/mascot/checkout.png" alt="">
+        <img class="mascot-checkout" src="/images/mascot/checkout-v2-clean.png" alt="">
       </div>
       <div class="form-group"><label>Телефон *</label><input type="tel" id="oPhone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this); scheduleCheckoutTelegramOffer(); onFirstPurchasePromoContextChange();" onblur="liveValidatePhone(this); checkLoyaltyByPhone(); checkSelfOrderWarning(); showCheckoutTelegramOffer(); validateFirstPurchasePromo();" autocomplete="new-password"></div>
       <div id="loyalty-msg" style="font-size:.82rem;margin:-.6rem 0 1rem;min-height:1.1em;color:#2D7D46;"></div>
@@ -2585,7 +2585,7 @@
     <h1 id="payment-result-title" style="color:var(--deep);margin-bottom:1rem;">Подтверждаем оплату…</h1>
     <p id="payment-result-message" style="color:var(--muted);line-height:1.8;">Проверяем статус заказа на сервере. Дождитесь результата.</p>
     <button id="payment-result-retry" class="btn-primary" style="display:none;margin-top:1rem;">Проверить оплату</button>
-    <button class="btn-outline" style="margin-top:1rem;" onclick="showPage('catalog')">Открыть каталог</button>
+    <button class="btn-outline" style="margin-top:1rem;color:var(--forest);border-color:var(--forest);" onclick="showPage('catalog')">Открыть каталог</button>
   </div>
 </div>
 <div class="page" id="page-success">
@@ -5413,7 +5413,7 @@ function renderCart() {
       </div>
     </div>`).join('') + `
     <div class="cart-summary has-mascot">
-      <img class="cart-summary-mascot" src="images/mascot/cart-full.png" alt="">
+      <img class="cart-summary-mascot" src="/images/mascot/cart-full-v2-clean.png" alt="">
       <div class="cart-summary-row"><span>Товаров</span><span>${cart.reduce((s,x)=>s+x.qty,0)} шт.</span></div>
 
       <div style="background:rgba(45,125,70,.18);border-radius:6px;padding:.5rem .7rem;margin:.6rem 0;font-size:.82rem;color:#8FD9A8;">
@@ -6146,7 +6146,7 @@ async function checkConfirmedPayment(paymentId) {
       8000
     );
     if (!res.ok) return { paid: false, status: 'pending' };
-    const data = await res.json();
+    const data = JSON.parse(res.body || '{}');
     if (data.paid) return { paid: true, status: 'paid', is_partner_self_order: !!data.is_partner_self_order };
     return { paid: false, status: data.status || 'pending', is_partner_self_order: !!data.is_partner_self_order };
   } catch (e) {
@@ -6513,7 +6513,7 @@ async function handleRedirectPaymentReturn() {
         { cache: 'no-store' },
         8000
       );
-      const data = await res.json();
+      const data = JSON.parse(res.body || '{}');
       if (res.ok && data.paid) {
         isCurrentOrderSelfOrder = !!data.is_partner_self_order;
         const pending = readPendingSuccess(orderCode);
