@@ -4,6 +4,7 @@
 'use strict';
 
 const db = require('./db');
+const { snapshotPayout } = require('./payout-reports');
 
 function getOwnerUnpaidOrders(ownerId) {
   return db.prepare(`
@@ -11,6 +12,7 @@ function getOwnerUnpaidOrders(ownerId) {
       o.id,
       o.order_code,
       o.total,
+      o.created_at,
       so.commission_rate
     FROM salon_owners so
     JOIN orders o ON o.point_id = so.point_id
@@ -101,8 +103,10 @@ function createOwnerPayout(ownerId, adminPayload) {
     orders.forEach((order) => {
       insertItem.run(payoutId, order.id, order.order_code, order.commission_amount);
     });
+    const payout = db.prepare(payoutSelect('WHERE id = ?')).get(payoutId, 1);
+    const report = snapshotPayout(db, 'owner', { ...owner, code: owner.owner_code }, orders, payout, adminPayload.id);
     db.exec('COMMIT');
-    return db.prepare(payoutSelect('WHERE id = ?')).get(payoutId, 1);
+    return { ...payout, report_id: report.id };
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch (_) { /* сохраняем исходную ошибку */ }
     throw error;

@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
+const db = require('./db');
 
 const BACKLOG_FILE = path.join(__dirname, '..', 'backlog.json');
 
@@ -23,7 +24,16 @@ function registerBacklogRoutes(router) {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
     try {
-      sendJson(res, 200, loadBacklog());
+      const backlog = loadBacklog();
+      const titles = new Set(backlog.items.map((item) => item.title));
+      const rows = db.prepare(`SELECT id, category, title, note FROM launch_tasks
+        WHERE done = 0 AND category IN ('Безопасность', 'Технический долг', 'Платежи', 'Юридическое', 'Развитие сети')
+        ORDER BY category, sort_order`).all();
+      const legacy_items = rows.filter((row) => !titles.has(row.title)).map((row) => ({
+        id: 'launch-' + row.id, category: row.category, title: row.title,
+        summary: row.note || '', status_label: 'Открытая задача плана запуска',
+      }));
+      sendJson(res, 200, { ...backlog, legacy_items });
     } catch (error) {
       console.error('[backlog] Не удалось прочитать backlog.json:', error);
       sendJson(res, 500, { error: 'Не удалось загрузить бэклог' });

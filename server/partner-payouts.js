@@ -2,6 +2,7 @@
 'use strict';
 
 const db = require('./db');
+const { snapshotPayout } = require('./payout-reports');
 
 function getUnpaidOrders(partnerId) {
   return db.prepare(`
@@ -9,6 +10,7 @@ function getUnpaidOrders(partnerId) {
       o.id,
       o.order_code,
       o.total,
+      o.created_at,
       COALESCE(o.commission_rate, p.commission_rate, 0) AS commission_rate
     FROM orders o
     JOIN partners p ON p.id = o.partner_id
@@ -61,7 +63,7 @@ function createPartnerPayout(partnerId, adminPayload) {
   try {
     const partner = db.prepare(`
       SELECT
-        p.id, p.full_name, p.partner_code,
+        p.id, p.full_name, p.partner_code, p.inn, pt.name AS point_name,
         pt.manager_id,
         m.full_name AS manager_name
       FROM partners p
@@ -108,8 +110,10 @@ function createPartnerPayout(partnerId, adminPayload) {
     orders.forEach((order) => {
       insertItem.run(payoutId, order.id, order.order_code, order.commission_amount);
     });
+    const payout = db.prepare(payoutSelect('WHERE id = ?')).get(payoutId, 1);
+    const report = snapshotPayout(db, 'partner', { ...partner, code: partner.partner_code }, orders, payout, adminPayload.id);
     db.exec('COMMIT');
-    return db.prepare(payoutSelect('WHERE id = ?')).get(payoutId, 1);
+    return { ...payout, report_id: report.id };
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch (_) { /* сохраняем исходную ошибку */ }
     throw error;

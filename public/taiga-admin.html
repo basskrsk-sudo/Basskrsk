@@ -634,6 +634,11 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
     <!-- ══ DASHBOARD ══ -->
     <!-- ══ LAUNCH PLAN ══ -->
     <div id="sec-launch" style="display:none;">
+      <div role="tablist" aria-label="План запуска" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+        <button id="launch-tab-plan" class="section-context-tab active" role="tab" aria-selected="true" aria-controls="launch-panel-plan" onclick="showLaunchTab('plan')">План запуска</button>
+        <button id="launch-tab-backlog" class="section-context-tab" role="tab" aria-selected="false" aria-controls="launch-panel-backlog" onclick="showLaunchTab('backlog')">Бэклог</button>
+      </div>
+      <div id="launch-panel-plan" role="tabpanel" aria-labelledby="launch-tab-plan">
       <div class="card">
         <div class="card-title">
           <span>Прогресс запуска <span id="launch-progress-text" style="font-weight:400;color:var(--muted);font-size:.8rem;"></span></span>
@@ -651,6 +656,11 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div class="admin-field" style="margin-bottom:0;flex:2;min-width:200px;"><label>Примечание (необязательно)</label><input type="text" id="lt-note" placeholder=""></div>
           <button class="row-btn" style="background:var(--forest,#1C3A2F);height:38px;color:#fff;" onclick="addLaunchTask()">Добавить</button>
         </div>
+      </div>
+      </div>
+      <div id="launch-panel-backlog" role="tabpanel" aria-labelledby="launch-tab-backlog" hidden>
+        <p style="color:var(--muted);margin-bottom:1rem;">Идеи и отложенные задачи. Для каждой идеи указаны условия запуска и следующие шаги.</p>
+        <div id="launch-backlog-items" aria-live="polite"></div>
       </div>
     </div>
 
@@ -1397,6 +1407,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     <!-- ══ ВЛАДЕЛЬЦЫ САЛОНОВ ══ -->
     <div id="sec-owners" style="display:none;">
+      <button class="row-btn" style="margin-bottom:1rem" onclick="openPayoutReports('owner')">Отчёты к договорам</button>
       <div class="payout-schedule-card">
         <div class="payout-schedule-icon">📅</div>
         <div class="payout-schedule-content">
@@ -2065,6 +2076,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
     <!-- ══ PARTNERS ══ -->
 
     <div id="sec-partners" style="display:none;">
+      <button class="row-btn" style="margin-bottom:1rem" onclick="openPayoutReports('partner')">Отчёты к договорам</button>
       <div class="payout-schedule-card">
         <div class="payout-schedule-icon">📅</div>
         <div class="payout-schedule-content">
@@ -2907,7 +2919,7 @@ async function showSection(id) {
     btn.style.display = showGlobalPeriod ? '' : 'none';
   });
 
-  if (id === 'launch')      await renderLaunchTasks();
+  if (id === 'launch')      await showLaunchTab(launchActiveTab);
   if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo(), loadOperationsCenter()]); renderDashboard(); }
   if (id === 'bsc')         await renderBscDashboard();
   if (id === 'tasks')       await loadTaskControl();
@@ -3179,6 +3191,55 @@ function switchPointTab(tab) {
 // ── ДАШБОРД ────────────────────────────────────────────────────────
 // ── ПЛАН ЗАПУСКА ────────────────────────────────────────────────────
 let launchTasksData = [];
+let launchActiveTab = 'plan';
+
+async function showLaunchTab(tab) {
+  launchActiveTab = tab === 'backlog' ? 'backlog' : 'plan';
+  ['plan', 'backlog'].forEach(function(name) {
+    const active = name === launchActiveTab;
+    document.getElementById('launch-panel-' + name).hidden = !active;
+    const button = document.getElementById('launch-tab-' + name);
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  if (launchActiveTab === 'backlog') await renderLaunchBacklog();
+  else await renderLaunchTasks();
+}
+
+function backlogList(title, values) {
+  if (!Array.isArray(values) || !values.length) return '';
+  return '<div style="margin-top:.8rem;"><strong>' + taskEsc(title) + '</strong><ul style="padding-left:1.3rem;margin:.4rem 0;">' + values.map(function(value) {
+    const text = typeof value === 'object' ? (value.done ? '✓ ' : '') + value.text : value;
+    return '<li style="margin:.3rem 0;overflow-wrap:anywhere;">' + taskEsc(text) + '</li>';
+  }).join('') + '</ul></div>';
+}
+
+async function renderLaunchBacklog() {
+  const holder = document.getElementById('launch-backlog-items');
+  holder.textContent = 'Загружаем бэклог…';
+  try {
+    const response = await authFetch('/api/backlog');
+    if (!response.ok) throw new Error('Не удалось загрузить бэклог');
+    const data = await response.json();
+    const items = (data.items || []).concat(data.legacy_items || []);
+    holder.innerHTML = items.length ? items.map(function(item) {
+      return '<article class="card" style="overflow-wrap:anywhere;">' +
+        '<div style="font-size:.75rem;color:var(--muted);margin-bottom:.4rem;">' + taskEsc(item.category) + ' · ' + taskEsc(item.status_label || 'Запланировано') + '</div>' +
+        '<h3 style="margin:0 0 .6rem;font-size:1rem;">' + taskEsc(item.title) + '</h3>' +
+        '<p>' + taskEsc(item.summary) + '</p>' +
+        (item.owner ? '<p style="margin-top:.6rem;"><strong>Ответственный:</strong> ' + taskEsc(item.owner) + '</p>' : '') +
+        (item.priority_label ? '<p><strong>Приоритет:</strong> ' + taskEsc(item.priority_label) + '</p>' : '') +
+        (item.blocker ? '<p style="margin-top:.6rem;"><strong>Что требуется:</strong> ' + taskEsc(item.blocker) + '</p>' : '') +
+        backlogList('Условия запуска', item.return_conditions) +
+        backlogList('Следующие шаги', item.next_steps) +
+        (item.pilot || item.planned_site || item.planned_admin || item.success_criteria ? '<details style="margin-top:.8rem;"><summary style="cursor:pointer;">Подробности идеи</summary>' +
+          backlogList('Пилот', item.pilot) + backlogList('На сайте', item.planned_site) + backlogList('В админке', item.planned_admin) + backlogList('Критерии результата', item.success_criteria) + '</details>' : '') + '</article>';
+    }).join('') : '<div class="card">В бэклоге пока нет задач.</div>';
+  } catch (error) {
+    holder.innerHTML = '<div class="card">Не удалось загрузить бэклог. <button class="row-btn" onclick="renderLaunchBacklog()">Повторить</button></div>';
+  }
+}
+
 
 async function renderLaunchTasks() {
   const res = await authFetch('/api/launch-tasks');
@@ -5680,7 +5741,7 @@ function renderOwnerPayoutHistory(payouts) {
       '<td>' + escapeOrderCell(payout.point_name || '—') + '</td>' +
       '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
       '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '</td>' +
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><button class="row-btn" onclick="openPayoutReportForPayment(\'owner\', ' + Number(payout.id) + ')">Отчёт</button></td>' +
       '</tr>';
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплат владельцам пока не зафиксировано</td></tr>';
 }
@@ -6431,7 +6492,7 @@ function renderPartnerPayoutHistory(payouts) {
       '<td>' + (payout.manager_name ? escapeOrderCell(payout.manager_name) : '—') + '</td>' +
       '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
       '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '</td>' +
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><button class="row-btn" onclick="openPayoutReportForPayment(\'partner\', ' + Number(payout.id) + ')">Отчёт</button></td>' +
       '</tr>';
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплат пока не зафиксировано</td></tr>';
 }
@@ -7526,5 +7587,6 @@ if ('serviceWorker' in navigator) {
 }
 
 </script>
+<script src="/payout-reports.js"></script>
 </body>
 </html>

@@ -1550,5 +1550,6 @@ ensureColumn('manager_points', 'referred_owner_amount', 'INTEGER');
   console.log('Миграция: warehouse_stock переведён на раздельные склады по городам (существующие остатки отнесены к Красноярску).');
 })();
 
+require('./payout-reports').initializeReports(db);
 module.exports = db;
 module.exports.DB_PATH = DB_PATH;
