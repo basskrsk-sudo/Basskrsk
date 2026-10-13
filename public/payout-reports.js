@@ -29,7 +29,7 @@ function ensureReportModal() {
   modal.innerHTML = `<div role="dialog" aria-modal="true" aria-labelledby="pr-title" style="background:#fff;border-radius:12px;max-width:850px;margin:20px auto;padding:20px;color:#222;">
     <button class="row-btn" style="float:right;" onclick="document.getElementById('payout-report-modal').style.display='none'">Закрыть</button>
     <h2 id="pr-title">Отчёт к договору</h2><p style="font-size:.8rem;">Формирование отчёта не переводит деньги и не отмечает выплату. Для PDF откройте документ и выберите «Печать».</p>
-    <div id="pr-form"><label>Получатель <select id="pr-recipient" style="width:100%;margin-bottom:12px;"></select></label>
+    <div id="pr-form"><label>Получатель <select id="pr-recipient" onchange="loadRecipientBonuses()" style="width:100%;margin-bottom:12px;"></select></label>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
       <button class="row-btn" onclick="setReportPeriod('previous')">Последняя закрытая половина месяца</button>
       <button class="row-btn" onclick="setReportPeriod('14')">Последние 14 полных дней</button>
@@ -46,6 +46,7 @@ function ensureReportModal() {
     <label>Банковский платёж при наличии <input id="pr-payment-reference" style="width:100%;" maxlength="1200"></label>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;"><button class="row-btn" onclick="generatePayoutReport(false)">Предпросмотр</button><button class="row-btn" onclick="generatePayoutReport(true)">Сформировать и сохранить</button></div></div>
     <p id="pr-error" role="alert" style="color:#a22;"></p><div id="pr-result"></div>
+    <div id="pr-bonuses"></div>
     <h3>Сохранённые отчёты</h3><div id="pr-archive"></div>
   </div>`;
   document.body.appendChild(modal);
@@ -62,15 +63,17 @@ async function openPayoutReports(role) {
   ensureReportModal(); payoutReportRole = role; payoutReportDocument = null;
   document.getElementById('payout-report-modal').style.display = 'block';
   document.getElementById('pr-form').style.display = 'block';
-  document.getElementById('pr-title').textContent = role === 'owner' ? 'Отчёт владельца салона' : 'Отчёт грумера';
+  document.getElementById('pr-title').textContent = role === 'owner' ? 'Отчёт владельца салона' : role === 'manager' ? 'Отчёт менеджера' : 'Отчёт грумера';
   document.getElementById('pr-result').innerHTML = '';
   document.getElementById('pr-error').textContent = '';
   document.getElementById('pr-recipient').innerHTML = '';
+  document.getElementById('pr-bonuses').innerHTML = '';
   for (const field of ['contract-number','contract-date','principal','recipient-details','actions','tax-note','payment-reference']) document.getElementById('pr-' + field).value = '';
   setReportPeriod('previous');
   try {
     const data = await reportRequest('/api/payout-reports/recipients?role=' + role);
     document.getElementById('pr-recipient').innerHTML = data.recipients.map(r => `<option value="${Number(r.id)}">${reportEscape(r.full_name)} · ${reportEscape(r.code)}</option>`).join('');
+    await loadRecipientBonuses();
     await loadPayoutReportArchive();
   } catch (error) { document.getElementById('pr-error').textContent = error.message; }
 }
@@ -86,6 +89,7 @@ function displayPayoutReport(data) {
   document.getElementById('pr-result').innerHTML = `<p><strong>${r.id ? 'Сохранён отчёт № ' + Number(r.id) : 'Предпросмотр без сохранения'}.</strong> Заказов: ${r.items.length}; начислено ${Number(r.accrued).toLocaleString('ru-RU')} ₽${r.kind === 'payout' ? '; выплата ' + Number(r.payout_amount).toLocaleString('ru-RU') + ' ₽' : '; ещё не выплачено ' + Number(r.unpaid).toLocaleString('ru-RU') + ' ₽'}.</p>
   <button class="row-btn" onclick="openPrintablePayoutReport()">Открыть для печати / PDF</button> <button class="row-btn" onclick="downloadPayoutReport()">Скачать HTML</button>
   <ul style="padding-left:20px;font-size:.8rem;">${r.warnings.map(w => '<li>' + reportEscape(w) + '</li>').join('')}</ul>`;
+  if (r.version >= 2) document.getElementById('pr-result').innerHTML += `<p>Комиссия: ${Number(r.commission_accrued).toLocaleString('ru-RU')} ₽; бонусы: ${Number(r.bonus_accrued).toLocaleString('ru-RU')} ₽.${r.kind==='period' ? '<br>Фактические выплаты бонусов за период: '+(r.bonus_payments || []).reduce((s,b)=>s+Number(b.amount),0).toLocaleString('ru-RU')+' ₽ (показаны отдельно от начислений).' : ''}</p>`;
 }
 
 let reportGenerationRunning = false;
@@ -108,17 +112,43 @@ async function loadSavedPayoutReport(id) {
   catch (error) { document.getElementById('pr-error').textContent = error.message; }
 }
 
-async function openPayoutReportForPayment(role, id) {
+async function openPayoutReportForPayment(role, id, payoutType = 'commission') {
   ensureReportModal(); payoutReportRole = role; payoutReportDocument = null;
   document.getElementById('payout-report-modal').style.display = 'block';
   document.getElementById('pr-form').style.display = 'none';
   document.getElementById('pr-result').textContent = 'Загружаем…';
+  document.getElementById('pr-bonuses').innerHTML = '';
   document.getElementById('pr-error').textContent = '';
   document.getElementById('pr-title').textContent = 'Отчёт по выплате № ' + id;
   try {
-    displayPayoutReport(await reportRequest('/api/payout-reports/from-payout', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role,payout_id:id})}));
+    displayPayoutReport(await reportRequest('/api/payout-reports/from-payout', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role,payout_id:id,payout_type:payoutType})}));
     await loadPayoutReportArchive();
   } catch (error) { document.getElementById('pr-result').textContent = ''; document.getElementById('pr-error').textContent = error.message; }
+}
+
+async function loadRecipientBonuses() {
+  const role=payoutReportRole, recipient=Number(document.getElementById('pr-recipient').value);
+  if (!recipient) return;
+  try {
+    const data=await reportRequest('/api/payout-reports/bonuses?role='+role+'&recipient_id='+recipient);
+    if (role!==payoutReportRole || recipient!==Number(document.getElementById('pr-recipient').value)) return;
+    const pending=data.pending.map(b=>`<p>${reportEscape(b.point_name)} · ${Number(b.amount).toLocaleString('ru-RU')} ₽ · начислено, не выплачено ${role==='manager' ? '(фиксация в разделе менеджеров)' : `<button class="row-btn" onclick="markReferralBonusPaid(${Number(b.manager_point_id)},${Number(b.amount)})">Зафиксировать перевод</button>`}</p>`).join('');
+    const paid=data.paid.map(b=>`<p>${reportEscape(b.point_name)} · ${Number(b.amount).toLocaleString('ru-RU')} ₽ · ${reportEscape(b.paid_at)} <button class="row-btn" onclick="openPayoutReportForPayment('${role}',${Number(b.payout_id)},'${role==='manager'?'launch_bonus':'referral_bonus'}')">Отчёт по выплате</button></p>`).join('');
+    document.getElementById('pr-bonuses').innerHTML='<h3>Бонусы за привлечение точек</h3>'+ (pending||'<p>Невыплаченных начисленных бонусов нет.</p>')+paid+'<p style="font-size:.8rem">Фиксируйте только уже выполненный перевод. Эта кнопка не отправляет деньги или сообщения.</p>';
+  } catch(error) {document.getElementById('pr-error').textContent=error.message;}
+}
+
+let referralBonusSaving=false;
+async function markReferralBonusPaid(managerPointId,amount) {
+  if (referralBonusSaving) return;
+  const select=document.getElementById('pr-recipient'), role=payoutReportRole,recipient=Number(select.value);
+  if (!confirm('Подтвердите, что '+amount.toLocaleString('ru-RU')+' ₽ уже переведены получателю '+select.options[select.selectedIndex].text+'. Записать выплату бонуса и сохранить отчёт?')) return;
+  referralBonusSaving=true;
+  try {
+    const data=await reportRequest('/api/payout-reports/bonus-payouts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role,recipient_id:recipient,manager_point_id:managerPointId,expected_amount:amount,confirm_transferred:true})});
+    displayPayoutReport(data); await loadRecipientBonuses(); await loadPayoutReportArchive();
+  } catch(error) {document.getElementById('pr-error').textContent=error.message;}
+  finally {referralBonusSaving=false;}
 }
 
 function payoutReportBlob() { return URL.createObjectURL(new Blob([payoutReportDocument], {type:'text/html;charset=utf-8'})); }

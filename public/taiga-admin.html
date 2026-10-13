@@ -2112,6 +2112,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
     </div>
 
     <div id="sec-managers" style="display:none;">
+      <button class="row-btn" style="margin-bottom:1rem" onclick="openPayoutReports('manager')">Отчёты к договорам</button>
 
       <div class="payout-schedule-card">
         <div class="payout-schedule-icon">📅</div>
@@ -5663,7 +5664,7 @@ function renderManagerPayoutHistory(payouts) {
       '<td style="font-weight:500;">' + escapeOrderCell(payout.manager_name) + '</td>' +
       '<td>' + type + '</td><td>' + details + '</td>' +
       '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '</td></tr>';
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><button class="row-btn" onclick="openPayoutReportForPayment(\'manager\', ' + Number(payout.id) + ', \'' + (payout.payout_type === 'launch_bonus' ? 'launch_bonus' : 'commission') + '\')">Отчёт</button></td></tr>';
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплаты менеджерам пока не зафиксированы</td></tr>';
 }
 

@@ -102,18 +102,19 @@ async function checkAndPayManagerBonus(pointId) {
   const groomerAmount = groomerReferrer ? REFERRAL_SPLIT : null;
   const ownerAmount = ownerReferrer ? REFERRAL_SPLIT : null;
 
-  db.prepare(`
+  const accrued = db.prepare(`
     UPDATE manager_points
-    SET bonus_paid = 1, bonus_manager_amount = ?,
+    SET bonus_paid = 1, bonus_accrued_at = datetime('now'), bonus_manager_amount = ?,
         referred_groomer_id = ?, referred_groomer_amount = ?,
         referred_owner_id = ?, referred_owner_amount = ?
-    WHERE id = ?
+    WHERE id = ? AND bonus_paid = 0
   `).run(
     managerAmount,
     groomerReferrer ? groomerReferrer.id : null, groomerAmount,
     ownerReferrer ? ownerReferrer.id : null, ownerAmount,
     mgrPoint.id
   );
+  if (!accrued.changes) return;
 
   const manager = db.prepare('SELECT * FROM managers WHERE id = ?').get(mgrPoint.manager_id);
 

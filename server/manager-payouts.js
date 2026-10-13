@@ -2,10 +2,11 @@
 'use strict';
 
 const db = require('./db');
+const { snapshotPayout, snapshotBonusPayout } = require('./payout-reports');
 
 function getManagerUnpaidOrders(managerId) {
   return db.prepare(`
-    SELECT o.id, o.order_code, o.total, o.point_id,
+    SELECT o.id, o.order_code, o.total, o.point_id, o.created_at,
            p.name AS point_name, mp.commission_rate
     FROM orders o
     JOIN points p ON p.id = o.point_id AND p.manager_id = ?
@@ -31,7 +32,7 @@ function getManagerUnpaidSummary(managerId) {
 function getLaunchBonusSummary(managerPointId) {
   return db.prepare(`
     SELECT mp.id AS manager_point_id, mp.manager_id, mp.point_id, mp.point_name,
-           mp.bonus_paid AS bonus_accrued,
+           mp.bonus_paid AS bonus_accrued, mp.bonus_accrued_at,
            COALESCE(mp.bonus_manager_amount, 2000) AS amount,
            m.full_name AS manager_name, m.mgr_code,
            bp.id AS payout_id, bp.paid_at
@@ -45,7 +46,7 @@ function getLaunchBonusSummary(managerPointId) {
 function createManagerCommissionPayout(managerId, adminPayload) {
   db.exec('BEGIN IMMEDIATE');
   try {
-    const manager = db.prepare('SELECT id, full_name, mgr_code FROM managers WHERE id = ?').get(managerId);
+    const manager = db.prepare('SELECT id, full_name, mgr_code, inn FROM managers WHERE id = ?').get(managerId);
     if (!manager) throw Object.assign(new Error('Менеджер не найден'), { code: 'MANAGER_NOT_FOUND' });
     const orders = getManagerUnpaidOrders(managerId);
     const amount = orders.reduce((sum, order) => sum + order.commission_amount, 0);
@@ -69,8 +70,10 @@ function createManagerCommissionPayout(managerId, adminPayload) {
       payoutId, order.id, order.order_code, order.point_id, order.point_name,
       order.commission_rate, order.commission_amount
     ));
+    const payout=db.prepare('SELECT * FROM manager_commission_payouts WHERE id = ?').get(payoutId);
+    const report=snapshotPayout(db,'manager',{...manager,code:manager.mgr_code},orders,payout,adminPayload.id);
     db.exec('COMMIT');
-    return db.prepare('SELECT * FROM manager_commission_payouts WHERE id = ?').get(payoutId);
+    return {...payout,report_id:report.id};
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch (_) {}
     throw error;
@@ -94,8 +97,10 @@ function createManagerLaunchBonusPayout(managerPointId, adminPayload) {
       bonus.point_id || null, bonus.point_name, bonus.amount,
       adminPayload.id || null, adminPayload.login || null
     );
+    const payout=db.prepare('SELECT * FROM manager_launch_bonus_payouts WHERE id = ?').get(Number(info.lastInsertRowid));
+    const report=snapshotBonusPayout(db,'manager',{id:bonus.manager_id,full_name:bonus.manager_name,code:bonus.mgr_code},payout,adminPayload.id,'launch_bonus',bonus.bonus_accrued_at);
     db.exec('COMMIT');
-    return db.prepare('SELECT * FROM manager_launch_bonus_payouts WHERE id = ?').get(Number(info.lastInsertRowid));
+    return {...payout,report_id:report.id};
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch (_) {}
     throw error;
