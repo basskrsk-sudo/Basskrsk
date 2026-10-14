@@ -5959,7 +5959,7 @@ async function toggleOwnerActive(id) {
 // ── QR-КОДЫ ДЛЯ ТОЧЕК ─────────────────────────────────────────────
 // Та же логика, что и в кабинете менеджера — здесь без ограничения по
 // "своим" точкам, админ видит и генерирует QR для всех точек сразу.
-const QR_SITE_URL = (window.TAIGA_CONFIG && window.TAIGA_CONFIG.SITE_URL) ? window.TAIGA_CONFIG.SITE_URL : 'https://тайга-корм.рф';
+const QR_SITE_URL = (window.TAIGA_CONFIG && window.TAIGA_CONFIG.SITE_URL) ? window.TAIGA_CONFIG.SITE_URL : 'https://хвостмаркет.рф';
 let QR_POINTS = [];
 let QR_PRODUCTS = [];
 let qrLibLoaded = false;
@@ -6354,7 +6354,7 @@ async function qrDownloadOne(cardId, name) {
   nameLines.forEach(l => { fy += 16; ctx.fillText(l, sz/2, fy); });
   fy += 20;
   ctx.fillStyle = '#D4872A'; ctx.font = '12px Arial';
-  ctx.fillText('тайга-корм.рф', sz/2, fy);
+  ctx.fillText('хвостмаркет.рф', sz/2, fy);
   ctx.fillStyle = '#8A7D6B'; ctx.font = '10px Arial';
   taglineLines.forEach(l => { fy += 13; ctx.fillText(l, sz/2, fy); });
 

@@ -650,7 +650,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
         <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Приглашайте партнёров — получайте 1 000 ₽ за каждого</div>
         <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Бонус за запуск точки — 2 000 ₽ — делится поровну между вами и менеджером, который нашёл саму точку: вам 1 000 ₽, когда точка приглашённого партнёра заработает «Тайге» 2 000 ₽ прибыли.</div>
         <div class="ref-link-wrap">
-          <span class="ref-link" id="ref-link-text">тайга-корм.рф/taiga-register.html?ref=GR-001</span>
+          <span class="ref-link" id="ref-link-text">хвостмаркет.рф/taiga-register.html?ref=GR-001</span>
           <button class="copy-btn" onclick="copyLink('ref-link-text', this)">Скопировать</button>
         </div>
       </div>
@@ -1153,7 +1153,7 @@ async function onPartnerLoginSuccess(data) {
 
   const refLinkEl = document.getElementById('ref-link-text');
   if (refLinkEl && data.user.partner_code) {
-    refLinkEl.textContent = 'тайга-корм.рф/taiga-register.html?ref=' + data.user.partner_code;
+    refLinkEl.textContent = 'хвостмаркет.рф/taiga-register.html?ref=' + data.user.partner_code;
   }
   const customerLinkEl = document.getElementById('customer-link-text');
   const firstPurchasePromoEl = document.getElementById('first-purchase-promo-text');

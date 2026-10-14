@@ -65,7 +65,7 @@ function paymentReturnUrl(req, orderCode, requestedPath) {
   if (configuredBase) return configuredBase + safePath + '?payment_return=' + encodeURIComponent(orderCode);
 
   const forwardedHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
-  const safeHost = /^[a-z0-9.-]+(?::\d+)?$/i.test(forwardedHost) ? forwardedHost : 'xn----7sbal3ajopsm.xn--p1ai';
+  const safeHost = /^[a-z0-9.-]+(?::\d+)?$/i.test(forwardedHost) ? forwardedHost : 'xn--80adktilqfjfx.xn--p1ai';
   const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
   const protocol = forwardedProto === 'http' || forwardedProto === 'https'
     ? forwardedProto

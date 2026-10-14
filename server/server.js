@@ -172,8 +172,8 @@ function serveStatic(req, res, pathname) {
 // Домены-псевдонимы (например, латинское написание для тех, кто не может
 // переключить раскладку) — перенаправляются на основной домен. Так проще для
 // SEO, чем показывать один и тот же сайт на двух доменах одновременно.
-const CANONICAL_HOST = process.env.CANONICAL_HOST || 'xn----7sbal3ajopsm.xn--p1ai'; // тайга-корм.рф
-const ALIAS_HOSTS = (process.env.ALIAS_HOSTS || 'taiga-feed.ru,www.taiga-feed.ru')
+const CANONICAL_HOST = process.env.CANONICAL_HOST || 'xn--80adktilqfjfx.xn--p1ai'; // хвостмаркет.рф
+const ALIAS_HOSTS = (process.env.ALIAS_HOSTS || 'xn----7sbal3ajopsm.xn--p1ai,www.xn----7sbal3ajopsm.xn--p1ai,taiga-feed.ru,www.taiga-feed.ru')
   .split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
 
 const server = http.createServer(async (req, res) => {

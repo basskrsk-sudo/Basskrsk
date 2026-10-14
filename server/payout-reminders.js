@@ -40,7 +40,7 @@ function money(value) {
 }
 
 function cabinetUrl(pathname) {
-  const base = String(process.env.PUBLIC_URL || process.env.SITE_URL || 'https://xn----7sbal3ajopsm.xn--p1ai').replace(/\/$/, '');
+  const base = String(process.env.PUBLIC_URL || process.env.SITE_URL || 'https://xn--80adktilqfjfx.xn--p1ai').replace(/\/$/, '');
   return base + pathname;
 }
 

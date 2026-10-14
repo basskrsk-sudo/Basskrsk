@@ -63,7 +63,7 @@ function buildTaskReminder(task, now = new Date()) {
   if (task.meeting_date) lines.push('Планёрка: ' + task.meeting_date);
   if (task.priority === 'critical') lines.push('Приоритет: критический');
   else if (task.priority === 'high') lines.push('Приоритет: высокий');
-  lines.push('', 'Измените статус кнопкой под сообщением или в админке: ' + String(process.env.PUBLIC_URL || process.env.SITE_URL || 'https://xn----7sbal3ajopsm.xn--p1ai').replace(/\/$/, '') + '/taiga-admin.html');
+  lines.push('', 'Измените статус кнопкой под сообщением или в админке: ' + String(process.env.PUBLIC_URL || process.env.SITE_URL || 'https://xn--80adktilqfjfx.xn--p1ai').replace(/\/$/, '') + '/taiga-admin.html');
   return lines.join('\n');
 }
 

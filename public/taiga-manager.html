@@ -552,7 +552,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <span class="recruit-link" id="recruit-code-display">MGR-2025-001</span>
           <button class="copy-btn" onclick="copyCode()">Скопировать</button>
         </div>
-        <div style="font-size:.78rem;color:var(--purple);opacity:.7;">Также можете поделиться ссылкой: <span id="recruit-link-display">тайга-корм.рф/taiga-register.html?mgr=MGR-2025-001</span></div>
+        <div style="font-size:.78rem;color:var(--purple);opacity:.7;">Также можете поделиться ссылкой: <span id="recruit-link-display">хвостмаркет.рф/taiga-register.html?mgr=MGR-2025-001</span></div>
       </div>
 
       <!-- How to recruit -->
@@ -561,7 +561,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
         <div id="onboard-steps">
           <div class="onboard-step"><div class="step-num">1</div><div><div class="step-title">Найдите грумера или ветклинику</div><div class="step-desc">Подходят любые заведения с трафиком владельцев животных: грумминг, ветеринария, кинология, зоогостиницы. <a href="docs/Скрипт_звонка_грумер-салонам.pdf" target="_blank" style="color:var(--purple);font-weight:600;text-decoration:underline;">📞 Скрипт первого звонка</a> — как договориться о встрече.</div></div></div>
           <div class="onboard-step"><div class="step-num">2</div><div><div class="step-title">Проведите встречу, объясните условия</div><div class="step-desc">Стойка бесплатно, товар на консигнации, оплата онлайн по QR, никаких вложений с их стороны. Владельцу — 5% с выручки точки автоматически; тому, кто реально помогает стойке (сам владелец или сотрудник) — отдельно от 15%. <a href="docs/Путь_покупателя.pdf" target="_blank" style="color:var(--purple);font-weight:600;text-decoration:underline;">🛍️ Путь покупателя</a> — покажите на встрече, как это выглядит для клиента. <a href="docs/Встреча_с_владельцем_и_регистрация.pdf" target="_blank" style="color:var(--purple);font-weight:600;text-decoration:underline;">📋 Разговор и регистрация на месте</a> — пример диалога плюс скриншоты формы.</div></div></div>
-          <div class="onboard-step"><div class="step-num">3</div><div><div class="step-title">Дайте код MGR-2025-001</div><div class="step-desc">Грумер регистрируется на тайга-корм.рф/register и вводит ваш код — точка автоматически закрепляется за вами навсегда.</div></div></div>
+          <div class="onboard-step"><div class="step-num">3</div><div><div class="step-title">Дайте код MGR-2025-001</div><div class="step-desc">Грумер регистрируется на хвостмаркет.рф/register и вводит ваш код — точка автоматически закрепляется за вами навсегда.</div></div></div>
           <div class="onboard-step"><div class="step-num">4</div><div><div class="step-title">Помогите точке выйти на прибыль</div><div class="step-desc">Бонус 2 000 ₽ зачисляется, когда точка заработает «Тайге» 2 000 ₽ прибыли (выручка за вычетом себестоимости, эквайринга и комиссий). Помогите точке сделать первые продажи — расскажите как рекомендовать товар клиентам. <a href="docs/Хвостомат_как_купить_А4.pdf" target="_blank" style="color:var(--purple);font-weight:600;text-decoration:underline;">🖨️ Плакат «Как купить» (А4)</a> — распечатайте и повесьте прямо у стойки, чтобы покупателю не пришлось объяснять на словах.</div></div></div>
           <div class="onboard-step"><div class="step-num">5</div><div><div class="step-title">Следите за активностью</div><div class="step-desc">Residual капает пока точка активна (≥1 продажа/мес): единая ставка 7% на все ваши точки, без градаций. Спящую точку реанимируйте — напомните грумеру или договоритесь о встрече.</div></div></div>
         </div>
@@ -1146,7 +1146,7 @@ async function onMgrLoginSuccess(data) {
   document.getElementById('recruit-code-display').textContent = found.mgr_code;
   fillManagerProfile(found);
   const recruitLinkEl = document.getElementById('recruit-link-display');
-  if (recruitLinkEl) recruitLinkEl.textContent = 'тайга-корм.рф/taiga-register.html?mgr=' + found.mgr_code;
+  if (recruitLinkEl) recruitLinkEl.textContent = 'хвостмаркет.рф/taiga-register.html?mgr=' + found.mgr_code;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
   HvostTelegramConnect.mount({
@@ -1427,7 +1427,7 @@ async function renderManagerOrders() {
 // Та же логика, что раньше жила в отдельном публичном taiga-qr.html —
 // перенесена сюда, в кабинет менеджера (закрыт входом), точки — только
 // свои (MY_POINTS), а не все точки сети целиком.
-const QR_SITE_URL = (window.TAIGA_CONFIG && window.TAIGA_CONFIG.SITE_URL) ? window.TAIGA_CONFIG.SITE_URL : 'https://тайга-корм.рф';
+const QR_SITE_URL = (window.TAIGA_CONFIG && window.TAIGA_CONFIG.SITE_URL) ? window.TAIGA_CONFIG.SITE_URL : 'https://хвостмаркет.рф';
 let QR_PRODUCTS = [];
 let QR_MY_POINTS = [];
 let qrLibLoaded = false;
@@ -1522,7 +1522,7 @@ function qrBuildURL(pointId, productId, cityId) {
   return url;
 }
 // qrcodejs некорректно считает ёмкость для многобайтных UTF-8 строк
-// (кириллический домен тайга-корм.рф всегда даёт "code length overflow") —
+// (кириллический домен хвостмаркет.рф всегда даёт "code length overflow") —
 // для самого QR используем ASCII/punycode-форму, человеку показываем обычную.
 function qrToSafeUrl(rawUrl) {
   try { return new URL(rawUrl).href; }
@@ -1862,7 +1862,7 @@ async function qrDownloadOne(cardId, name, standMode) {
   nameLines.forEach(l => { fy += 16; ctx.fillText(l, sz/2, fy); });
   fy += 20;
   ctx.fillStyle = '#D4872A'; ctx.font = '12px Arial';
-  ctx.fillText('тайга-корм.рф', sz/2, fy);
+  ctx.fillText('хвостмаркет.рф', sz/2, fy);
   ctx.fillStyle = '#8A7D6B'; ctx.font = '10px Arial';
   taglineLines.forEach(l => { fy += 13; ctx.fillText(l, sz/2, fy); });
 
