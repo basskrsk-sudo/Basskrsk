@@ -1101,6 +1101,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="paid">Оплаченные</option>
             </select>
             <button class="row-btn danger" onclick="bulkDeleteOrders()">🗑 Удалить все неоплаченные</button>
+            <button id="recover-order-open" class="row-btn" style="display:none;" onclick="openOrderRecovery()">Восстановить заказ</button>
           </div>
         </div>
         <table class="tbl">
@@ -1121,6 +1122,42 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <tbody id="orders-tbody"></tbody>
         </table>
       </div>
+    </div>
+
+    <div id="order-recovery-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:110;padding:1rem;">
+      <form id="order-recovery-form" onsubmit="submitOrderRecovery(event)" style="background:#fff;border-radius:14px;padding:1.3rem;width:min(720px,100%);max-height:90vh;overflow:auto;">
+        <div style="display:flex;justify-content:space-between;gap:1rem;"><h3>Восстановить оплаченную продажу</h3><button type="button" class="row-btn" onclick="document.getElementById('order-recovery-modal').style.display='none'">Закрыть</button></div>
+        <p style="font-size:.8rem;color:var(--muted);">Для утраченного заказа с самовывозом из точки. Повторная оплата и уведомления о новой продаже не отправляются. Цены, ставку и косточки указывайте на момент продажи.</p>
+        <label>ID платежа ЮKassa<input id="recovery-payment" class="pm-input" required placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></label>
+        <button type="button" class="row-btn" onclick="checkOrderRecoveryPayment()">Проверить платёж</button>
+        <p id="recovery-payment-info" style="font-size:.8rem;white-space:pre-line;"></p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.7rem;">
+          <label>Исходный номер заказа<input id="recovery-code" class="pm-input" required></label>
+          <label>Дата и время по Москве<input id="recovery-date" type="datetime-local" step="1" class="pm-input" required></label>
+          <label>Имя клиента<input id="recovery-name" class="pm-input" value="Клиент" required></label>
+          <label>Телефон<input id="recovery-phone" class="pm-input" required placeholder="+7…"></label>
+          <label>Точка<select id="recovery-point" class="pm-select" required onchange="recoveryPointChanged()"></select></label>
+          <label>Грумер<select id="recovery-partner" class="pm-select" required onchange="recoveryPartnerChanged()"></select></label>
+          <label>Ставка грумера в день продажи, %<input id="recovery-rate" type="number" min="0" max="100" step="0.01" class="pm-input" value="0" required></label>
+        </div>
+        <label style="display:block;margin:.7rem 0;"><input id="recovery-self" type="checkbox"> Это самозаказ грумера</label>
+        <h4>Товары и цены из уведомления о продаже</h4>
+        <div id="recovery-items"></div>
+        <button type="button" class="row-btn" onclick="addRecoveryItem()">Добавить товар</button>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem;margin:.7rem 0;">
+          <label>Сумма оплаты, ₽<input id="recovery-total" type="number" min="1" step="1" class="pm-input" required></label>
+          <label>Скидка без косточек, ₽<input id="recovery-discount" type="number" min="0" step="1" class="pm-input" value="0" required></label>
+          <label>Списано косточек<input id="recovery-used" type="number" min="0" step="1" class="pm-input" value="0" required></label>
+          <label>Начислено косточек<input id="recovery-earned" type="number" min="0" step="1" class="pm-input" value="0" required></label>
+        </div>
+        <label>Остатки<select id="recovery-inventory" class="pm-select" required><option value="">Выберите после сверки</option><option value="already_accounted">Продажа уже учтена в остатках — не списывать</option><option value="deduct">Продажа ещё не учтена — списать товар</option></select></label>
+        <label style="display:block;margin:.7rem 0;"><input id="recovery-adjust-bones" type="checkbox"> Восстановить указанные начисления и списания на балансе клиента</label>
+        <p style="font-size:.78rem;color:var(--muted);">Если баланс уже правильный, галочку не ставьте. Вознаграждения по заказу появятся в отчётах; уже выплаченные суммы нужно сверить отдельно. Реферальные награды и бонус запуска точки автоматически не начисляются.</p>
+        <label>Причина восстановления<textarea id="recovery-reason" class="pm-input" required minlength="5" maxlength="1000" placeholder="Заказ утрачен при восстановлении базы из резервной копии"></textarea></label>
+        <p id="recovery-error" role="alert" style="color:#9B2335;white-space:pre-line;"></p>
+        <button id="recovery-submit" type="submit" class="row-btn">Восстановить заказ</button>
+        <details style="margin-top:1rem;"><summary onclick="loadRecoveryLog()">Журнал восстановлений</summary><div id="recovery-log" style="font-size:.8rem;"></div></details>
+      </form>
     </div>
 
     <!-- ══ CUSTOMERS ══ -->
@@ -4557,6 +4594,7 @@ function escapeOrderCell(value) {
 }
 
 function renderOrders() {
+  document.getElementById('recover-order-open').style.display = currentAdminRole === 'super' ? '' : 'none';
   const filterEl = document.getElementById('orders-status-filter');
   const statusFilter = filterEl ? filterEl.value : 'all';
   const visibleOrders = allOrders.filter(function(order) {
@@ -4574,7 +4612,7 @@ function renderOrders() {
     const isRefunded = o.refund_status === 'refunded';
     const statusCell = isRefunded
       ? '<span class="stock-pill stock-out">↩️ Возврат ' + o.refunded_amount + ' ₽</span>'
-      : '<span class="stock-pill ' + st[1] + '">' + st[0] + '</span>';
+      : '<span class="stock-pill ' + st[1] + '">' + st[0] + '</span>' + (o.recovered ? '<br><small>Восстановлен</small>' : '');
     const deleteBtn = isRefunded
       ? (currentAdminRole === 'super'
           ? '<button class="row-btn danger" onclick="deleteRefundedTestOrder(' + o.id + ', \'' + o.order_code + '\')">✕ Удалить тестовый</button>'
@@ -4606,6 +4644,96 @@ function renderOrders() {
       '<td>' + statusCell + '</td>' +
       '<td class="r">' + actionCell + '</td></tr>';
   }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Заказов с выбранным статусом нет</td></tr>';
+}
+
+let recoveryCatalog = [], recoveryPoints = [], recoveryPartners = [];
+async function loadRecoveryLog() {
+  const box = document.getElementById('recovery-log');
+  try {
+    const res = await authFetch('/api/orders/recovery-log');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    box.innerHTML = (data.entries || []).map(r => '<p><strong>' + escapeOrderCell(r.order_code) + '</strong> · ' + escapeOrderCell(parseOrderDate(r.created_at).toLocaleString('ru-RU')) + '<br>' + escapeOrderCell(r.admin_login || 'Администратор') + ': ' + escapeOrderCell(r.reason) + '<br>ID платежа: ' + escapeOrderCell(r.payment_id) + '</p>').join('') || '<p>Восстановлений пока нет.</p>';
+  } catch (e) { box.textContent = e.message || 'Не удалось загрузить журнал'; }
+}
+async function openOrderRecovery() {
+  if (currentAdminRole !== 'super') return;
+  document.getElementById('order-recovery-form').reset();
+  document.getElementById('recovery-error').textContent = '';
+  document.getElementById('recovery-payment-info').textContent = '';
+  document.getElementById('recovery-items').innerHTML = '';
+  document.getElementById('order-recovery-modal').style.display = 'flex';
+  try {
+    const responses = await Promise.all(['/api/products?all=1', '/api/points?all=1', '/api/partners?days=365'].map(url => authFetch(url)));
+    const data = await Promise.all(responses.map(r => r.json()));
+    responses.forEach((r, i) => { if (!r.ok) throw new Error(data[i].error || 'Не удалось загрузить справочники'); });
+    recoveryCatalog = (data[0].products || []).flatMap(p => p.variants.map(v => ({ id:v.id, name:p.name + ' (' + v.weight + ')', price:v.price })));
+    recoveryPoints = data[1].points || [];
+    recoveryPartners = data[2].partners || [];
+    document.getElementById('recovery-point').innerHTML = '<option value="">Выберите точку</option>' + recoveryPoints.map(p => '<option value="' + escapeOrderCell(p.id) + '">' + escapeOrderCell(p.name + ' — ' + (p.addr || '')) + '</option>').join('');
+    recoveryPointChanged();
+    addRecoveryItem();
+  } catch (e) { document.getElementById('recovery-error').textContent = e.message; }
+}
+function recoveryPointChanged() {
+  const pointId = document.getElementById('recovery-point').value;
+  document.getElementById('recovery-partner').innerHTML = '<option value="">Выберите вариант</option><option value="self">Выбрал сам — без грумера</option>' + recoveryPartners.filter(p => p.point_id === pointId).map(p => '<option value="' + Number(p.id) + '">' + escapeOrderCell(p.full_name) + '</option>').join('');
+  document.getElementById('recovery-rate').value = 0;
+  document.getElementById('recovery-self').checked = false;
+}
+function recoveryPartnerChanged() {
+  const self = document.getElementById('recovery-partner').value === 'self';
+  document.getElementById('recovery-rate').value = self ? 0 : '';
+  document.getElementById('recovery-self').checked = false;
+}
+function addRecoveryItem() {
+  const row = document.createElement('div');
+  row.className = 'recovery-item';
+  row.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap;margin:.6rem 0;';
+  row.innerHTML = '<select class="pm-select recovery-variant" style="flex:1;min-width:200px;" required><option value="">Товар и фасовка</option>' + recoveryCatalog.map(v => '<option value="' + Number(v.id) + '">' + escapeOrderCell(v.name) + '</option>').join('') + '</select>' +
+    '<input class="pm-input recovery-price" type="number" min="0" step="1" placeholder="Цена тогда, ₽" aria-label="Цена в день продажи" required style="width:120px;">' +
+    '<input class="pm-input recovery-qty" type="number" min="1" max="1000" step="1" value="1" aria-label="Количество" required style="width:65px;">' +
+    '<button type="button" class="row-btn" onclick="this.parentElement.remove()">Удалить</button>';
+  document.getElementById('recovery-items').appendChild(row);
+}
+async function checkOrderRecoveryPayment() {
+  const info = document.getElementById('recovery-payment-info');
+  info.textContent = 'Проверяем оплату…';
+  try {
+    const res = await authFetch('/api/orders/recovery/check', { method:'POST', body:{ payment_id:document.getElementById('recovery-payment').value.trim() } });
+    const p = await res.json();
+    if (!res.ok) throw new Error(p.error);
+    document.getElementById('recovery-code').value = p.order_code;
+    document.getElementById('recovery-total').value = p.total;
+    if (p.created_at) document.getElementById('recovery-date').value = new Date(new Date(p.created_at).getTime() + 10800000).toISOString().slice(0, 19);
+    info.textContent = 'Оплата подтверждена: ' + p.total + ' ₽. Номер: ' + (p.order_code || 'не указан в платеже') + '.\nСверьте дату и состав с исходным уведомлением.';
+  } catch (e) { info.textContent = e.message || 'Ошибка проверки платежа'; }
+}
+async function submitOrderRecovery(event) {
+  event.preventDefault();
+  const value = id => document.getElementById('recovery-' + id).value;
+  const checked = id => document.getElementById('recovery-' + id).checked;
+  const button = document.getElementById('recovery-submit');
+  const error = document.getElementById('recovery-error');
+  error.textContent = '';
+  let date = value('date');
+  if (date.length === 16) date += ':00';
+  const body = { payment_id:value('payment').trim(), order_code:value('code').trim(), created_at:date + '+03:00',
+    customer_name:value('name'), customer_phone:value('phone'), point_id:value('point'), partner_id:value('partner') === 'self' ? null : Number(value('partner')),
+    commission_percent:Number(value('rate')), is_self_order:checked('self'), total:Number(value('total')), discount:Number(value('discount')),
+    bones_used:Number(value('used')), bones_earned:Number(value('earned')), adjust_bones:checked('adjust-bones'), inventory_mode:value('inventory'), reason:value('reason'),
+    items:Array.from(document.querySelectorAll('.recovery-item')).map(row => ({ variant_id:Number(row.querySelector('.recovery-variant').value), price:Number(row.querySelector('.recovery-price').value), qty:Number(row.querySelector('.recovery-qty').value) })) };
+  if (!confirm('Восстановить заказ ' + body.order_code + ' на ' + body.total + ' ₽?\n' + (body.inventory_mode === 'deduct' ? 'Товар будет списан с точки.' : 'Остатки не изменятся.') + '\n' + (body.adjust_bones ? 'Баланс косточек изменится.' : 'Баланс косточек не изменится.'))) return;
+  button.disabled = true;
+  try {
+    const res = await authFetch('/api/orders/recovery', { method:'POST', body });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось восстановить заказ');
+    document.getElementById('order-recovery-modal').style.display = 'none';
+    await loadOrders(); renderOrders();
+    alert('Заказ ' + data.order.order_code + ' восстановлен.');
+  } catch (e) { error.textContent = e.message; }
+  finally { button.disabled = false; }
 }
 
 // ── УДАЛЕНИЕ ЗАКАЗОВ (для очистки тестовых данных) ──────────────────

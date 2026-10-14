@@ -1,14 +1,16 @@
 // routes-orders.js — просмотр заказов для админки.
-// Создание заказов теперь происходит только через routes-payment.js:
+// Обычное создание заказов происходит через routes-payment.js:
 // сначала /api/create-payment (status='pending'), затем вебхук ЮKassa
 // подтверждает оплату и переводит заказ в 'paid'. Прямого способа
-// создать "оплаченный" заказ в обход реальной оплаты больше нет —
-// это было осознанно убрано при переходе на серверную проверку платежей.
+// восстановление утраченного заказа доступно супер-админу после проверки
+// реального платежа ЮKassa и фиксируется отдельным журналом.
 'use strict';
 
 const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth, requireSuperAdmin } = require('./routes-auth');
+const yookassa = require('./yookassa');
+const { initializeRecovery, verifyRecoveryPayment, recoverOrder } = require('./order-recovery');
 const { reverseOrderSideEffects } = require('./order-reversal');
 const {
   releaseOrderReservation,
@@ -17,6 +19,25 @@ const {
 } = require('./reservations');
 
 function registerOrderRoutes(router) {
+  initializeRecovery(db);
+  router.get('/api/orders/recovery-log', (req, res, ctx) => {
+    if (!requireSuperAdmin(req, res, ctx)) return;
+    sendJson(res, 200, { entries: db.prepare('SELECT order_code, payment_id, admin_login, reason, created_at FROM order_recovery_log ORDER BY id DESC LIMIT 100').all() });
+  });
+  router.post('/api/orders/recovery/check', async (req, res, ctx) => {
+    if (!requireSuperAdmin(req, res, ctx)) return;
+    try {
+      const p = await verifyRecoveryPayment(db, yookassa, ctx.body?.payment_id);
+      sendJson(res, 200, { payment_id: p.id, order_code: p.metadata?.order_code || '', total: Number(p.amount.value), created_at: p.created_at, captured_at: p.captured_at });
+    } catch (e) { sendJson(res, e.statusCode || 502, { error: e.message }); }
+  });
+  router.post('/api/orders/recovery', async (req, res, ctx) => {
+    const admin = requireSuperAdmin(req, res, ctx);
+    if (!admin) return;
+    try {
+      sendJson(res, 201, { ok: true, order: await recoverOrder(db, yookassa, ctx.body || {}, admin) });
+    } catch (e) { sendJson(res, e.statusCode || 500, { error: e.message }); }
+  });
   // GET /api/orders — список заказов для админки (последние сверху)
   router.get('/api/orders', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
@@ -25,12 +46,14 @@ function registerOrderRoutes(router) {
     const status = ctx.query.status; // необязательный фильтр: 'paid'|'pending'|'failed'
     const orders = status
       ? db.prepare(`
-          SELECT o.*, COALESCE(o.partner_name, p.full_name) AS partner_name
+          SELECT o.*, COALESCE(o.partner_name, p.full_name) AS partner_name,
+            EXISTS(SELECT 1 FROM order_recovery_log r WHERE r.order_id = o.id) AS recovered
           FROM orders o LEFT JOIN partners p ON p.id = o.partner_id
           WHERE o.status = ? ORDER BY o.id DESC LIMIT ?
         `).all(status, limit)
       : db.prepare(`
-          SELECT o.*, COALESCE(o.partner_name, p.full_name) AS partner_name
+          SELECT o.*, COALESCE(o.partner_name, p.full_name) AS partner_name,
+            EXISTS(SELECT 1 FROM order_recovery_log r WHERE r.order_id = o.id) AS recovered
           FROM orders o LEFT JOIN partners p ON p.id = o.partner_id
           ORDER BY o.id DESC LIMIT ?
         `).all(limit);
