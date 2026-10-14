@@ -178,7 +178,9 @@ const ALIAS_HOSTS = (process.env.ALIAS_HOSTS || 'xn----7sbal3ajopsm.xn--p1ai,www
 
 const server = http.createServer(async (req, res) => {
   const hostHeader = (req.headers.host || '').split(':')[0].toLowerCase();
-  if (ALIAS_HOSTS.includes(hostHeader)) {
+  // Перенаправляем браузерные переходы, сохраняя старые POST-адреса
+  // вебхуков ЮKassa и ботов до обновления настроек интеграций.
+  if (ALIAS_HOSTS.includes(hostHeader) && (req.method === 'GET' || req.method === 'HEAD')) {
     res.writeHead(301, { Location: `https://${CANONICAL_HOST}${req.url}` });
     res.end();
     return;
