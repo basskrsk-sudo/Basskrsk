@@ -88,6 +88,11 @@ test('payment lookup rejects unconfigured gateways and malformed ids', async () 
   const {gateway}=fixture(); await assert.rejects(verifyRecoveryPayment(db,gateway,'../payments'), /ID платежа/);
   await assert.rejects(verifyRecoveryPayment(db,{...gateway,isConfigured:()=>false},paymentId), /не настроена/);
 });
+test('Telegram time in Krasnoyarsk is converted to UTC without a four-hour shift', async () => {
+  const {body,gateway} = fixture({created_at:'2026-10-08T14:08:13+07:00'});
+  await recoverOrder(db,gateway,body,admin);
+  assert.equal(db.prepare('SELECT created_at FROM orders').get().created_at,'2026-10-08 07:08:13');
+});
 test('recovery log prevents reimport even if the order was later deleted', async () => {
   const {body,gateway}=fixture(); await recoverOrder(db,gateway,body,admin);
   db.exec('DELETE FROM order_items; DELETE FROM orders');

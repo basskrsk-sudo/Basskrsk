@@ -39,10 +39,11 @@ async function recoverOrder(db, gateway, body, admin) {
   if (phone.length === 11 && phone[0] === '8') phone = '7' + phone.slice(1);
   if (!/^7\d{10}$/.test(phone)) fail('Укажите телефон клиента в формате +7…');
   const dateText = String(body.created_at || '');
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+03:00$/.test(dateText)) fail('Укажите дату и время заказа по Москве');
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+0[37]:00$/.test(dateText)) fail('Укажите дату, время и часовой пояс заказа');
   const date = new Date(dateText);
+  const offsetMs = Number(dateText.slice(20, 22)) * 3600000;
   if (!Number.isFinite(date.getTime()) || date.getTime() > Date.now() ||
-      new Date(date.getTime() + 10800000).toISOString().slice(0, 19) !== dateText.slice(0, 19)) fail('Некорректная дата заказа');
+      new Date(date.getTime() + offsetMs).toISOString().slice(0, 19) !== dateText.slice(0, 19)) fail('Некорректная дата заказа');
   const createdAt = date.toISOString().slice(0, 19).replace('T', ' ');
   if (!['already_accounted', 'deduct'].includes(body.inventory_mode)) fail('Укажите, учтено ли списание товара в остатках');
   if (typeof body.adjust_bones !== 'boolean') fail('Укажите, нужно ли восстанавливать баланс косточек');
