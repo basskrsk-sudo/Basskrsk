@@ -1047,6 +1047,8 @@ function resolveReportFile(record, format) {
 }
 
 module.exports = {
+  findFont,
+  writePdfFromJpegs,
   REPORTS_DIR,
   buildSpreadsheet,
   collectWeeklyReport,

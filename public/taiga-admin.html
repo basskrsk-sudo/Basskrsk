@@ -594,6 +594,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   <button class="nav-item" data-group="network" onclick="showSection('points')"><span class="nav-dot"></span> Сеть</button>
   <button class="nav-item" data-group="promotion" onclick="showSection('news')"><span class="nav-dot"></span> Продвижение <span id="reviews-pending-badge" style="display:none;background:var(--amber);color:#fff;border-radius:50px;font-size:.68rem;padding:.05rem .45rem;margin-left:.3rem;"></span></button>
   <button class="nav-item" data-group="finance" onclick="showSection('economics')"><span class="nav-dot"></span> Финансы</button>
+  <button class="nav-item" data-group="reports" onclick="showSection('payout-reports')"><span class="nav-dot"></span> Отчёты партнёрам</button>
   <button class="nav-item" data-group="system" onclick="showSection('launch')"><span class="nav-dot"></span> Система</button>
   <div class="sidebar-footer">
     <span>ИП Соколов В.П.</span>
@@ -1084,6 +1085,19 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <tbody id="weekly-reports-tbody"></tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <div id="sec-payout-reports" style="display:none;">
+      <div class="card">
+        <div class="card-title">Отчёты партнёрам за период</div>
+        <p style="line-height:1.6;">Сформируйте наглядный расчёт для партнёра: период, заказы, база, процент по каждому заказу, начисления и сумма к выплате. Отчёт можно просмотреть, сохранить в архиве и скачать в PDF.</p>
+        <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin:1rem 0;">
+          <button class="row-btn" style="background:var(--forest);color:#fff;padding:.8rem;" onclick="openPayoutReports('partner')">Отчёт грумеру</button>
+          <button class="row-btn" onclick="openPayoutReports('owner')">Отчёт владельцу салона</button>
+          <button class="row-btn" onclick="openPayoutReports('manager')">Отчёт менеджеру</button>
+        </div>
+        <p style="font-size:.85rem;color:var(--muted);">В окне отчёта выберите партнёра и даты. Сохранённые документы останутся в архиве с исходными расчётами. Само формирование отчёта не фиксирует выплату денег.</p>
       </div>
     </div>
 
@@ -2883,15 +2897,17 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
 }
 
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'weekly-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
+const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
 const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
 const sectionGroups = {
+  'payout-reports':'reports',
   dashboard:'home', bsc:'strategy', tasks:'tasks', orders:'sales', customers:'sales',
   products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
   points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', leads:'network',
   news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'business-expenses':'finance', 'weekly-reports':'finance',
   launch:'system', guides:'system', audit:'system', admins:'system',
 };
+titles['payout-reports'] = 'Отчёты партнёрам';
 const contextTabs = {
   sales: [['orders','Заказы'], ['customers','Клиенты']],
   inventory: [['products','Каталог'], ['stock','На точках'], ['warehouse','Центральный склад'], ['restock','Перемещения']],
@@ -2965,6 +2981,7 @@ async function showSection(id) {
   if (id === 'economics')   await renderEconomics();
   if (id === 'business-expenses') await renderBusinessExpenses();
   if (id === 'weekly-reports') await renderWeeklyReports();
+  if (id === 'payout-reports') await openPayoutReports('partner');
   if (id === 'orders')      { await loadOrders(); renderOrders(); }
   if (id === 'customers')   { await loadCustomers(); renderCustomers(); }
   if (id === 'stock')       { await loadStockTablePoints(); await loadAdminProducts(); renderStock(); }

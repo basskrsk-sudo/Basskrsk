@@ -23,6 +23,18 @@ function initializeReports(db) {
     db.exec('ALTER TABLE payout_reports ADD COLUMN source_key TEXT');
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_payout_report_source ON payout_reports(source_key)');
+  db.exec(`CREATE TABLE IF NOT EXISTS payout_report_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id INTEGER NOT NULL REFERENCES payout_reports(id),
+    target_chat_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    admin_id INTEGER, admin_login TEXT,
+    message_id TEXT, error TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    sent_at TEXT,
+    UNIQUE(report_id, target_chat_id)
+  )`);
   require('./report-bonuses').initializeBonusLedger(db);
 }
 
@@ -53,6 +65,8 @@ function buildReport(role, recipient, orders, options = {}) {
     base: o.total == null ? null : Number(o.total),
     rate: o.commission_rate == null ? null : Number(o.commission_rate),
     amount: Number(o.commission_amount), already_paid: !!o.already_paid,
+    point: o.point_name || recipient.point_name || null,
+    point_id: o.point_id || recipient.point_id || null,
   }));
   const sum = (key, list = items) => list.reduce((n, item) => n + Number(item[key] || 0), 0);
   const knownBase = items.every((item) => item.base != null);
@@ -69,6 +83,7 @@ function buildReport(role, recipient, orders, options = {}) {
     kind: options.kind || 'period', period_start: options.start || null, period_end: options.end || null,
     date_basis: 'created_at_utc', generated_at: new Date().toISOString(),
     items, bonuses, bonus_payments: options.bonus_payments || [], undated_bonuses: options.undated_bonuses || [],
+    point_totals: role === 'manager' ? summarizePoints(items) : [],
     commission_accrued: sum('amount'), bonus_accrued: bonusAccrued,
     base_total: knownBase ? sum('base') : null, accrued: sum('amount') + bonusAccrued,
     already_paid: sum('amount', items.filter((i) => i.already_paid)) + bonusPaid,
@@ -98,13 +113,13 @@ function generatePeriodReport(db, role, id, start, end, meta) {
   if (!recipient) throw Object.assign(new Error('Получатель не найден'), { statusCode: 404 });
   if (role === 'manager') {
     const orders = db.prepare(`SELECT o.order_code, o.created_at, o.total, mp.commission_rate,
-      NULL AS paid_commission, 0 AS already_paid
+      NULL AS paid_commission, 0 AS already_paid, NULL AS payout_id, p.name AS point_name, p.id AS point_id
       FROM orders o JOIN points p ON p.id = o.point_id
       JOIN manager_points mp ON mp.point_id = p.id AND mp.manager_id = p.manager_id
       LEFT JOIN manager_commission_payout_items pi ON pi.order_id = o.id
       WHERE p.manager_id = ? AND pi.id IS NULL AND o.status = 'paid' AND o.created_at >= ? AND o.created_at < datetime(?, '+1 day')
       UNION ALL
-      SELECT pi.order_code,o.created_at,NULL,pi.commission_rate,pi.commission_amount,1
+      SELECT pi.order_code,o.created_at,NULL,pi.commission_rate,pi.commission_amount,1,pi.payout_id,pi.point_name,pi.point_id
       FROM manager_commission_payout_items pi JOIN manager_commission_payouts cp ON cp.id = pi.payout_id
       JOIN orders o ON o.id = pi.order_id
       WHERE cp.manager_id = ? AND o.status = 'paid' AND o.created_at >= ? AND o.created_at < datetime(?, '+1 day')
@@ -112,12 +127,12 @@ function generatePeriodReport(db, role, id, start, end, meta) {
         commission_amount: o.already_paid ? o.paid_commission : Math.round(Number(o.total)*Number(o.commission_rate)),
         ...(o.already_paid ? {total:null} : {}),
       }));
-    return buildReport(role,recipient,orders,{start,end,metadata:meta,...require('./report-bonuses').periodBonuses(db,role,id,start,end)});
+    return buildReport(role,recipient,restoreSavedCalculations(db, role, orders),{start,end,metadata:meta,...require('./report-bonuses').periodBonuses(db,role,id,start,end)});
   }
   const condition = role === 'partner' ? 'o.partner_id = ?' : 'o.point_id = ?';
   const orders = db.prepare(`SELECT o.order_code, o.created_at, o.total,
     ${role === 'partner' ? 'COALESCE(o.commission_rate, r.commission_rate, 0)' : 'r.commission_rate'} AS commission_rate,
-    pi.commission_amount AS paid_commission, pi.id IS NOT NULL AS already_paid
+    pi.commission_amount AS paid_commission, pi.id IS NOT NULL AS already_paid, pi.payout_id
     FROM orders o JOIN ${c.table} r ON r.id = ?
     LEFT JOIN ${c.items} pi ON pi.order_id = o.id
     WHERE ${condition} AND o.status = 'paid'
@@ -127,7 +142,34 @@ function generatePeriodReport(db, role, id, start, end, meta) {
       // An old payout may have used a different base/rate: never invent a historical one.
       ...(order.already_paid ? { total: null, commission_rate: null } : {}),
     }));
-  return buildReport(role, recipient, orders, { start, end, metadata: meta, ...require('./report-bonuses').periodBonuses(db,role,id,start,end) });
+  return buildReport(role, recipient, restoreSavedCalculations(db, role, orders), { start, end, metadata: meta, ...require('./report-bonuses').periodBonuses(db,role,id,start,end) });
+}
+
+// Для уже выполненной выплаты база и ставка берутся только из её снимка,
+// а сумма - из реестра выплаты. Текущие цены и тарифы не подставляются.
+function restoreSavedCalculations(db, role, orders) {
+  const snapshots = new Map();
+  return orders.map(order => {
+    if (!order.already_paid || !order.payout_id) return order;
+    if (!snapshots.has(order.payout_id)) {
+      const row = db.prepare('SELECT snapshot_json FROM payout_reports WHERE role = ? AND payout_id = ?').get(role, order.payout_id);
+      snapshots.set(order.payout_id, row ? JSON.parse(row.snapshot_json).items || [] : []);
+    }
+    const saved = snapshots.get(order.payout_id).find(i => i.order_code === order.order_code && Number(i.amount) === Number(order.commission_amount));
+    if (!saved) return order;
+    return { ...order, total:saved.base ?? null, commission_rate:saved.rate ?? null,
+      point_name:saved.point || order.point_name, point_id:saved.point_id || order.point_id };
+  });
+}
+
+function summarizePoints(items) {
+  const points = new Map();
+  for (const item of items) {
+    const key = item.point_id || item.point || 'unknown';
+    if (!points.has(key)) points.set(key,{point_id:item.point_id || null,point:item.point || 'Точка не сохранена',orders:0,amount:0});
+    const point = points.get(key); point.orders++; point.amount += Number(item.amount || 0);
+  }
+  return [...points.values()];
 }
 
 function saveReport(db, report, adminId) {
@@ -191,8 +233,10 @@ function printableReport(r) {
   <p>Заказчик / принципал: ${e(m.principal || '________________________________')}<br>Получатель: ${e(r.recipient.name)}; ИНН ${e(r.recipient.inn || '________')}; код ${e(r.recipient.code)}<br>Реквизиты получателя: ${e(m.recipient_details || '________________________________')}<br>Точка: ${e(r.recipient.point || '________')}</p>
   <p>Период: ${e(r.period_start || 'не сохранён')} — ${e(r.period_end || 'не сохранён')}. ${r.kind === 'payout' ? 'Отчёт по фактическому составу выплаты, который может включать задолженность за предыдущие периоды.' : 'Отчёт по выбранному периоду.'}</p>
   <p>Фактически выполненные действия / услуги: ${e(m.actions || '________________________________________________________________ (заполнить перед подписанием)')}</p>
+  ${r.role === 'manager' && r.point_totals?.length ? `<h2>Комиссия по точкам</h2><table><thead><tr><th>Точка</th><th>Заказов</th><th>Начислено</th></tr></thead><tbody>${r.point_totals.map(p=>`<tr><td>${e(p.point)}</td><td>${Number(p.orders)}</td><td>${e(money(p.amount))}</td></tr>`).join('')}</tbody></table><p class="note">Только комиссия с заказов. Бонусы показаны отдельно ниже.</p>` : ''}
   <h2>Комиссия с продаж</h2>
-  <table><thead><tr><th>Заказ</th><th>Дата UTC</th><th>База</th><th>Ставка</th><th>Начисление</th><th>Учёт выплаты</th></tr></thead><tbody>${r.items.map((i) => `<tr><td>${e(i.order_code)}</td><td>${e(i.date || 'не сохранена')}</td><td>${e(money(i.base))}</td><td>${i.rate == null ? 'не сохранена' : e((i.rate * 100).toFixed(2)) + '%'}</td><td>${e(money(i.amount))}</td><td>${r.kind === 'payout' ? 'В составе выплаты' : i.already_paid ? 'Уже выплачено' : 'Не выплачено'}</td></tr>`).join('')}</tbody></table>
+  <table><thead><tr><th>Заказ${r.role === 'manager' ? ' / точка' : ''}</th><th>Дата UTC</th><th>База</th><th>Ставка</th><th>Расчёт</th><th>Начисление</th><th>Учёт выплаты</th></tr></thead><tbody>${r.items.map((i) => `<tr><td>${e(i.order_code)}${r.role === 'manager' && i.point ? '<br>' + e(i.point) : ''}</td><td>${e(i.date || 'не сохранена')}</td><td>${e(money(i.base))}</td><td>${i.rate == null ? 'не сохранена' : e((i.rate * 100).toFixed(2)) + '%'}</td><td>${i.base == null || i.rate == null ? 'Исторический расчёт не сохранён' : e(money(i.base)) + ' × ' + e((i.rate * 100).toFixed(2)) + '% = ' + e(money(i.amount))}</td><td>${e(money(i.amount))}</td><td>${r.kind === 'payout' ? 'В составе выплаты' : i.already_paid ? 'Уже выплачено' : 'Не выплачено'}</td></tr>`).join('')}</tbody></table>
+  <p class="note">Вознаграждение округляется до целого рубля отдельно по каждому заказу. Итог — сумма строк.</p>
   <p>Заказов: ${r.items.length}; начислено: ${e(money(r.accrued))}. ${r.kind === 'payout' ? 'Зафиксированная выплата: ' + e(money(r.payout_amount)) + '; дата: ' + e(r.paid_at) : 'Из них уже выплачено: ' + e(money(r.already_paid)) + '; ещё не выплачено: ' + e(money(r.unpaid))}.</p>
   ${bonusTable('Бонусы за привлечение точек — начисления',(r.bonuses || []),'accrued_at')}
   <p>Комиссия: ${e(money(r.commission_accrued == null ? r.accrued : r.commission_accrued))}; бонусы: ${e(money(r.bonus_accrued || 0))}; всего начислений: ${e(money(r.accrued))}.</p>

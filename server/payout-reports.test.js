@@ -79,6 +79,17 @@ test('new payouts automatically save exact immutable report in transaction', () 
     db.close();
   }
 });
+test('period reports show historical calculations from payout snapshots after tariffs change', () => {
+  const db = fixture();
+  const api = loadWithDb('./partner-payouts', db);
+  api.createPartnerPayout(1, {id:1});
+  db.exec('UPDATE partners SET commission_rate=0.5; UPDATE orders SET total=99999, commission_rate=0.5');
+  const r = reports.generatePeriodReport(db, 'partner', 1, '2026-09-01', '2026-09-15');
+  assert.equal(r.items[0].base,101); assert.equal(r.items[0].rate,0.15); assert.equal(r.items[0].amount,15);
+  assert.equal(r.items[1].base,102); assert.equal(r.items[1].rate,0.18); assert.equal(r.unpaid,0);
+  assert.ok(reports.printableReport(r).includes('15.00% = 15'));
+  db.close();
+});
 test('snapshot failure rolls back payout and its items', () => {
   const db = fixture();
   db.exec('DROP TABLE payout_reports');
@@ -164,6 +175,38 @@ test('all roles include bonus accrual without mistaking accrued flag for payment
     assert.equal(r.bonus_payments.length,0);
   }
   db.close();
+});
+test('owner and manager period forms keep their own recipients, commission rates and archives', () => {
+  const db=fixture(), handlers=new Map();accrue(db);
+  const api=loadWithDb('./routes-payout-reports',db,{
+    './routes-auth':{requireAuth:()=>()=>({id:7})},
+    './http-utils':{sendJson(res,status,data){res.status=status;res.data=data;}},
+  });
+  api.registerPayoutReportRoutes({get(p,fn){handlers.set(p,fn);},post(p,fn){handlers.set(p,fn);}});
+  const invoke=(p,ctx)=>{const res={setHeader(){}};handlers.get(p)({},res,ctx);return res;};
+  for(const [role,expected,person] of [['owner',1010,'Владелец'],['manager',1084,'Менеджер']]) {
+    const saved=invoke('/api/payout-reports/period',{body:{role,recipient_id:1,start:'2026-09-01',end:'2026-09-15',save:true}});
+    assert.equal(saved.status,201);assert.equal(saved.data.report.accrued,expected);
+    assert.equal(saved.data.report.recipient.name,person);
+    const loaded=invoke('/api/payout-reports/:id',{params:{id:saved.data.report.id}});
+    assert.equal(loaded.data.report.role,role);assert.equal(loaded.data.report.unpaid,expected);
+    const archive=invoke('/api/payout-reports',{query:{role,recipient_id:1}});
+    assert.equal(archive.data.reports.length,1);assert.equal(archive.data.reports[0].recipient_name,person);
+  }
+  assert.equal(invoke('/api/payout-reports',{query:{role:'partner',recipient_id:1}}).data.reports.length,0);
+  const manager=reports.generatePeriodReport(db,'manager',1,'2026-09-01','2026-09-15');
+  assert.deepEqual(manager.point_totals.map(p=>[p.point,p.orders,p.amount]),[['Салон А',2,14],['Салон Б',1,70]]);
+  assert.equal(manager.point_totals.reduce((s,p)=>s+p.amount,0),manager.commission_accrued);
+  assert.equal(manager.items.find(i=>i.order_code==='F').point,'Салон Б');
+  assert.ok(reports.printableReport(manager).includes('Комиссия по точкам'));
+  db.close();
+});
+test('owner period reports keep payout snapshot percentages after the owner tariff changes', () => {
+  const db=fixture();loadWithDb('./owner-payouts',db).createOwnerPayout(1,{id:7});
+  db.exec('UPDATE salon_owners SET commission_rate=0.2; UPDATE orders SET total=99999');
+  const r=reports.generatePeriodReport(db,'owner',1,'2026-09-01','2026-09-15');
+  assert.equal(r.items[0].base,101);assert.equal(r.items[0].rate,0.05);assert.equal(r.items[0].amount,5);
+  assert.equal(r.unpaid,0);db.close();
 });
 test('old undated bonuses are visible but excluded from arbitrary period totals', () => {
   const db=fixture();accrue(db,null);
