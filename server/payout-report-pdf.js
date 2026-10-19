@@ -28,94 +28,80 @@ function wrap(value, count) {
 }
 
 function payoutPdfPages(report, font) {
-  const pages = []; let commands, y;
-  const name = report.role === 'owner' ? 'владельца салона' : report.role === 'manager' ? 'менеджера' : 'грумера';
-  const text = (x, top, value, size = 21, color = '#202D28') => commands.push(`font '${escape(font)}' font-size ${size} fill '${color}' text ${x},${top} '${escape(value)}'`);
-  const rect = (x, top, width, height, color) => commands.push(`fill '${color}' rectangle ${x},${top} ${x + width},${top + height}`);
-  const newPage = () => {
-    if (pages.length >= 100) throw Object.assign(new Error('Отчёт слишком большой. Выберите более короткий период.'), { statusCode: 413 });
-    commands = ['push graphic-context', 'viewbox 0 0 1240 1754', "fill '#FFFFFF' rectangle 0,0 1240,1754"];
+  const { localDateTime, itemNames, rub, rate, shortDate } = require('./payout-report-compact');
+  const pages = [];
+  let commands = [], y = 0;
+  const esc = value => String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n\t]/g, ' ');
+  const write = (x, yy, value, size = 19, fill = '#263B2D') =>
+    commands.push("font '" + esc(font) + "' font-size " + size + " fill '" + fill + "' text " + x + "," + yy + " '" + esc(value) + "'");
+  const rect = (x, yy, w, h, fill) => commands.push("fill '" + fill + "' rectangle " + x + "," + yy + " " + (x+w) + "," + (yy+h));
+  const page = () => {
+    commands = ['push graphic-context','viewbox 0 0 1240 1754',"fill '#FFFFFF' rectangle 0,0 1240,1754"];
     pages.push(commands);
-    rect(0, 0, 1240, 180, '#1C3A2F');
-    text(62, 64, 'ХвостМаркет', 37, '#FFFFFF');
-    text(62, 110, 'Отчёт ' + name + (report.id ? ' № ' + report.id : ''), 28, '#FFFFFF');
-    text(62, 151, 'Период расчёта: ' + date(report.period_start) + ' - ' + date(report.period_end) + ' (UTC)', 21, '#DAE9E0');
-    y = 224;
+    rect(0,0,1240,170,'#1C3A2F');
+    write(60,68,'ХвостМаркет',36,'#FFFFFF');
+    write(60,119,'Расчёт вознаграждения',29,'#FFFFFF');
+    write(60,151,shortDate(report.period_start) + ' - ' + shortDate(report.period_end),19,'#FFFFFF');
+    y=222;
   };
-  const paragraph = (value, { size = 21, color = '#202D28', gap = 14 } = {}) => {
-    const lines = wrap(value, Math.floor(1116 / (size * .65)));
-    for (const line of lines) {
-      if (y + size * 1.5 > 1630) newPage();
-      text(62, y, line, size, color); y += size * 1.45;
+  const paragraph = (value,size=19,fill='#263B2D') => {
+    for (const line of wrap(value,Math.floor(1080/(size*.56)))) {
+      if(y>1615) page();
+      write(60,y,line,size,fill);y+=size*1.45;
     }
-    y += gap;
+    y+=12;
   };
-  const table = (headers, rows, widths) => {
-    let headerNeeded = true;
-    const header = () => {
-      rect(62, y, 1116, 62, '#E9F0EB');
-      let x = 62;
-      headers.forEach((v, i) => { wrap(v, Math.floor((widths[i] - 20) / 11)).forEach((s, j) => text(x + 10, y + 24 + j * 22, s, 17)); x += widths[i]; });
-      y += 62; headerNeeded = false;
-    };
-    rows.forEach((row, rowIndex) => {
-      const cells = row.map((v, i) => wrap(v, Math.floor((widths[i] - 20) / 12)));
-      const length = Math.max(...cells.map(c => c.length));
-      let offset = 0;
-      while (offset < length) {
-        if (y + (headerNeeded ? 62 : 0) + 68 > 1630) { newPage(); headerNeeded = true; }
-        if (headerNeeded) header();
-        const count = Math.min(length - offset, Math.floor((1630 - y - 18) / 26));
-        const height = count * 26 + 18;
-        rect(62, y, 1116, height, rowIndex % 2 ? '#F1F5F2' : '#FAFBFA');
-        let x = 62;
-        cells.forEach((lines, i) => { lines.slice(offset, offset + count).forEach((s, j) => text(x + 10, y + 29 + j * 26, s, 19)); x += widths[i]; });
-        y += height; offset += count;
-        if (offset < length) { newPage(); headerNeeded = true; }
-      }
-    });
-    if (!rows.length) paragraph('За выбранный период заказов нет.', { size: 20 });
-    y += 22;
-  };
-  newPage();
-  paragraph('Получатель: ' + report.recipient.name, { size: 28 });
-  paragraph('Код: ' + (report.recipient.code || 'не указан') + '   |   Точка: ' + (report.recipient.point || 'по заказам получателя'));
-  if (report.kind === 'payout') paragraph('Выплата № ' + (report.payout_id || report.bonus_payout_id || '') + ' от ' + date(report.paid_at) + ': ' + money(report.payout_amount), { size: 23 });
-  paragraph('Заказов: ' + report.items.length + '   |   Начислено: ' + money(report.accrued), { size: 25 });
-  paragraph('Уже выплачено: ' + money(report.kind === 'payout' ? report.payout_amount : report.already_paid) + '   |   ' + (report.kind === 'payout' ? 'Сумма выплаты: ' + money(report.payout_amount) : 'К выплате: ' + money(report.unpaid)), { size: 24, color: '#1C6144' });
-  if (report.role === 'manager' && report.point_totals?.length) {
-    paragraph('Комиссия по точкам', { size:26 });
-    table(['Точка','Заказов','Начислено'], report.point_totals.map(p=>[p.point,p.orders,money(p.amount)]), [636,180,300]);
-    paragraph('В сводке только комиссия с заказов. Бонусы показаны отдельно.', { size:18 });
+  page();
+  paragraph((report.role === 'manager'?'Менеджер':report.role === 'owner'?'Владелец салона':'Грумер') + ': ' + report.recipient.name,25);
+  if (report.recipient.point) paragraph('Точка: ' + report.recipient.point,19);
+  paragraph('Проданные товары · Красноярск',23);
+  rect(58,y-25,1120,44,'#E8EFEA');
+  write(70,y+4,'Дата и время / товары',18);
+  write(790,y+4,'Продажи',17);
+  write(930,y+4,'Ставка',17);
+  write(1040,y+4,'Начислено',17);
+  y+=43;
+  if(!(report.items||[]).length) paragraph('Продаж нет');
+  for(const item of report.items||[]) {
+    const names=itemNames(item).flatMap(name=>wrap(name,62));
+    const detail=(report.role==='manager' && item.point) ? wrap('Точка: '+item.point,62) : [];
+    const height=Math.max(88,57+names.length*27+detail.length*24);
+    if(y+height>1590) { page(); paragraph('Проданные товары (продолжение)',21); }
+    rect(58,y-25,1120,height,(report.items.indexOf(item)%2)?'#F5F7F5':'#FFFFFF');
+    write(70,y+3,localDateTime(item.date),18);
+    write(790,y+3,rub(item.base),18);
+    write(930,y+3,rate(item.rate),18);
+    write(1040,y+3,rub(item.amount),18);
+    let py=y+35;
+    names.forEach(s=>{write(87,py,s,18);py+=27;});
+    detail.forEach(s=>{write(87,py,s,16,'#607267');py+=24;});
+    y+=height;
   }
-  paragraph('Расчёт по каждому заказу', { size: 26 });
-  table(['Заказ', 'Дата UTC', 'База', 'Ставка', 'Расчёт', 'Вознаграждение'], report.items.map(i => [
-    i.order_code + (report.role === 'manager' && i.point ? ' / ' + i.point : ''), i.date || 'Не сохранена', money(i.base), percent(i.rate),
-    i.base == null || i.rate == null ? 'Исторический расчёт не сохранён' : money(i.base) + ' × ' + percent(i.rate) + ' = ' + money(i.amount),
-    money(i.amount) + ' / ' + (report.kind === 'payout' ? 'Выплачено' : i.already_paid ? 'Уже выплачено' : 'К выплате'),
-  ]), [220,175,160,110,240,211]);
-  const bonusTable = (title, rows, key, informational = false) => {
-    if (!rows?.length) return;
-    paragraph(title, { size: 25 });
-    table(['Точка', 'Дата UTC', 'Сумма', 'Учёт'], rows.map(b => [b.point || b.point_name || '-', b[key] || 'Не сохранена', money(b.amount), informational ? 'Вне итогов' : key === 'paid_at' || report.kind === 'payout' || b.already_paid ? 'Выплата зафиксирована' : 'К выплате']), [380,260,200,276]);
+  const totalLine=(label,value,emphasis=false)=>{
+    if(y>1570)page();
+    rect(58,y-22,1120,51,emphasis?'#E8F1EA':'#FFFFFF');
+    write(76,y+10,label,emphasis?25:21);
+    write(960,y+10,rub(value),emphasis?27:22,emphasis?'#1C6144':'#263B2D');
+    y+=60;
   };
-  bonusTable('Бонусы за привлечение точек', report.bonuses, 'accrued_at');
-  paragraph('Комиссия с заказов: ' + money(report.commission_accrued ?? report.accrued) + '. Бонусы: ' + money(report.bonus_accrued || 0) + '.', { size: 23 });
-  bonusTable('Переводы бонусов за период (справочно)', report.bonus_payments, 'paid_at', true);
-  bonusTable('Старые бонусы без даты (вне итогов)', report.undated_bonuses, 'accrued_at', true);
-  const m = report.metadata || {};
-  if (m.contract_number || m.contract_date) paragraph('Договор № ' + (m.contract_number || '-') + ' от ' + date(m.contract_date));
-  for (const [key, title] of [['principal','Заказчик'], ['recipient_details','Реквизиты получателя'], ['actions','Выполненные действия'], ['tax_note','Налоговый статус и удержания'], ['payment_reference','Банковский платёж']]) {
-    if (m[key]) paragraph(title + ': ' + m[key], { size: 20 });
+  if(y>1370)page();
+  y+=25;
+  totalLine('Вознаграждение с продаж',report.commission_accrued);
+  if((report.bonuses||[]).length) {
+    for(const bonus of report.bonuses) {
+      paragraph('Бонус: '+(bonus.point||bonus.point_name||'за точку'),17);
+      totalLine('Начислено за бонус',bonus.amount);
+    }
   }
-  paragraph('Итого начислено за период: ' + money(report.accrued), { size: 26 });
-  paragraph(report.kind === 'payout' ? 'Итоговая сумма выплаты: ' + money(report.payout_amount) : 'Осталось к выплате: ' + money(report.unpaid), { size: 28, color: '#1C6144' });
-  paragraph('Каждое вознаграждение округлено до целого рубля. Итог - сумма строк, а не процент от общей выручки.', { size: 18, color: '#5C675F' });
-  for (const warning of report.warnings || []) paragraph(String(warning)
-    .replace('статусом paid', 'статусом «Оплачен»')
-    .replace('Историческое поле bonus_paid означает начисление, а не перевод денег.', 'Отметка о начислении бонуса не подтверждает перевод денег.'), { size: 17, color: '#5C675F', gap: 8 });
-  pages.forEach((p, i) => { commands = p; text(62, 1700, 'Сформировано: ' + date(report.generated_at) + '  |  Отчёт ' + (report.id || 'проект'), 16, '#5C675F'); text(980, 1700, 'Стр. ' + (i + 1) + ' / ' + pages.length, 16, '#5C675F'); p.push('pop graphic-context'); });
-  return pages.map(p => p.join('\n'));
+  totalLine('Всего начислено',report.accrued);
+  if(report.kind === 'payout') totalLine('Сумма выплаты',report.payout_amount,true);
+  else {
+    totalLine('Уже выплачено',report.already_paid);
+    totalLine('Осталось выплатить',report.unpaid,true);
+  }
+  paragraph('Комиссия округляется по каждому заказу отдельно. Время - Красноярск (UTC+7).',15,'#65766A');
+  pages.forEach((p,i)=>{commands=p;write(60,1715,'ХвостМаркет · отчёт '+(report.id||'предпросмотр'),15,'#64766A');write(1020,1715,(i+1)+' / '+pages.length,15,'#64766A');p.push('pop graphic-context');});
+  return pages.map(p=>p.join('\n'));
 }
 
 let pdfRunning = false;
