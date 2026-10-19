@@ -117,6 +117,28 @@ function attachOrderProducts(db, orders) {
   }));
 }
 
+
+// Add missing product names to saved historical reports without altering
+// frozen commission amounts, rates or payment statuses.
+function enrichReportOrders(db, report) {
+  if (!Array.isArray(report.items) || !report.items.length) return report;
+  const findDate = db.prepare('SELECT created_at FROM orders WHERE order_code = ?');
+  const findItems = db.prepare(`SELECT oi.name, oi.weight, oi.qty FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id WHERE o.order_code = ? ORDER BY oi.id`);
+  return {
+    ...report,
+    items: report.items.map(item => {
+      if (Array.isArray(item.products) && item.products.length && item.date) return item;
+      const info = findDate.get(item.order_code);
+      return {
+        ...item,
+        date: item.date || info?.created_at || null,
+        products: Array.isArray(item.products) && item.products.length ? item.products : findItems.all(item.order_code),
+      };
+    }),
+  };
+}
+
 function generatePeriodReport(db, role, id, start, end, meta) {
   const c = roleConfig(role);
   validatePeriod(start, end);
@@ -261,4 +283,4 @@ function legacyPrintableReport(r) {
 }
 
 const printableReport = require('./payout-report-compact').printableReport;
-module.exports = { ROLES, roleConfig, initializeReports, validDate, validatePeriod, metadata, buildReport, generatePeriodReport, saveReport, snapshotPayout, snapshotBonusPayout, fromPayout, printableReport };
+module.exports = { ROLES, roleConfig, initializeReports, validDate, validatePeriod, metadata, buildReport, generatePeriodReport, saveReport, snapshotPayout, snapshotBonusPayout, fromPayout, printableReport, enrichReportOrders };
