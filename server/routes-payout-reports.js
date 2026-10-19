@@ -2,7 +2,7 @@
 const db = require('./db');
 const { requireAuth } = require('./routes-auth');
 const { sendJson } = require('./http-utils');
-const { roleConfig, generatePeriodReport, saveReport, fromPayout, printableReport } = require('./payout-reports');
+const { roleConfig, generatePeriodReport, saveReport, fromPayout, printableReport, enrichReportOrders } = require('./payout-reports');
 const { getBonuses, createReferralBonusPayout } = require('./report-bonuses');
 
 function registerPayoutReportRoutes(router) {
@@ -34,7 +34,7 @@ function registerPayoutReportRoutes(router) {
       const id = positiveId(ctx.params.id);
       const row = db.prepare('SELECT id,snapshot_json FROM payout_reports WHERE id=?').get(id);
       if (!row) return sendJson(res,404,{error:'Отчёт не найден'});
-      const result = await require('./payout-report-telegram').sendWorkReport(db,{...JSON.parse(row.snapshot_json),id:row.id},admin,ctx.body);
+      const result = await require('./payout-report-telegram').sendWorkReport(db,{...enrichReportOrders(db,JSON.parse(row.snapshot_json)),id:row.id},admin,ctx.body);
       sendJson(res,200,result);
     } catch(e) {
       if (!e.statusCode) console.error('[payout-telegram]',e);
@@ -48,7 +48,7 @@ function registerPayoutReportRoutes(router) {
       const id = positiveId(ctx.params.id);
       const row = db.prepare('SELECT id, snapshot_json FROM payout_reports WHERE id = ?').get(id);
       if (!row) return sendJson(res, 404, { error:'Отчёт не найден' });
-      const report = { ...JSON.parse(row.snapshot_json), id:row.id };
+      const report = { ...enrichReportOrders(db,JSON.parse(row.snapshot_json)), id:row.id };
       const buffer = await require('./payout-report-pdf').renderPayoutPdf(report);
       res.writeHead(200, { 'Content-Type':'application/pdf', 'Content-Length':buffer.length,
         'Content-Disposition':'attachment; filename="HvostMarket_report_' + id + '.pdf"' });
@@ -96,14 +96,14 @@ function registerPayoutReportRoutes(router) {
   }));
   router.post('/api/payout-reports/from-payout', handler((req, res, ctx, admin) => {
     const b = ctx.body || {};
-    const report = fromPayout(db, b.role, positiveId(b.payout_id), admin.id,b.payout_type || 'commission');
+    const report = enrichReportOrders(db,fromPayout(db, b.role, positiveId(b.payout_id), admin.id,b.payout_type || 'commission'));
     sendJson(res, 200, { report, html: printableReport(report) });
   }));
   router.get('/api/payout-reports/:id', handler((req, res, ctx) => {
     const id = positiveId(ctx.params.id);
     const row = db.prepare('SELECT id, snapshot_json FROM payout_reports WHERE id = ?').get(id);
     if (!row) return sendJson(res, 404, { error: 'Отчёт не найден' });
-    const report = { ...JSON.parse(row.snapshot_json), id: row.id };
+    const report = { ...enrichReportOrders(db,JSON.parse(row.snapshot_json)), id: row.id };
     sendJson(res, 200, { report, html: printableReport(report) });
   }));
 }
