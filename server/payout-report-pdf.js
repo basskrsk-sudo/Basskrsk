@@ -99,6 +99,7 @@ function payoutPdfPages(report, font) {
     totalLine('Уже выплачено',report.already_paid);
     totalLine('Осталось выплатить',report.unpaid,true);
   }
+  if(report.lifetime_earned != null) totalLine('Заработано всего',report.lifetime_earned);
   paragraph('Комиссия округляется по каждому заказу отдельно. Время - Красноярск (UTC+7).',15,'#65766A');
   pages.forEach((p,i)=>{commands=p;write(60,1715,'ХвостМаркет · отчёт '+(report.id||'предпросмотр'),15,'#64766A');write(1020,1715,(i+1)+' / '+pages.length,15,'#64766A');p.push('pop graphic-context');});
   return pages.map(p=>p.join('\n'));

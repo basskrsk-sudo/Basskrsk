@@ -80,6 +80,7 @@ function printableReport(report) {
     line('Всего начислено', view.accrued, false),
     isPayout ? line('Сумма выплаты' + (report.paid_at ? ' (' + shortDate(report.paid_at) + ')' : ''), view.payoutAmount, true) :
       line('Уже выплачено', view.alreadyPaid, false) + line('Осталось выплатить', view.unpaid, true),
+    report.lifetime_earned == null ? '' : line('Заработано всего (за всё время)', report.lifetime_earned, false),
     '<p class="note">Вознаграждение округляется для каждого заказа отдельно. Сумма строк — итог расчёта. Период выбирается по дате создания заказа в UTC.</p>',
     view.hasUndatedBonuses ? '<p class="note">Бонусы без даты начисления не включены в расчёт периода.</p>' : '',
     '<p class="note">Отчёт справочный, не является банковским подтверждением или подписанным актом. Суммы указаны до возможных налоговых удержаний.</p>',
