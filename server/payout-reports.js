@@ -67,6 +67,7 @@ function buildReport(role, recipient, orders, options = {}) {
     amount: Number(o.commission_amount), already_paid: !!o.already_paid,
     point: o.point_name || recipient.point_name || null,
     point_id: o.point_id || recipient.point_id || null,
+    products: Array.isArray(o.products) ? o.products : [],
   }));
   const sum = (key, list = items) => list.reduce((n, item) => n + Number(item[key] || 0), 0);
   const knownBase = items.every((item) => item.base != null);
@@ -105,6 +106,17 @@ function buildReport(role, recipient, orders, options = {}) {
   };
 }
 
+
+function attachOrderProducts(db, orders) {
+  const find = db.prepare(`SELECT oi.name, oi.weight, oi.qty
+    FROM order_items oi JOIN orders o ON o.id = oi.order_id
+    WHERE o.order_code = ? ORDER BY oi.id`);
+  return orders.map(order => ({
+    ...order,
+    products: Array.isArray(order.products) ? order.products : find.all(order.order_code),
+  }));
+}
+
 function generatePeriodReport(db, role, id, start, end, meta) {
   const c = roleConfig(role);
   validatePeriod(start, end);
@@ -127,7 +139,7 @@ function generatePeriodReport(db, role, id, start, end, meta) {
         commission_amount: o.already_paid ? o.paid_commission : Math.round(Number(o.total)*Number(o.commission_rate)),
         ...(o.already_paid ? {total:null} : {}),
       }));
-    return buildReport(role,recipient,restoreSavedCalculations(db, role, orders),{start,end,metadata:meta,...require('./report-bonuses').periodBonuses(db,role,id,start,end)});
+    return buildReport(role,recipient,attachOrderProducts(db,restoreSavedCalculations(db, role, orders)),{start,end,metadata:meta,...require('./report-bonuses').periodBonuses(db,role,id,start,end)});
   }
   const condition = role === 'partner' ? 'o.partner_id = ?' : 'o.point_id = ?';
   const orders = db.prepare(`SELECT o.order_code, o.created_at, o.total,
@@ -142,7 +154,7 @@ function generatePeriodReport(db, role, id, start, end, meta) {
       // An old payout may have used a different base/rate: never invent a historical one.
       ...(order.already_paid ? { total: null, commission_rate: null } : {}),
     }));
-  return buildReport(role, recipient, restoreSavedCalculations(db, role, orders), { start, end, metadata: meta, ...require('./report-bonuses').periodBonuses(db,role,id,start,end) });
+  return buildReport(role, recipient, attachOrderProducts(db,restoreSavedCalculations(db, role, orders)), { start, end, metadata: meta, ...require('./report-bonuses').periodBonuses(db,role,id,start,end) });
 }
 
 // Для уже выполненной выплаты база и ставка берутся только из её снимка,
@@ -181,7 +193,7 @@ function saveReport(db, report, adminId) {
 
 function snapshotPayout(db, role, recipient, orders, payout, adminId) {
   const dates = orders.map((o) => String(o.created_at || '').slice(0, 10)).filter(Boolean).sort();
-  return saveReport(db, buildReport(role, recipient, orders, {
+  return saveReport(db, buildReport(role, recipient, attachOrderProducts(db, orders), {
     kind: 'payout', start: dates[0] || null, end: dates.at(-1) || null,
     payout_id: payout.id, paid_at: payout.paid_at, payout_amount: payout.amount,
   }), adminId);
@@ -215,12 +227,12 @@ function fromPayout(db, role, payoutId, adminId, type='commission') {
   const payout = db.prepare(`SELECT * FROM ${c.payouts} WHERE id = ?`).get(payoutId);
   if (!payout) throw Object.assign(new Error('Выплата не найдена'), { statusCode: 404 });
   const orders = db.prepare(`SELECT order_code, commission_amount FROM ${c.items} WHERE payout_id = ? ORDER BY id`).all(payoutId);
-  return saveReport(db, buildReport(role, { id: payout[c.id], full_name: payout[c.name], code: payout[role === 'partner' ? 'partner_code' : role === 'owner' ? 'owner_code' : 'manager_code'], point_name: payout.point_name }, orders, {
+  return saveReport(db, buildReport(role, { id: payout[c.id], full_name: payout[c.name], code: payout[role === 'partner' ? 'partner_code' : role === 'owner' ? 'owner_code' : 'manager_code'], point_name: payout.point_name }, attachOrderProducts(db, orders), {
     kind: 'payout', payout_id: payoutId, paid_at: payout.paid_at, payout_amount: payout.amount, reconstructed: true,
   }), adminId);
 }
 
-function printableReport(r) {
+function legacyPrintableReport(r) {
   const e = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
   const money = (v) => v == null ? 'не сохранено' : Number(v).toLocaleString('ru-RU') + ' ₽';
   const m = r.metadata;
@@ -248,4 +260,5 @@ function printableReport(r) {
   <p class="note">Сформировано ${e(r.generated_at)}. ${r.warnings.map(e).join(' ')}</p></html>`;
 }
 
+const printableReport = require('./payout-report-compact').printableReport;
 module.exports = { ROLES, roleConfig, initializeReports, validDate, validatePeriod, metadata, buildReport, generatePeriodReport, saveReport, snapshotPayout, snapshotBonusPayout, fromPayout, printableReport };
