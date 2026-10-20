@@ -33,7 +33,7 @@ function validateFirstPurchasePromo(code, phone, pointId = null) {
     WHERE UPPER(first_purchase_promo_code) = ? AND active = 1
   `).get(promoCode);
   if (!point && !partner) return { valid: false, error: 'Промокод не найден или неактивен' };
-  if (point && pointId && String(point.id) !== String(pointId)) return { valid: false, error: 'Промокод действует при покупке в указанном салоне' };
+  if (point && (!pointId || String(point.id) !== String(pointId))) return { valid: false, error: 'Промокод действует при покупке в указанном салоне' };
   if (hasPaidOrderForPhone(normalizedPhone)) {
     return { valid: false, error: 'Скидка действует только на первую покупку по этому номеру телефона' };
   }
