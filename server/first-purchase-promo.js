@@ -27,13 +27,15 @@ function validateFirstPurchasePromo(code, phone, pointId = null) {
   if (!normalizedPhone) return { valid: false, error: 'Сначала укажите корректный номер телефона' };
 
   const point = db.prepare('SELECT id, name, first_purchase_promo_code FROM points WHERE UPPER(first_purchase_promo_code) = ? AND active = 1').get(promoCode);
-  const partner = point ? null : db.prepare(`
+  const alias = point ? null : db.prepare('SELECT p.id, p.name, p.first_purchase_promo_code FROM first_purchase_point_promo_aliases a JOIN points p ON p.id=a.point_id WHERE UPPER(a.promo_code)=? AND p.active=1').get(promoCode);
+  const salon = point || alias;
+  const partner = salon ? null : db.prepare(`
     SELECT id, full_name, first_purchase_promo_code
     FROM partners
     WHERE UPPER(first_purchase_promo_code) = ? AND active = 1
   `).get(promoCode);
-  if (!point && !partner) return { valid: false, error: 'Промокод не найден или неактивен' };
-  if (point && (!pointId || String(point.id) !== String(pointId))) return { valid: false, error: 'Промокод действует при покупке в указанном салоне' };
+  if (!salon && !partner) return { valid: false, error: 'Промокод не найден или неактивен' };
+  if (salon && (!pointId || String(salon.id) !== String(pointId))) return { valid: false, error: 'Промокод действует при покупке в указанном салоне' };
   if (hasPaidOrderForPhone(normalizedPhone)) {
     return { valid: false, error: 'Скидка действует только на первую покупку по этому номеру телефона' };
   }
@@ -42,11 +44,11 @@ function validateFirstPurchasePromo(code, phone, pointId = null) {
 
   return {
     valid: true,
-    promoCode: point ? point.first_purchase_promo_code : partner.first_purchase_promo_code,
+    promoCode: salon ? promoCode : partner.first_purchase_promo_code,
     partnerId: partner ? partner.id : null,
     partnerName: partner ? partner.full_name : null,
-    pointId: point ? point.id : null,
-    pointName: point ? point.name : null,
+    pointId: salon ? salon.id : null,
+    pointName: salon ? salon.name : null,
     discountPercent: FIRST_PURCHASE_DISCOUNT_PERCENT,
     normalizedPhone,
   };
