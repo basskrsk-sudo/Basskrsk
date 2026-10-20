@@ -992,16 +992,36 @@ ensureColumn('order_items', 'variant_id', 'INTEGER REFERENCES product_variants(i
 ensureColumn('orders', 'delivery_address', 'TEXT');
 ensureColumn('orders', 'delivery_fee', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'referral_code', 'TEXT');
+// Старые коды грумеров уже выданы клиентам: не меняем и не удаляем их.
+ // Новым грумерам персональные коды больше не генерируем.
 ensureColumn('partners', 'first_purchase_promo_code', 'TEXT');
+ensureColumn('points', 'first_purchase_promo_code', 'TEXT');
 db.exec(`
-  UPDATE partners
-  SET first_purchase_promo_code = printf('HVOST20-%03d', id)
-  WHERE first_purchase_promo_code IS NULL OR TRIM(first_purchase_promo_code) = '';
   CREATE UNIQUE INDEX IF NOT EXISTS idx_partners_first_purchase_promo
     ON partners(first_purchase_promo_code);
+  UPDATE points
+  SET first_purchase_promo_code = 'HVOST20-S-' || UPPER(hex(randomblob(8)))
+  WHERE first_purchase_promo_code IS NULL OR TRIM(first_purchase_promo_code) = '';
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_points_first_purchase_promo
+    ON points(first_purchase_promo_code);
+  CREATE TRIGGER IF NOT EXISTS trg_point_first_purchase_promo_insert
+  AFTER INSERT ON points
+  WHEN NEW.first_purchase_promo_code IS NULL OR TRIM(NEW.first_purchase_promo_code) = ''
+  BEGIN
+    UPDATE points
+    SET first_purchase_promo_code = 'HVOST20-S-' || UPPER(hex(randomblob(8)))
+    WHERE id = NEW.id;
+  END;
   CREATE TABLE IF NOT EXISTS first_purchase_promo_claims (
     phone       TEXT PRIMARY KEY,
     partner_id  INTEGER NOT NULL REFERENCES partners(id),
+    promo_code  TEXT NOT NULL,
+    order_id    INTEGER NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS first_purchase_point_promo_claims (
+    phone       TEXT PRIMARY KEY,
+    point_id    TEXT NOT NULL REFERENCES points(id),
     promo_code  TEXT NOT NULL,
     order_id    INTEGER NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
