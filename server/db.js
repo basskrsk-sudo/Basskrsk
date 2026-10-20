@@ -999,7 +999,7 @@ ensureColumn('orders', 'referral_code', 'TEXT');
 // Historical long salon codes are kept as aliases, never destroyed.
 ensureColumn('partners', 'first_purchase_promo_code', 'TEXT');
 ensureColumn('points', 'first_purchase_promo_code', 'TEXT');
-db.exec(\`
+db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_partners_first_purchase_promo
     ON partners(first_purchase_promo_code);
 
@@ -1061,7 +1061,7 @@ db.exec(\`
     order_id    INTEGER NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
-\`);
+`);
 ensureColumn('partners', 'tier_confirmed_month', 'TEXT');
 ensureColumn('partners', 'telegram_chat_id', 'TEXT');
 ensureColumn('partners', 'max_chat_id', 'TEXT');
