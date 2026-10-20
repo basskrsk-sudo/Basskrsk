@@ -51,6 +51,7 @@ function mgrWithPoints(a) {
   const points = db.prepare(`
     SELECT ap.*, rp.full_name AS referred_groomer_name, rp.partner_code AS referred_groomer_code,
            p.city_id AS actual_point_city_id, p.icon AS actual_point_icon,
+           p.first_purchase_promo_code AS salon_first_purchase_promo_code,
            COALESCE((SELECT SUM(o.total) FROM orders o WHERE o.point_id = ap.point_id AND o.status = 'paid'), 0) AS live_revenue,
            lbp.id AS launch_bonus_payout_id, lbp.paid_at AS launch_bonus_paid_at
     FROM manager_points ap
@@ -443,7 +444,7 @@ function registerManagerRoutes(router) {
   router.get('/api/managers/me/stock', (req, res, ctx) => {
     const payload = requireAuth(['manager'])(req, res, ctx);
     if (!payload) return;
-    const points = db.prepare('SELECT id, name, icon FROM points WHERE manager_id = ? ORDER BY name').all(payload.id);
+    const points = db.prepare('SELECT id, name, icon, first_purchase_promo_code FROM points WHERE manager_id = ? ORDER BY name').all(payload.id);
     const result = points.map((point) => {
       const rows = db.prepare(`
         SELECT s.variant_id, s.qty, v.weight, p.name AS product_name
@@ -453,7 +454,7 @@ function registerManagerRoutes(router) {
         WHERE s.point_id = ?
         ORDER BY p.name, v.sort_order
       `).all(point.id);
-      return { point_id: point.id, point_name: point.name, point_icon: point.icon, items: rows };
+      return { point_id: point.id, point_name: point.name, point_icon: point.icon, first_purchase_promo_code: point.first_purchase_promo_code, items: rows };
     });
     sendJson(res, 200, { points: result });
   });
@@ -493,7 +494,7 @@ function registerManagerRoutes(router) {
           unpaid_earnings: getUnpaidSummary(p.id).amount,
         };
       });
-      return { point_id: point.id, point_name: point.name, point_icon: point.icon, partners: withStats };
+      return { point_id: point.id, point_name: point.name, point_icon: point.icon, first_purchase_promo_code: point.first_purchase_promo_code, partners: withStats };
     });
     sendJson(res, 200, { points: result });
   });
