@@ -2482,9 +2482,9 @@
       <div class="form-group"><label>Телефон *</label><input type="tel" id="oPhone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this); scheduleCheckoutTelegramOffer(); onFirstPurchasePromoContextChange();" onblur="liveValidatePhone(this); checkLoyaltyByPhone(); checkSelfOrderWarning(); showCheckoutTelegramOffer(); validateFirstPurchasePromo();" autocomplete="new-password"></div>
       <div id="loyalty-msg" style="font-size:.82rem;margin:-.6rem 0 1rem;min-height:1.1em;color:#2D7D46;"></div>
       <div class="form-group">
-        <label>Промокод грумера −20% на первую покупку</label>
+        <label>Промокод салона −20% на первую покупку</label>
         <div style="display:flex;gap:.5rem;">
-          <input type="text" id="oFirstPurchasePromo" placeholder="HVOST20-001" oninput="this.value=this.value.toUpperCase(); onFirstPurchasePromoContextChange();" style="flex:1;min-width:0;">
+          <input type="text" id="oFirstPurchasePromo" placeholder="Введите промокод салона или грумера" oninput="this.value=this.value.toUpperCase(); onFirstPurchasePromoContextChange();" style="flex:1;min-width:0;">
           <button type="button" onclick="validateFirstPurchasePromo(true)" style="border:0;border-radius:8px;background:var(--deep);color:#fff;padding:0 .9rem;font-weight:600;cursor:pointer;">Применить</button>
         </div>
         <div id="first-purchase-promo-msg" style="font-size:.8rem;margin-top:.4rem;min-height:1.1em;"></div>
@@ -2950,18 +2950,19 @@ async function validateFirstPurchasePromo(showEmptyError = false) {
     if (msg) { msg.textContent = 'Сначала укажите номер телефона'; msg.style.color = '#9B2335'; }
     return false;
   }
-  const key = code + ':' + digits.slice(-10);
+  const pickupPointId = document.getElementById('oPickupSelect')?.value || '';
+  const key = code + ':' + digits.slice(-10) + ':' + pickupPointId;
   if (firstPurchasePromoValid && key === lastCheckedFirstPurchasePromoKey) return true;
   try {
-    const res = await fetch('/api/first-purchase-promo/validate?code=' + encodeURIComponent(code) + '&phone=' + encodeURIComponent(phone));
+    const res = await fetch('/api/first-purchase-promo/validate?code=' + encodeURIComponent(code) + '&phone=' + encodeURIComponent(phone) + '&point_id=' + encodeURIComponent(pickupPointId));
     const data = await res.json();
     lastCheckedFirstPurchasePromoKey = key;
     firstPurchasePromoValid = !!data.valid;
     firstPurchasePromoPercent = data.valid ? data.discount_percent : 0;
-    firstPurchasePromoPartnerName = data.valid ? data.partner_name : '';
+    firstPurchasePromoPartnerName = data.valid ? (data.partner_name || data.point_name || '') : '';
     if (msg) {
       msg.textContent = data.valid
-        ? '✓ Скидка ' + data.discount_percent + '% применена' + (data.partner_name ? ' · код от ' + data.partner_name : '')
+        ? '✓ Скидка ' + data.discount_percent + '% применена' + (data.partner_name ? ' · код от ' + (data.partner_name || data.point_name) : '')
         : '⚠ ' + (data.error || 'Промокод недействителен');
       msg.style.color = data.valid ? '#2D7D46' : '#9B2335';
     }
@@ -5820,6 +5821,7 @@ function onPickupSelectChange() {
   setFieldError('oPickupSelect', '');
   setFieldError('oPickupOther', '');
   syncPickupHiddenField();
+  onFirstPurchasePromoContextChange();
   checkPointGroomers(sel.value);
   checkSelfOrderWarning();
 }
@@ -6023,7 +6025,7 @@ async function goToPayment() {
     </div>` : ''}
     ${promoDiscount > 0 ? `
     <div style="display:flex;justify-content:space-between;color:#2D7D46;">
-      <span>🏷️ Промокод грумера −${firstPurchasePromoPercent}%</span><span>−${promoDiscount} ₽</span>
+      <span>🏷️ Промокод на первую покупку −${firstPurchasePromoPercent}%</span><span>−${promoDiscount} ₽</span>
     </div>` : ''}
     ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 Самозаказ: вознаграждение по тарифу; косточки не списываются и не начисляются.</div>' : ''}
     <div style="margin-top:.75rem;padding:.7rem .8rem;border-radius:10px;background:#E9F4EC;color:var(--deep);display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;">
@@ -6679,7 +6681,7 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
       ${!isCurrentOrderSelfOrder && referralCodeValid ? `<div>🎁 <strong>Код друга (${escapeHtml(referralReferrerName)}):</strong> +${referralBonesAwarded} 🦴 начислим на баланс</div>` : ''}
       ${!isCurrentOrderSelfOrder && getLoyaltyCashbackAmount(subtotal) > 0 ? `<div>${isPetBirthdayCheckout ? '🎂' : '🎉'} <strong>Кэшбэк ${loyaltyPercent}%:</strong> +${getLoyaltyCashbackAmount(subtotal)} 🦴 начислим на баланс</div>` : ''}
       ${bonesToUse > 0 ? `<div>🦴 <strong>Оплачено косточками:</strong> −${bonesToUse} ₽</div>` : ''}
-      ${firstPurchasePromoValid ? `<div>🏷️ <strong>Промокод грумера:</strong> скидка ${firstPurchasePromoPercent}%</div>` : ''}
+      ${firstPurchasePromoValid ? `<div>🏷️ <strong>Промокод:</strong> скидка ${firstPurchasePromoPercent}%</div>` : ''}
       ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 <strong>Самозаказ:</strong> вознаграждение начислено по вашему тарифу; косточки не списываются и не начисляются.</div>' : ''}
       <div style="border-top:1px solid var(--border);margin-top:.5rem;padding-top:.5rem;">
         💳 <strong>Оплачено через ЮKassa:</strong> <span style="color:var(--amber);font-weight:700;">${subtotal} ₽</span>
