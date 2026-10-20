@@ -862,6 +862,7 @@ async function loadMyPoints() {
   MY_POINTS = pts.map(p => ({
     pointId: p.point_id || null,
     name: p.point_name,
+    salonPromoCode: p.salon_first_purchase_promo_code || '',
     addr: '',
     type: p.point_type,
     contact: '',
@@ -2004,26 +2005,17 @@ async function renderStockSection() {
       renderManagerPartnerPayoutHistory((payoutData && payoutData.payouts) || []);
     return;
   }
-  const promoRows = [];
-  points.forEach(function(pt) {
-    pt.partners.forEach(function(p) {
-      if (p.first_purchase_promo_code) promoRows.push({ partner: p, point: pt });
-    });
-  });
   const promoListHtml = '<div class="card" style="margin-bottom:1rem;">' +
-    '<div class="card-title">Промокоды грумеров на первую покупку</div>' +
-    '<p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка 20% применяется один раз по номеру телефона. Нажмите на код, чтобы скопировать.</p>' +
-    (promoRows.length ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.65rem;">' +
-      promoRows.map(function(item) {
-        const p = item.partner;
-        const pt = item.point;
-        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:.7rem;border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;background:#FAFAF7;">' +
-          '<div style="min-width:0;"><div style="font-weight:600;font-size:.84rem;">' + escapeManagerPayoutCell(p.full_name) + '</div>' +
-          '<div style="font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeManagerPayoutCell(pt.point_name) + (p.active ? '' : ' · отключён') + '</div></div>' +
-          '<button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(p.first_purchase_promo_code) + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)">' + escapeManagerPayoutCell(p.first_purchase_promo_code) + '</button>' +
-        '</div>';
-      }).join('') + '</div>' : '<p style="color:var(--muted);font-size:.82rem;">Промокоды пока не созданы.</p>') +
-    '</div>';
+    '<div class="card-title">Промокоды салонов на первую покупку −20%</div>' +
+    '<p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;">Один код для каждой точки. Старые промокоды грумеров продолжают работать.</p>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.65rem;">' +
+    points.map(function(pt) {
+      const code = pt.first_purchase_promo_code || '';
+      return '<div style="border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;">' +
+        '<div style="font-weight:600;margin-bottom:.4rem;">' + escapeManagerPayoutCell(pt.point_name) + '</div>' +
+        '<button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(code) + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)"' +
+        (!code ? ' disabled' : '') + '>' + escapeManagerPayoutCell(code || '—') + '</button></div>';
+    }).join('') + '</div></div>';
   container.innerHTML = promoListHtml + points.map(function(pt) {
     const outCount = pt.items.filter(function(i) { return i.qty === 0; }).length;
     const rows = pt.items.map(function(i) {
@@ -2075,7 +2067,7 @@ async function renderPartnersSection() {
         : '<span class="pill pill-red">Отключён</span>';
       return '<tr>' +
         '<td style="font-weight:500;">' + p.full_name + '<br><span style="font-size:.72rem;color:var(--muted);">' + p.partner_code + ' · ' + p.phone + '</span></td>' +
-        '<td><button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(p.first_purchase_promo_code || '') + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + (p.first_purchase_promo_code ? escapeManagerPayoutCell(p.first_purchase_promo_code) : '—') + '</button></td>' +
+        '<td>' + (p.first_purchase_promo_code ? '<button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(p.first_purchase_promo_code) + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)">' + escapeManagerPayoutCell(p.first_purchase_promo_code) + '</button> <small>(ранее выдан)</small>' : '—') + '</td>' +
         '<td class="r">' + Math.round(p.commission_rate * 100) + '%</td>' +
         '<td class="r">' + p.orders_count + '</td>' +
         '<td class="r">' + p.revenue.toLocaleString('ru-RU') + ' ₽</td>' +
@@ -2085,9 +2077,9 @@ async function renderPartnersSection() {
         '</tr>';
     }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:1rem;">На этой точке пока нет партнёра — можно зарегистрировать в разделе «Привлечение точек»</td></tr>';
     return '<div class="card" style="margin-bottom:1rem;">' +
-      '<div class="card-title">' + (pt.point_icon || '📍') + ' ' + pt.point_name + '</div>' +
+      '<div class="card-title">' + (pt.point_icon || '📍') + ' ' + escapeManagerPayoutCell(pt.point_name) + ' · Промокод −20%: <button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(pt.first_purchase_promo_code || '') + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)">' + escapeManagerPayoutCell(pt.first_purchase_promo_code || '—') + '</button></div>' +
       '<table class="tbl"><thead><tr>' +
-        '<th>Партнёр</th><th>Промокод −20%</th><th class="r">Тариф</th><th class="r">Заказов</th><th class="r">Выручка</th><th class="r">Начислено</th><th class="r">К выплате</th><th>Статус</th>' +
+        '<th>Партнёр</th><th>Старый персональный код</th><th class="r">Тариф</th><th class="r">Заказов</th><th class="r">Выручка</th><th class="r">Начислено</th><th class="r">К выплате</th><th>Статус</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
       '</div>';
   }).join('') + renderManagerPartnerPayoutHistory((payoutData && payoutData.payouts) || []);
@@ -2311,6 +2303,7 @@ function renderPoints(){
         <div>
           <div class="point-name">${p.name}</div>
           <div class="point-addr">${p.addr}</div>
+          <div style="font-size:.75rem;margin-top:.4rem;">Промокод −20%: <button type="button" class="copy-btn" data-promo="${p.salonPromoCode || ''}" onclick="copyPartnerPromoCode(this.dataset.promo,this)" ${p.salonPromoCode ? '' : 'disabled'}>${p.salonPromoCode || '—'}</button></div>
         </div>
         <span class="pill ${pillClass[p.status]}">${statusLabel[p.status]}</span>
       </div>
