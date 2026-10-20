@@ -2962,7 +2962,7 @@ async function validateFirstPurchasePromo(showEmptyError = false) {
     firstPurchasePromoPartnerName = data.valid ? (data.partner_name || data.point_name || '') : '';
     if (msg) {
       msg.textContent = data.valid
-        ? '✓ Скидка ' + data.discount_percent + '% применена' + (data.partner_name ? ' · код от ' + (data.partner_name || data.point_name) : '')
+        ? '✓ Скидка ' + data.discount_percent + '% применена' + ((data.partner_name || data.point_name) ? ' · ' + (data.partner_name || data.point_name) : '')
         : '⚠ ' + (data.error || 'Промокод недействителен');
       msg.style.color = data.valid ? '#2D7D46' : '#9B2335';
     }
