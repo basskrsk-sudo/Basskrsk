@@ -994,24 +994,59 @@ ensureColumn('orders', 'delivery_fee', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'referral_code', 'TEXT');
 // Старые коды грумеров уже выданы клиентам: не меняем и не удаляем их.
  // Новым грумерам персональные коды больше не генерируем.
+// Existing groomer codes (HVOST20-001, etc.) stay valid permanently.
+// Each salon gets one short, easy-to-type code: HV20-001, HV20-002, ...
+// Historical long salon codes are kept as aliases, never destroyed.
 ensureColumn('partners', 'first_purchase_promo_code', 'TEXT');
 ensureColumn('points', 'first_purchase_promo_code', 'TEXT');
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_partners_first_purchase_promo
     ON partners(first_purchase_promo_code);
+
+  CREATE TABLE IF NOT EXISTS first_purchase_point_promo_numbers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    point_id TEXT NOT NULL UNIQUE REFERENCES points(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS first_purchase_point_promo_aliases (
+    promo_code TEXT PRIMARY KEY COLLATE NOCASE,
+    point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE
+  );
+
+  -- Keep the original salon order stable even if a point is renamed.
+  INSERT OR IGNORE INTO first_purchase_point_promo_numbers (point_id)
+    SELECT id FROM points ORDER BY rowid;
+
+  -- Preserve already distributed long codes from the previous release.
+  INSERT OR IGNORE INTO first_purchase_point_promo_aliases(promo_code, point_id)
+    SELECT first_purchase_promo_code, id FROM points
+    WHERE UPPER(first_purchase_promo_code) LIKE 'HVOST20-S-%';
+
   UPDATE points
-  SET first_purchase_promo_code = 'HVOST20-S-' || UPPER(hex(randomblob(8)))
-  WHERE first_purchase_promo_code IS NULL OR TRIM(first_purchase_promo_code) = '';
+  SET first_purchase_promo_code = (
+    SELECT printf('HV20-%03d', n.id)
+    FROM first_purchase_point_promo_numbers n WHERE n.point_id=points.id
+  )
+  WHERE first_purchase_promo_code IS NULL
+    OR TRIM(first_purchase_promo_code) = ''
+    OR UPPER(first_purchase_promo_code) LIKE 'HVOST20-S-%';
+
   CREATE UNIQUE INDEX IF NOT EXISTS idx_points_first_purchase_promo
     ON points(first_purchase_promo_code);
-  CREATE TRIGGER IF NOT EXISTS trg_point_first_purchase_promo_insert
+
+  -- Replace the previous random-string generator for future salons.
+  DROP TRIGGER IF EXISTS trg_point_first_purchase_promo_insert;
+  CREATE TRIGGER trg_point_first_purchase_promo_insert
   AFTER INSERT ON points
-  WHEN NEW.first_purchase_promo_code IS NULL OR TRIM(NEW.first_purchase_promo_code) = ''
   BEGIN
+    INSERT OR IGNORE INTO first_purchase_point_promo_numbers(point_id) VALUES (NEW.id);
     UPDATE points
-    SET first_purchase_promo_code = 'HVOST20-S-' || UPPER(hex(randomblob(8)))
-    WHERE id = NEW.id;
+    SET first_purchase_promo_code = (
+      SELECT printf('HV20-%03d', n.id)
+      FROM first_purchase_point_promo_numbers n WHERE n.point_id=NEW.id
+    )
+    WHERE id=NEW.id AND (first_purchase_promo_code IS NULL OR TRIM(first_purchase_promo_code)='');
   END;
+
   CREATE TABLE IF NOT EXISTS first_purchase_promo_claims (
     phone       TEXT PRIMARY KEY,
     partner_id  INTEGER NOT NULL REFERENCES partners(id),
