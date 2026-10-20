@@ -20,29 +20,33 @@ function hasPaidOrderForPhone(phone) {
   return rows.some((row) => normalizePromoPhone(row.customer_phone) === normalized);
 }
 
-function validateFirstPurchasePromo(code, phone) {
+function validateFirstPurchasePromo(code, phone, pointId = null) {
   const promoCode = normalizePromoCode(code);
   const normalizedPhone = normalizePromoPhone(phone);
-  if (!promoCode) return { valid: false, error: 'Введите промокод грумера' };
+  if (!promoCode) return { valid: false, error: 'Введите промокод на первую покупку' };
   if (!normalizedPhone) return { valid: false, error: 'Сначала укажите корректный номер телефона' };
 
-  const partner = db.prepare(`
+  const point = db.prepare('SELECT id, name, first_purchase_promo_code FROM points WHERE UPPER(first_purchase_promo_code) = ? AND active = 1').get(promoCode);
+  const partner = point ? null : db.prepare(`
     SELECT id, full_name, first_purchase_promo_code
     FROM partners
     WHERE UPPER(first_purchase_promo_code) = ? AND active = 1
   `).get(promoCode);
-  if (!partner) return { valid: false, error: 'Промокод не найден или неактивен' };
+  if (!point && !partner) return { valid: false, error: 'Промокод не найден или неактивен' };
+  if (point && pointId && String(point.id) !== String(pointId)) return { valid: false, error: 'Промокод действует при покупке в указанном салоне' };
   if (hasPaidOrderForPhone(normalizedPhone)) {
     return { valid: false, error: 'Скидка действует только на первую покупку по этому номеру телефона' };
   }
   const claim = db.prepare('SELECT order_id FROM first_purchase_promo_claims WHERE phone = ?').get(normalizedPhone);
-  if (claim) return { valid: false, error: 'Промокод для этого номера уже использован или ожидает оплаты' };
+  if (claim || db.prepare('SELECT 1 FROM first_purchase_point_promo_claims WHERE phone = ?').get(normalizedPhone)) return { valid: false, error: 'Промокод для этого номера уже использован или ожидает оплаты' };
 
   return {
     valid: true,
-    promoCode: partner.first_purchase_promo_code,
-    partnerId: partner.id,
-    partnerName: partner.full_name,
+    promoCode: point ? point.first_purchase_promo_code : partner.first_purchase_promo_code,
+    partnerId: partner ? partner.id : null,
+    partnerName: partner ? partner.full_name : null,
+    pointId: point ? point.id : null,
+    pointName: point ? point.name : null,
     discountPercent: FIRST_PURCHASE_DISCOUNT_PERCENT,
     normalizedPhone,
   };
@@ -56,7 +60,17 @@ function claimFirstPurchasePromo(validation, orderId) {
     error.code = 'FIRST_PURCHASE_PROMO_ALREADY_USED';
     throw error;
   }
+  if (db.prepare('SELECT 1 FROM first_purchase_promo_claims WHERE phone = ?').get(validation.normalizedPhone) ||
+      db.prepare('SELECT 1 FROM first_purchase_point_promo_claims WHERE phone = ?').get(validation.normalizedPhone)) {
+    const error = new Error('Промокод для этого номера уже использован или ожидает оплаты');
+    error.statusCode = 409; error.code = 'FIRST_PURCHASE_PROMO_ALREADY_USED'; throw error;
+  }
   try {
+    if (validation.pointId) {
+      db.prepare('INSERT INTO first_purchase_point_promo_claims (phone, point_id, promo_code, order_id) VALUES (?, ?, ?, ?)')
+        .run(validation.normalizedPhone, validation.pointId, validation.promoCode, orderId);
+      return;
+    }
     db.prepare(`
       INSERT INTO first_purchase_promo_claims (phone, partner_id, promo_code, order_id)
       VALUES (?, ?, ?, ?)
@@ -72,6 +86,7 @@ function claimFirstPurchasePromo(validation, orderId) {
 
 function releaseFirstPurchasePromoClaim(orderId) {
   db.prepare('DELETE FROM first_purchase_promo_claims WHERE order_id = ?').run(orderId);
+  db.prepare('DELETE FROM first_purchase_point_promo_claims WHERE order_id = ?').run(orderId);
 }
 
 module.exports = {
