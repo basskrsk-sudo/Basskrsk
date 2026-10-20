@@ -310,12 +310,13 @@ function startReservationCleanup() {
 function registerPaymentRoutes(router) {
   startReservationCleanup();
   router.get('/api/first-purchase-promo/validate', (req, res, ctx) => {
-    const result = validateFirstPurchasePromo(ctx.query.code, ctx.query.phone);
+    const result = validateFirstPurchasePromo(ctx.query.code, ctx.query.phone, ctx.query.point_id);
     if (!result.valid) return sendJson(res, 200, result);
     sendJson(res, 200, {
       valid: true,
       promo_code: result.promoCode,
       partner_name: result.partnerName,
+      point_name: result.pointName,
       discount_percent: result.discountPercent,
     });
   });
@@ -354,7 +355,7 @@ function registerPaymentRoutes(router) {
     let promoValidation = null;
     let promoDiscount = 0;
     if (String(promoCode || '').trim()) {
-      promoValidation = validateFirstPurchasePromo(promoCode, customerPhone);
+      promoValidation = validateFirstPurchasePromo(promoCode, customerPhone, pointId);
       if (!promoValidation.valid) {
         return sendJson(res, 409, {
           error: promoValidation.error,
