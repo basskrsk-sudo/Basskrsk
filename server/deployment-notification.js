@@ -79,7 +79,7 @@ async function listDeploymentChanges(sha, previous) {
       const response = await githubJson('compare/' + previous.git_commit + '...' + sha);
       commits = response.commits || [];
       if (response.ahead_by > commits.length) {
-        return ['Более ' + commits.length + ' коммитов — показаны последние из полученных.', ...commits.slice(-12).map(x => x.commit.message.split('\\n')[0])];
+        return ['Более ' + commits.length + ' коммитов — показаны последние из полученных.', ...commits.slice(-12).map(x => x.commit.message.split('\n')[0])];
       }
     } else if (previous && previous.sent_at) {
       // Older notification records do not contain a commit SHA.
@@ -88,7 +88,7 @@ async function listDeploymentChanges(sha, previous) {
       return ['Первая сборка с журналом изменений: сравнение с предыдущей версией недоступно.'];
     }
     if (!commits.length) return ['Изменений кода между запусками не обнаружено.'];
-    return commits.slice(-15).map(x => x.commit.message.split('\\n')[0]);
+    return commits.slice(-15).map(x => x.commit.message.split('\n')[0]);
   } catch (err) {
     console.warn('Deploy email: не удалось получить изменения GitHub:', err.message);
     return ['Не удалось загрузить историю изменений GitHub.'];
