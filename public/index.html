@@ -5301,12 +5301,12 @@ async function loadProductReviews(productId) {
     listEl.innerHTML = data.reviews.length ? data.reviews.map((r) => `
       <div style="background:var(--white);border-radius:12px;padding:1.2rem 1.5rem;margin-bottom:1rem;box-shadow:var(--shadow);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;">
-          <span style="font-weight:600;color:var(--deep);">${r.author}${r.is_own ? ' <span style="font-weight:400;color:var(--muted);font-size:.78rem;">(ваш отзыв)</span>' : ''}</span>
+          <span style="font-weight:600;color:var(--deep);">${escapeHtml(r.author)}${r.is_own ? ' <span style="font-weight:400;color:var(--muted);font-size:.78rem;">(ваш отзыв)</span>' : ''}</span>
           <span style="font-size:.78rem;color:var(--muted);">${new Date(r.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('ru-RU')}</span>
         </div>
         <div style="color:var(--amber);margin-bottom:.5rem;">${renderStaticStars(r.rating)}</div>
         ${r.verified_purchase ? '<div style="font-size:.76rem;color:#2D7D46;margin-bottom:.5rem;">✅ Подтверждённая покупка</div>' : ''}
-        ${r.text ? `<p style="font-size:.9rem;color:var(--text);line-height:1.6;">${r.text}</p>` : ''}
+        ${r.text ? `<p style="font-size:.9rem;color:var(--text);line-height:1.6;">${escapeHtml(r.text)}</p>` : ''}
       </div>`).join('') : '';
   } catch (e) {
     console.error('Не удалось загрузить отзывы:', e);
