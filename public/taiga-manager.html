@@ -759,7 +759,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
             <label>Тип QR</label>
             <select id="qr-sel-mode" onchange="qrModeChanged()">
               <option value="stand" selected>Большой QR стойки — инструкция</option>
-              <option value="product">QR конкретного товара</option>
+              <option value="product">QR конкретного товара</option><option value="sample">🎁 Бесплатный пробник</option>
             </select>
           </div>
           <div class="qr-ctrl-group">
@@ -1535,8 +1535,9 @@ async function qrInitSection() {
 }
 
 function qrModeChanged() {
+  const sampleMode = document.getElementById('qr-sel-mode').value === 'sample';
   const standMode = document.getElementById('qr-sel-mode').value === 'stand';
-  document.getElementById('qr-product-control').style.display = standMode ? 'none' : 'flex';
+  document.getElementById('qr-product-control').style.display = (standMode || sampleMode) ? 'none' : 'flex';
   document.getElementById('qr-label-copy-control').style.display = standMode ? 'none' : 'flex';
   const sizeSelect = document.getElementById('qr-sel-size');
   sizeSelect.value = standMode ? '280' : '140';
@@ -1544,6 +1545,7 @@ function qrModeChanged() {
 }
 
 function qrBuildURL(pointId, productId, cityId) {
+  if (productId === '__sample__') return QR_SITE_URL + '/api/sample-qr/scan?point=' + encodeURIComponent(pointId);
   // Большой QR на табличке ведёт сначала на короткую инструкцию. В ней
   // сохраняются точка и город, поэтому кнопка каталога откроет ассортимент
   // именно этой стойки. QR на товаре по-прежнему открывает его карточку сразу.
@@ -1591,6 +1593,7 @@ function qrRenderPointOptions() {
 
 function qrGenerate() {
   const standMode      = document.getElementById('qr-sel-mode').value === 'stand';
+  const sampleMode = document.getElementById('qr-sel-mode').value === 'sample';
   const cityFilter    = document.getElementById('qr-sel-city').value;
   const pointFilter   = document.getElementById('qr-sel-point').value;
   const productFilter = document.getElementById('qr-sel-product').value;
@@ -1598,7 +1601,7 @@ function qrGenerate() {
 
   const cityPoints = cityFilter ? QR_MY_POINTS.filter(p => p.city_id === cityFilter) : QR_MY_POINTS;
   const points   = pointFilter   === 'all' ? cityPoints    : cityPoints.filter(p => p.id === pointFilter);
-  const products = standMode ? [null] : (productFilter === 'all' ? QR_PRODUCTS : QR_PRODUCTS.filter(p => p.id === productFilter));
+  const products = standMode ? [null] : (sampleMode ? [{ id: '__sample__', icon: '🎁', name: 'Бесплатный пробник', price: 0, weight: '' }] : (productFilter === 'all' ? QR_PRODUCTS : QR_PRODUCTS.filter(p => p.id === productFilter)));
 
   qrGenerated = [];
   points.forEach(pt => { products.forEach(pr => { qrGenerated.push({ point: pt, product: pr }); }); });
@@ -1629,7 +1632,7 @@ function qrGenerate() {
       </div>
       <div class="qr-body">
         <img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" class="qr-logo-full">
-        <div class="qr-caption">${isStand ? 'Сканируйте — узнайте, как купить за минуту' : 'Сканируйте для быстрой покупки этого товара'}</div>
+        <div class="qr-caption">${isStand ? 'Сканируйте — узнайте, как купить за минуту' : (item.product.id === '__sample__' ? 'Сканируйте QR пробника' : 'Сканируйте для быстрой покупки этого товара')}</div>
         <div class="qr-box" id="${cardId}"></div>
         <div class="qr-product">${isStand ? '📱 Как купить в минимаркете' : item.product.icon + ' ' + item.product.name}</div>
         <div class="qr-price">${isStand ? 'Инструкция + каталог этой точки' : item.product.price + ' ₽ · ' + item.product.weight}</div>
@@ -1773,7 +1776,7 @@ async function printLabelSheet() {
       cell.innerHTML = `
         <div class="lbl-qr" id="${boxId}"></div>
         <div class="lbl-name">${item.product.icon} ${item.product.name}</div>
-        <div class="lbl-price">${item.product.price} ₽ · ${item.product.weight}</div>
+        <div class="lbl-price">${item.product.id === '__sample__' ? 'Бесплатно · инструкция покупки' : item.product.price + ' ₽ · ' + item.product.weight}</div>
         <div class="lbl-point">${item.point.icon} ${item.point.name}</div>`;
       pageEl.appendChild(cell);
       cell.dataset.url = url;
