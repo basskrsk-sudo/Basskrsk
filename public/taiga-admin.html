@@ -1558,6 +1558,26 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
     </div>
 
+    <!-- ══ АНАЛИТИКА QR ══ -->
+    <div id="sec-qr-analytics" style="display:none;">
+      <div class="card">
+        <div class="card-title">Воронка QR-покупок</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.7rem;margin-bottom:1rem;">
+          <select class="pm-select" id="qr-analytics-days" onchange="loadQrAnalytics()"><option value="7">7 дней</option><option value="30" selected>30 дней</option><option value="90">90 дней</option></select>
+          <select class="pm-select" id="qr-analytics-point" onchange="loadQrAnalytics()"><option value="">Все точки</option></select>
+          <button class="row-btn" onclick="loadQrAnalytics()">↻ Обновить</button>
+        </div>
+        <div id="qr-analytics-summary" style="margin-bottom:1rem;color:var(--muted);">Загрузка…</div>
+        <div style="overflow-x:auto;">
+          <table class="tbl">
+            <thead><tr><th>Минимаркет</th><th class="r">Открытия QR</th><th class="r">Визиты*</th><th class="r">Начали оплату</th><th class="r">Оплаченные заказы</th><th class="r">Конверсия*</th><th class="r">Выручка</th></tr></thead>
+            <tbody id="qr-analytics-rows"><tr><td colspan="7">Загрузка…</td></tr></tbody>
+          </table>
+        </div>
+        <p style="font-size:.75rem;color:var(--muted);margin-top:1rem;">* Визиты — уникальные сессии открывших товарный QR, а не все посетители салона. Конверсия = оплаченные заказы / сессии; возвраты исключены. Данные начинают собираться после обновления сайта, прошлые открытия QR восстановить нельзя.</p>
+      </div>
+    </div>
+
     <!-- ══ QR-КОДЫ ══ -->
     <div id="sec-qr" style="display:none;">
       <div class="card no-print">
@@ -3004,13 +3024,13 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
 }
 
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
-const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
+const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'qr-analytics', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
+const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', 'qr-analytics':'Аналитика QR', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
 const sectionGroups = {
   'payout-reports':'reports',
   dashboard:'home', bsc:'strategy', tasks:'tasks', orders:'sales', customers:'sales',
   products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
-  points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', leads:'network',
+  points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', 'qr-analytics':'network', leads:'network',
   news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'business-expenses':'finance', 'weekly-reports':'finance',
   launch:'system', guides:'system', audit:'system', admins:'system',
 };
@@ -3018,7 +3038,7 @@ titles['payout-reports'] = 'Отчёты партнёрам';
 const contextTabs = {
   sales: [['orders','Заказы'], ['customers','Клиенты']],
   inventory: [['products','Каталог'], ['stock','На точках'], ['warehouse','Центральный склад'], ['restock','Перемещения']],
-  network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды'], ['leads','Прозвон']],
+  network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды'], ['qr-analytics','Аналитика QR'], ['leads','Прозвон']],
   promotion: [['news','Новости'], ['reviews','Отзывы'], ['winback','Возврат клиентов']],
   finance: [['economics','Экономика'], ['business-expenses','Траты бизнеса'], ['weekly-reports','Отчёт ГД']],
   system: [['launch','План запуска'], ['guides','Инструкции'], ['audit','Журнал действий',true], ['admins','Администраторы',true]],
@@ -3063,6 +3083,26 @@ window.addEventListener('resize', function() {
   if (window.innerWidth > 768) closeAdminMenu();
 });
 
+async function loadQrAnalytics(){
+  const period=document.getElementById('qr-analytics-days').value;
+  const select=document.getElementById('qr-analytics-point');
+  const summary=document.getElementById('qr-analytics-summary');
+  const body=document.getElementById('qr-analytics-rows');
+  try{
+    const res=await authFetch('/api/admin/qr-analytics?days='+encodeURIComponent(period)+'&point='+encodeURIComponent(select.value));
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Ошибка загрузки');
+    const points=data.points||[],total=data.totals||{};
+    summary.textContent='Открытия: '+(total.opens||0)+' · Уникальные QR-сессии: '+(total.visits||0)+' · Начали оплату: '+(total.checkouts||0)+' · Оплачено: '+(total.paid_orders||0)+' · Выручка: '+(total.revenue||0).toLocaleString('ru-RU')+' ₽';
+    body.innerHTML=points.length?points.map(p=>'<tr><td>'+escapeOrderCell(p.point_name||p.point_id)+'</td><td class="r">'+p.opens+'</td><td class="r">'+p.visits+'</td><td class="r">'+p.checkouts+'</td><td class="r">'+p.paid_orders+'</td><td class="r">'+(p.visits?(100*p.paid_orders/p.visits).toFixed(1)+'%':'—')+'</td><td class="r">'+p.revenue.toLocaleString('ru-RU')+' ₽</td></tr>').join(''):'<tr><td colspan="7" style="text-align:center;padding:1.5rem;">Пока нет событий QR за выбранный период</td></tr>';
+    if(select.options.length===1){
+      const pointRes=await authFetch('/api/points');
+      const pointData=await pointRes.json();
+      (pointData.points||[]).forEach(p=>{const option=document.createElement('option');option.value=p.id;option.textContent=p.name;select.appendChild(option);});
+    }
+  }catch(e){summary.textContent='Не удалось загрузить аналитику: '+e.message;body.innerHTML='';}
+}
+
 async function showSection(id) {
   sections.forEach(function(s) {
     const el = document.getElementById('sec-' + s);
@@ -3101,6 +3141,7 @@ async function showSection(id) {
   if (id === 'points')      { await Promise.all([loadOrders(), loadPointsInfo()]); renderPointsOverview(); await renderPointsManagement(); }
   if (id === 'owners')      await renderOwners();
   if (id === 'qr')          await qrInitSection();
+  if (id === 'qr-analytics') await loadQrAnalytics();
   if (id === 'leads')       await renderLeads();
   if (id === 'warehouse')   { await loadAdminProducts(); await populateReceiptForm(); await renderWarehouse(); }
   if (id === 'restock')     await Promise.all([renderStockMovements(), renderAdminCustomerRestock()]);
