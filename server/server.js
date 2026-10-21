@@ -17,6 +17,7 @@ const { Router, readBinaryBody, parseJsonBody, sendJson } = require('./http-util
 const { registerAuthRoutes, requireSuperAdmin } = require('./routes-auth');
 const { registerProductRoutes } = require('./routes-products');
 const { registerQrAnalyticsRoutes } = require('./routes-qr-analytics');
+const { registerSampleQrRoutes } = require('./routes-sample-qr');
 const { registerReviewRoutes } = require('./routes-reviews');
 const { registerPartnerRoutes } = require('./routes-partners');
 const { registerManagerRoutes } = require('./routes-managers');
@@ -85,6 +86,7 @@ const router = new Router();
 registerAuthRoutes(router);
 registerProductRoutes(router);
 registerQrAnalyticsRoutes(router);
+registerSampleQrRoutes(router);
 registerReviewRoutes(router);
 registerPartnerRoutes(router);
 registerManagerRoutes(router);
