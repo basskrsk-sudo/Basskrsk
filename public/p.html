@@ -196,6 +196,8 @@ function rememberQrPoint(point) {
 }
 
 var CTX = { point: null, product: null, variants: [], selVariant: null, checkout: null, partners: [] };
+var QR_VISIT_ID = (function(){try {var k='hvost_qr_visit:'+location.pathname;var v=sessionStorage.getItem(k);if(!v){v=Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(x){return x.toString(16).padStart(2,'0')}).join('');sessionStorage.setItem(k,v);}return v;}catch(e){return 'v'+Date.now().toString(36)+Math.random().toString(36).slice(2,14)}})();
+function recordQrEvent(type,orderCode){if(!CTX.pointId||!CTX.product)return;fetch('/api/qr-analytics/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({point_id:CTX.pointId,product_id:CTX.product.id,event_type:type,visit_id:QR_VISIT_ID,order_code:orderCode||null}),keepalive:true}).catch(function(){});}
 var SUCCESS_PHONE = '';
 var SUCCESS_ORDER_ID = '';
 var QR_SELF_ORDER = false;
@@ -300,6 +302,7 @@ async function boot() {
     var prod = (products || []).find(function(x) { return x.slug === p.product || String(x.id) === String(p.product); });
     if (!prod || prod.active === false) { failState('Товар не найден', 'Возможно, его сняли с продажи.'); return; }
     CTX.product = prod;
+    recordQrEvent('open');
     trackGoalOnce('minimarket_selected', 'qr:' + CTX.point.id, {
       scenario: 'qr', selection_mode: 'qr_auto', point_id: CTX.point.id, point_name: CTX.point.name,
     });
@@ -537,6 +540,7 @@ async function startPayment() {
     // Если модуль заблокирован браузером, используем redirect-оплату.
     var useEmbeddedWidget = await prepareWidget();
     var confirmationMode = useEmbeddedWidget ? 'embedded' : 'redirect';
+    recordQrEvent('checkout');
     var res = await fetch('/api/create-payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -568,6 +572,7 @@ async function startPayment() {
     var data = await res.json();
     if (!res.ok) throw new Error((data && data.error) || 'Не удалось создать заказ');
 
+    recordQrEvent('payment_created',orderId);
     trackGoalOnce('payment_created', orderId, {
       scenario: 'qr', order_id: orderId, product_id: CTX.product.id,
       variant_id: v.id, point_id: CTX.pointId, revenue: paymentAmount,
