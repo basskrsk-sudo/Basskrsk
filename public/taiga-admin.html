@@ -2538,13 +2538,13 @@ async function renderReviews() {
       ? '<button class="row-btn" onclick="setReviewStatus(' + r.id + ',\'approved\',' + !!r.guest + ')">✓ Одобрить</button> ' +
         '<button class="row-btn danger" onclick="setReviewStatus(' + r.id + ',\'rejected\',' + !!r.guest + ')">✕ Отклонить</button>'
       : (r.status === 'rejected'
-        ? '<button class="row-btn" onclick="setReviewStatus(' + r.id + ',\'approved\')">✓ Одобрить</button>'
-        : '<button class="row-btn" onclick="setReviewStatus(' + r.id + ',\'rejected\')">Снять с публикации</button>');
+        ? '<button class="row-btn" onclick="setReviewStatus(' + r.id + ',\'approved\',' + !!r.guest + ')">✓ Одобрить</button>'
+        : '<button class="row-btn" onclick="setReviewStatus(' + r.id + ',\'rejected\',' + !!r.guest + ')">Снять с публикации</button>');
     return '<tr>' +
       '<td style="font-weight:500;">' + r.product_name + '</td>' +
       '<td>' + escapeOrderCell(r.customer_name || '—') + (r.guest ? ' <small>(гость)</small>' : '<br><span style="font-size:.72rem;color:var(--muted);font-family:monospace;">' + escapeOrderCell(r.customer_phone || '') + '</span>') + '</td>' +
       '<td style="color:var(--amber);white-space:nowrap;">' + stars + '</td>' +
-      '<td style="font-size:.83rem;max-width:280px;">' + (r.text || '<span style="color:var(--muted);">без текста</span>') + '</td>' +
+      '<td style="font-size:.83rem;max-width:280px;">' + (r.text ? escapeOrderCell(r.text) : '<span style="color:var(--muted);">без текста</span>') + '</td>' +
       '<td style="font-size:.78rem;color:var(--muted);">' + new Date(r.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('ru-RU') + '</td>' +
       '<td>' + REVIEW_STATUS_LABELS[r.status] + '</td>' +
       '<td class="r" style="white-space:nowrap;">' + actions + ' <button class="row-btn danger" onclick="deleteReview(' + r.id + ',' + !!r.guest + ')">🗑</button></td>' +
