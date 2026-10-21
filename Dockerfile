@@ -83,6 +83,12 @@ COPY backlog.json ./
 COPY server ./server
 COPY public ./public
 
+# Build metadata is refreshed on each Docker build (including a rebuild of
+# identical source) and becomes part of the image running on Amvera.
+ARG GIT_COMMIT=unknown
+RUN node -e "const fs=require('fs'); const crypto=require('crypto'); const pkg=require('./package.json'); fs.writeFileSync('build-info.json', JSON.stringify({version:pkg.version,build_id:crypto.randomUUID(),git_commit:process.env.GIT_COMMIT||'unknown',built_at:new Date().toISOString()}))"
+
+
 EXPOSE 80
 ENV PORT=80
 
