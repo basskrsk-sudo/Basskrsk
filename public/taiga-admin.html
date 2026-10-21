@@ -196,13 +196,41 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 .label-cell .lbl-price{font-size:7.5pt;font-weight:700;color:#1C3A2F;margin-top:.3mm;}
 .label-cell .lbl-point{font-size:5pt;color:#777;text-align:center;margin-top:.3mm;}
 @media print{
+  /* A4 sticker pages have zero printer margins; the exact margins belong
+     inside each sheet. An override for @page is installed only during
+     label printing, leaving other document printouts unchanged. */
   @page{size:A4;margin:10.5mm 5mm;}
-  body.printing-labels .sidebar,body.printing-labels .topbar,body.printing-labels .card,
-  body.printing-labels .qr-grid,body.printing-labels .qr-stats-row{display:none!important;}
-  body.printing-labels #label-sheet-print{display:block;}
+  body.printing-labels{margin:0!important;padding:0!important;background:#fff!important;}
+  body.printing-labels .layout,body.printing-labels .main,
+  body.printing-labels .content,body.printing-labels #sec-qr{
+    display:block!important;overflow:visible!important;
+    width:100%!important;min-width:0!important;height:auto!important;
+    min-height:0!important;margin:0!important;padding:0!important;
+  }
+  body.printing-labels .sidebar,body.printing-labels .topbar,
+  body.printing-labels .section-context-tabs,body.printing-labels .cabinet-context-tabs,
+  body.printing-labels .content > :not(#sec-qr),
+  body.printing-labels #sec-qr > :not(#label-sheet-print){display:none!important;}
+  body.printing-labels #label-sheet-print{display:block!important;margin:0!important;padding:0!important;}
   body:not(.printing-labels) #label-sheet-print{display:none!important;}
-  .label-page{page-break-after:always;}
-  .label-page:last-child{page-break-after:auto;}
+  body.printing-labels .label-page{
+    display:grid!important;
+    grid-template-columns:repeat(3,66.7mm)!important;
+    grid-template-rows:repeat(6,46mm)!important;
+    width:210mm!important;height:297mm!important;
+    padding:10.5mm 4.95mm!important;
+    box-sizing:border-box!important;gap:0!important;
+    margin:0!important;border:0!important;
+    page-break-before:auto;page-break-after:always;
+    break-after:page;break-inside:avoid;
+  }
+  body.printing-labels .label-page:last-child{page-break-after:auto;break-after:auto;}
+  body.printing-labels .label-cell{
+    width:66.7mm!important;height:46mm!important;
+    box-sizing:border-box!important;overflow:hidden!important;
+    border:0!important;
+  }
+  body.printing-labels .label-cell-empty{visibility:hidden!important;}
 }
 
 .card {
@@ -1562,7 +1590,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             </select>
           </div>
           <button class="row-btn" style="background:var(--forest,#1C3A2F);color:#fff;" onclick="qrGenerate()">Сгенерировать</button>
-          <button class="row-btn" style="background:var(--amber,#D4872A);color:#fff;" onclick="window.print()">🖨 Печать</button>
+          <button class="row-btn" style="background:var(--amber,#D4872A);color:#fff;" onclick="printLabelSheet()">🖨 Печать А4 · 18 наклеек</button>
           <button class="row-btn" onclick="qrDownloadAll()">⬇ Скачать все</button>
           <div class="qr-ctrl-group" id="qr-label-copy-control">
             <label>Копий каждой этикетки</label>
@@ -1571,7 +1599,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <button class="row-btn" onclick="qrApplyBulkQty()">Применить ко всем</button>
             </div>
           </div>
-          <button id="qr-label-sheet-button" class="row-btn" style="background:#7C4DFF;color:#fff;" onclick="printLabelSheet()">🏷 Этикетки А4 (18 шт/лист)</button>
         </div>
       </div>
 
@@ -6506,6 +6533,12 @@ async function printLabelSheet() {
       pageEl.appendChild(cell);
       cell.dataset.url = url;
     });
+    while (pageEl.children.length < PER_PAGE) {
+      const emptyCell = document.createElement('div');
+      emptyCell.className = 'label-cell label-cell-empty';
+      emptyCell.setAttribute('aria-hidden', 'true');
+      pageEl.appendChild(emptyCell);
+    }
     container.appendChild(pageEl);
   }
 
@@ -6531,6 +6564,13 @@ async function printLabelSheet() {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       document.body.classList.add('printing-labels');
+      let pageStyle = document.getElementById('qr-label-a4-page-style');
+      if (!pageStyle) {
+        pageStyle = document.createElement('style');
+        pageStyle.id = 'qr-label-a4-page-style';
+        document.head.appendChild(pageStyle);
+      }
+      pageStyle.textContent = '@page { size: A4; margin: 0; }';
       window.print();
     });
   });
@@ -6538,6 +6578,7 @@ async function printLabelSheet() {
 
 window.addEventListener('afterprint', () => {
   document.body.classList.remove('printing-labels');
+  document.getElementById('qr-label-a4-page-style')?.remove();
 });
 
 function qrWrapText(ctx, text, maxWidth) {
