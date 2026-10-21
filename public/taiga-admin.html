@@ -2535,33 +2535,33 @@ async function renderReviews() {
   document.getElementById('reviews-tbody').innerHTML = reviews.length ? reviews.map(function(r) {
     const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
     const actions = r.status === 'pending'
-      ? '<button class="row-btn" onclick="setReviewStatus(' + r.id + ',\'approved\')">✓ Одобрить</button> ' +
-        '<button class="row-btn danger" onclick="setReviewStatus(' + r.id + ',\'rejected\')">✕ Отклонить</button>'
+      ? '<button class="row-btn" onclick="setReviewStatus(' + r.id + ',\'approved\',' + !!r.guest + ')">✓ Одобрить</button> ' +
+        '<button class="row-btn danger" onclick="setReviewStatus(' + r.id + ',\'rejected\',' + !!r.guest + ')">✕ Отклонить</button>'
       : (r.status === 'rejected'
         ? '<button class="row-btn" onclick="setReviewStatus(' + r.id + ',\'approved\')">✓ Одобрить</button>'
         : '<button class="row-btn" onclick="setReviewStatus(' + r.id + ',\'rejected\')">Снять с публикации</button>');
     return '<tr>' +
       '<td style="font-weight:500;">' + r.product_name + '</td>' +
-      '<td>' + (r.customer_name || '—') + '<br><span style="font-size:.72rem;color:var(--muted);font-family:monospace;">' + r.customer_phone + '</span></td>' +
+      '<td>' + escapeOrderCell(r.customer_name || '—') + (r.guest ? ' <small>(гость)</small>' : '<br><span style="font-size:.72rem;color:var(--muted);font-family:monospace;">' + escapeOrderCell(r.customer_phone || '') + '</span>') + '</td>' +
       '<td style="color:var(--amber);white-space:nowrap;">' + stars + '</td>' +
       '<td style="font-size:.83rem;max-width:280px;">' + (r.text || '<span style="color:var(--muted);">без текста</span>') + '</td>' +
       '<td style="font-size:.78rem;color:var(--muted);">' + new Date(r.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('ru-RU') + '</td>' +
       '<td>' + REVIEW_STATUS_LABELS[r.status] + '</td>' +
-      '<td class="r" style="white-space:nowrap;">' + actions + ' <button class="row-btn danger" onclick="deleteReview(' + r.id + ')">🗑</button></td>' +
+      '<td class="r" style="white-space:nowrap;">' + actions + ' <button class="row-btn danger" onclick="deleteReview(' + r.id + ',' + !!r.guest + ')">🗑</button></td>' +
       '</tr>';
   }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Отзывов с таким статусом нет</td></tr>';
 
   refreshReviewsBadge();
 }
 
-async function setReviewStatus(id, status) {
-  await authFetch('/api/admin/reviews/' + id, { method: 'PUT', body: { status } });
+async function setReviewStatus(id, status, guest = false) {
+  await authFetch('/api/admin/reviews/' + id, { method: 'PUT', body: { status, guest } });
   await renderReviews();
 }
 
-async function deleteReview(id) {
+async function deleteReview(id, guest = false) {
   if (!confirm('Удалить этот отзыв безвозвратно?')) return;
-  await authFetch('/api/admin/reviews/' + id, { method: 'DELETE' });
+  await authFetch('/api/admin/reviews/' + id + (guest ? '?guest=1' : ''), { method: 'DELETE' });
   await renderReviews();
 }
 
