@@ -63,7 +63,7 @@ const role = new URLSearchParams(location.search).get('role') === 'manager' ? 'm
 const token = localStorage.getItem(role === 'manager' ? 'taiga_manager_token' : 'taiga_admin_token');
 document.getElementById('returnLink').href=role==='manager'?'/taiga-manager.html':'/taiga-admin.html';
 let allowedPoints=[];
-function qrURL(point){return location.origin+'/api/sample-qr/scan?point='+encodeURIComponent(point);}
+function qrURL(point){return 'https://хвостмаркет.рф/api/sample-qr/scan?point='+encodeURIComponent(point);}
 function safe(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function err(e){document.getElementById('error').textContent=e.message||String(e);}
 async function api(path){
