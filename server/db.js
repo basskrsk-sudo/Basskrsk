@@ -822,6 +822,22 @@ function ensureColumn(table, column, definition) {
 // archived_prev_active восстанавливает исходную видимость на сайте после возврата.
 ensureColumn('products', 'archived_at', 'TEXT');
 ensureColumn('products', 'archived_prev_active', 'INTEGER');
+// Гостевые отзывы не требуют клиентского аккаунта и не меняют историю
+// product_reviews (там строгое ограничение customer_id).
+db.exec(`
+CREATE TABLE IF NOT EXISTS guest_product_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  author_name TEXT NOT NULL,
+  rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+  text TEXT NOT NULL,
+  visitor_hash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_guest_product_reviews_product ON guest_product_reviews(product_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_guest_product_reviews_rate ON guest_product_reviews(visitor_hash, created_at DESC);
+`);
 ensureColumn('points', 'manager_id', 'INTEGER REFERENCES managers(id)');
 ensureColumn('points', 'is_hub', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('partners', 'point_id', 'TEXT REFERENCES points(id)');
