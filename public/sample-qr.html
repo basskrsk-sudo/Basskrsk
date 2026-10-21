@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ХвостМаркет — QR пробников</title>
+<style>
+:root{font-family:Arial,sans-serif;color:#213a2e;background:#f5f5ef}*{box-sizing:border-box}body{margin:0}
+header{background:#1c3a2f;color:white;padding:22px max(16px,calc((100% - 1000px)/2))}
+main{max-width:1000px;margin:auto;padding:22px 16px}
+a{color:#2d6846}.panel{background:white;border:1px solid #dbe5dc;border-radius:14px;padding:22px;margin:14px 0}
+.controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+label{display:flex;flex-direction:column;font-weight:bold;gap:7px}
+select,button{font:inherit;border-radius:8px;padding:10px 12px;border:1px solid #b4c8b7;background:#fff}
+button{cursor:pointer;background:#236c44;color:#fff;border-color:#236c44}
+button.secondary{background:white;color:#236c44}
+.note{color:#667c69;font-size:13px;line-height:1.5}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;border-bottom:1px solid #e6eae6;padding:10px 6px}th{font-size:13px}
+#preview{max-width:240px;margin:12px 0;min-height:160px}#preview img,#preview canvas{width:160px;height:160px}
+#sheet{display:none}.error{color:#a32b21}.number{font-size:26px;font-weight:bold}
+@page{size:A4;margin:0}
+@media print{
+  body{background:#fff}header,main,.screen-only{display:none!important}
+  #sheet{display:block!important;width:210mm;margin:0;padding:0}
+  .sheet-page{width:210mm;height:297mm;padding:10.5mm 4.95mm;display:grid;grid-template-columns:repeat(3,66.7mm);grid-template-rows:repeat(6,46mm);break-after:page;page-break-after:always;overflow:hidden}
+  .sheet-page:last-child{break-after:auto;page-break-after:auto}
+  .sticker{width:66.7mm;height:46mm;display:flex;align-items:center;justify-content:center;gap:3mm;padding:2mm 3mm;overflow:hidden;break-inside:avoid;color:#1c3a2f}
+  .sticker img{width:34mm;height:34mm;object-fit:contain}
+  .sticker-copy{flex:1;font:700 9pt/1.3 Arial,sans-serif}
+  .sticker-copy small{display:block;font:8pt/1.3 Arial,sans-serif;margin-top:2mm}
+}
+</style></head><body>
+<header><h1 style="margin:0">🎁 QR-коды пробников</h1><p style="margin-bottom:0">Отдельная аналитика сканирований по точкам сети</p></header>
+<main>
+<p><a id="returnLink" href="/taiga-admin.html">← Назад в кабинет</a></p>
+<section class="panel">
+ <div class="controls">
+  <label>Торговая точка<select id="point"></select></label>
+  <label>Период<select id="days"><option value="7">7 дней</option><option selected value="30">30 дней</option><option value="90">90 дней</option></select></label>
+  <button id="refresh">Обновить статистику</button>
+ </div>
+ <p class="note">Для каждой точки создаётся своя ссылка. Сканирование записывается на сервере, после чего открывается инструкция покупки. Не смешивается с воронкой товарных QR.</p>
+ <div id="error" class="error" role="alert"></div>
+</section>
+<section class="panel">
+ <h2>Этикетки пробников</h2>
+ <p>На одном листе А4 — ровно 18 этикеток по 66,7 × 46 мм (3 столбца × 6 строк). Отступы заложены в макет; в настройках принтера задайте масштаб 100% и отключите дополнительные поля.</p>
+ <div id="preview"></div>
+ <div id="url" class="note"></div>
+ <div class="controls" style="margin-top:14px">
+  <button id="print">Печать 18 наклеек</button>
+  <button id="download" class="secondary">Скачать QR PNG</button>
+  <button id="copy" class="secondary">Копировать ссылку</button>
+ </div>
+</section>
+<section class="panel">
+ <h2>Сканирования пробников <span id="count" class="number">0</span></h2>
+ <table><thead><tr><th>Точка</th><th>Сканирования</th><th>Последнее сканирование (UTC)</th></tr></thead><tbody id="rows"></tbody></table>
+</section>
+</main>
+<div id="sheet"></div>
+<script src="/qrcode.min.js"></script>
+<script>
+'use strict';
+const role = new URLSearchParams(location.search).get('role') === 'manager' ? 'manager' : 'admin';
+const token = localStorage.getItem(role === 'manager' ? 'taiga_manager_token' : 'taiga_admin_token');
+document.getElementById('returnLink').href=role==='manager'?'/taiga-manager.html':'/taiga-admin.html';
+let allowedPoints=[];
+function qrURL(point){return location.origin+'/api/sample-qr/scan?point='+encodeURIComponent(point);}
+function safe(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function err(e){document.getElementById('error').textContent=e.message||String(e);}
+async function api(path){
+ if(!token)throw Error('Сначала войдите в кабинет '+(role==='manager'?'менеджера':'администратора'));
+ const r=await fetch(path,{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+ const json=await r.json();
+ if(!r.ok)throw Error(json.error||'Ошибка загрузки данных ('+r.status+')');
+ return json;
+}
+function createQR(node,url,size=240){
+ node.innerHTML='';
+ // QRCode принимает ASCII URL; URL приводит кириллический домен к punycode.
+ new QRCode(node,{text:new URL(url).href,width:size,height:size,correctLevel:QRCode.CorrectLevel.M,colorDark:'#1c3a2f',colorLight:'#ffffff'});
+ return node.querySelector('canvas')||node.querySelector('img');
+}
+function qrPNG(url,size=360){
+ const tmp=document.createElement('div');tmp.style.cssText='position:absolute;left:-10000px;top:0';document.body.appendChild(tmp);
+ const c=createQR(tmp,url,size);const data=c.tagName==='CANVAS'?c.toDataURL('image/png'):c.src;tmp.remove();return data;
+}
+function selected(){return document.getElementById('point').value;}
+function updatePreview(){
+ const point=selected(),container=document.getElementById('preview');
+ container.innerHTML='';if(!point)return;
+ createQR(container,qrURL(point),160);
+ document.getElementById('url').textContent=qrURL(point);
+}
+async function loadStats(){
+ const point=selected(),days=document.getElementById('days').value;
+ const result=await api('/api/sample-qr/stats?days='+days+(point?'&point='+encodeURIComponent(point):''));
+ document.getElementById('count').textContent=Number(result.total_scans).toLocaleString('ru-RU');
+ document.getElementById('rows').innerHTML=result.points.map(p=>'<tr><td>'+safe(p.name)+'</td><td>'+Number(p.scans)+'</td><td>'+safe(p.last_scan||'—')+'</td></tr>').join('')||'<tr><td colspan="3">Нет данных</td></tr>';
+}
+async function init(){
+ try{
+  const result=await api('/api/sample-qr/points');allowedPoints=result.points;
+  const select=document.getElementById('point');
+  select.innerHTML='<option value="">Все точки (статистика)</option>';
+  allowedPoints.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;select.appendChild(o);});
+  if(allowedPoints.length)select.value=allowedPoints[0].id;
+  updatePreview();await loadStats();
+ }catch(e){err(e);}
+}
+document.getElementById('point').addEventListener('change',()=>{updatePreview();loadStats().catch(err);});
+document.getElementById('days').addEventListener('change',()=>loadStats().catch(err));
+document.getElementById('refresh').addEventListener('click',()=>loadStats().catch(err));
+document.getElementById('print').addEventListener('click',()=>{
+ const point=selected();if(!point)return alert('Выберите одну конкретную торговую точку.');
+ const p=allowedPoints.find(x=>x.id===point);if(!p)return alert('Точка недоступна.');
+ try{
+ const src=qrPNG(qrURL(point));
+ const sheet=document.getElementById('sheet');sheet.innerHTML='';
+ const page=document.createElement('div');page.className='sheet-page';
+ for(let i=0;i<18;i++){
+ const cell=document.createElement('div');cell.className='sticker';
+ const img=document.createElement('img');img.src=src;img.alt='QR';
+ const copy=document.createElement('div');copy.className='sticker-copy';copy.textContent='Бесплатный пробник';
+ const name=document.createElement('small');name.textContent='Отсканируйте QR · Как купить';copy.appendChild(name);
+ cell.append(img,copy);page.appendChild(cell);
+ }
+ sheet.appendChild(page);
+ requestAnimationFrame(()=>window.print());
+ }catch(e){err(e);}
+});
+document.getElementById('download').addEventListener('click',()=>{
+ if(!selected())return alert('Выберите точку.');
+ try{const a=document.createElement('a');a.href=qrPNG(qrURL(selected()));a.download='probniki-'+selected()+'.png';a.click();}catch(e){err(e);}
+});
+document.getElementById('copy').addEventListener('click',()=>{
+ if(!selected())return alert('Выберите точку.');
+ navigator.clipboard.writeText(qrURL(selected())).catch(err);
+});
+init();
+</script></body></html>
