@@ -1426,6 +1426,11 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     <!-- ══ RESTOCK REQUESTS ══ -->
     <div id="sec-restock" style="display:none;">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Заявки покупателей на довоз в минимаркеты</div>
+        <p style="font-size:.82rem;color:var(--muted);margin-bottom:1rem;">Обращения покупателей по товарам, которых нет на удобной точке. Здесь можно назначить обработку и подтвердить довоз после фактического поступления.</p>
+        <div id="admin-customer-restock-requests"></div>
+      </div>
       <div class="card">
         <div class="card-title">
           <span>Отчёты менеджеров о размещении товара <span id="restock-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
@@ -2996,7 +3001,7 @@ async function showSection(id) {
   if (id === 'qr')          await qrInitSection();
   if (id === 'leads')       await renderLeads();
   if (id === 'warehouse')   { await loadAdminProducts(); await populateReceiptForm(); await renderWarehouse(); }
-  if (id === 'restock')     await renderStockMovements();
+  if (id === 'restock')     await Promise.all([renderStockMovements(), renderAdminCustomerRestock()]);
   if (id === 'audit')       await renderAuditLog();
   if (id === 'admins')      await renderAdmins();
 }
@@ -5679,6 +5684,41 @@ async function deleteWarehouseStock(button) {
     alert('Ошибка сети. Попробуйте ещё раз.');
     button.disabled = false;
   }
+}
+
+// Спрос покупателей на отсутствующие товары, отдельно от актов перемещения.
+async function renderAdminCustomerRestock() {
+  const holder = document.getElementById('admin-customer-restock-requests');
+  if (!holder) return;
+  holder.textContent = 'Загрузка…';
+  try {
+    const res = await authFetch('/api/customer-restock-requests');
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Не удалось загрузить');
+    const rows = d.requests || [];
+    if (!rows.length) { holder.textContent = 'Заявок пока нет.'; return; }
+    const statuses = {new:'Новая',in_progress:'В работе',fulfilled:'Довезено',cancelled:'Отменена'};
+    holder.innerHTML = '<div style="overflow-x:auto;"><table class="tbl"><thead><tr><th>Дата</th><th>Минимаркет</th><th>Товар</th><th>Клиент</th><th>Статус</th><th>Действия</th></tr></thead><tbody>' +
+      rows.map(x => '<tr>' +
+        '<td style="white-space:nowrap;">' + escapeOrderCell(x.created_at || '') + '</td>' +
+        '<td>' + escapeOrderCell(x.point_name || '') + '</td>' +
+        '<td>' + escapeOrderCell(x.product_name || '') + ' (' + escapeOrderCell(x.variant_weight || '') + '), ' + Number(x.qty) + ' шт.</td>' +
+        '<td>' + escapeOrderCell(x.customer_name || 'Клиент') + '<div>' + escapeOrderCell(x.customer_phone || '') + '</div></td>' +
+        '<td>' + escapeOrderCell(statuses[x.status] || x.status) + '</td>' +
+        '<td>' + (['new','in_progress'].includes(x.status) ?
+          '<div style="display:flex;gap:.35rem;flex-wrap:wrap;">' +
+          (x.status === 'new' ? '<button class="row-btn" onclick="updateAdminCustomerRestock(' + x.id + ',\'in_progress\')">В работу</button>' : '') +
+          '<button class="row-btn" onclick="updateAdminCustomerRestock(' + x.id + ',\'fulfilled\')">Довезено</button>' +
+          '<button class="row-btn danger" onclick="updateAdminCustomerRestock(' + x.id + ',\'cancelled\')">Отменить</button></div>' : '—') + '</td></tr>').join('') +
+      '</tbody></table></div>';
+  } catch(e) { holder.textContent = 'Не удалось загрузить заявки: ' + e.message; }
+}
+async function updateAdminCustomerRestock(id,status) {
+  if (status === 'cancelled' && !confirm('Отменить заявку покупателя?')) return;
+  const res=await authFetch('/api/customer-restock-requests/'+id,{method:'PUT',body:{status}});
+  const d=await res.json();
+  if(!res.ok){alert(d.error || 'Не удалось изменить статус');return;}
+  await renderAdminCustomerRestock();
 }
 
 // ── ЗАЯВКИ НА ПОПОЛНЕНИЕ ──────────────────────────────────────────────
