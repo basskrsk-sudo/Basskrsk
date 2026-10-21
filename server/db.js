@@ -822,6 +822,20 @@ function ensureColumn(table, column, definition) {
 // archived_prev_active восстанавливает исходную видимость на сайте после возврата.
 ensureColumn('products', 'archived_at', 'TEXT');
 ensureColumn('products', 'archived_prev_active', 'INTEGER');
+db.exec(`
+CREATE TABLE IF NOT EXISTS qr_funnel_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ point_id TEXT NOT NULL,
+ product_id INTEGER NOT NULL,
+ event_type TEXT NOT NULL CHECK(event_type IN ('open','checkout','payment_created')),
+ visit_id TEXT NOT NULL,
+ order_code TEXT,
+ created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_qr_funnel_point_date ON qr_funnel_events(point_id,created_at);
+CREATE INDEX IF NOT EXISTS idx_qr_funnel_event ON qr_funnel_events(event_type,created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_qr_funnel_dedup ON qr_funnel_events(visit_id,point_id,product_id,event_type);
+`);
 // Гостевые отзывы не требуют клиентского аккаунта и не меняют историю
 // product_reviews (там строгое ограничение customer_id).
 db.exec(`

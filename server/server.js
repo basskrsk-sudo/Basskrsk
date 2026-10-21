@@ -16,6 +16,7 @@ const { createStaticCache } = require('./static-cache');
 const { Router, readBinaryBody, parseJsonBody, sendJson } = require('./http-utils');
 const { registerAuthRoutes, requireSuperAdmin } = require('./routes-auth');
 const { registerProductRoutes } = require('./routes-products');
+const { registerQrAnalyticsRoutes } = require('./routes-qr-analytics');
 const { registerReviewRoutes } = require('./routes-reviews');
 const { registerPartnerRoutes } = require('./routes-partners');
 const { registerManagerRoutes } = require('./routes-managers');
@@ -83,6 +84,7 @@ const MIME = {
 const router = new Router();
 registerAuthRoutes(router);
 registerProductRoutes(router);
+registerQrAnalyticsRoutes(router);
 registerReviewRoutes(router);
 registerPartnerRoutes(router);
 registerManagerRoutes(router);
