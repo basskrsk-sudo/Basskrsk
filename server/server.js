@@ -242,6 +242,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Тайга: сервер запущен на порту ${PORT} (Node.js ${process.version})`);
+  require('./deployment-notification').notifyDeployment(PORT).catch((err) => console.error('Deployment notification:', err.message));
   require('./backup').scheduleBackups();
   require('./telegram-login-poller').startPolling();
   console.log(require('./max-bot').isConfigured()
