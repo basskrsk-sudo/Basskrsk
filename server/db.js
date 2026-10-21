@@ -818,6 +818,10 @@ function ensureColumn(table, column, definition) {
   }
 }
 
+// Архивация вместо физического удаления товара: сохраняем историю и остатки.
+// archived_prev_active восстанавливает исходную видимость на сайте после возврата.
+ensureColumn('products', 'archived_at', 'TEXT');
+ensureColumn('products', 'archived_prev_active', 'INTEGER');
 ensureColumn('points', 'manager_id', 'INTEGER REFERENCES managers(id)');
 ensureColumn('points', 'is_hub', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('partners', 'point_id', 'TEXT REFERENCES points(id)');
