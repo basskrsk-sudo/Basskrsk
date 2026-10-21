@@ -1,0 +1,90 @@
+// Sends one email for each successfully started Docker build, not for every restart.
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const http = require('node:http');
+const { sendEmail } = require('./email');
+
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const INFO_FILE = path.join(__dirname, '..', 'build-info.json');
+const LAST_FILE = path.join(DATA_DIR, 'last-notified-build.json');
+
+function readJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; }
+}
+
+function healthCheck(port) {
+  return new Promise((resolve) => {
+    const req = http.get({ hostname: '127.0.0.1', port, path: '/api/points', timeout: 6000 }, (res) => {
+      let bytes = 0;
+      let hasContent = false;
+      res.on('data', (chunk) => { bytes += chunk.length; if (bytes > 0) hasContent = true; });
+      res.on('end', () => resolve(res.statusCode === 200 && hasContent));
+      res.on('error', () => resolve(false));
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(false));
+  });
+}
+
+async function notifyDeployment(port) {
+  const info = readJson(INFO_FILE);
+  if (!info || !info.build_id) {
+    console.warn('Deploy email: build-info.json отсутствует; уведомление пропущено');
+    return;
+  }
+  if (readJson(LAST_FILE)?.build_id === info.build_id) {
+    console.log('Deploy email: эта сборка уже подтверждена письмом');
+    return;
+  }
+  if (!await healthCheck(port)) {
+    console.warn('Deploy email: сервер не прошёл локальную проверку /api/points');
+    return;
+  }
+  const recipient = process.env.DEPLOY_NOTIFICATION_EMAIL ||
+    process.env.BUSINESS_COPY_EMAIL || process.env.BACKUP_EMAIL;
+  if (!recipient) {
+    console.warn('Deploy email: нет DEPLOY_NOTIFICATION_EMAIL/BUSINESS_COPY_EMAIL/BACKUP_EMAIL');
+    return;
+  }
+  const now = new Date();
+  const version = info.version || 'unknown';
+  const sha = info.git_commit || process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'не передан Amvera';
+  const text = [
+    'ХвостМаркет: новая сборка успешно запустилась.',
+    '',
+    'Статус: сервер работает, API /api/points ответил 200.',
+    'Версия приложения: ' + version,
+    'Идентификатор сборки: ' + info.build_id,
+    'Коммит GitHub: ' + sha,
+    'Образ собран (UTC): ' + (info.built_at || 'неизвестно'),
+    'Запущен и проверен (UTC): ' + now.toISOString(),
+    'Среда: ' + (process.env.DEPLOY_ENV || 'Amvera'),
+    'Node.js: ' + process.version,
+    'Сайт: https://хвостмаркет.рф',
+    '',
+    'Внимание: это локальная проверка запуска приложения, а не проверка',
+    'покупки, оплаты или доступности сайта из внешней сети.',
+  ].join('\n');
+  const result = await sendEmail({
+    to: recipient,
+    subject: '✅ ХвостМаркет — новая версия запущена (' + version + ')',
+    text,
+  });
+  if (!result.ok) {
+    console.warn('Deploy email: письмо не принято SMTP', result.error || '');
+    return;
+  }
+  // Persist only after SMTP confirms acceptance. Restarting same build won't spam.
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = LAST_FILE + '.tmp-' + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify({ build_id: info.build_id, sent_at: now.toISOString() }));
+    fs.renameSync(tmp, LAST_FILE);
+    console.log('Deploy email: уведомление отправлено', info.build_id);
+  } catch (e) {
+    console.error('Deploy email: не удалось сохранить отметку', e.message);
+  }
+}
+
+module.exports = { notifyDeployment, healthCheck };
