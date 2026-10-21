@@ -4883,7 +4883,10 @@ function renderProductCard(p) {
     ? `<div style="font-size:.78rem;color:var(--amber);margin-top:.2rem;">${renderStaticStars(p.review_avg)} <span style="color:var(--muted);">(${p.review_count})</span></div>`
     : '';
   const stock = productStockAtCatalogPoint(p);
-  const availabilityHtml = stock === null ? '' : `
+  const inStock = stock === null || stock > 0;
+  const availabilityHtml = stock === null ? '' : stock <= 0
+    ? '<div class="product-availability"><span class="product-low-stock">Нет в выбранном минимаркете · доступна заявка на довоз</span></div>'
+    : `
     <div class="product-availability">
       <span class="product-in-stock">✓ Есть в выбранном минимаркете</span>
       ${stock <= 2 ? `<span class="product-low-stock">Осталось ${stock}</span>` : ''}
@@ -4914,8 +4917,8 @@ function renderProductCard(p) {
           <span class="price">${priceLabel}</span>
         </div>
         <div class="product-card-actions">
-          <button class="add-btn" onclick="event.stopPropagation(); buyProductNow(${p.id})">Купить сейчас</button>
-          <button class="add-btn secondary" onclick="event.stopPropagation(); addProductToCartFromCatalog(${p.id})">В корзину</button>
+          ${inStock ? `<button class="add-btn" onclick="event.stopPropagation(); buyProductNow(${p.id})">Купить сейчас</button>
+          <button class="add-btn secondary" onclick="event.stopPropagation(); addProductToCartFromCatalog(${p.id})">В корзину</button>` : '<span style="font-size:.8rem;color:var(--muted);">Товар временно отсутствует</span>'}
         </div>
         ${!currentCatalogPointFilter || productVariants(p).some(v => !(Number(v.stock?.[currentCatalogPointFilter]) > 0)) ? `<button class="add-btn secondary" style="margin-top:.6rem;" onclick="event.stopPropagation();openCustomerRestockModal(${p.id})">📦 Заказать довоз в мой минимаркет</button>` : ''}
       </div>
@@ -4934,14 +4937,10 @@ function renderCatalog() {
       (p.desc && p.desc.toLowerCase().includes(query))
     );
   }
-  // Фильтр по точке — показываем только то, что реально есть в наличии
-  // (хотя бы один вариант с qty > 0) на выбранной точке.
-  if (currentCatalogPointFilter) {
-    filtered = filtered.filter(p => productVariantsForCatalog(p).length > 0);
-  }
-
+  // При выборе точки товары без остатка остаются видимыми для заявки на довоз.
+  // Оформить покупку без фактического остатка не позволяем.
   const emptyMessage = currentCatalogPointFilter
-    ? 'В этом минимаркете сейчас нет подходящих товаров в наличии' + (query ? ' по запросу «' + searchInput.value.trim() + '»' : '') + '. Попробуйте другую категорию или выберите другой минимаркет.'
+    ? 'В каталоге нет подходящих товаров' + (query ? ' по запросу «' + searchInput.value.trim() + '»' : '') + '. Попробуйте другую категорию.'
     : 'Ничего не найдено' + (query ? ' по запросу «' + searchInput.value.trim() + '»' : '') + '.';
 
   grid.innerHTML = filtered.length
