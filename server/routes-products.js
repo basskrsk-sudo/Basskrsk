@@ -841,6 +841,9 @@ function registerProductRoutes(router) {
     if (!variant_id || active === undefined) {
       return sendJson(res, 400, { error: 'Укажите variant_id и active' });
     }
+    const product = db.prepare('SELECT archived_at FROM products WHERE id = ?').get(ctx.params.id);
+    if (!product) return sendJson(res, 404, { error: 'Товар не найден' });
+    if (product.archived_at) return sendJson(res, 409, { error: 'Сначала восстановите товар из архива' });
     db.prepare('UPDATE product_variants SET active = ? WHERE id = ? AND product_id = ?')
       .run(active ? 1 : 0, variant_id, ctx.params.id);
     sendJson(res, 200, { ok: true });
