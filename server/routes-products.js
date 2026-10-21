@@ -73,6 +73,8 @@ function productWithVariantsAndStock(product, includeCost, includeInactiveVarian
     purpose: product.purpose || '',
     restrictions: product.restrictions || '',
     active: !!product.active,
+    archived: !!product.archived_at,
+    archived_at: product.archived_at || null,
     ...getReviewSummary(product.id),
     variants: variants.map((v) => Object.assign({
       id: v.id,
@@ -168,10 +170,10 @@ function registerProductRoutes(router) {
 
   // GET /api/products — публичный каталог (для index.html, а также для генератора QR-кодов в кабинетах менеджера/администратора), только активные товары и веса
   router.get('/api/products', (req, res, ctx) => {
-    const includeInactive = ctx.query.all === '1';
     const adminPayload = tryAuth(['admin'])(req);
+    const includeInactive = ctx.query.all === '1' && !!adminPayload;
     const rows = db.prepare(
-      includeInactive ? 'SELECT * FROM products' : 'SELECT * FROM products WHERE active = 1'
+      includeInactive ? 'SELECT * FROM products' : 'SELECT * FROM products WHERE active = 1 AND archived_at IS NULL'
     ).all();
 
     // Популярность считаем по фактически оплаченным товарам. Возвращённые
@@ -897,19 +899,44 @@ function registerProductRoutes(router) {
       pet_suitability !== undefined ? pet_suitability : existing.pet_suitability,
       purpose !== undefined ? purpose : existing.purpose,
       restrictions !== undefined ? restrictions : existing.restrictions,
-      active !== undefined ? (active ? 1 : 0) : existing.active,
+      existing.archived_at ? 0 : (active !== undefined ? (active ? 1 : 0) : existing.active),
       img !== undefined ? img : existing.img,
       ctx.params.id
     );
     sendJson(res, 200, { ok: true });
   });
 
-  // DELETE /api/products/:id — админ удаляет товар (каскадом удалятся варианты и остатки)
+  // Архивация обратима: не меняем ни остатки, ни варианты, ни старые заказы.
+  router.put('/api/products/:id/archive', (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    const item=db.prepare('SELECT id, active, archived_at FROM products WHERE id=?').get(ctx.params.id);
+    if (!item) return sendJson(res,404,{error:'Товар не найден'});
+    if (item.archived_at) return sendJson(res,409,{error:'Товар уже находится в архиве'});
+    db.prepare("UPDATE products SET archived_at=datetime('now'), archived_prev_active=active, active=0 WHERE id=?").run(item.id);
+    sendJson(res,200,{ok:true,archived:true});
+  });
+
+  router.put('/api/products/:id/restore', (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    const item=db.prepare('SELECT id, archived_at FROM products WHERE id=?').get(ctx.params.id);
+    if (!item) return sendJson(res,404,{error:'Товар не найден'});
+    if (!item.archived_at) return sendJson(res,409,{error:'Товар уже в основном каталоге'});
+    db.prepare('UPDATE products SET archived_at=NULL, active=COALESCE(archived_prev_active,0), archived_prev_active=NULL WHERE id=?').run(item.id);
+    sendJson(res,200,{ok:true,archived:false});
+  });
+
+  // Старый маршрут поддерживает прежние интерфейсы, но удаление заменено архивацией.
   router.delete('/api/products/:id', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    db.prepare('DELETE FROM products WHERE id = ?').run(ctx.params.id);
-    sendJson(res, 200, { ok: true });
+    const item=db.prepare('SELECT id,active,archived_at FROM products WHERE id=?').get(ctx.params.id);
+    if (!item) return sendJson(res,404,{error:'Товар не найден'});
+    if (!item.archived_at) {
+      db.prepare("UPDATE products SET archived_at=datetime('now'), archived_prev_active=active, active=0 WHERE id=?").run(item.id);
+    }
+    sendJson(res,200,{ok:true,archived:true});
   });
 }
 
