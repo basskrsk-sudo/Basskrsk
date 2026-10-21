@@ -5401,7 +5401,9 @@ async function submitCustomerRestockRequest() {
     name: document.getElementById('restock-name').value.trim(),
     consent: document.getElementById('restock-consent').checked,
   };
-  if (!data.point_id || !data.variant_id || !Number.isInteger(data.qty) || data.qty < 1 || data.qty > 20 || !/^(?:\\+7|8)?[\\s()\\-]*9(?:[\\s()\\-]*\\d){9}$/.test(data.phone) || !data.consent) {
+  const phoneDigits = data.phone.replace(/\D/g,'');
+  const validPhone = /^(?:[78])?9\d{9}$/.test(phoneDigits);
+  if (!data.point_id || !data.variant_id || !Number.isInteger(data.qty) || data.qty < 1 || data.qty > 20 || !validPhone || !data.consent) {
     message.style.color = '#9B2335';
     message.textContent = 'Выберите товар и точку, укажите количество, корректный номер телефона и согласие на связь.';
     return;
