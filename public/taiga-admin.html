@@ -1598,7 +1598,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div class="qr-ctrl-group" id="qr-product-control">
             <label>Товар</label>
             <select id="qr-sel-product" onchange="qrGenerate()">
-              <option value="all">Все товары</option>
+              <option value="all">Все товары</option><option value="__sample__">🎁 Бесплатный пробник</option>
             </select>
           </div>
           <div class="qr-ctrl-group">
@@ -6377,6 +6377,7 @@ function qrCityChanged() {
 }
 
 function qrBuildURL(pointId, productId, cityId) {
+  if (productId === '__sample__') return QR_SITE_URL + '/api/sample-qr/scan?point=' + encodeURIComponent(pointId);
   // В админке создаются только товарные QR: каждый сразу открывает лёгкую
   // карточку покупки конкретного товара на конкретной точке.
   return QR_SITE_URL + '/p/' + encodeURIComponent(pointId) + '/' + encodeURIComponent(productId);
@@ -6407,7 +6408,7 @@ function qrGenerate() {
   // этого города", а не вообще все точки сети.
   const cityPoints = cityFilter ? QR_POINTS.filter(p => p.city_id === cityFilter) : QR_POINTS;
   const points   = pointFilter   === 'all' ? cityPoints   : cityPoints.filter(p => p.id === pointFilter);
-  const products = productFilter === 'all' ? QR_PRODUCTS : QR_PRODUCTS.filter(p => p.id === productFilter);
+  const products = productFilter === '__sample__' ? [{ id: '__sample__', icon: '🎁', name: 'Бесплатный пробник', price: 0, weight: '' }] : (productFilter === 'all' ? QR_PRODUCTS : QR_PRODUCTS.filter(p => p.id === productFilter));
 
   qrGenerated = [];
   points.forEach(pt => { products.forEach(pr => { qrGenerated.push({ point: pt, product: pr }); }); });
@@ -6437,10 +6438,10 @@ function qrGenerate() {
       </div>
       <div class="qr-body">
         <img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" class="qr-logo-full">
-        <div class="qr-caption">Сканируйте для быстрой покупки этого товара</div>
+        <div class="qr-caption">${item.product.id === "__sample__" ? "Сканируйте QR пробника" : "Сканируйте для быстрой покупки этого товара"}</div>
         <div class="qr-box" id="${cardId}"></div>
         <div class="qr-product">${item.product.icon} ${item.product.name}</div>
-        <div class="qr-price">${item.product.price} ₽ · ${item.product.weight}</div>
+        <div class="qr-price">${item.product.id === '__sample__' ? 'Бесплатно · инструкция покупки' : item.product.price + ' ₽ · ' + item.product.weight}</div>
         <div class="qr-url">${url}</div>
       </div>
       <div class="qr-actions no-print">
@@ -6569,7 +6570,7 @@ async function printLabelSheet() {
       cell.innerHTML = `
         <div class="lbl-qr" id="${boxId}"></div>
         <div class="lbl-name">${item.product.icon} ${item.product.name}</div>
-        <div class="lbl-price">${item.product.price} ₽ · ${item.product.weight}</div>
+        <div class="lbl-price">${item.product.id === '__sample__' ? 'Бесплатно · инструкция покупки' : item.product.price + ' ₽ · ' + item.product.weight}</div>
         <div class="lbl-point">${item.point.icon} ${item.point.name}</div>`;
       pageEl.appendChild(cell);
       cell.dataset.url = url;
