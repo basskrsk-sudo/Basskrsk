@@ -27,6 +27,25 @@ function healthCheck(port) {
   });
 }
 
+
+// Checks actual HTML bodies, not just HTTP status; the app's custom 404 is HTML.
+function checkPage(port, route, expected) {
+  return new Promise((resolve) => {
+    const req = http.get({ hostname: '127.0.0.1', port, path: route, timeout: 6000 }, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { if (body.length < 150000) body += chunk.toString('utf8'); });
+      res.on('end', () => resolve({
+        path: route,
+        ok: res.statusCode === 200 && expected.test(body),
+        status: res.statusCode,
+      }));
+      res.on('error', () => resolve({ path: route, ok: false, status: 0 }));
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve({ path: route, ok: false, status: 0 }));
+  });
+}
+
 async function notifyDeployment(port) {
   const info = readJson(INFO_FILE);
   if (!info || !info.build_id) {
@@ -41,6 +60,10 @@ async function notifyDeployment(port) {
     console.warn('Deploy email: сервер не прошёл локальную проверку /api/points');
     return;
   }
+  const pages = await Promise.all([
+    checkPage(port, '/', /<html/i),
+    checkPage(port, '/sample-qr.html', /QR-коды пробников/i),
+  ]);
   const recipient = process.env.DEPLOY_NOTIFICATION_EMAIL ||
     process.env.BUSINESS_COPY_EMAIL || process.env.BACKUP_EMAIL;
   if (!recipient) {
@@ -49,11 +72,12 @@ async function notifyDeployment(port) {
   }
   const now = new Date();
   const version = info.version || 'unknown';
-  const sha = info.git_commit || process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'не передан Amvera';
+  const sha = info.git_commit && info.git_commit !== 'unknown' ? info.git_commit : (process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'не удалось определить');
   const text = [
     'ХвостМаркет: новая сборка успешно запустилась.',
     '',
     'Статус: сервер работает, API /api/points ответил 200.',
+    ...pages.map(p => (p.ok ? '✅ ' : '⚠️ ') + p.path + ': HTTP ' + p.status + (p.ok ? ', содержимое проверено' : ', проверка не пройдена')),
     'Версия приложения: ' + version,
     'Идентификатор сборки: ' + info.build_id,
     'Коммит GitHub: ' + sha,
@@ -63,7 +87,10 @@ async function notifyDeployment(port) {
     'Node.js: ' + process.version,
     'Сайт: https://хвостмаркет.рф',
     '',
-    'Внимание: это локальная проверка запуска приложения, а не проверка',
+    'Внимание: страницы проверены локально внутри Amvera, а не из интернета.',
+    'Это не проверка покупки или оплаты. Результаты ошибок показаны выше.',
+    '',
+    'Дополнительно: это локальная проверка запуска приложения, а не проверка'
     'покупки, оплаты или доступности сайта из внешней сети.',
   ].join('\n');
   const result = await sendEmail({
