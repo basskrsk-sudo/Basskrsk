@@ -1365,6 +1365,7 @@
       <button class="filter-btn" onclick="filterProducts('care', this)">✨ Уход</button>
     </div>
     <div class="products-grid" id="catalogGrid"></div>
+    <p style="margin:1.2rem 0;color:var(--muted);font-size:.83rem;">Не нашли товар в удобном минимаркете? В карточке товара можно оставить заявку на довоз без предварительной оплаты.</p>
 
     <!-- Вход в "Хочу такое" — перенесён сюда из главной навигации -->
     <div style="max-width:640px;margin:2.5rem auto 0;background:linear-gradient(135deg, var(--forest) 0%, var(--deep) 100%);border-radius:16px;padding:1.8rem 2rem;text-align:center;">
@@ -1372,6 +1373,26 @@
       <p style="color:rgba(255,255,255,.75);font-size:.9rem;margin-bottom:1.2rem;line-height:1.6;">Загляните в «Хочу такое» — идеи аксессуаров, которые могли бы у нас появиться. Отметьте, что вам интересно, и мы закажем при спросе.</p>
       <button class="btn-primary" onclick="showPage('wishlist')">💭 Хочу такое →</button>
     </div>
+  </div>
+</div>
+
+<!-- Заявка клиента на довоз товара к удобной точке -->
+<div id="restock-customer-modal" role="dialog" aria-modal="true" aria-labelledby="restock-customer-title" style="display:none;position:fixed;inset:0;z-index:9999;overflow-y:auto;background:rgba(18,37,30,.65);padding:6vh 1rem;">
+  <div style="max-width:480px;margin:auto;background:var(--white);border-radius:18px;padding:1.4rem;box-shadow:var(--shadow);">
+    <div style="display:flex;justify-content:space-between;gap:1rem;align-items:start;">
+      <h2 id="restock-customer-title" style="color:var(--deep);font-size:1.35rem;">Привезти товар в мой минимаркет</h2>
+      <button type="button" aria-label="Закрыть" onclick="closeCustomerRestockModal()" style="background:none;border:0;font-size:1.6rem;cursor:pointer;">×</button>
+    </div>
+    <p style="color:var(--muted);font-size:.85rem;margin:.6rem 0 1rem;">Оставьте заявку — проверим возможность довоза. Оплачивать сейчас ничего не нужно.</p>
+    <div class="form-group"><label>Товар и фасовка</label><select id="restock-variant" onchange="updateRestockAvailability()" style="width:100%;padding:.65rem;border:1px solid var(--border);border-radius:8px;"></select></div>
+    <div class="form-group"><label>Удобный минимаркет</label><select id="restock-point" onchange="updateRestockAvailability()" style="width:100%;padding:.65rem;border:1px solid var(--border);border-radius:8px;"></select></div>
+    <p id="restock-stock-note" style="color:var(--muted);font-size:.8rem;margin:0 0 .8rem;"></p>
+    <div class="form-group"><label>Количество</label><input id="restock-qty" type="number" min="1" max="20" value="1" onchange="updateRestockAvailability()" style="width:100%;"></div>
+    <div class="form-group"><label>Ваш телефон</label><input id="restock-phone" type="tel" placeholder="+7 (900) 000-00-00" autocomplete="tel" oninput="formatPhone(this)" style="width:100%;"></div>
+    <div class="form-group"><label>Имя (необязательно)</label><input id="restock-name" type="text" maxlength="100" placeholder="Как к вам обращаться?" style="width:100%;"></div>
+    <label style="display:flex;gap:.5rem;font-size:.78rem;color:var(--muted);line-height:1.45;margin-bottom:1rem;"><input type="checkbox" id="restock-consent" style="flex-shrink:0;margin-top:.15rem;"> <span>Согласен на обработку телефона для ответа по заявке в соответствии с <a href="privacy-policy.html" target="_blank" rel="noopener">политикой конфиденциальности</a>.</span></label>
+    <p id="restock-result" role="status" style="font-size:.83rem;margin-bottom:.8rem;"></p>
+    <button type="button" id="restock-submit" class="btn-primary" style="width:100%;" onclick="submitCustomerRestockRequest()">Оставить заявку на довоз</button>
   </div>
 </div>
 
@@ -1855,6 +1876,7 @@
       <div class="variant-picker" id="detailVariants"></div>
       <div class="detail-price" id="detailPrice"></div>
       <div class="detail-availability" id="detailAvailability"></div>
+    <button type="button" class="btn-outline" style="margin:.7rem 0 1rem;padding:.65rem .9rem;" onclick="openCustomerRestockModal(currentDetailId)">📦 Попросить привезти товар в удобный минимаркет</button>
       <p class="detail-desc" id="detailDesc"></p>
       <div class="detail-decision-grid" id="detailDecisionInfo"></div>
       <div class="qty-row">
@@ -4895,6 +4917,7 @@ function renderProductCard(p) {
           <button class="add-btn" onclick="event.stopPropagation(); buyProductNow(${p.id})">Купить сейчас</button>
           <button class="add-btn secondary" onclick="event.stopPropagation(); addProductToCartFromCatalog(${p.id})">В корзину</button>
         </div>
+        ${!currentCatalogPointFilter || productVariants(p).some(v => !(Number(v.stock?.[currentCatalogPointFilter]) > 0)) ? `<button class="add-btn secondary" style="margin-top:.6rem;" onclick="event.stopPropagation();openCustomerRestockModal(${p.id})">📦 Заказать довоз в мой минимаркет</button>` : ''}
       </div>
     </div>`;
 }
@@ -5330,6 +5353,76 @@ async function deleteMyReview() {
   } catch (e) {
     console.error('Не удалось удалить отзыв:', e);
   }
+}
+
+// ── CUSTOMER RESTOCK REQUESTS ─────────────────────────────
+let customerRestockProductId = null;
+function openCustomerRestockModal(productId) {
+  const product = products.find(p => String(p.id) === String(productId));
+  if (!product) return;
+  customerRestockProductId = product.id;
+  const modal = document.getElementById('restock-customer-modal');
+  const variantSel = document.getElementById('restock-variant');
+  const pointSel = document.getElementById('restock-point');
+  variantSel.innerHTML = productVariants(product).map(v =>
+    '<option value="' + Number(v.id) + '">' + escapeHtml(product.name + ' · ' + v.weight) + '</option>').join('');
+  pointSel.innerHTML = '<option value="">Выберите минимаркет</option>' + SITE_POINTS.map(p =>
+    '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name + ' — ' + p.addr) + '</option>').join('');
+  if (currentCatalogPointFilter) pointSel.value = currentCatalogPointFilter;
+  const phoneEl = document.getElementById('restock-phone');
+  if (document.getElementById('oPhone')?.value && !phoneEl.value) phoneEl.value = document.getElementById('oPhone').value;
+  document.getElementById('restock-result').textContent = '';
+  document.getElementById('restock-submit').disabled = false;
+  modal.style.display = 'block';
+  updateRestockAvailability();
+}
+function closeCustomerRestockModal() {
+  document.getElementById('restock-customer-modal').style.display = 'none';
+}
+function updateRestockAvailability() {
+  const product = products.find(p => String(p.id) === String(customerRestockProductId));
+  const pointId = document.getElementById('restock-point').value;
+  const variantId = Number(document.getElementById('restock-variant').value);
+  const qty = Number(document.getElementById('restock-qty').value || 1);
+  const variant = product && productVariants(product).find(v => Number(v.id) === variantId);
+  const available = variant && pointId ? Number(variant.stock?.[pointId] || 0) : null;
+  const note = document.getElementById('restock-stock-note');
+  note.textContent = available === null ? 'Выберите минимаркет, чтобы проверить наличие.'
+    : available >= qty ? '✓ На точке уже есть ' + available + ' шт. — товар можно купить сразу.'
+    : 'В выбранном минимаркете сейчас ' + available + ' шт. Можно оставить заявку на довоз.';
+}
+async function submitCustomerRestockRequest() {
+  const button = document.getElementById('restock-submit');
+  const message = document.getElementById('restock-result');
+  const data = {
+    point_id: document.getElementById('restock-point').value,
+    variant_id: Number(document.getElementById('restock-variant').value),
+    qty: Number(document.getElementById('restock-qty').value),
+    phone: document.getElementById('restock-phone').value.trim(),
+    name: document.getElementById('restock-name').value.trim(),
+    consent: document.getElementById('restock-consent').checked,
+  };
+  if (!data.point_id || !data.variant_id || !Number.isInteger(data.qty) || data.qty < 1 || data.qty > 20 || !/^(?:\\+7|8)?[\\s()\\-]*9(?:[\\s()\\-]*\\d){9}$/.test(data.phone) || !data.consent) {
+    message.style.color = '#9B2335';
+    message.textContent = 'Выберите товар и точку, укажите количество, корректный номер телефона и согласие на связь.';
+    return;
+  }
+  button.disabled = true;
+  message.textContent = 'Отправляем заявку…';
+  try {
+    const response = await fetch('/api/customer-restock-requests', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(data),
+    });
+    const result = await response.json();
+    message.style.color = response.ok ? '#2D7D46' : '#9B2335';
+    message.textContent = result.message || result.error || 'Ошибка отправки';
+    if (response.ok) { button.textContent = '✓ Заявка отправлена'; return; }
+  } catch(e) {
+    message.style.color = '#9B2335';
+    message.textContent = 'Ошибка сети. Попробуйте ещё раз.';
+  }
+  button.disabled = false;
 }
 
 // ── CART ──────────────────────────────────────────────
