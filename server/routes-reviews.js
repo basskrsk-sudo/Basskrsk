@@ -3,6 +3,7 @@
 'use strict';
 
 const db = require('./db');
+const crypto = require('node:crypto');
 const { sendJson } = require('./http-utils');
 const { requireAuth, tryAuth } = require('./routes-auth');
 
@@ -12,8 +13,8 @@ const { requireAuth, tryAuth } = require('./routes-auth');
 function getReviewSummary(productId) {
   const row = db.prepare(`
     SELECT COUNT(*) AS cnt, AVG(rating) AS avg
-    FROM product_reviews WHERE product_id = ? AND status = 'approved'
-  `).get(productId);
+    FROM (SELECT rating FROM product_reviews WHERE product_id = ? AND status = 'approved' UNION ALL SELECT rating FROM guest_product_reviews WHERE product_id = ? AND status = 'approved')
+  `).get(productId,productId);
   return {
     review_count: row.cnt || 0,
     review_avg: row.cnt ? Math.round(row.avg * 10) / 10 : null,
@@ -63,6 +64,9 @@ function registerReviewRoutes(router) {
       is_own: !!(payload && payload.id === r.customer_id),
     }));
 
+    const guestRows = db.prepare("SELECT id,author_name,rating,text,created_at FROM guest_product_reviews WHERE product_id=? AND status='approved' ORDER BY created_at DESC").all(productId);
+    reviews.push(...guestRows.map(r=>({id:'g'+r.id,rating:r.rating,text:r.text,created_at:r.created_at,author:r.author_name,verified_purchase:false,is_own:false})));
+    reviews.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
     // Свой отзыв (даже на модерации) клиент должен видеть у себя в карточке —
     // иначе кажется, что он потерялся. Публично он не в списке выше, только у автора.
     let ownPending = null;
@@ -107,6 +111,31 @@ function registerReviewRoutes(router) {
     sendJson(res, 201, { ok: true, message: 'Спасибо! Отзыв появится на сайте после проверки.' });
   });
 
+  // Анонимный отзыв: имя + текст, оценка, ловушка для ботов, лимиты по IP.
+  router.post('/api/products/:id/guest-reviews',(req,res,ctx)=>{
+    const productId=Number(ctx.params.id),b=ctx.body||{};
+    if(!Number.isSafeInteger(productId)||productId<=0)return sendJson(res,400,{error:'Некорректный товар'});
+    const product=db.prepare('SELECT id FROM products WHERE id=? AND active=1 AND archived_at IS NULL').get(productId);
+    if(!product)return sendJson(res,404,{error:'Товар недоступен'});
+    if(String(b.website||'').trim())return sendJson(res,200,{ok:true,message:'Отзыв отправлен на модерацию.'});
+    const author=String(b.author_name||'').trim().replace(/\\s+/g,' ').slice(0,70);
+    const reviewText=String(b.text||'').trim().slice(0,2000);
+    const rating=Number(b.rating);
+    if(author.length<2||reviewText.length<15||!Number.isInteger(rating)||rating<1||rating>5)
+      return sendJson(res,400,{error:'Укажите имя, оценку и отзыв от 15 символов'});
+    const origin=String(req.headers.origin||'');
+    const host=String(req.headers.host||'').toLowerCase();
+    if(origin){try{if(new URL(origin).host.toLowerCase()!==host)return sendJson(res,403,{error:'Недопустимый источник запроса'});}catch(e){return sendJson(res,403,{error:'Недопустимый источник запроса'});}}
+    const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim();
+    const ip=forwarded||req.socket.remoteAddress||'unknown';
+    const visitor=crypto.createHash('sha256').update(ip+'|'+(process.env.REVIEW_SPAM_SECRET||process.env.SESSION_SECRET||'review-public-rate') ).digest('hex');
+    const recent=db.prepare("SELECT COUNT(*) AS n FROM guest_product_reviews WHERE visitor_hash=? AND created_at>=datetime('now','-24 hours')").get(visitor).n;
+    const same=db.prepare("SELECT 1 FROM guest_product_reviews WHERE visitor_hash=? AND product_id=? AND created_at>=datetime('now','-30 days')").get(visitor,productId);
+    if(recent>=3||same)return sendJson(res,429,{error:'Отзыв уже отправлен или превышен лимит. Попробуйте позже.'});
+    db.prepare("INSERT INTO guest_product_reviews(product_id,author_name,rating,text,visitor_hash,status) VALUES (?,?,?,?,?,'pending')").run(productId,author,rating,reviewText,visitor);
+    sendJson(res,201,{ok:true,message:'Спасибо! Отзыв появится после проверки модератором.'});
+  });
+
   // DELETE /api/products/:id/reviews/me — клиент удаляет свой отзыв
   router.delete('/api/products/:id/reviews/me', (req, res, ctx) => {
     const payload = requireAuth(['customer'])(req, res, ctx);
@@ -139,7 +168,11 @@ function registerReviewRoutes(router) {
           WHERE r.status = ?
           ORDER BY r.created_at DESC
         `).all(status);
-    sendJson(res, 200, { reviews: rows });
+    const guest=db.prepare(status==='all' ?
+      "SELECT g.id,g.product_id,g.author_name AS customer_name,NULL AS customer_phone,g.rating,g.text,g.status,g.created_at,p.name AS product_name FROM guest_product_reviews g JOIN products p ON p.id=g.product_id ORDER BY g.created_at DESC" :
+      "SELECT g.id,g.product_id,g.author_name AS customer_name,NULL AS customer_phone,g.rating,g.text,g.status,g.created_at,p.name AS product_name FROM guest_product_reviews g JOIN products p ON p.id=g.product_id WHERE g.status=? ORDER BY g.created_at DESC").all(...(status==='all'?[]:[status]));
+    const combined=[...rows.map(r=>({...r,guest:false})),...guest.map(r=>({...r,guest:true}))].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
+    sendJson(res, 200, { reviews: combined });
   });
 
   // PUT /api/admin/reviews/:id — одобрить/отклонить/вернуть на проверку
@@ -150,9 +183,11 @@ function registerReviewRoutes(router) {
     if (!['approved', 'rejected', 'pending'].includes(status)) {
       return sendJson(res, 400, { error: 'Некорректный статус' });
     }
-    const existing = db.prepare('SELECT id FROM product_reviews WHERE id = ?').get(ctx.params.id);
+    const guest=!!ctx.body?.guest;
+    const table=guest?'guest_product_reviews':'product_reviews';
+    const existing=db.prepare('SELECT id FROM '+table+' WHERE id=?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Отзыв не найден' });
-    db.prepare('UPDATE product_reviews SET status = ? WHERE id = ?').run(status, ctx.params.id);
+    db.prepare('UPDATE '+table+' SET status = ? WHERE id = ?').run(status, ctx.params.id);
     sendJson(res, 200, { ok: true });
   });
 
@@ -160,7 +195,8 @@ function registerReviewRoutes(router) {
   router.delete('/api/admin/reviews/:id', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    db.prepare('DELETE FROM product_reviews WHERE id = ?').run(ctx.params.id);
+    const table=ctx.query?.guest==='1'?'guest_product_reviews':'product_reviews';
+    db.prepare('DELETE FROM '+table+' WHERE id = ?').run(ctx.params.id);
     sendJson(res, 200, { ok: true });
   });
 }
