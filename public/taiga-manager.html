@@ -462,6 +462,11 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
     <!-- ══ RESTOCK ══ -->
     <div class="page-sec" id="sec-restock">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Заявки покупателей на довоз</div>
+        <p style="font-size:.82rem;color:var(--muted);margin-bottom:.8rem;">Покупатель ждёт довоза в удобный минимаркет. После фактического размещения товара и подтверждения администратором можно закрыть заявку.</p>
+        <div id="manager-customer-restock"></div>
+      </div>
       <div class="card">
         <div class="card-title">Отчёт о размещении товара</div>
         <p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
@@ -1377,7 +1382,7 @@ function renderSec(id){
   if(id==='stock')   renderStockSection();
   if(id==='partners') renderPartnersSection();
   if(id==='earnings')renderEarnings();
-  if(id==='restock') renderRestock();
+  if(id==='restock') { renderRestock(); renderManagerCustomerRestock(); }
   if(id==='recruit') loadPointsForRegistrationForms();
   if(id==='calculator') renderCalculator();
   if(id==='qr') qrInitSection();
@@ -1948,6 +1953,36 @@ function renderCalculator() {
     </div>` : ''}
     ${!isPartner && !isManager ? '<p style="color:var(--muted);">Отметьте хотя бы одну роль, чтобы увидеть расчёт.</p>' : ''}
   `;
+}
+
+// Заявки покупателей, относящиеся только к точкам данного менеджера.
+async function renderManagerCustomerRestock() {
+  const el = document.getElementById('manager-customer-restock');
+  if (!el) return;
+  el.textContent = 'Загрузка…';
+  try {
+    const res = await authFetch('/api/customer-restock-requests');
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Ошибка загрузки');
+    const list = (d.requests || []).filter(x => ['new','in_progress'].includes(x.status));
+    if (!list.length) { el.textContent = 'Активных заявок пока нет.'; return; }
+    el.innerHTML = '<div style="overflow-x:auto;"><table class="tbl"><thead><tr><th>Точка</th><th>Товар</th><th>Клиент</th><th>Статус / действие</th></tr></thead><tbody>' +
+      list.map(x => '<tr><td>' + escapeManagerPayoutCell(x.point_name) + '</td>' +
+        '<td>' + escapeManagerPayoutCell(x.product_name) + ' (' + escapeManagerPayoutCell(x.variant_weight) + ') · ' + x.qty + ' шт.</td>' +
+        '<td>' + escapeManagerPayoutCell(x.customer_name || 'Клиент') + '<div>' + escapeManagerPayoutCell(x.customer_phone) + '</div></td>' +
+        '<td>' + (x.status === 'new' ? 'Новая' : 'В работе') + '<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.3rem;">' +
+        (x.status === 'new' ? '<button class="copy-btn" onclick="updateManagerCustomerRestock(' + x.id + ',\'in_progress\')">В работу</button>' : '') +
+        '<button class="copy-btn" onclick="updateManagerCustomerRestock(' + x.id + ',\'fulfilled\')">Довезено</button>' +
+        '<button class="copy-btn" onclick="updateManagerCustomerRestock(' + x.id + ',\'cancelled\')">Отменить</button></div></td></tr>').join('') +
+      '</tbody></table></div>';
+  } catch(e) { el.textContent = 'Не удалось загрузить заявки: ' + e.message; }
+}
+async function updateManagerCustomerRestock(id,status) {
+  if (status === 'cancelled' && !confirm('Отменить заявку покупателя?')) return;
+  const res=await authFetch('/api/customer-restock-requests/'+id,{method:'PUT',body:{status}});
+  const d=await res.json();
+  if(!res.ok){alert(d.error || 'Не удалось изменить статус');return;}
+  await renderManagerCustomerRestock();
 }
 
 // ── ПОПОЛНЕНИЕ (склад → заявка → развоз по точкам) ────────────────────
