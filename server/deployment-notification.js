@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const https = require('node:https');
 const { sendEmail } = require('./email');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
@@ -46,13 +47,62 @@ function checkPage(port, route, expected) {
   });
 }
 
+
+function githubJson(route) {
+  return new Promise((resolve, reject) => {
+    const req = https.get({
+      hostname: 'api.github.com',
+      path: '/repos/basskrsk-sudo/Basskrsk/' + route,
+      headers: { 'User-Agent': 'HvostMarket-deployment-notifier', 'Accept': 'application/vnd.github+json' },
+      timeout: 7000,
+    }, (res) => {
+      let body = '';
+      res.on('data', chunk => {
+        body += chunk.toString('utf8');
+        if (body.length > 250000) req.destroy(new Error('GitHub response too large'));
+      });
+      res.on('end', () => {
+        if (res.statusCode !== 200) return reject(new Error('GitHub HTTP ' + res.statusCode));
+        try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('GitHub timeout')));
+    req.on('error', reject);
+  });
+}
+
+async function listDeploymentChanges(sha, previous) {
+  if (!/^[0-9a-f]{40}$/i.test(sha)) return ['Коммит недоступен: список изменений не определён.'];
+  try {
+    let commits;
+    if (previous && /^[0-9a-f]{40}$/i.test(previous.git_commit) && previous.git_commit !== sha) {
+      const response = await githubJson('compare/' + previous.git_commit + '...' + sha);
+      commits = response.commits || [];
+      if (response.ahead_by > commits.length) {
+        return ['Более ' + commits.length + ' коммитов — показаны последние из полученных.', ...commits.slice(-12).map(x => x.commit.message.split('\\n')[0])];
+      }
+    } else if (previous && previous.sent_at) {
+      // Older notification records do not contain a commit SHA.
+      commits = await githubJson('commits?sha=' + sha + '&since=' + encodeURIComponent(previous.sent_at) + '&per_page=30');
+    } else {
+      return ['Первая сборка с журналом изменений: сравнение с предыдущей версией недоступно.'];
+    }
+    if (!commits.length) return ['Изменений кода между запусками не обнаружено.'];
+    return commits.slice(-15).map(x => x.commit.message.split('\\n')[0]);
+  } catch (err) {
+    console.warn('Deploy email: не удалось получить изменения GitHub:', err.message);
+    return ['Не удалось загрузить историю изменений GitHub.'];
+  }
+}
+
 async function notifyDeployment(port) {
   const info = readJson(INFO_FILE);
   if (!info || !info.build_id) {
     console.warn('Deploy email: build-info.json отсутствует; уведомление пропущено');
     return;
   }
-  if (readJson(LAST_FILE)?.build_id === info.build_id) {
+  const previous = readJson(LAST_FILE);
+  if (previous?.build_id === info.build_id) {
     console.log('Deploy email: эта сборка уже подтверждена письмом');
     return;
   }
@@ -74,6 +124,7 @@ async function notifyDeployment(port) {
   const version = info.version || 'unknown';
   const sha = info.git_commit && info.git_commit !== 'unknown' ? info.git_commit : (process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'не удалось определить');
   const allPagesOk = pages.every(p => p.ok);
+  const changes = await listDeploymentChanges(sha, previous);
   const text = [
     'ХвостМаркет: новая сборка успешно запустилась.',
     '',
@@ -82,6 +133,9 @@ async function notifyDeployment(port) {
     'Версия приложения: ' + version,
     'Идентификатор сборки: ' + info.build_id,
     'Коммит GitHub: ' + sha,
+    '',
+    'ЧТО ИЗМЕНИЛОСЬ В ЭТОЙ ВЕРСИИ',
+    ...changes.map((item, i) => (i + 1) + '. ' + item),
     'Образ собран (UTC): ' + (info.built_at || 'неизвестно'),
     'Запущен и проверен (UTC): ' + now.toISOString(),
     'Среда: ' + (process.env.DEPLOY_ENV || 'Amvera'),
@@ -106,7 +160,7 @@ async function notifyDeployment(port) {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const tmp = LAST_FILE + '.tmp-' + process.pid;
-    fs.writeFileSync(tmp, JSON.stringify({ build_id: info.build_id, sent_at: now.toISOString() }));
+    fs.writeFileSync(tmp, JSON.stringify({ build_id: info.build_id, git_commit: sha, sent_at: now.toISOString() }));
     fs.renameSync(tmp, LAST_FILE);
     console.log('Deploy email: уведомление отправлено', info.build_id);
   } catch (e) {
