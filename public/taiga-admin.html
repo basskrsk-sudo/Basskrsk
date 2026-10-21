@@ -1229,7 +1229,11 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <span>Каталог товаров <span id="products-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
           <button class="add-product-btn" onclick="openProductModal(null)">+ Добавить товар</button>
         </div>
-        <div style="margin-bottom:.8rem;">
+        <div style="margin-bottom:.8rem;display:flex;gap:.75rem;flex-wrap:wrap;align-items:center;">
+          <select id="products-archive-filter" onchange="renderProducts()" class="pm-select" style="max-width:220px;">
+            <option value="main">Основной каталог</option>
+            <option value="archive">Архив</option>
+          </select>
           <select id="products-city-filter" onchange="onStockCityFilterChange('products-city-filter')" class="pm-select" style="max-width:220px;">
             <option value="">Все города</option>
           </select>
@@ -2447,7 +2451,9 @@ function onStockCityFilterChange(changedId) {
 }
 
 function renderProducts() {
-  const totalVariants = adminProducts.reduce((s, p) => s + p.variants.length, 0);
+  const archived = document.getElementById('products-archive-filter')?.value === 'archive';
+  const visibleProducts = adminProducts.filter(p => !!p.archived === archived);
+  const totalVariants = visibleProducts.reduce((s, p) => s + p.variants.length, 0);
   document.getElementById('products-count').textContent = totalVariants + ' позиций';
 
   // Динамические заголовки колонок — по одной на каждую активную точку
@@ -2457,7 +2463,7 @@ function renderProducts() {
     '<th>На сайте</th><th class="r">Действия</th>';
 
   const rows = [];
-  adminProducts.forEach((p) => {
+  visibleProducts.forEach((p) => {
     p.variants.forEach((v) => {
       // Остаток по точкам — только просмотр. Товар может появиться на точке
       // только через центральный склад (приход → отчёт менеджера о
@@ -2473,16 +2479,16 @@ function renderProducts() {
         <td>${productCategoryLabel(p.category)}</td>
         <td class="r">${v.price.toLocaleString('ru-RU')} ₽</td>
         ${stockCells}
-        <td><button class="toggle-pill ${v.active ? 'stock-ok' : 'stock-low'}" onclick="toggleVariantActive(${p.id}, ${v.id})" title="${v.active ? 'Скрыть этот вес с сайта' : 'Показать этот вес на сайте'}">${v.active ? '🟢 Активен' : '⚪ Скрыт'}</button></td>
+        <td>${archived ? '<span class="toggle-pill stock-low">В архиве</span>' : `<button class="toggle-pill ${v.active ? 'stock-ok' : 'stock-low'}" onclick="toggleVariantActive(${p.id}, ${v.id})" title="${v.active ? 'Скрыть этот вес с сайта' : 'Показать этот вес на сайте'}">${v.active ? '🟢 Активен' : '⚪ Скрыт'}</button>`}</td>
         <td class="r" style="white-space:nowrap;">
           <button class="row-btn" onclick="openProductModal(${p.id}, ${v.id})">✎ Изменить</button>
-          <button class="row-btn danger" onclick="deleteProduct(${p.id})">✕ Удалить</button>
+          ${archived ? `<button class="row-btn" onclick="restoreProduct(${p.id})">↩ Восстановить</button>` : `<button class="row-btn danger" onclick="archiveProduct(${p.id})">В архив</button>`}
         </td>
       </tr>`);
     });
   });
   document.getElementById('products-tbody').innerHTML = rows.length ? rows.join('') :
-    `<tr><td colspan="${6 + STOCK_TABLE_POINTS.length}" style="text-align:center;color:var(--muted);padding:2rem;">Товаров пока нет — добавьте первый</td></tr>`;
+    `<tr><td colspan="${6 + STOCK_TABLE_POINTS.length}" style="text-align:center;color:var(--muted);padding:2rem;">${archived ? 'В архиве пока нет товаров' : 'Товаров пока нет — добавьте первый'}</td></tr>`;
 }
 
 // ── ОТЗЫВЫ (модерация) ──────────────────────────────────────────────
@@ -2767,13 +2773,27 @@ async function saveProductForm() {
   renderProducts();
 }
 
-async function deleteProduct(id) {
+async function archiveProduct(id) {
   const p = adminProducts.find(x => x.id === id);
-  if (!p) return;
-  if (!confirm(`Удалить товар «${p.name}»? Это действие нельзя отменить.`)) return;
-  await authFetch('/api/products/' + id, { method: 'DELETE' });
-  await loadAdminProducts();
-  renderProducts();
+  if (!p || !confirm('Переместить «' + p.name + '» в архив? Товар исчезнет с сайта, но история и остатки сохранятся.')) return;
+  try {
+    const res=await authFetch('/api/products/' + id + '/archive',{method:'PUT',body:{}});
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error || 'Не удалось архивировать товар');
+    await loadAdminProducts();
+    renderProducts();
+  } catch(e) {alert(e.message || 'Ошибка архивации товара');}
+}
+async function restoreProduct(id) {
+  const p=adminProducts.find(x=>x.id===id);
+  if(!p || !confirm('Восстановить «' + p.name + '» из архива?'))return;
+  try {
+    const res=await authFetch('/api/products/' + id + '/restore',{method:'PUT',body:{}});
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error || 'Не удалось восстановить товар');
+    await loadAdminProducts();
+    renderProducts();
+  } catch(e) {alert(e.message || 'Ошибка восстановления товара');}
 }
 
 async function toggleVariantActive(productId, variantId) {
