@@ -14,6 +14,13 @@ function registerQrAnalyticsRoutes(router) {
       || !db.prepare('SELECT id FROM products WHERE id=? AND active=1').get(Number(product_id)))
       return sendJson(res,404,{error:'Точка или товар недоступны'});
     const value=event_type==='payment_created'&&typeof order_code==='string'&&/^TG-[A-Za-z0-9_-]{1,60}$/.test(order_code)?order_code:null;
+    if(event_type==='payment_created'){
+      if(!value)return sendJson(res,400,{error:'Не указан номер заказа'});
+      const order=db.prepare(`SELECT 1 FROM orders o JOIN order_items oi ON oi.order_id=o.id
+        JOIN product_variants v ON v.id=oi.variant_id
+        WHERE o.order_code=? AND o.point_id=? AND v.product_id=? LIMIT 1`).get(value,point_id,Number(product_id));
+      if(!order)return sendJson(res,404,{error:'Заказ не найден'});
+    }
     db.prepare('INSERT OR IGNORE INTO qr_funnel_events (point_id,product_id,event_type,visit_id,order_code) VALUES (?,?,?,?,?)')
       .run(point_id,Number(product_id),event_type,visit_id,value);
     sendJson(res,200,{ok:true});
