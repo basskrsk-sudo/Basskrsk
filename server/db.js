@@ -836,6 +836,16 @@ CREATE INDEX IF NOT EXISTS idx_qr_funnel_point_date ON qr_funnel_events(point_id
 CREATE INDEX IF NOT EXISTS idx_qr_funnel_event ON qr_funnel_events(event_type,created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_qr_funnel_dedup ON qr_funnel_events(visit_id,point_id,product_id,event_type);
 `);
+// Сканирования QR бесплатных пробников хранятся независимо от воронки покупок.
+db.exec(`
+CREATE TABLE IF NOT EXISTS sample_qr_scans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  point_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sample_qr_scans_point_date
+  ON sample_qr_scans(point_id, created_at);
+`);
 // Гостевые отзывы не требуют клиентского аккаунта и не меняют историю
 // product_reviews (там строгое ограничение customer_id).
 db.exec(`
