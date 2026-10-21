@@ -2549,6 +2549,57 @@ async function refreshReviewsBadge() {
 let editingProductId = null;
 let editingVariantId = null;
 
+// После FileReader.readAsDataURL() JPEG увеличивается на ~33% из-за base64.
+// Даже фото 773 КБ может упереться в лимит 1 МиБ у прокси (HTTP 413).
+// Держим JSON-запрос ниже 850 КБ, автоматически уменьшая слишком большие фото.
+async function prepareProductImageDataUrl(file) {
+  const original = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Не удалось прочитать изображение'));
+    reader.readAsDataURL(file);
+  });
+  if (original.length <= 850000) return original;
+
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  try {
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('Формат фотографии не удалось открыть в браузере. Попробуйте JPG или PNG.'));
+      img.src = url;
+    });
+    const originalWidth = img.naturalWidth;
+    const originalHeight = img.naturalHeight;
+    if (!originalWidth || !originalHeight) throw new Error('Не удалось определить размер фотографии');
+    for (const maxSide of [1200, 960, 720, 480]) {
+      const scale = Math.min(1, maxSide / Math.max(originalWidth, originalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(originalWidth * scale));
+      canvas.height = Math.max(1, Math.round(originalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Браузер не смог обработать изображение');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.84, 0.7, 0.55]) {
+        const data = canvas.toDataURL('image/webp', quality);
+        if (data.startsWith('data:image/webp;') && data.length <= 850000) return data;
+      }
+      // Запасной формат для браузера без поддержки WebP.
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.globalCompositeOperation = 'source-over';
+      for (const quality of [0.82, 0.66, 0.5]) {
+        const data = canvas.toDataURL('image/jpeg', quality);
+        if (data.length <= 850000) return data;
+      }
+    }
+    throw new Error('Не удалось уменьшить фото для загрузки. Попробуйте изображение меньшего размера.');
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 // Общая загрузка фото товара — вызывается и из <input type="file">, и из
 // вставки картинки Ctrl+V (paste), чтобы не дублировать логику сжатия/загрузки.
 async function uploadProductImageFile(file) {
@@ -2562,14 +2613,18 @@ async function uploadProductImageFile(file) {
   }
   previewEl.innerHTML = '<span style="font-size:.8rem;color:var(--muted);">Загружаем и сжимаем...</span>';
   try {
-    const base64 = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+    const base64 = await prepareProductImageDataUrl(file);
     const res = await authFetch('/api/products/upload-image', { method: 'POST', body: { data: base64 } });
-    const data = await res.json();
+    // Прокси Amvera/Nginx может ответить HTML (например, HTTP 413),
+    // поэтому не пытаемся без проверки прочитать каждый ответ как JSON.
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch (e) {
+      if (res.status === 413 || /request entity too large|payload too large|413 request/i.test(text)) {
+        throw new Error('Сервер отклонил слишком большое изображение (HTTP 413). Попробуйте фото меньшего размера.');
+      }
+      throw new Error('Сервер вернул неожиданный ответ (HTTP ' + res.status + '). Попробуйте повторить загрузку позже.');
+    }
     if (!res.ok) {
       previewEl.innerHTML = '';
       errEl.textContent = data.error || 'Не удалось загрузить картинку.';
