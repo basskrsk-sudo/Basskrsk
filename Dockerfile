@@ -83,11 +83,21 @@ COPY backlog.json ./
 COPY server ./server
 COPY public ./public
 
-# Build metadata is refreshed on each Docker build (including a rebuild of
-# identical source) and becomes part of the image running on Amvera.
+# Stamp every image with a unique build version and the GitHub HEAD at build time.
+# Amvera may omit commit build args; query the linked public repository instead.
+# Build remains operational if GitHub is temporarily unreachable.
 ARG GIT_COMMIT=unknown
-RUN node -e "const fs=require('fs'); const crypto=require('crypto'); const pkg=require('./package.json'); fs.writeFileSync('build-info.json', JSON.stringify({version:pkg.version,build_id:crypto.randomUUID(),git_commit:process.env.GIT_COMMIT||'unknown',built_at:new Date().toISOString()}))"
-
+ARG AMVERA_GIT_COMMIT=unknown
+RUN set -eu; \
+    COMMIT="${GIT_COMMIT}"; \
+    if [ "$COMMIT" = "unknown" ]; then COMMIT="${AMVERA_GIT_COMMIT}"; fi; \
+    if [ "$COMMIT" = "unknown" ]; then \
+      COMMIT="$(curl --fail --silent --show-error --max-time 8 \
+        -H 'Accept: application/vnd.github+json' \
+        https://api.github.com/repos/basskrsk-sudo/Basskrsk/commits/main \
+        | node -e "let s='';process.stdin.on('data',x=>s+=x).on('end',()=>{try{process.stdout.write(JSON.parse(s).sha||'unknown')}catch{process.stdout.write('unknown')}})" || echo unknown)"; \
+    fi; \
+    GIT_COMMIT="$COMMIT" node -e "const fs=require('fs'),crypto=require('crypto'),pkg=require('./package.json');const now=new Date(),stamp=now.toISOString().replace(/[-:]/g,'').slice(0,15).replace('T','.');const id=crypto.randomUUID();fs.writeFileSync('build-info.json',JSON.stringify({version:pkg.version+'+'+stamp,build_id:id,git_commit:process.env.GIT_COMMIT||'unknown',built_at:now.toISOString()}))"
 
 EXPOSE 80
 ENV PORT=80
