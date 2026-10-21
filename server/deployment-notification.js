@@ -73,6 +73,7 @@ async function notifyDeployment(port) {
   const now = new Date();
   const version = info.version || 'unknown';
   const sha = info.git_commit && info.git_commit !== 'unknown' ? info.git_commit : (process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'не удалось определить');
+  const allPagesOk = pages.every(p => p.ok);
   const text = [
     'ХвостМаркет: новая сборка успешно запустилась.',
     '',
@@ -94,7 +95,7 @@ async function notifyDeployment(port) {
   ].join('\n');
   const result = await sendEmail({
     to: recipient,
-    subject: '✅ ХвостМаркет — новая версия запущена (' + version + ')',
+    subject: (allPagesOk ? '✅' : '⚠️') + ' ХвостМаркет — ' + (allPagesOk ? 'версия запущена' : 'версия запущена, есть ошибки страниц') + ' (' + version + ')',
     text,
   });
   if (!result.ok) {
