@@ -15,6 +15,20 @@ return {...DEFAULTS,...saved,enabled:false,chat_id:null,include_groomer_names:fa
 function money(n){return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(Number(n)||0)+' ₽';}
 function queue(key,type,message){return db.prepare("INSERT OR IGNORE INTO partner_club_events(event_key,event_type,message,status) VALUES (?,?,?,'draft')").run(key,type,message).changes>0;}
 function safeText(v){return String(v||'').replace(/[<>\u0000-\u001f]/g,' ').trim().slice(0,100);}
+function welcomeNewPoint(point) {
+  if (!point || !point.id || !settings().new_points) return false;
+  const name = safeText(point.name || 'Новый минимаркет');
+  const city = point.city_id ? db.prepare('SELECT name FROM cities WHERE id=?').get(point.city_id)?.name : null;
+  const message = [
+    '🎉 Приветствуем нового партнёра ХвостМаркета!',
+    '🏪 Минимаркет: «' + name + '»',
+    city ? '📍 Город: ' + safeText(city) : '',
+    '🐾 Наша сеть растёт! Желаем команде успешного старта, довольных клиентов и счастливых питомцев!',
+    '💚 Добро пожаловать в Клуб партнёров!'
+  ].filter(Boolean).join('\n');
+  // Permanent idempotency key: further groomers at this point won't cause repeats.
+  return queue('welcome:point:' + String(point.id), 'new_points', message);
+}
 function recordPaidOrder(order,items,demo=false){
   if(demo||!order||order.status!=='paid'||order.refund_status==='refunded')return false;
   const point=db.prepare('SELECT name FROM points WHERE id=?').get(order.point_id);
@@ -100,4 +114,4 @@ function registerPartnerClubRoutes(router){
  router.get('/api/admin/partner-club/events',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const limit=Math.min(100,Math.max(1,Number(ctx.query.limit)||30));sendJson(res,200,{events:db.prepare('SELECT * FROM partner_club_events ORDER BY id DESC LIMIT ?').all(limit),delivery_enabled:false});});
  router.post('/api/admin/partner-club/generate-report',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const type=ctx.body?.type;if(!['daily','weekly','top_products_week','top_products_all'].includes(type))return sendJson(res,400,{error:'Неизвестный тип отчёта'});const result=type.startsWith('top_products_')?topProductsMessage(type==='top_products_week'?'week':'all'):report(type);const key='report:'+type+':'+(type==='daily'?new Date(Date.now()-86400000).toISOString().slice(0,10):new Date().toISOString().slice(0,10));const created=queue(key,type,result.message);sendJson(res,200,{created,message:result.message,stats:result.stats,delivered:false});});
 }
-module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder};
+module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint};
