@@ -5,8 +5,8 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireSuperAdmin } = require('./routes-auth');
 
-const FLAGS=['sales','daily','weekly','milestones','new_points','tips','new_products'];
-const DEFAULTS=Object.freeze({sales:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
+const FLAGS=['sales','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
+const DEFAULTS=Object.freeze({sales:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
 db.exec(`CREATE TABLE IF NOT EXISTS partner_club_settings(id INTEGER PRIMARY KEY CHECK(id=1),config_json TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS partner_club_events(id INTEGER PRIMARY KEY AUTOINCREMENT,event_key TEXT UNIQUE NOT NULL,event_type TEXT NOT NULL,message TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL DEFAULT 'draft' CHECK(status='draft'));
 CREATE INDEX IF NOT EXISTS idx_partner_club_events_created ON partner_club_events(created_at DESC);`);
@@ -35,6 +35,30 @@ function analytics(period='yesterday'){
  const top=db.prepare(`SELECT oi.name, SUM(oi.qty) qty FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE ${where} GROUP BY oi.name ORDER BY qty DESC LIMIT 1`).get();
  return {period,...totals,points,groomers,top_product:top||null,calculation_note:'Период рассчитывается по дате создания оплаченного заказа (UTC в БД), а не по времени подтверждения оплаты'};
 }
+
+function topProducts(period='week'){
+ if(!['week','all'].includes(period)) throw new Error('Недопустимый период');
+ const dateClause=period==='week' ? "AND o.created_at >= datetime('now','-7 days')" : "";
+ // Group by SKU/variant when known, retaining separate weights for same product.
+ const rows=db.prepare(`SELECT COALESCE(CAST(oi.variant_id AS TEXT),'legacy:'||oi.name||':'||COALESCE(oi.weight,'')) sku,
+   MAX(oi.name) name,MAX(COALESCE(oi.weight,'')) weight,
+   SUM(oi.qty) units, COUNT(DISTINCT o.id) orders,
+   SUM(oi.price*oi.qty) gross_revenue
+   FROM order_items oi JOIN orders o ON o.id=oi.order_id
+   WHERE o.status='paid' AND COALESCE(o.refund_status,'')!='refunded'
+   AND COALESCE(o.is_partner_self_order,0)=0 ${dateClause}
+   GROUP BY COALESCE(CAST(oi.variant_id AS TEXT),'legacy:'||oi.name||':'||COALESCE(oi.weight,''))
+   ORDER BY units DESC,orders DESC,sku ASC LIMIT 5`).all();
+ return {period,items:rows,metric:'units',notes:'Количество проданных единиц; выручка по позициям без распределения скидок. Исключены полностью возвращённые и собственные заказы грумеров.'};
+}
+function topProductsMessage(period){
+ const data=topProducts(period);
+ const title=period==='week'?'🏆 Топ товаров за 7 дней':'🌟 Бестселлеры за всё время';
+ return {message:title+'\n'+(data.items.length ? data.items.map((x,i)=>
+  (i+1)+'. '+safeText(x.name)+(x.weight?' ('+safeText(x.weight)+')':'')+' — '+x.units+' шт.').join('\n') : 'Подтверждённых продаж пока нет.')+
+ '\n🐾 Подсказывайте клиентам, что выбирают чаще всего!',stats:data};
+}
+
 function preview(type,data={}){
  const point=safeText(data.point||'БаркЛай'),item=safeText(data.product||'Лёгкое говяжье, 50 г');
  const count=Math.max(0,Math.floor(Number(data.count)||18)),amount=Math.max(0,Number(data.amount)||4500);
@@ -46,6 +70,8 @@ function preview(type,data={}){
   case 'new_points':return '🎉 Новый партнёр сети: «'+point+'»!';
   case 'tips':return '💡 Совет: предложите лакомство после груминга.';
   case 'new_products':return '🦴 Новинка: '+item+'!';
+  case 'top_products_week':return topProductsMessage('week').message;
+  case 'top_products_all':return topProductsMessage('all').message;
   default:return null;
  }
 }
@@ -70,7 +96,8 @@ function registerPartnerClubRoutes(router){
  });
  router.post('/api/admin/partner-club/preview',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const msg=preview(String(ctx.body?.type||'sales'),ctx.body?.data);if(!msg)return sendJson(res,400,{error:'Неизвестный тип'});sendJson(res,200,{message:msg,delivered:false});});
  router.get('/api/admin/partner-club/analytics',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const p=ctx.query.period||'yesterday';if(!['today','yesterday','week'].includes(p))return sendJson(res,400,{error:'Недопустимый период'});sendJson(res,200,analytics(p));});
+ router.get('/api/admin/partner-club/top-products',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const period=ctx.query.period||'week';if(!['week','all'].includes(period))return sendJson(res,400,{error:'Недопустимый период'});sendJson(res,200,topProducts(period));});
  router.get('/api/admin/partner-club/events',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const limit=Math.min(100,Math.max(1,Number(ctx.query.limit)||30));sendJson(res,200,{events:db.prepare('SELECT * FROM partner_club_events ORDER BY id DESC LIMIT ?').all(limit),delivery_enabled:false});});
- router.post('/api/admin/partner-club/generate-report',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const type=ctx.body?.type;if(!['daily','weekly'].includes(type))return sendJson(res,400,{error:'Допустимо daily или weekly'});const result=report(type);const key='report:'+type+':'+(type==='daily'?new Date(Date.now()-86400000).toISOString().slice(0,10):new Date().toISOString().slice(0,10));const created=queue(key,type,result.message);sendJson(res,200,{created,message:result.message,stats:result.stats,delivered:false});});
+ router.post('/api/admin/partner-club/generate-report',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const type=ctx.body?.type;if(!['daily','weekly','top_products_week','top_products_all'].includes(type))return sendJson(res,400,{error:'Неизвестный тип отчёта'});const result=type.startsWith('top_products_')?topProductsMessage(type==='top_products_week'?'week':'all'):report(type);const key='report:'+type+':'+(type==='daily'?new Date(Date.now()-86400000).toISOString().slice(0,10):new Date().toISOString().slice(0,10));const created=queue(key,type,result.message);sendJson(res,200,{created,message:result.message,stats:result.stats,delivered:false});});
 }
-module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,recordPaidOrder};
+module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder};
