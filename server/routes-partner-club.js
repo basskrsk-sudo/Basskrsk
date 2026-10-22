@@ -10,6 +10,12 @@ const DEFAULTS=Object.freeze({sales:true,daily:true,weekly:true,milestones:true,
 db.exec(`CREATE TABLE IF NOT EXISTS partner_club_settings(id INTEGER PRIMARY KEY CHECK(id=1),config_json TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS partner_club_events(id INTEGER PRIMARY KEY AUTOINCREMENT,event_key TEXT UNIQUE NOT NULL,event_type TEXT NOT NULL,message TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL DEFAULT 'draft' CHECK(status='draft'));
 CREATE INDEX IF NOT EXISTS idx_partner_club_events_created ON partner_club_events(created_at DESC);`);
+// On first launch of anonymized reports, retire legacy unsent weekly messages containing names.
+db.exec("CREATE TABLE IF NOT EXISTS partner_club_migrations (key TEXT PRIMARY KEY)");
+if (!db.prepare("SELECT 1 FROM partner_club_migrations WHERE key='anonymous_weekly_v1'").get()) {
+  db.prepare("DELETE FROM partner_club_events WHERE event_type='weekly'").run();
+  db.prepare("INSERT INTO partner_club_migrations(key) VALUES('anonymous_weekly_v1')").run();
+}
 function settings(){let row=db.prepare('SELECT config_json FROM partner_club_settings WHERE id=1').get(),saved={};try{if(row)saved=JSON.parse(row.config_json)}catch(_){}
 return {...DEFAULTS,...saved,enabled:false,chat_id:null,include_groomer_names:false};}
 function money(n){return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(Number(n)||0)+' ₽';}
