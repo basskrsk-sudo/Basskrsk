@@ -17,7 +17,7 @@ if (!db.prepare("SELECT 1 FROM partner_club_migrations WHERE key='anonymous_week
   db.prepare("INSERT INTO partner_club_migrations(key) VALUES('anonymous_weekly_v1')").run();
 }
 function settings(){let row=db.prepare('SELECT config_json FROM partner_club_settings WHERE id=1').get(),saved={};try{if(row)saved=JSON.parse(row.config_json)}catch(_){}
-return {...DEFAULTS,...saved,enabled:false,include_groomer_names:false};}
+return {...DEFAULTS,...saved,include_groomer_names:false};}
 function money(n){return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(Number(n)||0)+' ₽';}
 function queue(key,type,message){return db.prepare("INSERT OR IGNORE INTO partner_club_events(event_key,event_type,message,status) VALUES (?,?,?,'draft')").run(key,type,message).changes>0;}
 function safeText(v){return String(v||'').replace(/[<>\u0000-\u001f]/g,' ').trim().slice(0,100);}
@@ -114,13 +114,13 @@ function report(type){
 }
 function registerPartnerClubRoutes(router){
  const auth=(req,res,ctx)=>requireSuperAdmin(req,res,ctx);
- router.get('/api/admin/partner-club',(req,res,ctx)=>{if(!auth(req,res,ctx))return;sendJson(res,200,{settings:settings(),connected:false,delivery_enabled:false});});
+ router.get('/api/admin/partner-club',(req,res,ctx)=>{if(!auth(req,res,ctx))return;sendJson(res,200,{settings:settings(),connected:!!settings().chat_id,delivery_enabled:!!settings().enabled});});
  router.put('/api/admin/partner-club',(req,res,ctx)=>{if(!auth(req,res,ctx))return;
   const body=ctx.body||{},next=settings();
   if(body.enabled===true||body.chat_id) return sendJson(res,409,{error:'Подключение Telegram-чата заблокировано до отдельного решения'});
   for(const flag of FLAGS){if(Object.hasOwn(body,flag)){if(typeof body[flag]!=='boolean')return sendJson(res,400,{error:'Некорректное поле '+flag});next[flag]=body[flag];}}
   if(Object.hasOwn(body,'sales_mode')){if(!['all','limit','digest'].includes(body.sales_mode))return sendJson(res,400,{error:'Некорректная частота'});next.sales_mode=body.sales_mode;}
-  next.enabled=false;next.chat_id=null;next.include_groomer_names=false;
+  next.enabled=settings().enabled;next.chat_id=settings().chat_id;next.include_groomer_names=false;
   db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify(next));
   sendJson(res,200,{ok:true,settings:next,delivery_enabled:false});
  });
