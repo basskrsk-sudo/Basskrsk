@@ -17,7 +17,7 @@ if (!db.prepare("SELECT 1 FROM partner_club_migrations WHERE key='anonymous_week
   db.prepare("INSERT INTO partner_club_migrations(key) VALUES('anonymous_weekly_v1')").run();
 }
 function settings(){let row=db.prepare('SELECT config_json FROM partner_club_settings WHERE id=1').get(),saved={};try{if(row)saved=JSON.parse(row.config_json)}catch(_){}
-return {...DEFAULTS,...saved,enabled:false,chat_id:null,include_groomer_names:false};}
+return {...DEFAULTS,...saved,enabled:false,include_groomer_names:false};}
 function money(n){return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(Number(n)||0)+' ₽';}
 function queue(key,type,message){return db.prepare("INSERT OR IGNORE INTO partner_club_events(event_key,event_type,message,status) VALUES (?,?,?,'draft')").run(key,type,message).changes>0;}
 function safeText(v){return String(v||'').replace(/[<>\u0000-\u001f]/g,' ').trim().slice(0,100);}
@@ -137,9 +137,37 @@ function registerPartnerClubRoutes(router){
    sendJson(res,409,{error:'Сначала подключите Telegram-группу и модуль доставки. Сейчас запуск заблокирован.',...clubStatus()});
  });
  router.post('/api/admin/partner-club/stop',(req,res,ctx)=>{if(!auth(req,res,ctx))return;
-   const conf={...settings(),enabled:false,chat_id:null};
+   const conf={...settings(),enabled:false};
    db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify(conf));
    sendJson(res,200,{ok:true,...clubStatus()});
+ });
+
+ // Bind/test the group without enabling automatic broadcasts.
+ router.post('/api/admin/partner-club/connect',async(req,res,ctx)=>{
+   if(!requireSuperAdmin(req,res,ctx))return;
+   const id=String(ctx.body?.chat_id||'').trim();
+   if(!/^-100[0-9]{6,18}$/.test(id))return sendJson(res,400,{error:'Неверный ID супергруппы'});
+   if(!process.env.TG_TOKEN)return sendJson(res,503,{error:'Telegram token не настроен'});
+   try {
+     const api=async(method,payload)=>{
+       const r=await fetch('https://api.telegram.org/bot'+process.env.TG_TOKEN+'/'+method,{
+         method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(10000)});
+       const j=await r.json();if(!j.ok)throw Error(j.description||'Telegram API error');return j.result;
+     };
+     const chat=await api('getChat',{chat_id:id});
+     const bot=await api('getMe',{});
+     const member=await api('getChatMember',{chat_id:id,user_id:bot.id});
+     if(!['member','administrator','creator'].includes(member.status))return sendJson(res,409,{error:'Бот не является участником'});
+     const conf={...settings(),chat_id:id,enabled:false,include_groomer_names:false};
+     db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify(conf));
+     sendJson(res,200,{ok:true,chat_title:chat.title,chat_id:id,automatic_delivery:false});
+   }catch(e){sendJson(res,502,{error:'Не удалось проверить группу: '+e.message});}
+ });
+ router.post('/api/admin/partner-club/test',async(req,res,ctx)=>{
+   if(!requireSuperAdmin(req,res,ctx))return;
+   const conf=settings();if(!conf.chat_id)return sendJson(res,409,{error:'Сначала привяжите группу'});
+   const result=await require('./telegram').sendToChat(conf.chat_id,'🐾 ХвостМаркет: проверка связи с Клубом партнёров успешна. Автоматические рассылки выключены.');
+   sendJson(res,result.ok?200:502,{ok:!!result.ok,error:result.ok?undefined:'Telegram не подтвердил отправку',automatic_delivery:false});
  });
  router.post('/api/admin/partner-club/preview',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const msg=preview(String(ctx.body?.type||'sales'),ctx.body?.data);if(!msg)return sendJson(res,400,{error:'Неизвестный тип'});sendJson(res,200,{message:msg,delivered:false});});
  router.get('/api/admin/partner-club/analytics',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const p=ctx.query.period||'yesterday';if(!['today','yesterday','week'].includes(p))return sendJson(res,400,{error:'Недопустимый период'});sendJson(res,200,analytics(p));});
