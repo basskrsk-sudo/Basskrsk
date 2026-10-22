@@ -624,6 +624,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   <button class="nav-item" data-group="finance" onclick="showSection('economics')"><span class="nav-dot"></span> Финансы</button>
   <button class="nav-item" data-group="reports" onclick="showSection('payout-reports')"><span class="nav-dot"></span> Отчёты партнёрам</button>
   <button class="nav-item" data-group="system" onclick="showSection('launch')"><span class="nav-dot"></span> Система</button>
+  <a id="partner-club-admin-link" href="partner-club-settings.html" class="nav-item" style="display:none;text-decoration:none;color:rgba(255,255,255,.8)"><span class="nav-dot"></span> 🐾 Клуб партнёров</a>
   <div class="sidebar-footer">
     <span>ИП Соколов В.П.</span>
     <div style="display:flex;gap:.6rem;align-items:center;">
@@ -7697,6 +7698,7 @@ async function deleteLeadFromModal() {
 // ── ADMIN AUTH ───────────────────────────────────────────────────────
 let adminToken = localStorage.getItem('taiga_admin_token') || null;
 let currentAdminRole = localStorage.getItem('taiga_admin_role') || 'admin';
+if (currentAdminRole === 'super') { document.addEventListener('DOMContentLoaded', () => { const link=document.getElementById('partner-club-admin-link'); if(link) link.style.display='flex'; }); }
 
 function showCurrentAdmin(admin) {
   if (!admin) return;
