@@ -262,6 +262,12 @@ async function finalizePaidOrder(orderId, demo = false) {
     return false;
   }
 
+  try {
+    const { recordPaidOrder } = require('./routes-partner-club');
+    recordPaidOrder(finalized.order, finalized.items, demo);
+  } catch (error) {
+    console.error('[partner-club] Could not record paid order draft:', error.message);
+  }
   await runPaidOrderSideEffects(finalized.order, finalized.items, demo);
   return true;
 }
