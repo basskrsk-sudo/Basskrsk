@@ -5,10 +5,12 @@ const path = require('node:path');
 const http = require('node:http');
 const https = require('node:https');
 const { sendEmail } = require('./email');
+const { sendTelegram } = require('./telegram');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const INFO_FILE = path.join(__dirname, '..', 'build-info.json');
 const LAST_FILE = path.join(DATA_DIR, 'last-notified-build.json');
+const LAST_TG_FILE = path.join(DATA_DIR, 'last-telegram-deploy-build.json');
 
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; }
@@ -95,6 +97,8 @@ async function listDeploymentChanges(sha, previous) {
   }
 }
 
+function escapeHtml(v) { return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
+
 async function notifyDeployment(port) {
   const info = readJson(INFO_FILE);
   if (!info || !info.build_id) {
@@ -102,7 +106,8 @@ async function notifyDeployment(port) {
     return;
   }
   const previous = readJson(LAST_FILE);
-  if (previous?.build_id === info.build_id) {
+  const telegramPrevious = readJson(LAST_TG_FILE);
+  if (previous?.build_id === info.build_id && telegramPrevious?.build_id === info.build_id) {
     console.log('Deploy email: эта сборка уже подтверждена письмом');
     return;
   }
@@ -116,10 +121,7 @@ async function notifyDeployment(port) {
   ]);
   const recipient = process.env.DEPLOY_NOTIFICATION_EMAIL ||
     process.env.BUSINESS_COPY_EMAIL || process.env.BACKUP_EMAIL;
-  if (!recipient) {
-    console.warn('Deploy email: нет DEPLOY_NOTIFICATION_EMAIL/BUSINESS_COPY_EMAIL/BACKUP_EMAIL');
-    return;
-  }
+  if (!recipient) console.warn('Deploy email: почтовый получатель не настроен; Telegram проверяется отдельно');
   const now = new Date();
   const version = info.version || 'unknown';
   const sha = info.git_commit && info.git_commit !== 'unknown' ? info.git_commit : (process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'не удалось определить');
@@ -147,6 +149,34 @@ async function notifyDeployment(port) {
     '',
     'Внешняя доступность сайта отдельно не подтверждена.',
   ].join('\n');
+  // Telegram and email are independent. A failed SMTP must not suppress Telegram.
+  if (telegramPrevious?.build_id !== info.build_id) {
+    const telegramText = [
+      (allPagesOk ? '✅' : '⚠️') + ' <b>ХвостМаркет — новая версия запущена на Amvera</b>',
+      'Версия: ' + escapeHtml(version),
+      'Коммит: <code>' + escapeHtml(sha) + '</code>',
+      'Сборка: ' + escapeHtml(info.build_id),
+      'Проверка API: ✅ /api/points',
+      ...pages.map(p => (p.ok ? '✅ ' : '⚠️ ') + escapeHtml(p.path) + ' — HTTP ' + p.status),
+      'Время запуска (UTC): ' + escapeHtml(now.toISOString()),
+      '',
+      '<b>Изменения:</b>',
+      ...changes.slice(0,12).map((item,i) => (i+1)+'. '+escapeHtml(item).slice(0,260)),
+      '',
+      'Проверки выполнены локально в Amvera; оплата и внешняя доступность не тестировались.'
+    ].join('\n').slice(0,3950);
+    try {
+      const sent = await sendTelegram(telegramText);
+      if (sent.ok) {
+        fs.mkdirSync(DATA_DIR,{recursive:true});
+        const tmp = LAST_TG_FILE+'.tmp-'+process.pid;
+        fs.writeFileSync(tmp,JSON.stringify({build_id:info.build_id,git_commit:sha,sent_at:now.toISOString()}));
+        fs.renameSync(tmp,LAST_TG_FILE);
+        console.log('Deploy Telegram: уведомление отправлено',info.build_id);
+      } else console.warn('Deploy Telegram: отправка не подтверждена',sent.error||'');
+    } catch(e) {console.error('Deploy Telegram: ошибка',e.message);}
+  }
+  if (!recipient || previous?.build_id === info.build_id) return;
   const result = await sendEmail({
     to: recipient,
     subject: (allPagesOk ? '✅' : '⚠️') + ' ХвостМаркет — ' + (allPagesOk ? 'версия запущена' : 'версия запущена, есть ошибки страниц') + ' (' + version + ')',
