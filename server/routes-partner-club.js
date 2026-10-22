@@ -125,22 +125,10 @@ function registerPartnerClubRoutes(router){
   sendJson(res,200,{ok:true,settings:next,delivery_enabled:false});
  });
  // The club is an independent outbound channel; existing personal bot stays untouched.
- function clubStatus(){
-   const conf=settings();
-   const drafts=db.prepare("SELECT COUNT(*) AS n FROM partner_club_events WHERE status='draft'").get().n;
-   return {status:'not_connected',status_label:'Не подключён',running:false,connected:false,can_start:false,
-     drafts,delivery_enabled:false,reason:'Telegram-группа не привязана. Отправка в клуб технически отключена.',
-     personal_notifications_affected:false,updated_at:db.prepare('SELECT updated_at FROM partner_club_settings WHERE id=1').get()?.updated_at||null};
- }
+ function clubStatus(){const c=settings();const drafts=db.prepare("SELECT COUNT(*) AS n FROM partner_club_events WHERE status='draft'").get().n;return {status:c.enabled?'running':c.chat_id?'stopped':'not_connected',status_label:c.enabled?'Работает':c.chat_id?'Остановлена':'Не подключён',running:!!c.enabled,connected:!!c.chat_id,can_start:!!c.chat_id&&!!process.env.TG_TOKEN,drafts,delivery_enabled:!!c.enabled,reason:c.enabled?'Рассылка активна':c.chat_id?'Группа готова. Рассылка отключена.':'Сначала подключите группу',personal_notifications_affected:false};}
  router.get('/api/admin/partner-club/status',(req,res,ctx)=>{if(!auth(req,res,ctx))return;sendJson(res,200,clubStatus());});
- router.post('/api/admin/partner-club/start',(req,res,ctx)=>{if(!auth(req,res,ctx))return;
-   sendJson(res,409,{error:'Сначала подключите Telegram-группу и модуль доставки. Сейчас запуск заблокирован.',...clubStatus()});
- });
- router.post('/api/admin/partner-club/stop',(req,res,ctx)=>{if(!auth(req,res,ctx))return;
-   const conf={...settings(),enabled:false};
-   db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify(conf));
-   sendJson(res,200,{ok:true,...clubStatus()});
- });
+ router.post('/api/admin/partner-club/start',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const c=settings();if(!c.chat_id||!process.env.TG_TOKEN)return sendJson(res,409,{error:'Группа не настроена'});db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify({...c,enabled:true}));sendJson(res,200,{ok:true,...clubStatus()});});
+ router.post('/api/admin/partner-club/stop',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const c=settings();db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify({...c,enabled:false}));sendJson(res,200,{ok:true,...clubStatus()});});
 
  // Bind/test the group without enabling automatic broadcasts.
  router.post('/api/admin/partner-club/connect',async(req,res,ctx)=>{
