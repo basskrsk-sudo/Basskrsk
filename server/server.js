@@ -247,6 +247,7 @@ server.listen(PORT, () => {
   require('./deployment-notification').notifyDeployment(PORT).catch((err) => console.error('Deployment notification:', err.message));
   require('./backup').scheduleBackups();
   require('./telegram-login-poller').startPolling();
+  require('./routes-partner-club').startPartnerClubWorker();
   console.log(require('./max-bot').isConfigured()
     ? 'MAX: сайт готов принимать события через /api/max/webhook'
     : 'MAX: вход выключен — задайте MAX_BOT_TOKEN, MAX_BOT_USERNAME и MAX_WEBHOOK_SECRET');
