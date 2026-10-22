@@ -184,6 +184,15 @@ function registerPartnerRoutes(router) {
       });
     }
 
+    // One welcome draft per point, only on the first successful partner registration.
+    // Never sends to Telegram: the club remains disconnected.
+    try {
+      const existingPartners = db.prepare('SELECT COUNT(*) AS n FROM partners WHERE point_id = ?').get(pointId).n;
+      if (existingPartners === 1) require('./routes-partner-club').welcomeNewPoint(point);
+    } catch (error) {
+      console.error('[partner-club] Welcome draft failed:', error.message);
+    }
+
     sendJson(res, 201, {
       ok: true,
       partner_code: partnerCode,
