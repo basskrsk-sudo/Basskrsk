@@ -64,6 +64,7 @@ async function configureBotProfile() {
       { command: 'expense', description: 'Добавить трату бизнеса' },
       { command: 'cancel', description: 'Отменить текущее действие' },
       { command: 'help', description: 'Как пользоваться ботом' },
+      { command: 'chatid', description: 'Показать ID текущей группы' },
     ] }],
   ];
   const results = await Promise.allSettled(operations.map(([method, body]) => callBotApi(method, body)));
@@ -212,6 +213,14 @@ async function processUpdate(update) {
   const msg = update.message;
   if (!msg || !msg.text) return;
   const text = msg.text.trim();
+  // Respond to group ID requests; never run private task/account commands in groups.
+  if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+    if (/^\/chatid(?:@\w+)?$/i.test(text)) {
+      await replyToChat(msg.chat.id, '🐾 ID этой группы: ' + String(msg.chat.id) + '\nСкопируйте число для подключения Клуба партнёров.');
+    }
+    return;
+  }
+
   if (/^\/newtask(?:@\w+)?$/i.test(text) || /^новая задача$/i.test(text)) {
     cancelExpenseCreation('telegram', msg.chat.id);
     const result = startTaskCreation('telegram', msg.chat.id);
