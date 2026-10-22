@@ -48,6 +48,7 @@ const { registerBscRoutes } = require('./routes-bsc');
 const { registerTaskRoutes } = require('./routes-tasks');
 const { registerOperationsRoutes } = require('./routes-operations');
 const { registerPointLaunchRoutes } = require('./routes-point-launch');
+const { registerPartnerClubRoutes } = require('./routes-partner-club');
 
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
 require('./task-seed').seedMeetingTasks();
@@ -117,6 +118,7 @@ registerBscRoutes(router);
 registerTaskRoutes(router);
 registerOperationsRoutes(router);
 registerPointLaunchRoutes(router);
+registerPartnerClubRoutes(router);
 
 const staticCache = createStaticCache(PUBLIC_DIR);
 
