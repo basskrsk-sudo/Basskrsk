@@ -124,6 +124,23 @@ function registerPartnerClubRoutes(router){
   db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify(next));
   sendJson(res,200,{ok:true,settings:next,delivery_enabled:false});
  });
+ // The club is an independent outbound channel; existing personal bot stays untouched.
+ function clubStatus(){
+   const conf=settings();
+   const drafts=db.prepare("SELECT COUNT(*) AS n FROM partner_club_events WHERE status='draft'").get().n;
+   return {status:'not_connected',status_label:'Не подключён',running:false,connected:false,can_start:false,
+     drafts,delivery_enabled:false,reason:'Telegram-группа не привязана. Отправка в клуб технически отключена.',
+     personal_notifications_affected:false,updated_at:db.prepare('SELECT updated_at FROM partner_club_settings WHERE id=1').get()?.updated_at||null};
+ }
+ router.get('/api/admin/partner-club/status',(req,res,ctx)=>{if(!auth(req,res,ctx))return;sendJson(res,200,clubStatus());});
+ router.post('/api/admin/partner-club/start',(req,res,ctx)=>{if(!auth(req,res,ctx))return;
+   sendJson(res,409,{error:'Сначала подключите Telegram-группу и модуль доставки. Сейчас запуск заблокирован.',...clubStatus()});
+ });
+ router.post('/api/admin/partner-club/stop',(req,res,ctx)=>{if(!auth(req,res,ctx))return;
+   const conf={...settings(),enabled:false,chat_id:null};
+   db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify(conf));
+   sendJson(res,200,{ok:true,...clubStatus()});
+ });
  router.post('/api/admin/partner-club/preview',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const msg=preview(String(ctx.body?.type||'sales'),ctx.body?.data);if(!msg)return sendJson(res,400,{error:'Неизвестный тип'});sendJson(res,200,{message:msg,delivered:false});});
  router.get('/api/admin/partner-club/analytics',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const p=ctx.query.period||'yesterday';if(!['today','yesterday','week'].includes(p))return sendJson(res,400,{error:'Недопустимый период'});sendJson(res,200,analytics(p));});
  router.get('/api/admin/partner-club/top-products',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const period=ctx.query.period||'week';if(!['week','all'].includes(period))return sendJson(res,400,{error:'Недопустимый период'});sendJson(res,200,topProducts(period));});
