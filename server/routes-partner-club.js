@@ -18,8 +18,8 @@ function safeText(v){return String(v||'').replace(/[<>\u0000-\u001f]/g,' ').trim
 function venueType(point) {
   // Prefer the registered point type; fall back to the manager point classification.
   const cols=db.prepare('PRAGMA table_info(points)').all().map(c=>c.name);
-  const stored=cols.includes('point_type')?db.prepare('SELECT point_type FROM points WHERE id=?').get(point?.id)?.point_type:null;
-  const managed=db.prepare('SELECT point_type FROM manager_points WHERE point_id=? ORDER BY id DESC LIMIT 1').get(point?.id)?.point_type;
+  const stored=point?.id && cols.includes('point_type')?db.prepare('SELECT point_type FROM points WHERE id=?').get(point.id)?.point_type:null;
+  const managed=point?.id ? db.prepare('SELECT point_type FROM manager_points WHERE point_id=? ORDER BY id DESC LIMIT 1').get(point.id)?.point_type : null;
   const raw=String(stored||managed||'').toLowerCase();
   if(/вет|veterinar|clinic/.test(raw))return 'Ветеринарная клиника';
   if(/грум|groom/.test(raw))return 'Грумерский салон';
@@ -103,7 +103,7 @@ function report(type){
  const period=type==='daily'?'yesterday':'week';const a=analytics(period);
  let message=(type==='daily'?'☀️ Вчерашние итоги':'🏆 Итоги недели')+'\n🐾 Продаж: '+a.sales+'\n💚 Выручка: '+money(a.revenue)+'\n🏪 Активных точек: '+a.active_points+'\n👩‍🦰 Активных грумеров: '+a.active_groomers;
  if(a.top_product)message+='\n🦴 Хит: '+safeText(a.top_product.name);
- if(type==='weekly'&&a.groomers.length)message+='\n🏅 Активных грумеров: '+a.active_groomers;
+
  return {message,stats:a};
 }
 function registerPartnerClubRoutes(router){
