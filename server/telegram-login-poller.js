@@ -3,6 +3,8 @@
 // поэтому клиент сам открывает диалог по ссылке-приглашению с токеном
 // (t.me/BOT?start=ТОКЕН) — это и есть подтверждение входа.
 'use strict';
+// Redeploy trigger: refresh Telegram /chatid group command handler (2026-10-22).
+
 
 const db = require('./db');
 const crypto = require('node:crypto');
