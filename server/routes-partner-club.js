@@ -15,13 +15,23 @@ return {...DEFAULTS,...saved,enabled:false,chat_id:null,include_groomer_names:fa
 function money(n){return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(Number(n)||0)+' ₽';}
 function queue(key,type,message){return db.prepare("INSERT OR IGNORE INTO partner_club_events(event_key,event_type,message,status) VALUES (?,?,?,'draft')").run(key,type,message).changes>0;}
 function safeText(v){return String(v||'').replace(/[<>\u0000-\u001f]/g,' ').trim().slice(0,100);}
+function venueType(point) {
+  // Prefer the registered point type; fall back to the manager point classification.
+  const cols=db.prepare('PRAGMA table_info(points)').all().map(c=>c.name);
+  const stored=cols.includes('point_type')?db.prepare('SELECT point_type FROM points WHERE id=?').get(point?.id)?.point_type:null;
+  const managed=db.prepare('SELECT point_type FROM manager_points WHERE point_id=? ORDER BY id DESC LIMIT 1').get(point?.id)?.point_type;
+  const raw=String(stored||managed||'').toLowerCase();
+  if(/вет|veterinar|clinic/.test(raw))return 'Ветеринарная клиника';
+  if(/грум|groom/.test(raw))return 'Грумерский салон';
+  return 'Партнёрская точка';
+}
 function welcomeNewPoint(point) {
   if (!point || !point.id || !settings().new_points) return false;
   const name = safeText(point.name || 'Новый минимаркет');
   const city = point.city_id ? db.prepare('SELECT name FROM cities WHERE id=?').get(point.city_id)?.name : null;
   const message = [
     '🎉 Приветствуем нового партнёра ХвостМаркета!',
-    '🏪 Минимаркет: «' + name + '»',
+    '🏪 '+venueType(point)+': «' + name + '»',
     city ? '📍 Город: ' + safeText(city) : '',
     '🐾 Наша сеть растёт! Желаем команде успешного старта, довольных клиентов и счастливых питомцев!',
     '💚 Добро пожаловать в Клуб партнёров!'
@@ -31,9 +41,9 @@ function welcomeNewPoint(point) {
 }
 function recordPaidOrder(order,items,demo=false){
   if(demo||!order||order.status!=='paid'||order.refund_status==='refunded')return false;
-  const point=db.prepare('SELECT name FROM points WHERE id=?').get(order.point_id);
+  const point=db.prepare('SELECT id,name FROM points WHERE id=?').get(order.point_id);
   const product=items.map(i=>safeText(i.name)+(i.qty>1?' ×'+i.qty:'')).join(', ').slice(0,190)||'товар для питомца';
-  const message='🐾 Новая покупка!\n🏪 '+safeText(point?.name||order.pickup_point||'Минимаркет')+'\n🦴 '+product+'\n💚 '+money(order.total)+'\nСпасибо за покупку!';
+  const message='🐾 Новая покупка!\n🏪 '+venueType(point||{id:order.point_id})+': «'+safeText(point?.name||order.pickup_point||'Точка')+'»'+'\n🦴 '+product+'\n💚 '+money(order.total)+'\nСпасибо за покупку!';
   return queue('paid:'+order.id,'sales',message);
 }
 function range(period){const now=new Date();const today=now.toISOString().slice(0,10);
@@ -77,11 +87,11 @@ function preview(type,data={}){
  const point=safeText(data.point||'БаркЛай'),item=safeText(data.product||'Лёгкое говяжье, 50 г');
  const count=Math.max(0,Math.floor(Number(data.count)||18)),amount=Math.max(0,Number(data.amount)||4500);
  switch(type){
-  case 'sales':return '🐾 Новая покупка!\n🏪 '+point+'\n🦴 '+item+'\n💚 '+money(amount);
+  case 'sales':return '🐾 Новая покупка!\n🏪 Партнёрская точка: «'+point+'»'+'\n🦴 '+item+'\n💚 '+money(amount);
   case 'daily':return '☀️ Итоги вчерашнего дня\n🐾 Продаж: '+count+'\n💚 Выручка: '+money(amount)+'\nСпасибо партнёрам!';
   case 'weekly':return '🏆 Итоги недели\n🐾 Продаж: '+count+'\nОтмечаем достижения без публичного сравнения неактивных партнёров.';
   case 'milestones':return '🎉 Новый рекорд: '+count+' продаж!';
-  case 'new_points':return '🎉 Новый партнёр сети: «'+point+'»!';
+  case 'new_points':return '🎉 Новый партнёр сети — партнёрская точка: «'+point+'»!';
   case 'tips':return '💡 Совет: предложите лакомство после груминга.';
   case 'new_products':return '🦴 Новинка: '+item+'!';
   case 'top_products_week':return topProductsMessage('week').message;
@@ -93,7 +103,7 @@ function report(type){
  const period=type==='daily'?'yesterday':'week';const a=analytics(period);
  let message=(type==='daily'?'☀️ Вчерашние итоги':'🏆 Итоги недели')+'\n🐾 Продаж: '+a.sales+'\n💚 Выручка: '+money(a.revenue)+'\n🏪 Активных точек: '+a.active_points+'\n👩‍🦰 Активных грумеров: '+a.active_groomers;
  if(a.top_product)message+='\n🦴 Хит: '+safeText(a.top_product.name);
- if(type==='weekly'&&a.groomers.length)message+='\n🏅 Лидеры по продажам:\n'+a.groomers.slice(0,3).map((g,i)=>(i+1)+'. '+safeText(g.name)+' — '+g.sales).join('\n');
+ if(type==='weekly'&&a.groomers.length)message+='\n🏅 Активных грумеров: '+a.active_groomers;
  return {message,stats:a};
 }
 function registerPartnerClubRoutes(router){
