@@ -209,7 +209,7 @@ function registerQrWeeklyTelegramRoutes(router){
 function scheduleWeeklyQrTelegramReport(){
  if(started)return;started=true;
  const check=()=>sendWeeklyQrReport().catch(err=>console.warn('QR weekly schedule:',err.message));
- const initial=setTimeout(check,35000),interval=setInterval(check,10*60*1000);
+ const initial=setTimeout(check,35000),interval=setInterval(check,60*1000);
  initial.unref?.();interval.unref?.();
 }
 module.exports={TIME_ZONE,previousCompletedWeek,readWeeklyPointStats,makeSummary,buildCsv,
