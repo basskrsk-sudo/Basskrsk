@@ -190,6 +190,10 @@ async function handleClubCallback(chatId,data){
  }
  const c=settings();
  if(!c.enabled||!c.chat_id)return {ok:false,message:'Рассылка выключена в админке'};
+ if(row.event_type==='sales'&&c.sales_mode==='limit'){
+   const count=db.prepare("SELECT COUNT(*) n FROM partner_club_delivery_log WHERE delivered_at>=datetime('now','-1 hour')").get().n;
+   if(count>=5)return {ok:false,message:'Лимит 5 публикаций за час достигнут. Можно подтвердить позднее.'};
+ }
  const message=row.edited_message||row.message;
  const result=await require('./telegram').sendToChat(c.chat_id,escapeHtml(message));
  if(!result.ok)return {ok:false,message:'Telegram не подтвердил публикацию. Попробуй ещё раз.'};
