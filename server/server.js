@@ -17,6 +17,7 @@ const { Router, readBinaryBody, parseJsonBody, sendJson } = require('./http-util
 const { registerAuthRoutes, requireSuperAdmin } = require('./routes-auth');
 const { registerProductRoutes } = require('./routes-products');
 const { registerQrAnalyticsRoutes } = require('./routes-qr-analytics');
+const { registerQrWeeklyTelegramRoutes, scheduleWeeklyQrTelegramReport } = require('./qr-weekly-telegram');
 const { registerSampleQrRoutes } = require('./routes-sample-qr');
 const { registerReviewRoutes } = require('./routes-reviews');
 const { registerPartnerRoutes } = require('./routes-partners');
@@ -87,6 +88,7 @@ const router = new Router();
 registerAuthRoutes(router);
 registerProductRoutes(router);
 registerQrAnalyticsRoutes(router);
+registerQrWeeklyTelegramRoutes(router);
 registerSampleQrRoutes(router);
 registerReviewRoutes(router);
 registerPartnerRoutes(router);
@@ -260,5 +262,6 @@ server.listen(PORT, () => {
 
   require('./winback').scheduleWinback();
   require('./task-reminders').scheduleTaskReminders();
+  scheduleWeeklyQrTelegramReport();
   require('./unpaid-order-alerts').scheduleUnpaidOrderAlerts();
 });
