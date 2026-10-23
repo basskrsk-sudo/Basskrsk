@@ -158,6 +158,30 @@ function registerPartnerClubRoutes(router){
    const result=await require('./telegram').sendToChat(conf.chat_id,'🐾 ХвостМаркет: проверка связи с Клубом партнёров успешна. Автоматические рассылки выключены.');
    sendJson(res,result.ok?200:502,{ok:!!result.ok,error:result.ok?undefined:'Telegram не подтвердил отправку',automatic_delivery:false});
  });
+
+ // Manual publication is always moderated and works even with scheduled broadcasts off.
+ router.post('/api/admin/partner-club/manual',async(req,res,ctx)=>{
+   const admin=requireSuperAdmin(req,res,ctx);if(!admin)return;
+   const cfg=settings();
+   if(!cfg.chat_id)return sendJson(res,409,{error:'Сначала подключите Telegram-группу'});
+   if(Number(cfg.reviewer_admin_id)!==Number(admin.id))return sendJson(res,409,{error:'Нажмите «Подключить модерацию» для своего личного Telegram'});
+   const reviewer=reviewerForClub();
+   if(!reviewer)return sendJson(res,409,{error:'Telegram модератора не привязан к кабинету супер-администратора'});
+   const body=String(ctx.body?.message||'').trim();
+   if(!body||body.length>3000)return sendJson(res,400,{error:'Сообщение должно содержать от 1 до 3000 символов'});
+   if(!process.env.TG_TOKEN)return sendJson(res,503,{error:'Telegram-бот не настроен'});
+   const key='manual:'+require('node:crypto').randomUUID();
+   const inserted=db.prepare("INSERT INTO partner_club_events(event_key,event_type,message,status) VALUES(?,'manual',?,'draft')").run(key,body);
+   const id=Number(inserted.lastInsertRowid);
+   const preview='🐾 <b>Ручная публикация в Клуб партнёров #'+id+'</b>\n\n'+escapeHtml(body);
+   const sent=await require('./telegram').sendToChat(reviewer,preview,{reply_markup:reviewButtons(id)});
+   if(!sent.ok){
+     db.prepare('DELETE FROM partner_club_events WHERE id=?').run(id);
+     return sendJson(res,502,{error:'Черновик не доставлен модератору. Проверьте личный Telegram и повторите попытку.'});
+   }
+   db.prepare("INSERT INTO partner_club_reviews(event_id,state,reviewer_chat_id,requested_at) VALUES(?,'pending',?,CURRENT_TIMESTAMP)").run(id,reviewer);
+   sendJson(res,200,{ok:true,id,message:'Черновик отправлен в ваш личный Telegram. В группе он появится только после нажатия «Отправить в группу».',published:false});
+ });
  router.post('/api/admin/partner-club/preview',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const msg=preview(String(ctx.body?.type||'sales'),ctx.body?.data);if(!msg)return sendJson(res,400,{error:'Неизвестный тип'});sendJson(res,200,{message:msg,delivered:false});});
  router.get('/api/admin/partner-club/analytics',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const p=ctx.query.period||'yesterday';if(!['today','yesterday','week'].includes(p))return sendJson(res,400,{error:'Недопустимый период'});sendJson(res,200,analytics(p));});
  router.get('/api/admin/partner-club/top-products',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const period=ctx.query.period||'week';if(!['week','all'].includes(period))return sendJson(res,400,{error:'Недопустимый период'});sendJson(res,200,topProducts(period));});
@@ -189,7 +213,7 @@ async function handleClubCallback(chatId,data){
    return {ok:true,message:'🚫 Публикация отклонена.'};
  }
  const c=settings();
- if(!c.enabled||!c.chat_id)return {ok:false,message:'Рассылка выключена в админке'};
+ if(!c.chat_id || (!c.enabled && row.event_type!=='manual'))return {ok:false,message:'Рассылка выключена в админке'};
  if(row.event_type==='sales'&&c.sales_mode==='limit'){
    const count=db.prepare("SELECT COUNT(*) n FROM partner_club_delivery_log WHERE delivered_at>=datetime('now','-1 hour')").get().n;
    if(count>=5)return {ok:false,message:'Лимит 5 публикаций за час достигнут. Можно подтвердить позднее.'};
