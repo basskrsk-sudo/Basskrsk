@@ -126,6 +126,7 @@ function registerPartnerClubRoutes(router){
  });
  // The club is an independent outbound channel; existing personal bot stays untouched.
  function clubStatus(){const c=settings();const drafts=db.prepare("SELECT COUNT(*) AS n FROM partner_club_events WHERE status='draft'").get().n;return {status:c.enabled?'running':c.chat_id?'stopped':'not_connected',status_label:c.enabled?'Работает':c.chat_id?'Остановлена':'Не подключён',running:!!c.enabled,connected:!!c.chat_id,can_start:!!c.chat_id&&!!process.env.TG_TOKEN,drafts,delivery_enabled:!!c.enabled,reason:c.enabled?'Рассылка активна':c.chat_id?'Группа готова. Рассылка отключена.':'Сначала подключите группу',personal_notifications_affected:false};}
+ router.post('/api/admin/partner-club/reviewer',(req,res,ctx)=>{const admin=requireSuperAdmin(req,res,ctx);if(!admin)return;const linked=db.prepare('SELECT telegram_chat_id FROM admins WHERE id=? AND role=?').get(admin.id,'super');if(!linked?.telegram_chat_id)return sendJson(res,409,{error:'Сначала подключите Telegram в кабинете супер-администратора'});const cfg={...settings(),reviewer_admin_id:admin.id};db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json').run(JSON.stringify(cfg));sendJson(res,200,{ok:true,message:'Черновики будут приходить в личный Telegram супер-администратора'});});
  router.get('/api/admin/partner-club/status',(req,res,ctx)=>{if(!auth(req,res,ctx))return;sendJson(res,200,clubStatus());});
  router.post('/api/admin/partner-club/start',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const c=settings();if(!c.chat_id||!process.env.TG_TOKEN)return sendJson(res,409,{error:'Группа не настроена'});db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify({...c,enabled:true,club_started_at:new Date().toISOString().slice(0,19).replace('T',' ')}));sendJson(res,200,{ok:true,...clubStatus()});});
  router.post('/api/admin/partner-club/stop',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const c=settings();db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify({...c,enabled:false}));sendJson(res,200,{ok:true,...clubStatus()});});
@@ -164,25 +165,66 @@ function registerPartnerClubRoutes(router){
  router.post('/api/admin/partner-club/generate-report',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const type=ctx.body?.type;if(!['daily','weekly','top_products_week','top_products_all'].includes(type))return sendJson(res,400,{error:'Неизвестный тип отчёта'});const result=type.startsWith('top_products_')?topProductsMessage(type==='top_products_week'?'week':'all'):report(type);const key='report:'+type+':'+(type==='daily'?new Date(Date.now()-86400000).toISOString().slice(0,10):new Date().toISOString().slice(0,10));const created=queue(key,type,result.message);sendJson(res,200,{created,message:result.message,stats:result.stats,delivered:false});});
 }
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_delivery_log(event_id INTEGER PRIMARY KEY, delivered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+db.exec("CREATE TABLE IF NOT EXISTS partner_club_reviews(event_id INTEGER PRIMARY KEY, state TEXT NOT NULL DEFAULT 'pending', reviewer_chat_id TEXT, edited_message TEXT, requested_at TEXT, claimed_at TEXT)");
+const escapeHtml=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function reviewerForClub(){
+ const c=settings();
+ if(!c.reviewer_admin_id)return null;
+ const r=db.prepare("SELECT telegram_chat_id,role FROM admins WHERE id=?").get(c.reviewer_admin_id);
+ return r&&r.role==='super'&&r.telegram_chat_id?String(r.telegram_chat_id):null;
+}
+function reviewButtons(id){return {inline_keyboard:[[{text:'✅ Отправить в группу',callback_data:'club:send:'+id},{text:'✏️ Скорректировать',callback_data:'club:edit:'+id}],[{text:'🚫 Отклонить',callback_data:'club:reject:'+id}]]};}
+async function handleClubCallback(chatId,data){
+ if(!/^club:(send|edit|reject):[0-9]+$/.test(data))return null;
+ if(String(chatId)!==reviewerForClub())return {message:'Недостаточно прав',ok:false};
+ const [,action,idText]=data.split(':');const id=Number(idText);
+ const row=db.prepare("SELECT e.*,r.state,r.edited_message FROM partner_club_events e JOIN partner_club_reviews r ON r.event_id=e.id WHERE e.id=?").get(id);
+ if(!row||row.state==='sent'||row.state==='rejected')return {message:'Этот черновик уже обработан',ok:false};
+ if(action==='edit'){
+   db.prepare("UPDATE partner_club_reviews SET state='editing' WHERE event_id=?").run(id);
+   return {ok:true,message:'✏️ Ответь на это сообщение новым текстом для публикации. Начни ответ с /clubtext '+id+' и пробела, затем напиши текст.'};
+ }
+ if(action==='reject'){
+   db.prepare("UPDATE partner_club_reviews SET state='rejected' WHERE event_id=?").run(id);
+   return {ok:true,message:'🚫 Публикация отклонена.'};
+ }
+ const c=settings();
+ if(!c.enabled||!c.chat_id)return {ok:false,message:'Рассылка выключена в админке'};
+ const message=row.edited_message||row.message;
+ const result=await require('./telegram').sendToChat(c.chat_id,escapeHtml(message));
+ if(!result.ok)return {ok:false,message:'Telegram не подтвердил публикацию. Попробуй ещё раз.'};
+ db.prepare("UPDATE partner_club_reviews SET state='sent' WHERE event_id=?").run(id);
+ db.prepare("INSERT OR IGNORE INTO partner_club_delivery_log(event_id) VALUES(?)").run(id);
+ return {ok:true,message:'✅ Опубликовано в группе.'};
+}
+async function handleClubEdit(chatId,text){
+ const match=text.match(/^\/clubtext(?:@\w+)?\s+(\d+)\s+([\s\S]+)$/i);
+ if(!match)return null;
+ if(String(chatId)!==reviewerForClub())return {ok:false,message:'Недостаточно прав'};
+ const id=Number(match[1]),body=match[2].trim();
+ if(!body||body.length>3000)return {ok:false,message:'Длина текста должна быть от 1 до 3000 символов'};
+ const entry=db.prepare("SELECT state FROM partner_club_reviews WHERE event_id=?").get(id);
+ if(!entry||entry.state!=='editing')return {ok:false,message:'Черновик не находится на редактировании'};
+ db.prepare("UPDATE partner_club_reviews SET edited_message=?,state='pending' WHERE event_id=?").run(body,id);
+ return {ok:true,message:'📝 Обновлённый черновик:\n\n'+escapeHtml(body),reply_markup:reviewButtons(id)};
+}
 let workerBusy=false;
 async function sendClubUpdates(){
  if(workerBusy)return;
  const cfg=settings();if(!cfg.enabled||!cfg.chat_id||!cfg.club_started_at)return;
+ const reviewer=reviewerForClub();if(!reviewer)return;
  workerBusy=true;
- try {
-   const rows=db.prepare("SELECT e.* FROM partner_club_events e LEFT JOIN partner_club_delivery_log l ON l.event_id=e.id WHERE l.event_id IS NULL AND e.created_at >= ? AND e.status='draft' ORDER BY e.id LIMIT 5").all(cfg.club_started_at);
-   for(const ev of rows){
-     const current=settings();if(!current.enabled||current.chat_id!==cfg.chat_id)break;
-     if(!current[ev.event_type])continue;
-     if(ev.event_type==='sales'&&current.sales_mode==='limit'){
-       const sent=db.prepare("SELECT COUNT(*) n FROM partner_club_delivery_log WHERE delivered_at >= datetime('now','-1 hour')").get().n;
-       if(sent>=5)break;
-     }
-     const result=await require('./telegram').sendToChat(cfg.chat_id,ev.message);
-     if(!result.ok)break;
-     db.prepare('INSERT OR IGNORE INTO partner_club_delivery_log(event_id) VALUES(?)').run(ev.id);
-   }
- }catch(e){console.warn('Partner club delivery:',e.message)}finally{workerBusy=false}
+ try{
+  const events=db.prepare("SELECT e.* FROM partner_club_events e LEFT JOIN partner_club_reviews r ON r.event_id=e.id WHERE r.event_id IS NULL AND e.created_at>=? AND e.status='draft' ORDER BY e.id LIMIT 5").all(cfg.club_started_at);
+  for(const ev of events){
+   if(!settings().enabled)break;
+   if(!settings()[ev.event_type])continue;
+   const message='🐾 <b>Черновик для Клуба партнёров #'+ev.id+'</b>\n\n'+escapeHtml(ev.message);
+   const result=await require('./telegram').sendToChat(reviewer,message,{reply_markup:reviewButtons(ev.id)});
+   if(!result.ok)break;
+   db.prepare("INSERT OR IGNORE INTO partner_club_reviews(event_id,state,reviewer_chat_id,requested_at) VALUES(?,'pending',?,CURRENT_TIMESTAMP)").run(ev.id,reviewer);
+  }
+ }catch(e){console.warn('Partner club moderation:',e.message)}finally{workerBusy=false}
 }
 function startPartnerClubWorker(){const timer=setInterval(()=>sendClubUpdates().catch(e=>console.warn('Partner club:',e.message)),30000);timer.unref?.()}
-module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker};
+module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,handleClubCallback,handleClubEdit};
