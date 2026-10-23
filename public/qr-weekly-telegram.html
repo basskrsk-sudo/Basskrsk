@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QR-отчёт в Telegram — ХвостМаркет</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#143b2f;background:#f4f6f1}
+*{box-sizing:border-box}body{margin:0}main{max-width:850px;margin:auto;padding:22px 16px 50px}
+h1{font-size:clamp(23px,4vw,31px);margin:8px 0 8px}h2{font-size:19px}
+a{color:#136b4d}.panel{background:white;border:1px solid #d9e7dd;border-radius:16px;padding:20px;margin-top:17px}
+.muted{color:#65796d;font-size:14px;line-height:1.55}
+button{background:#187358;color:white;border:0;border-radius:9px;padding:12px 16px;cursor:pointer;font-weight:600;margin:5px 7px 5px 0;font-size:14px}
+button:disabled{opacity:.5;cursor:default}button.secondary{background:#e7f0e9;color:#235640}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f5ef;padding:16px;border-radius:10px;font-size:14px;line-height:1.6}
+.status{font-weight:600;margin-top:12px;line-height:1.6}.pill{display:inline-block;padding:5px 11px;border-radius:30px;background:#e3f3e9;color:#206448;font-size:13px}
+</style></head><body><main>
+<a href="/taiga-admin.html">← В админку ХвостМаркета</a>
+<h1>📊 Еженедельная QR-аналитика</h1>
+<p class="muted">Автоматический отчёт по точкам в служебный Telegram-бот ХвостМаркета. Общая группа партнёров эти отчёты не получает.</p>
+<section class="panel">
+<h2>Расписание</h2>
+<p><span class="pill">Каждый понедельник · 09:00 · Красноярск</span></p>
+<div id="schedule">Проверка настроек…</div>
+<button id="refresh" class="secondary">↻ Обновить состояние</button>
+</section>
+<section class="panel">
+<h2>Проверить отчёт</h2>
+<p class="muted">Сначала можно посмотреть сводку за последнюю завершённую неделю без отправки. Для теста нажмите «Отправить в Telegram»: придёт сообщение и CSV-файл по всем точкам. Повторная отправка за ту же неделю не создаст дублей.</p>
+<button id="preview">Показать предпросмотр</button>
+<button id="send">Отправить отчёт сейчас</button>
+<div id="action" class="status" aria-live="polite"></div>
+<pre id="previewText" hidden></pre>
+</section>
+<section class="panel">
+<h2>Какие данные входят</h2>
+<p class="muted">Открытия товарных QR, уникальные посетители по идентификаторам визитов, переходы к оформлению и оплате, оплаченные заказы, выручка и отдельные сканирования QR пробников. Вложенный CSV содержит все точки, в том числе с нулевыми значениями.</p>
+<p class="muted">Статистика считается по событиям, которые сайт фактически записал. Она не включает все продажи магазина и не восстанавливает сканирования до подключения аналитики.</p>
+</section></main>
+<script>
+'use strict';
+const token=localStorage.getItem('taiga_admin_token')||'';
+const $=id=>document.getElementById(id);
+async function api(url,options={}){
+ if(!token)throw Error('Сначала войдите в админку ХвостМаркета под супер-администратором.');
+ const res=await fetch(url,{...options,headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'}});
+ const data=await res.json();if(!res.ok)throw Error(data.error||'Ошибка HTTP '+res.status);return data;
+}
+function krsk(value){return value?new Date(value).toLocaleString('ru-RU',{timeZone:'Asia/Krasnoyarsk',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
+async function loadStatus(){
+ try{
+ const d=await api('/api/admin/qr-weekly-telegram/status');
+ const last=d.last_report;
+ $('schedule').textContent='Следующее отправление: '+krsk(d.next_run_utc)+'. Telegram: '+(d.telegram_configured?'настроен':'не настроен')+'. '+(last?'Последний отчёт: '+last.week_start+' — '+last.week_end+'; сообщение: '+(last.summary_sent_at?'отправлено':'не отправлено')+'; CSV: '+(last.file_sent_at?'отправлен':'не отправлен')+'.':'Отчётов ещё не отправляли.');
+ $('send').disabled=!d.telegram_configured;
+ }catch(e){$('schedule').textContent='Ошибка: '+e.message;$('send').disabled=true}
+}
+$('refresh').onclick=loadStatus;
+$('preview').onclick=async()=>{
+ $('action').textContent='Загрузка предпросмотра…';
+ try{const d=await api('/api/admin/qr-weekly-telegram/preview');$('previewText').hidden=false;$('previewText').textContent=d.text;$('action').textContent='Предпросмотр готов. Отправки не было.'}
+ catch(e){$('action').textContent='Ошибка: '+e.message}
+};
+$('send').onclick=async()=>{
+ if(!confirm('Отправить отчёт за последнюю завершённую неделю в служебный Telegram?'))return;
+ $('send').disabled=true;$('action').textContent='Отправка в Telegram…';
+ try{const d=await api('/api/admin/qr-weekly-telegram/send-now',{method:'POST',body:'{}'});$('action').textContent=d.skipped?'Этот отчёт уже был отправлен.':'✅ Отчёт и CSV отправлены за неделю '+d.week+' — '+d.week_end;await loadStatus()}
+ catch(e){$('action').textContent='Ошибка: '+e.message;$('send').disabled=false}
+};
+loadStatus();
+</script></body></html>
