@@ -184,6 +184,13 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (/^club:(send|edit|reject):\d+$/.test(callback.data||'')) {
+      const club=require('./routes-partner-club');
+      const result=await club.handleClubCallback(callback.message?.chat?.id,callback.data);
+      await callBotApi('answerCallbackQuery',{callback_query_id:callback.id,text:String(result?.message||'Готово').slice(0,180),show_alert:!result?.ok});
+      if(result)await replyToChat(callback.message.chat.id,result.message);
+      return;
+    }
     const chatId = callback.message && callback.message.chat
       ? callback.message.chat.id
       : callback.from && callback.from.id;
@@ -215,6 +222,12 @@ async function processUpdate(update) {
   const msg = update.message;
   if (!msg || !msg.text) return;
   const text = msg.text.trim();
+  if(msg.chat.type==='private'&&/^\/clubtext(?:@\w+)?\s+/i.test(text)){
+    const result=await require('./routes-partner-club').handleClubEdit(msg.chat.id,text);
+    if(result)await replyToChat(msg.chat.id,result.message,result.reply_markup);
+    return;
+  }
+
   // Respond to group ID requests; never run private task/account commands in groups.
   if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
     if (/^\/chatid(?:@\w+)?$/i.test(text)) {
