@@ -277,19 +277,21 @@ async function handleClubCallback(chatId,data){
  cancelClubInput(chatId);
  return {ok:true,message:'✅ Опубликовано в группе.'};
 }
-async function handleClubEdit(chatId,text){
- const match=text.match(/^\/clubtext(?:@\w+)?\s+(\d+)\s+([\s\S]+)$/i);
+async function handleClubEdit(chatId,text,entities=[]){
+ const match=String(text||'').match(/^\/clubtext(?:@\w+)?\s+(\d+)\s+([\s\S]+)$/i);
  if(!match)return null;
  if(String(chatId)!==reviewerForClub())return {ok:false,message:'Недостаточно прав'};
- const id=Number(match[1]),body=match[2].trim();
+ const id=Number(match[1]);
+ const formatted=richPost(text,entities,String(text).length-match[2].length);
+ const body=formatted.plain;
  if(!body||body.length>3000)return {ok:false,message:'Длина текста должна быть от 1 до 3000 символов'};
  const entry=db.prepare("SELECT state FROM partner_club_reviews WHERE event_id=?").get(id);
  if(!entry||entry.state!=='editing')return {ok:false,message:'Черновик не находится на редактировании'};
  db.prepare("UPDATE partner_club_reviews SET edited_message=?,state='pending' WHERE event_id=?").run(body,id);
+ saveClubFormat(id,formatted.html,true);
  cancelClubInput(chatId);
- return {ok:true,message:'📝 Обновлённый черновик:\n\n'+body,reply_markup:reviewButtons(id)};
+ return {ok:true,message:'📝 Обновлённый черновик:\n\n'+formatted.html,reply_markup:reviewButtons(id),parse_mode:'HTML'};
 }
-
 function setClubInput(chatId,mode,eventId=null){
  db.prepare("INSERT INTO partner_club_bot_inputs(chat_id,mode,event_id,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(chat_id) DO UPDATE SET mode=excluded.mode,event_id=excluded.event_id,updated_at=CURRENT_TIMESTAMP")
    .run(String(chatId),mode,eventId);
