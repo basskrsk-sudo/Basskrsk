@@ -186,7 +186,9 @@ function registerPartnerClubRoutes(router){
    const key='manual:'+require('node:crypto').randomUUID();
    const inserted=db.prepare("INSERT INTO partner_club_events(event_key,event_type,message,status) VALUES(?,'manual',?,'draft')").run(key,body);
    const id=Number(inserted.lastInsertRowid);
-   const preview='🐾 <b>Ручная публикация в Клуб партнёров #'+id+'</b>\n\n'+escapeHtml(body);
+   const formatted=safeMarkdownHtml(body);
+   saveClubFormat(id,formatted);
+   const preview='🐾 <b>Ручная публикация в Клуб партнёров #'+id+'</b>\n\n'+formatted;
    const sent=await require('./telegram').sendToChat(reviewer,preview,{reply_markup:reviewButtons(id)});
    if(!sent.ok){
      db.prepare('DELETE FROM partner_club_events WHERE id=?').run(id);
