@@ -190,13 +190,15 @@ function registerPartnerClubRoutes(router){
 }
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_delivery_log(event_id INTEGER PRIMARY KEY, delivered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_reviews(event_id INTEGER PRIMARY KEY, state TEXT NOT NULL DEFAULT 'pending', reviewer_chat_id TEXT, edited_message TEXT, requested_at TEXT, claimed_at TEXT)");
+db.exec("CREATE TABLE IF NOT EXISTS partner_club_bot_inputs(chat_id TEXT PRIMARY KEY, mode TEXT NOT NULL CHECK(mode IN ('new','edit')), event_id INTEGER, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 const escapeHtml=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function reviewerForClub(){
  const c=settings();
  if(!c.reviewer_admin_id)return null;
- const r=db.prepare("SELECT telegram_chat_id,role FROM admins WHERE id=?").get(c.reviewer_admin_id);
- return r&&r.role==='super'&&r.telegram_chat_id?String(r.telegram_chat_id):null;
+ const r=db.prepare("SELECT telegram_chat_id,role,active FROM admins WHERE id=?").get(c.reviewer_admin_id);
+ return r&&r.role==='super'&&r.active&&r.telegram_chat_id?String(r.telegram_chat_id):null;
 }
+function isClubModerator(chatId){return !!chatId&&String(chatId)===reviewerForClub();}
 function reviewButtons(id){return {inline_keyboard:[[{text:'✅ Отправить в группу',callback_data:'club:send:'+id},{text:'✏️ Скорректировать',callback_data:'club:edit:'+id}],[{text:'🚫 Отклонить',callback_data:'club:reject:'+id}]]};}
 async function handleClubCallback(chatId,data){
  if(!/^club:(send|edit|reject):[0-9]+$/.test(data))return null;
