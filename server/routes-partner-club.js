@@ -238,6 +238,52 @@ async function handleClubEdit(chatId,text){
  db.prepare("UPDATE partner_club_reviews SET edited_message=?,state='pending' WHERE event_id=?").run(body,id);
  return {ok:true,message:'📝 Обновлённый черновик:\n\n'+escapeHtml(body),reply_markup:reviewButtons(id)};
 }
+
+function setClubInput(chatId,mode,eventId=null){
+ db.prepare("INSERT INTO partner_club_bot_inputs(chat_id,mode,event_id,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(chat_id) DO UPDATE SET mode=excluded.mode,event_id=excluded.event_id,updated_at=CURRENT_TIMESTAMP")
+   .run(String(chatId),mode,eventId);
+}
+function cancelClubInput(chatId){
+ return db.prepare('DELETE FROM partner_club_bot_inputs WHERE chat_id=?').run(String(chatId)).changes>0;
+}
+function startClubPost(chatId){
+ if(!isClubModerator(chatId))return {ok:false,message:'Эта команда доступна только назначенному модератору Клуба партнёров.'};
+ if(!settings().chat_id)return {ok:false,message:'Сначала подключите Telegram-группу в админке.'};
+ setClubInput(chatId,'new');
+ return {ok:true,message:'✍️ Новое сообщение для Клуба партнёров.\n\nОтправьте следующим сообщением текст публикации (до 3000 символов).\nБот покажет черновик и кнопки «Отправить», «Скорректировать» и «Отклонить».\n\n/cancel — отмена.'};
+}
+async function handleClubPostInput(chatId,text){
+ const pending=db.prepare('SELECT mode,event_id FROM partner_club_bot_inputs WHERE chat_id=?').get(String(chatId));
+ if(!pending)return null;
+ if(!isClubModerator(chatId)){cancelClubInput(chatId);return {ok:false,message:'Нет доступа к публикациям Клуба партнёров.'};}
+ if(/^\/cancel(?:@\w+)?$/i.test(text.trim())){
+   cancelClubInput(chatId);return {ok:true,message:'Создание сообщения отменено.'};
+ }
+ if(/^\/[a-z]/i.test(text.trim()))return null;
+ const body=String(text||'').trim();
+ if(body.length<1||body.length>3000)return {ok:false,message:'Отправьте текст длиной от 1 до 3000 символов.'};
+ if(pending.mode==='edit'){
+   const id=pending.event_id;
+   const changed=db.prepare("UPDATE partner_club_reviews SET edited_message=?,state='pending' WHERE event_id=? AND state='editing'").run(body,id);
+   cancelClubInput(chatId);
+   if(!changed.changes)return {ok:false,message:'Редактирование этого черновика уже завершено.'};
+   return {ok:true,message:'📝 Исправленный текст черновика #'+id+':\n\n'+body,reply_markup:reviewButtons(id)};
+ }
+ if(!settings().chat_id){cancelClubInput(chatId);return {ok:false,message:'Telegram-группа не подключена.'};}
+ const key='manual:bot:'+require('node:crypto').randomUUID();
+ const created=db.prepare("INSERT INTO partner_club_events(event_key,event_type,message,status) VALUES(?,'manual',?,'draft')").run(key,body);
+ const id=Number(created.lastInsertRowid);
+ const markup=reviewButtons(id);
+ const preview='🐾 <b>Черновик для Клуба партнёров #'+id+'</b>\n\n'+escapeHtml(body);
+ const sent=await require('./telegram').sendToChat(chatId,preview,{reply_markup:markup});
+ if(!sent.ok||sent.data?.ok===false){
+   db.prepare('DELETE FROM partner_club_events WHERE id=?').run(id);
+   return {ok:false,message:'Не удалось доставить предпросмотр. Текст не опубликован; отправьте его ещё раз.'};
+ }
+ db.prepare("INSERT INTO partner_club_reviews(event_id,state,reviewer_chat_id,requested_at) VALUES(?,'pending',?,CURRENT_TIMESTAMP)").run(id,String(chatId));
+ cancelClubInput(chatId);
+ return {ok:true,message:'✅ Черновик #'+id+' готов. Для публикации нажмите «Отправить в группу» под сообщением выше.'};
+}
 let workerBusy=false;
 async function sendClubUpdates(){
  if(workerBusy)return;
@@ -257,4 +303,4 @@ async function sendClubUpdates(){
  }catch(e){console.warn('Partner club moderation:',e.message)}finally{workerBusy=false}
 }
 function startPartnerClubWorker(){const timer=setInterval(()=>sendClubUpdates().catch(e=>console.warn('Partner club:',e.message)),30000);timer.unref?.()}
-module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,handleClubCallback,handleClubEdit};
+module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,handleClubCallback,handleClubEdit,isClubModerator,startClubPost,handleClubPostInput,cancelClubInput};
