@@ -305,7 +305,7 @@ function startClubPost(chatId){
  setClubInput(chatId,'new');
  return {ok:true,message:'✍️ Новое сообщение для Клуба партнёров.\n\nОтправьте следующим сообщением текст публикации (до 3000 символов).\nБот покажет черновик и кнопки «Отправить», «Скорректировать» и «Отклонить».\n\n/cancel — отмена.'};
 }
-async function handleClubPostInput(chatId,text){
+async function handleClubPostInput(chatId,text,entities=[]){
  const pending=db.prepare('SELECT mode,event_id FROM partner_club_bot_inputs WHERE chat_id=?').get(String(chatId));
  if(!pending)return null;
  if(!isClubModerator(chatId)){cancelClubInput(chatId);return {ok:false,message:'Нет доступа к публикациям Клуба партнёров.'};}
@@ -314,21 +314,24 @@ async function handleClubPostInput(chatId,text){
    cancelClubInput(chatId);return {ok:true,message:'Действие отменено. Черновик в группу не опубликован.'};
  }
  if(/^\/[a-z]/i.test(text.trim()))return null;
- const body=String(text||'').trim();
+ const formatted=richPost(text,entities);
+ const body=formatted.plain;
  if(body.length<1||body.length>3000)return {ok:false,message:'Отправьте текст длиной от 1 до 3000 символов.'};
  if(pending.mode==='edit'){
    const id=pending.event_id;
    const changed=db.prepare("UPDATE partner_club_reviews SET edited_message=?,state='pending' WHERE event_id=? AND state='editing'").run(body,id);
    cancelClubInput(chatId);
    if(!changed.changes)return {ok:false,message:'Редактирование этого черновика уже завершено.'};
-   return {ok:true,message:'📝 Исправленный текст черновика #'+id+':\n\n'+body,reply_markup:reviewButtons(id)};
+   saveClubFormat(id,formatted.html,true);
+   return {ok:true,message:'📝 Исправленный текст черновика #'+id+':\n\n'+formatted.html,reply_markup:reviewButtons(id),parse_mode:'HTML'};
  }
  if(!settings().chat_id){cancelClubInput(chatId);return {ok:false,message:'Telegram-группа не подключена.'};}
  const key='manual:bot:'+require('node:crypto').randomUUID();
  const created=db.prepare("INSERT INTO partner_club_events(event_key,event_type,message,status) VALUES(?,'manual',?,'draft')").run(key,body);
  const id=Number(created.lastInsertRowid);
+ saveClubFormat(id,formatted.html);
  const markup=reviewButtons(id);
- const preview='🐾 <b>Черновик для Клуба партнёров #'+id+'</b>\n\n'+escapeHtml(body);
+ const preview='🐾 <b>Черновик для Клуба партнёров #'+id+'</b>\n\n'+formatted.html;
  const sent=await require('./telegram').sendToChat(chatId,preview,{reply_markup:markup});
  if(!sent.ok||sent.data?.ok===false){
    db.prepare('DELETE FROM partner_club_events WHERE id=?').run(id);
