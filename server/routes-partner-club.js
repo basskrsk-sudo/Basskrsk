@@ -305,7 +305,7 @@ function startClubPost(chatId){
  const prev=db.prepare('SELECT mode,event_id FROM partner_club_bot_inputs WHERE chat_id=?').get(String(chatId));
  if(prev?.mode==='edit')db.prepare("UPDATE partner_club_reviews SET state='pending' WHERE event_id=? AND state='editing'").run(prev.event_id);
  setClubInput(chatId,'new');
- return {ok:true,message:'✍️ Новое сообщение для Клуба партнёров.\n\nОтправьте следующим сообщением текст публикации (до 3000 символов).\nБот покажет черновик и кнопки «Отправить», «Скорректировать» и «Отклонить».\n\n/cancel — отмена.'};
+ return {ok:true,message:'✍️ Новое сообщение для Клуба партнёров.\n\nОтправьте следующим сообщением текст публикации (до 3000 символов).\nЖирный шрифт и курсив, заданные в Telegram, сохраняются. Можно также использовать **две звёздочки** для жирного текста.\n\nБот покажет черновик и кнопки «Отправить», «Скорректировать» и «Отклонить».\n\n/cancel — отмена.'};
 }
 async function handleClubPostInput(chatId,text,entities=[]){
  const pending=db.prepare('SELECT mode,event_id FROM partner_club_bot_inputs WHERE chat_id=?').get(String(chatId));
