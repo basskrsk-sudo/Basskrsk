@@ -213,7 +213,8 @@ async function handleClubCallback(chatId,data){
    return {ok:true,message:'✏️ Отправьте следующим сообщением исправленный текст для черновика #'+id+'. Команда /cancel отменит редактирование.'};
  }
  if(action==='reject'){
-   db.prepare("UPDATE partner_club_reviews SET state='rejected' WHERE event_id=?").run(id);
+   db.prepare("UPDATE partner_club_reviews SET state='rejected' WHERE event_id=? AND state IN ('pending','editing')").run(id);
+   cancelClubInput(chatId);
    return {ok:true,message:'🚫 Публикация отклонена.'};
  }
  const c=settings();
@@ -261,6 +262,8 @@ function cancelClubInput(chatId){
 function startClubPost(chatId){
  if(!isClubModerator(chatId))return {ok:false,message:'Эта команда доступна только назначенному модератору Клуба партнёров.'};
  if(!settings().chat_id)return {ok:false,message:'Сначала подключите Telegram-группу в админке.'};
+ const prev=db.prepare('SELECT mode,event_id FROM partner_club_bot_inputs WHERE chat_id=?').get(String(chatId));
+ if(prev?.mode==='edit')db.prepare("UPDATE partner_club_reviews SET state='pending' WHERE event_id=? AND state='editing'").run(prev.event_id);
  setClubInput(chatId,'new');
  return {ok:true,message:'✍️ Новое сообщение для Клуба партнёров.\n\nОтправьте следующим сообщением текст публикации (до 3000 символов).\nБот покажет черновик и кнопки «Отправить», «Скорректировать» и «Отклонить».\n\n/cancel — отмена.'};
 }
