@@ -264,9 +264,9 @@ async function handleClubCallback(chatId,data){
  if(row.state==='editing')return {ok:false,message:'Сначала отправьте исправленный текст черновика.'};
  const claimed=db.prepare("UPDATE partner_club_reviews SET state='sending',claimed_at=CURRENT_TIMESTAMP WHERE event_id=? AND state='pending'").run(id);
  if(!claimed.changes)return {ok:false,message:'Черновик сейчас недоступен для отправки.'};
- const message=row.edited_message||row.message;
+ const message=clubMessageHtml(row);
  let result;
- try{result=await require('./telegram').sendToChat(c.chat_id,escapeHtml(message));}
+ try{result=await require('./telegram').sendToChat(c.chat_id,message);}
  catch(error){db.prepare("UPDATE partner_club_reviews SET state='pending' WHERE event_id=? AND state='sending'").run(id);return {ok:false,message:'Ошибка отправки: '+error.message};}
  if(!result.ok||result.data?.ok===false){
    db.prepare("UPDATE partner_club_reviews SET state='pending' WHERE event_id=? AND state='sending'").run(id);
@@ -349,7 +349,7 @@ async function sendClubUpdates(){
   for(const ev of events){
    if(!settings().enabled)break;
    if(!settings()[ev.event_type])continue;
-   const message='🐾 <b>Черновик для Клуба партнёров #'+ev.id+'</b>\n\n'+escapeHtml(ev.message);
+   const message='🐾 <b>Черновик для Клуба партнёров #'+ev.id+'</b>\n\n'+clubMessageHtml(ev);
    const result=await require('./telegram').sendToChat(reviewer,message,{reply_markup:reviewButtons(ev.id)});
    if(!result.ok)break;
    db.prepare("INSERT OR IGNORE INTO partner_club_reviews(event_id,state,reviewer_chat_id,requested_at) VALUES(?,'pending',?,CURRENT_TIMESTAMP)").run(ev.id,reviewer);
