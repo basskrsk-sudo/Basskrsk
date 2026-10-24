@@ -64,6 +64,7 @@ async function configureBotProfile() {
       { command: 'tasks', description: 'Мои активные поручения' },
       { command: 'newtask', description: 'Создать новую задачу' },
       { command: 'expense', description: 'Добавить трату бизнеса' },
+      { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
       { command: 'cancel', description: 'Отменить текущее действие' },
       { command: 'help', description: 'Как пользоваться ботом' },
       { command: 'chatid', description: 'Показать ID текущей группы' },
@@ -111,13 +112,15 @@ function buildWelcomeMessage() {
   ].join('\n');
 }
 
-function botActionButtons() {
-  return {
-    inline_keyboard: [[
-      { text: '➕ Новая задача', callback_data: 'newtsk:start' },
-      { text: '💳 Добавить трату', callback_data: 'expense:start' },
-    ]],
-  };
+function botActionButtons(chatId) {
+  const keyboard = [[
+    { text: '➕ Новая задача', callback_data: 'newtsk:start' },
+    { text: '💳 Добавить трату', callback_data: 'expense:start' },
+  ]];
+  if (chatId && require('./routes-partner-club').isClubModerator(chatId)) {
+    keyboard.push([{ text: '🐾 Сообщение партнёрам', callback_data: 'club:new' }]);
+  }
+  return { inline_keyboard: keyboard };
 }
 
 async function sendTaskInbox(chatId) {
@@ -127,13 +130,13 @@ async function sendTaskInbox(chatId) {
     return;
   }
   if (!inbox.tasks.length) {
-    await replyToChat(chatId, '✅ У вас нет активных поручений.', botActionButtons());
+    await replyToChat(chatId, '✅ У вас нет активных поручений.', botActionButtons(chatId));
     return;
   }
   await replyToChat(
     chatId,
     `Активные поручения: ${inbox.tasks.length}. Выберите действие под нужной задачей.`,
-    botActionButtons()
+    botActionButtons(chatId)
   );
   for (const task of inbox.tasks) {
     await replyToChat(chatId, taskBotCard(task), taskButtons(task, 'telegram'));
@@ -184,6 +187,17 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (callback.data === 'club:new') {
+      const chatId = callback.message?.chat?.id;
+      const result = require('./routes-partner-club').startClubPost(chatId);
+      await callBotApi('answerCallbackQuery', {
+        callback_query_id: callback.id,
+        text: result.ok ? 'Введите текст публикации' : 'Нет доступа',
+        show_alert: !result.ok,
+      });
+      if (chatId) await replyToChat(chatId, result.message);
+      return;
+    }
     if (/^club:(send|edit|reject):\d+$/.test(callback.data||'')) {
       const club=require('./routes-partner-club');
       const result=await club.handleClubCallback(callback.message?.chat?.id,callback.data);
@@ -222,6 +236,19 @@ async function processUpdate(update) {
   const msg = update.message;
   if (!msg || !msg.text) return;
   const text = msg.text.trim();
+  if (msg.chat.type === 'private') {
+    const create = text.match(/^\/clubpost(?:@\w+)?(?:\s+([\s\S]+))?$/i);
+    if (create) {
+      const club = require('./routes-partner-club');
+      const started = club.startClubPost(msg.chat.id);
+      if (!started.ok || !create[1]) await replyToChat(msg.chat.id, started.message);
+      else {
+        const result = await club.handleClubPostInput(msg.chat.id, create[1]);
+        if (result) await replyToChat(msg.chat.id, result.message, result.reply_markup);
+      }
+      return;
+    }
+  }
   if(msg.chat.type==='private'&&/^\/clubtext(?:@\w+)?\s+/i.test(text)){
     const result=await require('./routes-partner-club').handleClubEdit(msg.chat.id,text);
     if(result)await replyToChat(msg.chat.id,result.message,result.reply_markup);
@@ -234,6 +261,14 @@ async function processUpdate(update) {
       await replyToChat(msg.chat.id, '🐾 ID этой группы: ' + String(msg.chat.id) + '\nСкопируйте число для подключения Клуба партнёров.');
     }
     return;
+  }
+
+  if (msg.chat.type === 'private') {
+    const pending = await require('./routes-partner-club').handleClubPostInput(msg.chat.id, text);
+    if (pending) {
+      await replyToChat(msg.chat.id, pending.message, pending.reply_markup);
+      return;
+    }
   }
 
   if (/^\/newtask(?:@\w+)?$/i.test(text) || /^новая задача$/i.test(text)) {
@@ -255,7 +290,7 @@ async function processUpdate(update) {
     await replyToChat(
       msg.chat.id,
       createCancelled || expenseCancelled || statusCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
-      botActionButtons()
+      botActionButtons(msg.chat.id)
     );
     return;
   }
@@ -287,7 +322,7 @@ async function processUpdate(update) {
   }
   const match = text.match(/^\/start(?:@\w+)?(?:\s+(\S+))?$/i);
   if (!match || !match[1]) {
-    await replyToChat(msg.chat.id, buildWelcomeMessage(), botActionButtons());
+    await replyToChat(msg.chat.id, buildWelcomeMessage(), botActionButtons(msg.chat.id));
     return;
   }
 
