@@ -208,7 +208,8 @@ async function handleClubCallback(chatId,data){
  if(!row||row.state==='sent'||row.state==='rejected')return {message:'Этот черновик уже обработан',ok:false};
  if(action==='edit'){
    db.prepare("UPDATE partner_club_reviews SET state='editing' WHERE event_id=?").run(id);
-   return {ok:true,message:'✏️ Ответь на это сообщение новым текстом для публикации. Начни ответ с /clubtext '+id+' и пробела, затем напиши текст.'};
+   setClubInput(chatId,'edit',id);
+   return {ok:true,message:'✏️ Отправьте следующим сообщением исправленный текст для черновика #'+id+'. Команда /cancel отменит редактирование.'};
  }
  if(action==='reject'){
    db.prepare("UPDATE partner_club_reviews SET state='rejected' WHERE event_id=?").run(id);
@@ -236,7 +237,8 @@ async function handleClubEdit(chatId,text){
  const entry=db.prepare("SELECT state FROM partner_club_reviews WHERE event_id=?").get(id);
  if(!entry||entry.state!=='editing')return {ok:false,message:'Черновик не находится на редактировании'};
  db.prepare("UPDATE partner_club_reviews SET edited_message=?,state='pending' WHERE event_id=?").run(body,id);
- return {ok:true,message:'📝 Обновлённый черновик:\n\n'+escapeHtml(body),reply_markup:reviewButtons(id)};
+ cancelClubInput(chatId);
+ return {ok:true,message:'📝 Обновлённый черновик:\n\n'+body,reply_markup:reviewButtons(id)};
 }
 
 function setClubInput(chatId,mode,eventId=null){
