@@ -5,8 +5,8 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireSuperAdmin } = require('./routes-auth');
 
-const FLAGS=['sales','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
-const DEFAULTS=Object.freeze({sales:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
+const FLAGS=['sales','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
+const DEFAULTS=Object.freeze({sales:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
 db.exec(`CREATE TABLE IF NOT EXISTS partner_club_settings(id INTEGER PRIMARY KEY CHECK(id=1),config_json TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS partner_club_events(id INTEGER PRIMARY KEY AUTOINCREMENT,event_key TEXT UNIQUE NOT NULL,event_type TEXT NOT NULL,message TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL DEFAULT 'draft' CHECK(status='draft'));
 CREATE INDEX IF NOT EXISTS idx_partner_club_events_created ON partner_club_events(created_at DESC);`);
@@ -47,9 +47,20 @@ function welcomeNewPoint(point) {
 }
 function recordPaidOrder(order,items,demo=false){
   if(demo||!order||order.status!=='paid'||order.refund_status==='refunded')return false;
-  const point=db.prepare('SELECT id,name FROM points WHERE id=?').get(order.point_id);
-  const product=items.map(i=>safeText(i.name)+(i.qty>1?' ×'+i.qty:'')).join(', ').slice(0,190)||'товар для питомца';
-  const message='🐾 Новая покупка!\n🏪 '+venueType(point||{id:order.point_id})+': «'+safeText(point?.name||order.pickup_point||'Точка')+'»'+'\n🦴 '+product+'\n💚 '+money(order.total)+'\nСпасибо за покупку!';
+  const point=order.point_id?db.prepare('SELECT id,name FROM points WHERE id=?').get(order.point_id):null;
+  const product=(items||[]).map(i=>safeText(i.name)+(i.qty>1?' ×'+i.qty:'')).join(', ').slice(0,190)||'товар для питомца';
+  const location='🏪 '+venueType(point||{id:order.point_id})+': «'+safeText(point?.name||order.pickup_point||'Точка')+'»';
+  // First paid CUSTOMER order only. Other paid orders prevent retrospective greetings.
+  // Permanent event key also prevents repeat milestones after restarts or order removal.
+  if(point&&!order.is_partner_self_order&&settings().first_sale){
+    const previous=db.prepare("SELECT 1 FROM orders WHERE point_id=? AND id<>? AND status='paid' AND COALESCE(is_partner_self_order,0)=0 LIMIT 1").get(point.id,order.id);
+    if(!previous){
+      const message=['🎉 Первая продажа!',location,'🦴 '+product,'💚 '+money(order.total),'',
+        '👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾'].join('\n');
+      return queue('first-sale:point:'+String(point.id),'first_sale',message);
+    }
+  }
+  const message='🐾 Новая покупка!\n'+location+'\n🦴 '+product+'\n💚 '+money(order.total)+'\nСпасибо за покупку!';
   return queue('paid:'+order.id,'sales',message);
 }
 function range(period){const now=new Date();const today=now.toISOString().slice(0,10);
@@ -94,6 +105,7 @@ function preview(type,data={}){
  const count=Math.max(0,Math.floor(Number(data.count)||18)),amount=Math.max(0,Number(data.amount)||4500);
  switch(type){
   case 'sales':return '🐾 Новая покупка!\n🏪 Партнёрская точка: «'+point+'»'+'\n🦴 '+item+'\n💚 '+money(amount);
+  case 'first_sale':return ['🎉 Первая продажа!','🏪 Партнёрская точка: «'+point+'»','🦴 '+item,'💚 '+money(amount),'','👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾'].join('\n');
   case 'daily':return '☀️ Итоги вчерашнего дня\n🐾 Продаж: '+count+'\n💚 Выручка: '+money(amount)+'\nСпасибо партнёрам!';
   case 'weekly':return '🏆 Итоги недели\n🐾 Продаж: '+count+'\nОтмечаем достижения без публичного сравнения неактивных партнёров.';
   case 'milestones':return '🎉 Новый рекорд: '+count+' продаж!';
