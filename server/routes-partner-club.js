@@ -4,6 +4,7 @@
 const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireSuperAdmin } = require('./routes-auth');
+const { safeMarkdownHtml, htmlFromTelegramEntities } = require('./telegram-formatting');
 
 const FLAGS=['sales','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
 const DEFAULTS=Object.freeze({sales:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
@@ -203,7 +204,30 @@ function registerPartnerClubRoutes(router){
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_delivery_log(event_id INTEGER PRIMARY KEY, delivered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_reviews(event_id INTEGER PRIMARY KEY, state TEXT NOT NULL DEFAULT 'pending', reviewer_chat_id TEXT, edited_message TEXT, requested_at TEXT, claimed_at TEXT)");
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_bot_inputs(chat_id TEXT PRIMARY KEY, mode TEXT NOT NULL CHECK(mode IN ('new','edit')), event_id INTEGER, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+db.exec("CREATE TABLE IF NOT EXISTS partner_club_message_formats(event_id INTEGER PRIMARY KEY REFERENCES partner_club_events(id) ON DELETE CASCADE,message_html TEXT,edited_html TEXT)");
 const escapeHtml=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function richPost(rawText, entities=[], offset=0){
+ const raw=String(rawText||'');
+ const selected=raw.slice(offset),plain=selected.trim();
+ const left=raw.indexOf(plain,offset);
+ const safeStart=left>=0?left:offset;
+ const valid=(Array.isArray(entities)?entities:[]).map(entity=>{
+   const from=Math.max(safeStart, Number(entity?.offset));
+   const to=Math.min(safeStart+plain.length,Number(entity?.offset)+Number(entity?.length));
+   return {...entity,offset:from-safeStart,length:to-from};
+ }).filter(e=>Number.isInteger(e.offset)&&Number.isInteger(e.length)&&e.length>0);
+ return {plain,html:htmlFromTelegramEntities(plain,valid)};
+}
+function saveClubFormat(id,messageHtml,edited=false){
+ db.prepare("INSERT INTO partner_club_message_formats(event_id,message_html,edited_html) VALUES(?,?,?) ON CONFLICT(event_id) DO UPDATE SET message_html=COALESCE(excluded.message_html,partner_club_message_formats.message_html),edited_html=COALESCE(excluded.edited_html,partner_club_message_formats.edited_html)")
+   .run(id,edited?null:messageHtml,edited?messageHtml:null);
+}
+function clubMessageHtml(event){
+ const rich=db.prepare('SELECT message_html,edited_html FROM partner_club_message_formats WHERE event_id=?').get(event.id);
+ return event.edited_message?(rich?.edited_html||safeMarkdownHtml(event.edited_message)):(rich?.message_html||safeMarkdownHtml(event.message));
+}
+
 function reviewerForClub(){
  const c=settings();
  if(!c.reviewer_admin_id)return null;
