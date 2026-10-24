@@ -88,11 +88,12 @@ function generateLoginCode() {
   return String(crypto.randomInt(1000, 10000));
 }
 
-async function replyToChat(chatId, text, replyMarkup) {
+async function replyToChat(chatId, text, replyMarkup, parseMode) {
   try {
     await callBotApi('sendMessage', {
       chat_id: chatId,
       text,
+      ...(parseMode ? { parse_mode: parseMode } : {}),
       ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     });
   } catch (e) {
@@ -243,15 +244,17 @@ async function processUpdate(update) {
       const started = club.startClubPost(msg.chat.id);
       if (!started.ok || !create[1]) await replyToChat(msg.chat.id, started.message);
       else {
-        const result = await club.handleClubPostInput(msg.chat.id, create[1]);
-        if (result) await replyToChat(msg.chat.id, result.message, result.reply_markup);
+        const startOffset=msg.text.indexOf(create[1]);
+        const adjusted=(msg.entities||[]).map(e=>({...e,offset:e.offset-startOffset}));
+        const result = await club.handleClubPostInput(msg.chat.id, create[1],adjusted);
+        if (result) await replyToChat(msg.chat.id, result.message, result.reply_markup, result.parse_mode);
       }
       return;
     }
   }
   if(msg.chat.type==='private'&&/^\/clubtext(?:@\w+)?\s+/i.test(text)){
-    const result=await require('./routes-partner-club').handleClubEdit(msg.chat.id,text);
-    if(result)await replyToChat(msg.chat.id,result.message,result.reply_markup);
+    const result=await require('./routes-partner-club').handleClubEdit(msg.chat.id,msg.text,msg.entities);
+    if(result)await replyToChat(msg.chat.id,result.message,result.reply_markup,result.parse_mode);
     return;
   }
 
@@ -264,9 +267,9 @@ async function processUpdate(update) {
   }
 
   if (msg.chat.type === 'private') {
-    const pending = await require('./routes-partner-club').handleClubPostInput(msg.chat.id, text);
+    const pending = await require('./routes-partner-club').handleClubPostInput(msg.chat.id, msg.text, msg.entities);
     if (pending) {
-      await replyToChat(msg.chat.id, pending.message, pending.reply_markup);
+      await replyToChat(msg.chat.id, pending.message, pending.reply_markup, pending.parse_mode);
       return;
     }
   }
