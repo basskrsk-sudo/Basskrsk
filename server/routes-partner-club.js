@@ -206,6 +206,7 @@ async function handleClubCallback(chatId,data){
  const [,action,idText]=data.split(':');const id=Number(idText);
  const row=db.prepare("SELECT e.*,r.state,r.edited_message FROM partner_club_events e JOIN partner_club_reviews r ON r.event_id=e.id WHERE e.id=?").get(id);
  if(!row||row.state==='sent'||row.state==='rejected')return {message:'Этот черновик уже обработан',ok:false};
+ if(row.state==='sending')return {message:'Публикация уже обрабатывается. Проверьте сообщения группы.',ok:false};
  if(action==='edit'){
    db.prepare("UPDATE partner_club_reviews SET state='editing' WHERE event_id=?").run(id);
    setClubInput(chatId,'edit',id);
@@ -221,11 +222,20 @@ async function handleClubCallback(chatId,data){
    const count=db.prepare("SELECT COUNT(*) n FROM partner_club_delivery_log WHERE delivered_at>=datetime('now','-1 hour')").get().n;
    if(count>=5)return {ok:false,message:'Лимит 5 публикаций за час достигнут. Можно подтвердить позднее.'};
  }
+ if(row.state==='editing')return {ok:false,message:'Сначала отправьте исправленный текст черновика.'};
+ const claimed=db.prepare("UPDATE partner_club_reviews SET state='sending',claimed_at=CURRENT_TIMESTAMP WHERE event_id=? AND state='pending'").run(id);
+ if(!claimed.changes)return {ok:false,message:'Черновик сейчас недоступен для отправки.'};
  const message=row.edited_message||row.message;
- const result=await require('./telegram').sendToChat(c.chat_id,escapeHtml(message));
- if(!result.ok)return {ok:false,message:'Telegram не подтвердил публикацию. Попробуй ещё раз.'};
+ let result;
+ try{result=await require('./telegram').sendToChat(c.chat_id,escapeHtml(message));}
+ catch(error){db.prepare("UPDATE partner_club_reviews SET state='pending' WHERE event_id=? AND state='sending'").run(id);return {ok:false,message:'Ошибка отправки: '+error.message};}
+ if(!result.ok||result.data?.ok===false){
+   db.prepare("UPDATE partner_club_reviews SET state='pending' WHERE event_id=? AND state='sending'").run(id);
+   return {ok:false,message:'Telegram не подтвердил публикацию. Попробуйте ещё раз.'};
+ }
  db.prepare("UPDATE partner_club_reviews SET state='sent' WHERE event_id=?").run(id);
  db.prepare("INSERT OR IGNORE INTO partner_club_delivery_log(event_id) VALUES(?)").run(id);
+ cancelClubInput(chatId);
  return {ok:true,message:'✅ Опубликовано в группе.'};
 }
 async function handleClubEdit(chatId,text){
@@ -259,7 +269,8 @@ async function handleClubPostInput(chatId,text){
  if(!pending)return null;
  if(!isClubModerator(chatId)){cancelClubInput(chatId);return {ok:false,message:'Нет доступа к публикациям Клуба партнёров.'};}
  if(/^\/cancel(?:@\w+)?$/i.test(text.trim())){
-   cancelClubInput(chatId);return {ok:true,message:'Создание сообщения отменено.'};
+   if(pending.mode==='edit')db.prepare("UPDATE partner_club_reviews SET state='pending' WHERE event_id=? AND state='editing'").run(pending.event_id);
+   cancelClubInput(chatId);return {ok:true,message:'Действие отменено. Черновик в группу не опубликован.'};
  }
  if(/^\/[a-z]/i.test(text.trim()))return null;
  const body=String(text||'').trim();
