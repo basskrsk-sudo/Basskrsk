@@ -195,7 +195,7 @@ function rememberQrPoint(point) {
   localStorage.setItem('hvostmarket_catalog_point:' + cityId, String(point.id));
 }
 
-var CTX = { point: null, product: null, variants: [], selVariant: null, checkout: null, partners: [] };
+var CTX = { point: null, product: null, variants: [], selVariant: null, checkout: null, partners: [], defaultPartnerId: null, defaultSource: null };
 var QR_VISIT_ID = (function(){try {var k='hvost_qr_visit:'+location.pathname;var v=sessionStorage.getItem(k);if(!v){v=Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(x){return x.toString(16).padStart(2,'0')}).join('');sessionStorage.setItem(k,v);}return v;}catch(e){return 'v'+Date.now().toString(36)+Math.random().toString(36).slice(2,14)}})();
 function recordQrEvent(type,orderCode){if(!CTX.pointId||!CTX.product)return;fetch('/api/qr-analytics/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({point_id:CTX.pointId,product_id:CTX.product.id,event_type:type,visit_id:QR_VISIT_ID,order_code:orderCode||null}),keepalive:true}).catch(function(){});}
 var SUCCESS_PHONE = '';
@@ -291,6 +291,8 @@ async function boot() {
     if (!partnersRes.ok) throw new Error('partners');
     var partnersData = await partnersRes.json();
     CTX.partners = Array.isArray(partnersData.partners) ? partnersData.partners : [];
+    CTX.defaultPartnerId = partnersData.default_partner_id || null;
+    CTX.defaultSource = partnersData.default_source || null;
     CTX.point = (points || []).find(function(x) { return x.id === p.point; }) || null;
     if (!CTX.point) {
       state('<div class="state"><div class="em">📍</div><h2>Точка не найдена</h2>'
@@ -407,7 +409,8 @@ function showPhoneStep() {
       + '<select id="advisor" class="checkout-select" style="margin-bottom:12px">'
       + '<option value="">Выберите вариант</option>'
       + CTX.partners.map(function(partner) { return '<option value="' + Number(partner.id) + '">' + esc(partner.full_name) + '</option>'; }).join('')
-      + '<option value="self">Выбрал всё сам</option></select>';
+      + '<option value="self">Выбрал всё сам</option></select>'
+    + (CTX.defaultPartnerId ? '<p class="small muted" id="qrDefaultPartnerNote" style="margin:-3px 0 11px">Грумер выбирается автоматически. Можно выбрать другого.</p>' : '');
   }
   state('<div class="panel"><h2>Почти готово</h2>'
     + '<p class="small muted" style="margin-bottom:8px">' + esc(CTX.product.name) + ' · ' + esc(v.weight) + ' · <b>' + fmtPrice(v.price) + '</b>'
@@ -424,6 +427,11 @@ function showPhoneStep() {
     + '<button class="cta" id="payBtn" onclick="startPayment()">Оплатить ' + fmtPrice(v.price) + '</button>'
     + '<div class="err" id="err"></div>'
     + '<button class="link-btn" onclick="renderCard()">← Назад к товару</button></div>');
+  var advisor = document.getElementById('advisor');
+  if (advisor && CTX.defaultPartnerId &&
+      CTX.partners.some(function(partner) { return String(partner.id) === String(CTX.defaultPartnerId); })) {
+    advisor.value = String(CTX.defaultPartnerId);
+  }
   var inp = document.getElementById('phone');
   inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
   checkQrSelfOrder();
