@@ -60,4 +60,44 @@ function validateOwnerGroomer(pointId, partnerId) {
   return { valid: true, id };
 }
 
-module.exports = { findDefaultGroomer, validateOwnerGroomer, normalizedPhone };
+function resolveCheckoutGroomer({ pointId, partnerId, advisorSelection,
+  selfOrderingPartner, fulfillmentType }) {
+  if (fulfillmentType !== 'pickup') {
+    return { id: null, name: null, source: null };
+  }
+  // Genuine self-orders take precedence over all selection options.
+  if (selfOrderingPartner) {
+    return { id: selfOrderingPartner.id,
+      name: selfOrderingPartner.full_name, source: 'self_order' };
+  }
+  if (partnerId) {
+    const selected = db.prepare(
+      'SELECT id,point_id,full_name FROM partners WHERE id=? AND active=1'
+    ).get(partnerId);
+    if (!selected || !pointId || String(selected.point_id) !== String(pointId)) {
+      const error = new Error('Выбранный сотрудник не работает на этой точке');
+      error.code = 'PARTNER_POINT_MISMATCH';
+      throw error;
+    }
+    return { id: selected.id, name: selected.full_name, source: 'selected' };
+  }
+  if (advisorSelection === 'self') {
+    return { id: null, name: null, source: 'self' };
+  }
+  const auto = findDefaultGroomer(pointId);
+  if (auto.partner) {
+    return { id: auto.partner.id, name: auto.partner.full_name, source: auto.source };
+  }
+  if (pointId && db.prepare(
+    'SELECT 1 FROM partners WHERE point_id=? AND active=1 LIMIT 1'
+  ).get(pointId)) {
+    const error = new Error(
+      'Не удалось автоматически определить грумера-владельца салона. Выберите грумера или «Выбрал всё сам».'
+    );
+    error.code = 'ADVISOR_SELECTION_REQUIRED';
+    throw error;
+  }
+  return { id: null, name: null, source: null };
+}
+
+module.exports = { findDefaultGroomer, validateOwnerGroomer, normalizedPhone, resolveCheckoutGroomer };
