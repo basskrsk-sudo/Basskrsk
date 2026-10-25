@@ -1687,11 +1687,34 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="admin-field"><label>Пароль</label><div class="password-input-wrap"><input type="password" id="om-password" autocomplete="new-password"><button type="button" class="password-visibility-btn" onclick="togglePasswordVisibility('om-password',this)" aria-label="Показать пароль" title="Показать пароль">👁️</button></div></div>
         <div class="admin-field">
           <label>Точка (какой салон видит)</label>
-          <select id="om-point-select" class="pm-select"><option value="">— Выберите точку —</option></select>
+          <select id="om-point-select" class="pm-select" onchange="loadOwnerCreateGroomers()"><option value="">— Выберите точку —</option></select>
+        </div>
+        <div class="admin-field">
+          <label>Грумер-владелец салона (если владелец также грумер)</label>
+          <select id="om-groomer-select" class="pm-select"><option value="">— Определять по телефону —</option></select>
+          <small style="display:block;color:var(--muted);font-size:.72rem;margin-top:.25rem;">Если в салоне несколько грумеров, выбранный здесь получит заказ, когда покупатель не указал грумера.</small>
         </div>
         <div style="display:flex;gap:.6rem;margin-top:1rem;">
           <button class="row-btn" style="flex:1;" onclick="closeOwnerModal()">Отмена</button>
           <button class="row-btn" style="flex:1;background:var(--forest,#1C3A2F);color:#fff;" onclick="saveOwnerForm()">Создать</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Связать владельца салона с его личным профилем грумера -->
+    <div id="owner-groomer-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:100;">
+      <div style="background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:420px;">
+        <h3 style="margin-bottom:.65rem;">Грумер-владелец салона</h3>
+        <p style="font-size:.84rem;color:var(--muted);margin:0 0 1rem;" id="owner-groomer-hint"></p>
+        <div class="admin-field">
+          <label>Выберите профиль грумера</label>
+          <select id="owner-groomer-select" class="pm-select"></select>
+        </div>
+        <div id="owner-groomer-error" style="display:none;color:#9B2335;font-size:.82rem;margin:.65rem 0;"></div>
+        <p style="font-size:.77rem;color:var(--muted);line-height:1.5;margin:.6rem 0;">Без привязки система попробует определить владельца по совпадающему телефону. Если совпадение не однозначно, покупатель выберет сотрудника вручную.</p>
+        <div style="display:flex;gap:.6rem;margin-top:1rem;">
+          <button class="row-btn" style="flex:1" onclick="closeOwnerGroomerModal()">Отмена</button>
+          <button class="row-btn" style="flex:1;background:var(--forest);color:white" onclick="saveOwnerGroomerLink()">Сохранить</button>
         </div>
       </div>
     </div>
@@ -5920,13 +5943,16 @@ async function renderOwners() {
       '<td style="font-weight:500;">' + o.full_name + '</td>' +
       '<td style="font-family:monospace;font-size:.78rem;">' + o.login + '</td>' +
       '<td>' + o.phone + '</td>' +
-      '<td>' + (o.point_name || '<span style="color:var(--muted);">— не назначена —</span>') + '</td>' +
+      '<td>' + (o.point_name || '<span style="color:var(--muted);">— не назначена —</span>') +
+        '<br><small style="font-size:.72rem;color:var(--muted);">Грумер-владелец: ' +
+          (o.groomer_partner_name ? escapeOrderCell(o.groomer_partner_name) : 'по телефону / не задан') + '</small></td>' +
       '<td class="r" style="white-space:nowrap;"><strong style="color:var(--deep);">' + Number(o.current_earnings || 0).toLocaleString('ru-RU') + ' ₽</strong>' +
         '<br><span style="font-size:.7rem;color:var(--muted);">' + Number(o.unpaid_orders_count || 0) + ' невыпл. заказов</span>' +
         '<br><span style="font-size:.7rem;color:var(--muted);">за месяц начислено ' + Number(o.month_earnings || 0).toLocaleString('ru-RU') + ' ₽ · ' + commissionPercent + '%</span></td>' +
       '<td><span class="toggle-pill ' + (o.active ? 'stock-ok' : 'stock-low') + '">' + (o.active ? '🟢 Активен' : '⚪ Отключён') + '</span></td>' +
       '<td class="r"><button class="row-btn" ' + (Number(o.current_earnings || 0) <= 0 ? 'disabled style="opacity:.45;cursor:not-allowed;"' : '') + ' onclick="markOwnerPayoutPaid(' + o.id + ')">✓ Выплачено</button> ' +
         '<button class="row-btn" onclick="toggleOwnerActive(' + o.id + ')">' + (o.active ? 'Отключить' : 'Включить') + '</button> ' +
+        '<button class="row-btn" onclick="openOwnerGroomerModal(' + o.id + ')">Грумер-владелец</button> ' +
         '<button class="row-btn" onclick="resetPersonPassword(\'salon-owners\', ' + o.id + ', \'' + o.full_name.replace(/'/g, "\\'") + '\')">Сбросить пароль</button> ' +
         '<button class="row-btn danger" onclick="deleteSalonOwner(' + o.id + ', \'' + o.full_name.replace(/'/g, "\\'") + '\')">✕ Удалить</button></td>' +
       '</tr>';
@@ -6115,6 +6141,7 @@ async function openOwnerModal() {
   document.getElementById('om-phone').value = '';
   document.getElementById('om-login').value = '';
   document.getElementById('om-password').value = '';
+  document.getElementById('om-groomer-select').innerHTML = '<option value="">— Определять по телефону —</option>';
   resetPasswordVisibility('om-password');
   document.getElementById('owner-modal-error').style.display = 'none';
 
@@ -6134,6 +6161,7 @@ async function saveOwnerForm() {
   const login = document.getElementById('om-login').value.trim();
   const password = document.getElementById('om-password').value;
   const point_id = document.getElementById('om-point-select').value;
+  const groomer_partner_id = document.getElementById('om-groomer-select').value || null;
   const errEl = document.getElementById('owner-modal-error');
 
   if (!full_name || !phone || !login || password.length < 6) {
@@ -6141,7 +6169,7 @@ async function saveOwnerForm() {
     errEl.style.display = 'block';
     return;
   }
-  const res = await authFetch('/api/salon-owners', { method: 'POST', body: { full_name, phone, login, password, point_id: point_id || undefined } });
+  const res = await authFetch('/api/salon-owners', { method: 'POST', body: { full_name, phone, login, password, point_id: point_id || undefined, groomer_partner_id } });
   const data = await res.json();
   if (!res.ok) {
     errEl.textContent = data.error || 'Не удалось создать владельца.';
@@ -6150,6 +6178,83 @@ async function saveOwnerForm() {
   }
   closeOwnerModal();
   await renderOwners();
+}
+
+
+async function fillOwnerGroomerSelect(select, pointId, currentId) {
+  if (!select) return;
+  select.innerHTML = '<option value="">— Определять по телефону / не назначать —</option>';
+  if (!pointId) return;
+  const pointWhenLoaded = String(pointId);
+  try {
+    const response = await fetch('/api/points/' + encodeURIComponent(pointId) + '/partners', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Не удалось получить грумеров этой точки');
+    const data = await response.json();
+    // Ignore a stale response after changing the salon selection.
+    if (select.id === 'om-groomer-select' &&
+        document.getElementById('om-point-select').value !== pointWhenLoaded) return;
+    for (const person of (data.partners || [])) {
+      const option = document.createElement('option');
+      option.value = String(person.id);
+      option.textContent = person.full_name;
+      select.appendChild(option);
+    }
+    if (currentId != null && [...select.options].some(o => o.value === String(currentId))) {
+      select.value = String(currentId);
+    }
+  } catch (error) {
+    if (select.id === 'om-groomer-select' &&
+        document.getElementById('om-point-select').value !== pointWhenLoaded) return;
+    select.innerHTML = '<option value="">Не удалось загрузить грумеров</option>';
+    console.warn('Ошибка получения грумеров владельца:', error.message);
+  }
+}
+
+function loadOwnerCreateGroomers() {
+  return fillOwnerGroomerSelect(
+    document.getElementById('om-groomer-select'),
+    document.getElementById('om-point-select').value, null
+  );
+}
+
+let editingOwnerGroomerId = null;
+
+async function openOwnerGroomerModal(id) {
+  const owner = adminOwners.find(x => Number(x.id) === Number(id));
+  if (!owner) return;
+  editingOwnerGroomerId = Number(owner.id);
+  document.getElementById('owner-groomer-error').style.display = 'none';
+  document.getElementById('owner-groomer-hint').textContent =
+    owner.full_name + ' · ' + (owner.point_name || 'Точка не назначена');
+  const modal = document.getElementById('owner-groomer-modal');
+  modal.style.display = 'flex';
+  await fillOwnerGroomerSelect(
+    document.getElementById('owner-groomer-select'),
+    owner.point_id, owner.groomer_partner_id
+  );
+}
+
+function closeOwnerGroomerModal() {
+  editingOwnerGroomerId = null;
+  document.getElementById('owner-groomer-modal').style.display = 'none';
+}
+
+async function saveOwnerGroomerLink() {
+  if (!editingOwnerGroomerId) return;
+  const errorEl = document.getElementById('owner-groomer-error');
+  const groomer_partner_id = document.getElementById('owner-groomer-select').value || null;
+  try {
+    const response = await authFetch('/api/salon-owners/' + editingOwnerGroomerId, {
+      method: 'PUT', body: { groomer_partner_id },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Не удалось сохранить');
+    closeOwnerGroomerModal();
+    await renderOwners();
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
 }
 
 async function toggleOwnerActive(id) {
