@@ -841,59 +841,26 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     </div>
 
-    <!-- ══ ПОРУЧЕНИЯ ПЛАНЁРОК ══ -->
+    <!-- ══ ПОРУЧЕНИЯ: ОТДЕЛЬНАЯ СТРАНИЦА И ПЕРСОНАЛЬНЫЕ ССЫЛКИ ══ -->
     <div id="sec-tasks" style="display:none;">
       <div class="card" style="background:linear-gradient(135deg,var(--forest),var(--deep));border:none;color:#fff;margin-bottom:1rem;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
-          <div><div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);">Исполнительская дисциплина</div><h2 style="font-size:1.45rem;margin:.35rem 0;">Поручения планёрок</h2><p style="font-size:.82rem;color:rgba(255,255,255,.75);max-width:720px;line-height:1.5;">Контроль сроков и ответственных. Напоминания отправляются в Telegram и MAX в 10:00 по Красноярску: за 3 и 1 день, в день срока и ежедневно при просрочке. Для задач без срока — по понедельникам.</p></div>
-          <button class="row-btn" style="background:var(--amber);color:var(--deep);font-weight:700;" onclick="openTaskForm()">+ Новое поручение</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+          <div>
+            <div style="color:var(--amber);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;">ХвостМаркет · доступ к поручениям</div>
+            <h2 style="font-size:1.45rem;margin:.35rem 0;">Поручения — отдельная страница</h2>
+            <p style="color:rgba(255,255,255,.8);font-size:.84rem;line-height:1.6;max-width:730px;">У каждого ответственного есть персональная ссылка, открывающая его список. Все участники могут посмотреть все поручения, но изменять чужие задачи нельзя. Ссылки не требуют отдельного входа — храните их как пароли.</p>
+          </div>
+          <button class="row-btn" style="background:var(--amber);color:var(--deep);font-weight:700;" onclick="loadTaskLinks()">↻ Обновить ссылки</button>
         </div>
       </div>
-
-      <div class="grid-4" style="margin-bottom:1rem;">
-        <div class="kpi-card"><div class="kpi-label">Активные</div><div class="kpi-value" id="tasks-kpi-active">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">Просроченные</div><div class="kpi-value" id="tasks-kpi-overdue">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">Без ответственного</div><div class="kpi-value" id="tasks-kpi-unassigned">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">Заблокированы</div><div class="kpi-value" id="tasks-kpi-blocked">—</div></div>
-      </div>
-
-      <div class="card" id="task-form-card" style="display:none;margin-bottom:1rem;border-top:4px solid var(--amber);">
-        <div class="card-title"><span id="task-form-title">Новое поручение</span><button class="row-btn" onclick="closeTaskForm()">Закрыть</button></div>
-        <input type="hidden" id="task-edit-id">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.7rem;">
-          <div class="admin-field" style="margin:0;grid-column:span 2;"><label>Поручение *</label><input id="task-title-input"></div>
-          <div class="admin-field" style="margin:0;"><label>Ответственный</label><select id="task-assignee-input"></select></div>
-          <div class="admin-field" style="margin:0;"><label>Срок</label><input type="date" id="task-due-input"></div>
-          <div class="admin-field" style="margin:0;"><label>Планёрка</label><input type="date" id="task-meeting-input"></div>
-          <div class="admin-field" style="margin:0;"><label>Приоритет</label><select id="task-priority-input"><option value="low">Низкий</option><option value="normal">Обычный</option><option value="high">Высокий</option><option value="critical">Критический</option></select></div>
-          <div class="admin-field" style="margin:0;"><label>Статус</label><select id="task-status-input"><option value="new">Новая</option><option value="in_progress">В работе</option><option value="blocked">Заблокирована</option><option value="done">Выполнена</option><option value="cancelled">Отменена</option></select></div>
-          <div class="admin-field" style="margin:0;"><label>Повторение</label><select id="task-recurrence-input"><option value="">Не повторять</option><option value="weekly:monday">Каждый понедельник</option><option value="monthly:10,25">10-го и 25-го числа</option></select></div>
-          <label style="display:flex;align-items:center;gap:.5rem;font-size:.8rem;padding-top:1.4rem;"><input type="checkbox" id="task-reminder-input" checked> Отправлять напоминания</label>
-        </div>
-        <div class="admin-field" style="margin-top:.7rem;"><label>Описание результата / следующий шаг</label><textarea id="task-description-input" rows="3"></textarea></div>
-        <div style="display:flex;justify-content:flex-end;gap:.5rem;"><button class="row-btn" onclick="closeTaskForm()">Отмена</button><button class="row-btn" style="background:var(--forest);color:#fff;" onclick="saveTask()">Сохранить</button></div>
-      </div>
-
       <div class="card" style="margin-bottom:1rem;">
-        <div class="card-title"><span>Реестр поручений <span id="tasks-visible-count" style="font-size:.72rem;font-weight:400;color:var(--muted);"></span></span></div>
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.8rem;">
-          <select id="tasks-filter-status" onchange="renderTasksTable()" style="max-width:190px;"><option value="active">Активные</option><option value="all">Все</option><option value="new">Новые</option><option value="in_progress">В работе</option><option value="blocked">Заблокированные</option><option value="done">Выполненные</option><option value="cancelled">Отменённые</option></select>
-          <select id="tasks-filter-assignee" onchange="renderTasksTable()" style="max-width:220px;"><option value="">Все ответственные</option></select>
-          <select id="tasks-filter-meeting" onchange="renderTasksTable()" style="max-width:190px;"><option value="">Все планёрки</option></select>
-        </div>
-        <div style="overflow-x:auto;"><table class="tbl" style="min-width:1180px;"><thead><tr><th>Поручение</th><th>Ответственный</th><th>Срок</th><th>Приоритет</th><th>Статус</th><th>Напоминания</th><th class="r">Действия</th></tr></thead><tbody id="tasks-tbody"></tbody></table></div>
-        <div id="task-history-box" style="display:none;margin-top:1rem;padding:1rem;background:var(--cream,#F7F5EF);border-radius:10px;"></div>
+        <div class="card-title">5 персональных ссылок</div>
+        <div id="task-private-links" style="display:grid;gap:.65rem;"><p style="color:var(--muted);font-size:.85rem;">Загружаем ссылки…</p></div>
       </div>
-
-      <div class="card" id="task-meeting-notes-card" style="display:none;margin-bottom:1rem;">
-        <div class="card-title">📝 Для информации — итоги планёрок</div>
-        <div id="task-meeting-notes-list" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.7rem;"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Ответственные и каналы связи</div>
-        <p style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:1rem;">Сохраните телефон и попросите человека один раз подтвердить подключение в боте. После этого напоминания будут уходить автоматически сразу в оба подключённых канала.</p>
-        <div id="task-members-grid" class="grid-2"></div>
+      <div class="card" style="background:var(--cream,#faf8f1);">
+        <div class="card-title">Как использовать ссылки</div>
+        <p style="font-size:.85rem;line-height:1.65;">Отправьте каждому сотруднику только его персональную ссылку. При открытии сразу включится фильтр по исполнителю, а кнопка «Все поручения» покажет общие задачи. Административная ссылка даёт полный контроль над поручениями и связью с ответственными. Если ссылка попала посторонним — нажмите «Перевыпустить», и старая перестанет работать.</p>
+        <p style="font-size:.78rem;color:var(--muted);margin-top:.5rem;">Ссылки генерируются сервером и остаются действительными после обновлений Amvera. Не публикуйте их в общих чатах, открытых документах или на сайте.</p>
       </div>
     </div>
 
@@ -3169,7 +3136,7 @@ async function showSection(id) {
   if (id === 'launch')      await showLaunchTab(launchActiveTab);
   if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo(), loadOperationsCenter()]); renderDashboard(); }
   if (id === 'bsc')         await renderBscDashboard();
-  if (id === 'tasks')       await loadTaskControl();
+  if (id === 'tasks')       await loadTaskLinks();
   if (id === 'economics')   await renderEconomics();
   if (id === 'business-expenses') await renderBusinessExpenses();
   if (id === 'weekly-reports') await renderWeeklyReports();
@@ -4068,253 +4035,80 @@ async function deleteBusinessExpense(id) {
   await renderBusinessExpenses();
 }
 
-// ── КОНТРОЛЬ ПОРУЧЕНИЙ ─────────────────────────────────────────────
-let meetingTasks = [];
-let meetingNotes = [];
-let taskMembers = [];
-let taskSummary = {};
-
+// ── ПОРУЧЕНИЯ: ПЯТЬ ПЕРСОНАЛЬНЫХ ССЫЛОК ──────────────────────────
+// Остальная логика поручений живёт в public/tasks.html.
 function taskEsc(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
     return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
   });
 }
-
-function taskStatusLabel(status) {
-  return ({ new:'Новая', in_progress:'В работе', blocked:'Заблокирована', done:'Выполнена', cancelled:'Отменена' })[status] || status;
+let taskPrivateLinks = [];
+function fullTaskUrl(hash) {
+  return window.location.origin + '/tasks.html' + hash;
 }
-
-function taskPriorityLabel(priority) {
-  return ({ low:'Низкий', normal:'Обычный', high:'Высокий', critical:'Критический' })[priority] || priority;
-}
-
-function taskStatusPill(status) {
-  const colors = { new:['#EEF6FF','#245B86'], in_progress:['#FFF4D9','#7A4A00'], blocked:['#FCEBEC','#9B2335'], done:['#E8F5EC','#2D7D46'], cancelled:['#F1F1F1','#666'] };
-  const pair = colors[status] || colors.new;
-  return '<span style="display:inline-block;background:' + pair[0] + ';color:' + pair[1] + ';border-radius:50px;padding:.18rem .5rem;font-size:.69rem;font-weight:700;">' + taskStatusLabel(status) + '</span>';
-}
-
-function taskPriorityPill(priority) {
-  const color = priority === 'critical' ? '#9B2335' : priority === 'high' ? '#B36500' : 'var(--muted)';
-  return '<span style="font-size:.72rem;font-weight:700;color:' + color + ';">' + taskPriorityLabel(priority) + '</span>';
-}
-
-function taskDueHtml(task) {
-  if (!task.due_date) return '<span style="color:var(--muted);">Не установлен</span>';
-  const today = new Date(); today.setHours(0,0,0,0);
-  const due = new Date(task.due_date + 'T00:00:00');
-  const days = Math.round((due - today) / 86400000);
-  const active = !['done','cancelled'].includes(task.status);
-  const color = active && days < 0 ? '#9B2335' : active && days <= 1 ? '#B36500' : 'inherit';
-  const note = active && days < 0 ? '<br><small>Просрочено на ' + Math.abs(days) + ' дн.</small>' : active && days === 0 ? '<br><small>Сегодня</small>' : '';
-  return '<span style="color:' + color + ';font-weight:' + (color === 'inherit' ? '400' : '700') + ';">' + taskEsc(task.due_date) + note + '</span>';
-}
-
-async function loadTaskControl() {
-  const responses = await Promise.all([authFetch('/api/tasks'), authFetch('/api/task-assignees'), authFetch('/api/tasks/meeting-notes')]);
-  const taskData = await responses[0].json();
-  const memberData = await responses[1].json();
-  const noteData = responses[2].ok ? await responses[2].json() : { notes: [] };
-  if (!responses[0].ok || !responses[1].ok) {
-    showToast((taskData && taskData.error) || (memberData && memberData.error) || 'Не удалось загрузить поручения');
-    return;
-  }
-  meetingTasks = taskData.tasks || [];
-  taskSummary = taskData.summary || {};
-  taskMembers = memberData.members || [];
-  meetingNotes = noteData.notes || [];
-  renderTaskSummary();
-  renderTaskFilters();
-  renderTasksTable();
-  renderTaskMeetingNotes();
-  renderTaskMembers();
-}
-
-function renderTaskMeetingNotes() {
-  const card = document.getElementById('task-meeting-notes-card');
-  const list = document.getElementById('task-meeting-notes-list');
-  if (!card || !list) return;
-  card.style.display = meetingNotes.length ? 'block' : 'none';
-  list.innerHTML = meetingNotes.map(function(item) {
-    return '<div style="padding:.8rem .9rem;border:1px solid var(--border);border-radius:10px;background:var(--cream,#F7F5EF);">' +
-      '<div style="font-size:.72rem;color:var(--muted);margin-bottom:.35rem;">Планёрка ' + taskEsc(item.meeting_date) + '</div>' +
-      '<strong style="font-size:.86rem;color:var(--deep);">' + taskEsc(item.title) + '</strong>' +
-      '<p style="font-size:.8rem;line-height:1.5;color:var(--text);margin:.35rem 0 0;">' + taskEsc(item.note) + '</p></div>';
+function renderTaskLinks() {
+  const el = document.getElementById('task-private-links');
+  if (!el) return;
+  el.innerHTML = taskPrivateLinks.map(function(item, index) {
+    const url = fullTaskUrl(item.hash);
+    return '<div style="padding:.8rem;border:1px solid var(--border);border-radius:10px;background:var(--white);">' +
+      '<div style="font-size:.86rem;font-weight:800;margin-bottom:.55rem;color:var(--deep);">' + taskEsc(item.label) + '</div>' +
+      '<div style="display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;">' +
+      '<input id="task-share-url-' + index + '" aria-label="Персональная ссылка ' + taskEsc(item.label) + '" type="text" readonly autocomplete="off" spellcheck="false" value="' + taskEsc(url) + '" style="flex:1;min-width:180px;padding:.65rem .75rem;border-radius:8px;border:1px solid var(--border);font-size:.78rem;">' +
+      '<button class="row-btn" onclick="copyTaskLink(' + index + ')">📋 Скопировать</button>' +
+      '<button class="row-btn" onclick="openTaskLink(' + index + ')">Открыть</button>' +
+      '<button class="row-btn danger" onclick="rotateTaskLink(' + index + ')">Перевыпустить</button></div>' +
+      '<div style="font-size:.71rem;color:var(--muted);margin-top:.45rem;">' +
+      (item.profile === 'admin' ? 'Полное управление поручениями и исполнителями.' : 'Просмотр всех задач; изменение только собственных.') +
+      ' · Выпуск №' + Number(item.generation) + '</div></div>';
   }).join('');
 }
-
-function renderTaskSummary() {
-  document.getElementById('tasks-kpi-active').textContent = Number(taskSummary.active || 0);
-  document.getElementById('tasks-kpi-overdue').textContent = Number(taskSummary.overdue || 0);
-  document.getElementById('tasks-kpi-unassigned').textContent = Number(taskSummary.unassigned || 0);
-  document.getElementById('tasks-kpi-blocked').textContent = Number(taskSummary.blocked || 0);
-}
-
-function renderTaskFilters() {
-  const assignee = document.getElementById('tasks-filter-assignee');
-  const previousAssignee = assignee.value;
-  assignee.innerHTML = '<option value="">Все ответственные</option><option value="unassigned">Не назначен</option>' + taskMembers.filter(function(m){ return m.active; }).map(function(m){ return '<option value="' + m.id + '">' + taskEsc(m.full_name) + '</option>'; }).join('');
-  assignee.value = previousAssignee;
-  const meeting = document.getElementById('tasks-filter-meeting');
-  const previousMeeting = meeting.value;
-  const dates = Array.from(new Set(meetingTasks.map(function(t){ return t.meeting_date; }).filter(Boolean))).sort().reverse();
-  meeting.innerHTML = '<option value="">Все планёрки</option>' + dates.map(function(date){ return '<option value="' + taskEsc(date) + '">' + taskEsc(date) + '</option>'; }).join('');
-  meeting.value = previousMeeting;
-}
-
-function renderTasksTable() {
-  const status = document.getElementById('tasks-filter-status').value;
-  const assignee = document.getElementById('tasks-filter-assignee').value;
-  const meeting = document.getElementById('tasks-filter-meeting').value;
-  const rows = meetingTasks.filter(function(task) {
-    if (status === 'active' && ['done','cancelled'].includes(task.status)) return false;
-    if (status !== 'active' && status !== 'all' && task.status !== status) return false;
-    if (assignee === 'unassigned' && task.assignee_id) return false;
-    if (assignee && assignee !== 'unassigned' && String(task.assignee_id || '') !== assignee) return false;
-    if (meeting && task.meeting_date !== meeting) return false;
-    return true;
-  });
-  document.getElementById('tasks-visible-count').textContent = '· показано ' + rows.length;
-  document.getElementById('tasks-tbody').innerHTML = rows.length ? rows.map(function(task) {
-    const channels = task.assignee_id
-      ? '<span title="Telegram" style="opacity:' + (task.telegram_chat_id ? '1' : '.25') + '">TG</span> · <span title="MAX" style="opacity:' + (task.max_chat_id ? '1' : '.25') + '">MAX</span>'
-      : '—';
-    const repeat = task.recurrence_rule ? '<div style="font-size:.68rem;color:var(--muted);margin-top:.2rem;">↻ ' + (task.recurrence_rule === 'weekly:monday' ? 'еженедельно' : '10-го и 25-го') + '</div>' : '';
-    return '<tr>' +
-      '<td style="max-width:360px;"><strong>' + taskEsc(task.title) + '</strong>' + (task.description ? '<div style="font-size:.71rem;color:var(--muted);line-height:1.4;margin-top:.25rem;">' + taskEsc(task.description) + '</div>' : '') + '<div style="font-size:.67rem;color:var(--muted);margin-top:.3rem;">Планёрка: ' + taskEsc(task.meeting_date || 'не указана') + '</div></td>' +
-      '<td>' + (task.assignee_name ? '<strong>' + taskEsc(task.assignee_name) + '</strong>' : '<span style="color:#9B2335;">Не назначен</span>') + '</td>' +
-      '<td>' + taskDueHtml(task) + repeat + '</td>' +
-      '<td>' + taskPriorityPill(task.priority) + '</td>' +
-      '<td>' + taskStatusPill(task.status) + '</td>' +
-      '<td style="font-size:.72rem;">' + (task.reminder_enabled ? channels : '<span style="color:var(--muted);">Выключены</span>') + (task.last_reminder_at ? '<div style="color:var(--muted);margin-top:.25rem;">Последнее: ' + taskEsc(task.last_reminder_at) + '</div>' : '') + '</td>' +
-      '<td class="r" style="white-space:nowrap;"><button class="row-btn" onclick="openTaskForm(' + task.id + ')">Изменить</button> ' +
-      (!['done','cancelled'].includes(task.status) ? '<button class="row-btn" onclick="setTaskStatus(' + task.id + ',\'done\')">✓</button> ' : '') +
-      '<button class="row-btn" onclick="sendTaskReminderNow(' + task.id + ')">Напомнить</button> ' +
-      '<button class="row-btn" onclick="showTaskHistory(' + task.id + ')">История</button></td></tr>';
-  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Поручений по выбранному фильтру нет</td></tr>';
-}
-
-function populateTaskAssignees(selected) {
-  const select = document.getElementById('task-assignee-input');
-  select.innerHTML = '<option value="">Не назначен</option>' + taskMembers.filter(function(m){ return m.active; }).map(function(m){ return '<option value="' + m.id + '">' + taskEsc(m.full_name) + '</option>'; }).join('');
-  select.value = selected ? String(selected) : '';
-}
-
-function openTaskForm(id) {
-  const task = id ? meetingTasks.find(function(item){ return item.id === id; }) : null;
-  document.getElementById('task-form-title').textContent = task ? 'Изменить поручение' : 'Новое поручение';
-  document.getElementById('task-edit-id').value = task ? task.id : '';
-  document.getElementById('task-title-input').value = task ? task.title : '';
-  document.getElementById('task-description-input').value = task ? (task.description || '') : '';
-  document.getElementById('task-due-input').value = task ? (task.due_date || '') : '';
-  document.getElementById('task-meeting-input').value = task ? (task.meeting_date || '') : new Date().toISOString().slice(0,10);
-  document.getElementById('task-priority-input').value = task ? task.priority : 'normal';
-  document.getElementById('task-status-input').value = task ? task.status : 'new';
-  document.getElementById('task-recurrence-input').value = task ? (task.recurrence_rule || '') : '';
-  document.getElementById('task-reminder-input').checked = task ? !!task.reminder_enabled : true;
-  populateTaskAssignees(task && task.assignee_id);
-  document.getElementById('task-form-card').style.display = 'block';
-  document.getElementById('task-form-card').scrollIntoView({ behavior:'smooth', block:'start' });
-}
-
-function closeTaskForm() { document.getElementById('task-form-card').style.display = 'none'; }
-
-async function saveTask() {
-  const id = document.getElementById('task-edit-id').value;
-  const payload = {
-    title: document.getElementById('task-title-input').value.trim(),
-    description: document.getElementById('task-description-input').value.trim(),
-    assignee_id: document.getElementById('task-assignee-input').value || null,
-    due_date: document.getElementById('task-due-input').value || null,
-    meeting_date: document.getElementById('task-meeting-input').value || null,
-    priority: document.getElementById('task-priority-input').value,
-    status: document.getElementById('task-status-input').value,
-    recurrence_rule: document.getElementById('task-recurrence-input').value || null,
-    reminder_enabled: document.getElementById('task-reminder-input').checked,
-  };
-  if (!payload.title) return showToast('Укажите название поручения');
-  const res = await authFetch(id ? '/api/tasks/' + id : '/api/tasks', { method:id ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-  const data = await res.json();
-  if (!res.ok) return showToast(data.error || 'Не удалось сохранить поручение');
-  closeTaskForm();
-  showToast(data.recurring_advanced ? 'Выполнено. Следующий срок: ' + data.next_due_date : 'Поручение сохранено');
-  await loadTaskControl();
-}
-
-async function setTaskStatus(id, status) {
-  const res = await authFetch('/api/tasks/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:status}) });
-  const data = await res.json();
-  if (!res.ok) return showToast(data.error || 'Не удалось изменить статус');
-  showToast(data.recurring_advanced ? 'Выполнено. Следующий срок: ' + data.next_due_date : 'Поручение выполнено');
-  await loadTaskControl();
-}
-
-async function sendTaskReminderNow(id) {
-  const res = await authFetch('/api/tasks/' + id + '/remind', { method:'POST' });
-  const data = await res.json();
-  if (!res.ok) return showToast(data.error || 'Не удалось отправить напоминание');
-  const sent = (data.deliveries || []).filter(function(item){ return item.ok; }).map(function(item){ return item.channel === 'telegram' ? 'Telegram' : 'MAX'; });
-  showToast('Напоминание отправлено: ' + sent.join(', '));
-  await loadTaskControl();
-}
-
-async function showTaskHistory(id) {
-  const task = meetingTasks.find(function(item){ return item.id === id; });
-  const res = await authFetch('/api/tasks/' + id + '/history');
-  const data = await res.json();
-  const box = document.getElementById('task-history-box');
-  if (!res.ok) return showToast(data.error || 'Не удалось загрузить историю');
-  box.style.display = 'block';
-  function historyText(item) {
-    if (item.action === 'created') return 'Поручение создано';
-    if (item.action === 'status_report') return 'Отчёт сотрудника: ' + (item.new_value || '');
-    if (item.action === 'bot_status') return 'Через бота отмечено «В работе»';
-    if (item.action === 'bot_completed') return 'Через бота отмечено «Выполнено»';
-    if (item.action === 'bot_completed_recurring') return 'Выполнено через бота; следующий срок: ' + (item.new_value || 'не указан');
-    return 'Поручение изменено';
+async function loadTaskLinks() {
+  const el = document.getElementById('task-private-links');
+  if(!el) return;
+  try {
+    const response=await authFetch('/api/admin/task-links');
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error || 'Не удалось загрузить ссылки');
+    taskPrivateLinks=data.links || [];
+    renderTaskLinks();
+  } catch(error) {
+    el.textContent = 'Ошибка загрузки персональных ссылок: ' + error.message;
   }
-  box.innerHTML = '<div style="display:flex;justify-content:space-between;gap:1rem;"><strong>История: ' + taskEsc(task ? task.title : '') + '</strong><button class="row-btn" onclick="this.parentNode.parentNode.style.display=\'none\'">Закрыть</button></div>' + ((data.history || []).length ? data.history.map(function(item){ return '<div style="border-top:1px solid var(--border);padding:.55rem 0;font-size:.75rem;line-height:1.45;"><strong>' + taskEsc(item.actor || 'система') + '</strong> · ' + taskEsc(item.created_at) + '<div style="margin-top:.2rem;white-space:pre-wrap;">' + taskEsc(historyText(item)) + '</div></div>'; }).join('') : '<div style="color:var(--muted);margin-top:.6rem;">История пока пуста</div>');
-  box.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
-
-function renderTaskMembers() {
-  document.getElementById('task-members-grid').innerHTML = taskMembers.map(function(member) {
-    return '<div style="border:1px solid var(--border);border-radius:12px;padding:1rem;">' +
-      '<div style="display:flex;justify-content:space-between;gap:.7rem;align-items:flex-start;"><div><strong>' + taskEsc(member.full_name) + '</strong><div style="font-size:.7rem;color:var(--muted);margin-top:.2rem;">' + Number(member.active_tasks || 0) + ' активных поручений</div></div><span style="font-size:.7rem;color:' + (member.telegram_chat_id || member.max_chat_id ? '#2D7D46' : '#9B2335') + ';">' + (member.telegram_chat_id || member.max_chat_id ? 'есть канал' : 'не подключён') + '</span></div>' +
-      '<div style="font-size:.73rem;color:var(--muted);line-height:1.4;margin:.6rem 0;">' + taskEsc(member.responsibility || '') + '</div>' +
-      '<div style="display:flex;gap:.4rem;"><input id="task-member-phone-' + member.id + '" value="' + taskEsc(member.phone || '') + '" placeholder="Телефон" style="flex:1;min-width:0;"><button class="row-btn" onclick="saveTaskMember(' + member.id + ')">Сохранить</button></div>' +
-      '<div style="display:flex;gap:.4rem;margin-top:.55rem;flex-wrap:wrap;"><button class="row-btn" style="' + (member.telegram_chat_id ? 'color:#2D7D46;' : '') + '" onclick="connectTaskMember(' + member.id + ',\'telegram\')">' + (member.telegram_chat_id ? '✓ Telegram' : 'Подключить Telegram') + '</button><button class="row-btn" style="' + (member.max_chat_id ? 'color:#2D7D46;' : '') + '" onclick="connectTaskMember(' + member.id + ',\'max\')">' + (member.max_chat_id ? '✓ MAX' : 'Подключить MAX') + '</button></div></div>';
-  }).join('');
+async function copyTaskLink(index) {
+  const item=taskPrivateLinks[index];
+  if(!item) return;
+  const url=fullTaskUrl(item.hash);
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Ссылка для «' + item.label + '» скопирована');
+  } catch(error) {
+    const input=document.getElementById('task-share-url-'+index);
+    if(input){ input.select(); input.setSelectionRange(0,url.length); }
+    const copied=document.execCommand && document.execCommand('copy');
+    if(copied) showToast('Ссылка скопирована');
+    else window.prompt('Скопируйте персональную ссылку:',url);
+  }
 }
-
-async function saveTaskMember(id) {
-  const phone = document.getElementById('task-member-phone-' + id).value;
-  const res = await authFetch('/api/task-assignees/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({phone:phone}) });
-  const data = await res.json();
-  if (!res.ok) return showToast(data.error || 'Не удалось сохранить телефон');
-  showToast('Телефон сохранён');
-  await loadTaskControl();
+function openTaskLink(index) {
+  const item=taskPrivateLinks[index];
+  if(!item) return;
+  window.open(fullTaskUrl(item.hash),'_blank','noopener,noreferrer');
 }
-
-async function connectTaskMember(id, channel) {
-  const res = await authFetch('/api/task-assignees/' + id + '/connect/' + channel + '/start', { method:'POST' });
-  const data = await res.json();
-  if (!res.ok) return showToast(data.error || 'Не удалось начать подключение');
-  const popup = window.open(data.deep_link, '_blank');
-  let attempts = 0;
-  const timer = setInterval(async function() {
-    attempts++;
-    try {
-      const check = await authFetch('/api/task-assignees/' + id + '/connect/' + channel + '/check?token=' + encodeURIComponent(data.token));
-      const result = await check.json();
-      if (result.verified) {
-        clearInterval(timer); showToast((channel === 'telegram' ? 'Telegram' : 'MAX') + ' подключён'); await loadTaskControl();
-      } else if (!check.ok || attempts >= 150) {
-        clearInterval(timer); showToast('Подключение не подтверждено');
-      }
-    } catch (e) { if (attempts >= 150) clearInterval(timer); }
-  }, 2000);
-  if (!popup) showToast('Откройте ссылку подключения в новой вкладке');
+async function rotateTaskLink(index) {
+  const item=taskPrivateLinks[index];
+  if(!item) return;
+  if(!window.confirm('Перевыпустить ссылку «' + item.label + '»? Старая ссылка перестанет действовать.')) return;
+  try {
+    const response=await authFetch('/api/admin/task-links/'+encodeURIComponent(item.profile)+'/rotate',{method:'POST'});
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error || 'Не удалось перевыпустить ссылку');
+    await loadTaskLinks();
+    showToast('Ссылка перевыпущена. Передайте новый адрес сотруднику.');
+  } catch(error) {
+    showToast(error.message || 'Ошибка',true);
+  }
 }
 
 // ── СТРАТЕГИЯ · BSC КАПЛАНА–НОРТОНА ───────────────────────────────
