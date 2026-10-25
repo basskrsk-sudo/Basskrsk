@@ -5959,6 +5959,172 @@ function renderMgrPointsTable(filterCode) {
 }
 
 // ── ВЛАДЕЛЬЦЫ САЛОНОВ ─────────────────────────────────────────────
+
+/** Исправление ошибок менеджера: сервер разрешает редактирование только админу. */
+let accountProfileEditState = null;
+let accountEditGroomerSequence = 0;
+
+function closeAccountProfileEditor() {
+  accountProfileEditState = null;
+  accountEditGroomerSequence++;
+  document.getElementById('account-profile-edit-modal').style.display = 'none';
+}
+
+function showAccountProfileError(message) {
+  const el = document.getElementById('ape-error');
+  el.textContent = String(message || 'Не удалось сохранить');
+  el.style.display = 'block';
+}
+
+async function openAccountProfileEditor(role, id) {
+  if (role !== 'partner' && role !== 'owner') return;
+  const person = (role === 'partner' ? adminPartners : adminOwners)
+    .find(x => Number(x.id) === Number(id));
+  if (!person) return;
+
+  accountProfileEditState = { role: role, person: person };
+  document.getElementById('ape-error').style.display = 'none';
+  document.getElementById('ape-heading').textContent =
+    role === 'partner' ? 'Редактировать грумера' : 'Редактировать владельца салона';
+  document.getElementById('ape-description').textContent =
+    person.full_name + ' · ' + (role === 'partner' ? (person.partner_code || '') : (person.owner_code || ''));
+  for (const [id, value] of [
+    ['ape-name', person.full_name], ['ape-phone', person.phone],
+    ['ape-login', person.login], ['ape-legal', person.legal_form],
+    ['ape-inn', person.inn], ['ape-bank', person.bank_details],
+  ]) document.getElementById(id).value = value || '';
+  document.getElementById('ape-owner-groomer-row').style.display =
+    role === 'owner' ? 'block' : 'none';
+
+  const select = document.getElementById('ape-point');
+  select.replaceChildren();
+  const noPoint = document.createElement('option');
+  noPoint.value = '';
+  noPoint.textContent = '— Точка не назначена —';
+  select.appendChild(noPoint);
+  document.getElementById('account-profile-edit-modal').style.display = 'flex';
+  try {
+    const response = await authFetch('/api/points?all=1');
+    if (!response.ok) throw new Error('Не удалось получить список точек');
+    const data = await response.json();
+    // Если администратор закрыл форму во время загрузки — старый ответ не нужен.
+    if (!accountProfileEditState || accountProfileEditState.person !== person) return;
+    for (const point of (data.points || [])) {
+      const option = document.createElement('option');
+      option.value = String(point.id);
+      option.textContent = point.name + (point.addr ? ' — ' + point.addr : '') +
+        (point.active ? '' : ' (неактивна)');
+      select.appendChild(option);
+    }
+    if (person.point_id && !Array.from(select.options).some(x => x.value === String(person.point_id))) {
+      const option = document.createElement('option');
+      option.value = String(person.point_id);
+      option.textContent = 'Текущая точка (удалена из справочника)';
+      select.appendChild(option);
+    }
+    select.value = person.point_id || '';
+    await loadEditProfileGroomers();
+  } catch (error) {
+    if (accountProfileEditState && accountProfileEditState.person === person) {
+      showAccountProfileError(error.message);
+    }
+  }
+}
+
+async function loadEditProfileGroomers() {
+  const state = accountProfileEditState;
+  if (!state || state.role !== 'owner') return;
+  const sequence = ++accountEditGroomerSequence;
+  const pointId = document.getElementById('ape-point').value;
+  const select = document.getElementById('ape-groomer');
+  select.replaceChildren();
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = '— Не назначен / определить по телефону —';
+  select.appendChild(empty);
+  if (!pointId) return;
+  try {
+    const response = await fetch('/api/points/' + encodeURIComponent(pointId) + '/partners', {cache:'no-store'});
+    if (!response.ok) throw new Error('Не удалось получить список грумеров');
+    const data = await response.json();
+    if (!accountProfileEditState || accountProfileEditState.person !== state.person ||
+        sequence !== accountEditGroomerSequence) return;
+    for (const groomer of (data.partners || [])) {
+      const option = document.createElement('option');
+      option.value = String(groomer.id);
+      option.textContent = groomer.full_name;
+      select.appendChild(option);
+    }
+    const oldLink = String(state.person.groomer_partner_id || '');
+    const samePoint = String(state.person.point_id || '') === String(pointId);
+    if (samePoint && oldLink && !Array.from(select.options).some(x => x.value === oldLink)) {
+      const oldOption = document.createElement('option');
+      oldOption.value = oldLink;
+      oldOption.textContent = (state.person.groomer_partner_name || 'Ранее назначенный грумер') +
+        ' (неактивен, оставлен для истории)';
+      select.appendChild(oldOption);
+    }
+    select.value = samePoint ? oldLink : '';
+  } catch (error) {
+    if (sequence === accountEditGroomerSequence) showAccountProfileError(error.message);
+  }
+}
+
+async function saveAccountProfileEditor() {
+  const state = accountProfileEditState;
+  if (!state) return;
+  const saveBtn = document.getElementById('ape-save');
+  const read = id => document.getElementById(id).value.trim();
+  const patch = {
+    full_name: read('ape-name'),
+    phone: read('ape-phone'),
+    login: read('ape-login'),
+    legal_form: read('ape-legal'),
+    inn: read('ape-inn'),
+    bank_details: read('ape-bank'),
+  };
+  const selectedPoint = document.getElementById('ape-point').value;
+  if (String(selectedPoint) !== String(state.person.point_id || '')) patch.point_id = selectedPoint || null;
+  if (state.role === 'owner') {
+    const selectedGroomer = document.getElementById('ape-groomer').value || null;
+    if (String(selectedGroomer || '') !== String(state.person.groomer_partner_id || '') ||
+        patch.point_id !== undefined) patch.groomer_partner_id = selectedGroomer;
+  }
+  if (!patch.full_name || !patch.phone || !patch.login) {
+    showAccountProfileError('Заполните ФИО, телефон и логин.');
+    return;
+  }
+  const oldPhone = String(state.person.phone || '').replace(/\D/g, '').slice(-10);
+  const newPhone = patch.phone.replace(/\D/g, '').slice(-10);
+  if (oldPhone !== newPhone &&
+      !confirm('Номер телефона изменится. Для безопасности Telegram и MAX придётся подключить повторно. Продолжить?')) return;
+  if (state.role === 'owner' && patch.point_id !== undefined &&
+      Number(state.person.paid_orders_count || 0) > 0 &&
+      !confirm('У салона уже есть оплаченные заказы. Переназначение владельца изменит последующие расчёты вознаграждения. Продолжить?')) return;
+
+  saveBtn.disabled = true;
+  document.getElementById('ape-error').style.display = 'none';
+  try {
+    const resource = state.role === 'partner' ? 'partners' : 'salon-owners';
+    const response = await authFetch('/api/' + resource + '/' + state.person.id, {
+      method: 'PUT', body: patch,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Не удалось сохранить исправления');
+    closeAccountProfileEditor();
+    if (state.role === 'partner') await renderPartners();
+    else await renderOwners();
+    if (data.telegram_reconnect_required) {
+      alert('Данные исправлены. Попросите партнёра заново подключить Telegram и MAX.');
+    }
+  } catch (error) {
+    showAccountProfileError(error.message);
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+
 let adminOwners = [];
 
 async function renderOwners() {
@@ -5988,6 +6154,7 @@ async function renderOwners() {
       '<td><span class="toggle-pill ' + (o.active ? 'stock-ok' : 'stock-low') + '">' + (o.active ? '🟢 Активен' : '⚪ Отключён') + '</span></td>' +
       '<td class="r"><button class="row-btn" ' + (Number(o.current_earnings || 0) <= 0 ? 'disabled style="opacity:.45;cursor:not-allowed;"' : '') + ' onclick="markOwnerPayoutPaid(' + o.id + ')">✓ Выплачено</button> ' +
         '<button class="row-btn" onclick="toggleOwnerActive(' + o.id + ')">' + (o.active ? 'Отключить' : 'Включить') + '</button> ' +
+        '<button class="row-btn" onclick="openAccountProfileEditor(\'owner\',' + o.id + ')">✎ Редактировать</button> ' +
         '<button class="row-btn" onclick="openOwnerGroomerModal(' + o.id + ')">Грумер-владелец</button> ' +
         '<button class="row-btn" onclick="resetPersonPassword(\'salon-owners\', ' + o.id + ', \'' + o.full_name.replace(/'/g, "\\'") + '\')">Сбросить пароль</button> ' +
         '<button class="row-btn danger" onclick="deleteSalonOwner(' + o.id + ', \'' + o.full_name.replace(/'/g, "\\'") + '\')">✕ Удалить</button></td>' +
@@ -6881,6 +7048,7 @@ function openPartnerActions(id, trigger, event) {
   const actions = [
     { label: '✓ Вознаграждение выплачено', disabled: Number(partner.current_earnings || 0) <= 0, run: function() { markPartnerPayoutPaid(id); } },
     { label: partner.active ? 'Отключить партнёра' : 'Активировать партнёра', run: function() { togglePartnerActive(id); } },
+    { label: '✎ Редактировать анкету', run: function() { openAccountProfileEditor('partner', id); } },
     { label: 'Изменить точку', run: function() { openLinkPointModal(id); } },
     { label: 'Изменить формат', run: function() { openDisplayFormatModal(id); } },
     { label: 'Изменить тариф', run: function() { openTierModal(id); } },
