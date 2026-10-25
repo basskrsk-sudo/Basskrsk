@@ -70,6 +70,9 @@ function resolveCheckoutGroomer({ pointId, partnerId, advisorSelection,
     return { id: selfOrderingPartner.id,
       name: selfOrderingPartner.full_name, source: 'self_order' };
   }
+  if (advisorSelection === 'self') {
+    return { id: null, name: null, source: 'self' };
+  }
   if (partnerId) {
     const selected = db.prepare(
       'SELECT id,point_id,full_name FROM partners WHERE id=? AND active=1'
@@ -80,9 +83,6 @@ function resolveCheckoutGroomer({ pointId, partnerId, advisorSelection,
       throw error;
     }
     return { id: selected.id, name: selected.full_name, source: 'selected' };
-  }
-  if (advisorSelection === 'self') {
-    return { id: null, name: null, source: 'self' };
   }
   const auto = findDefaultGroomer(pointId);
   if (auto.partner) {
