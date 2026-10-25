@@ -19,6 +19,16 @@ const PROFILES = Object.freeze([
   { key: 'angelina', label: 'Ангелина', code: 'angelina' },
   { key: 'nikolay', label: 'Николай', code: 'nikolay' },
 ]);
+// Hashes of five one-time randomly generated initial short-link secrets.
+// The actual secrets are delivered to the owner, NEVER committed to GitHub.
+// A per-profile bootstrap generation makes these links revocable on rotation.
+const INITIAL_SHORT_HASHES = Object.freeze({
+  admin: 'd812fbeb9c874462f047c37cb60b7532464db1dffb490b2fe1fea192d1ad02fc',
+  alexey: '6a9c874b24e9a6333abad41c4111da7204761efac9ca4b750a7c6684e32099a0',
+  vitaly: '0e56178aab42bb0713bb8f9e1ba0682b3dbeb14c294d5bfc78374e3dc01e3cdc',
+  angelina: 'e3979a5ef3db8a7f8edf091dc6786fc7eb694d3f9c4f0a4d62d357267ffd0ffc',
+  nikolay: '73d6b9087570d74e7a068eb709e5a6b04109a3fdf096f1812c60299f2c994cc9',
+});
 const STATUSES = new Set(['new', 'in_progress', 'blocked', 'done', 'cancelled']);
 const USER_STATUSES = new Set(['new', 'in_progress', 'blocked', 'done']);
 const PRIORITIES = new Set(['low', 'normal', 'high', 'critical']);
@@ -34,6 +44,16 @@ db.exec(
 );
 for (const item of PROFILES) {
   db.prepare('INSERT OR IGNORE INTO task_page_access(profile_key,generation) VALUES (?,1)').run(item.key);
+}
+db.exec(
+  'CREATE TABLE IF NOT EXISTS task_page_short_bootstrap (' +
+  'profile_key TEXT PRIMARY KEY, generation INTEGER NOT NULL)'
+);
+for (const item of PROFILES) {
+  db.prepare(
+    'INSERT OR IGNORE INTO task_page_short_bootstrap(profile_key,generation) ' +
+    'SELECT profile_key,generation FROM task_page_access WHERE profile_key=?'
+  ).run(item.key);
 }
 
 function persistentSecret() {
@@ -56,19 +76,40 @@ function accessToken(profileKey, generation) {
     .update('hvostmarket-task-page:v1:' + profileKey + ':' + generation)
     .digest('hex');
 }
+
+// Future short links are derived from the persistent random /data secret,
+// allowing admins to copy and rotate short URLs without storing plain secrets.
+function shortToken(profileKey, generation) {
+  return crypto.createHmac('sha256', SECRET)
+    .update('hvostmarket-task-short:v1:' + profileKey + ':' + generation)
+    .digest().subarray(0, 16).toString('base64url');
+}
 function validTokenShape(input) {
-  return typeof input === 'string' && /^[a-f0-9]{64}$/.test(input);
+  return typeof input === 'string' &&
+    (/^[a-f0-9]{64}$/.test(input) || /^[A-Za-z0-9_-]{22}$/.test(input));
 }
 function findAccess(input) {
   if (!validTokenShape(input)) return null;
-  const supplied = Buffer.from(input, 'hex');
+  const isFull = /^[a-f0-9]{64}$/.test(input);
+  const supplied = isFull ? Buffer.from(input, 'hex') : crypto.createHash('sha256').update(input).digest();
   const generations = db.prepare('SELECT profile_key,generation FROM task_page_access').all();
+  const bootstraps = isFull ? [] :
+    db.prepare('SELECT profile_key,generation FROM task_page_short_bootstrap').all();
   let matching = null;
   for (const profile of PROFILES) {
     const row = generations.find(item => item.profile_key === profile.key);
     if (!row) continue;
-    const expected = Buffer.from(accessToken(profile.key, row.generation), 'hex');
+    const expected = isFull
+      ? Buffer.from(accessToken(profile.key, row.generation), 'hex')
+      : crypto.createHash('sha256').update(shortToken(profile.key, row.generation)).digest();
     if (crypto.timingSafeEqual(supplied, expected)) matching = profile;
+    if (!isFull && INITIAL_SHORT_HASHES[profile.key]) {
+      const boot = bootstraps.find(item => item.profile_key === profile.key);
+      if (boot && boot.generation === row.generation &&
+          crypto.timingSafeEqual(supplied, Buffer.from(INITIAL_SHORT_HASHES[profile.key], 'hex'))) {
+        matching = profile;
+      }
+    }
   }
   if (!matching) return null;
   if (matching.key === 'admin') {
@@ -80,7 +121,7 @@ function findAccess(input) {
 }
 
 function taskIdentity(req, res) {
-  const bearer = /^TaskLink ([a-f0-9]{64})$/.exec(String(req.headers.authorization || ''));
+  const bearer = /^TaskLink ([a-f0-9]{64}|[A-Za-z0-9_-]{22})$/.exec(String(req.headers.authorization || ''));
   const actor = bearer ? findAccess(bearer[1]) : null;
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Vary', 'Authorization');
@@ -241,6 +282,7 @@ function registerTaskPageRoutes(router) {
       return {
         profile: profile.key, label: profile.label,
         hash: '#key=' + accessToken(profile.key, row.generation),
+        short: '#' + shortToken(profile.key, row.generation),
         generation: row.generation, updated_at: row.updated_at,
       };
     });
@@ -254,7 +296,7 @@ function registerTaskPageRoutes(router) {
     db.prepare("UPDATE task_page_access SET generation=generation+1,updated_at=datetime('now') WHERE profile_key=?").run(profile.key);
     const row = db.prepare('SELECT generation FROM task_page_access WHERE profile_key=?').get(profile.key);
     res.setHeader('Cache-Control', 'no-store');
-    sendJson(res, 200, { ok: true, profile: profile.key, hash: '#key=' + accessToken(profile.key, row.generation) });
+    sendJson(res, 200, { ok: true, profile: profile.key, hash: '#key=' + accessToken(profile.key, row.generation), short: '#' + shortToken(profile.key, row.generation) });
   });
   router.get('/api/task-page/session', (req, res) => {
     const actor = taskIdentity(req, res);
@@ -384,5 +426,5 @@ function registerTaskPageRoutes(router) {
 }
 
 module.exports = {
-  registerTaskPageRoutes, accessToken, findAccess, taskIdentity, PROFILES, safeTask,
+  registerTaskPageRoutes, accessToken, shortToken, findAccess, taskIdentity, PROFILES, safeTask,
 };
