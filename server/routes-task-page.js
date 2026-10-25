@@ -176,6 +176,9 @@ function updateTask(req, res, ctx) {
   const note = String(body.comment || '').trim();
   if (note.length > 2000) return sendJson(res, 400, { error: 'Комментарий слишком длинный.' });
   if (!actor.is_admin) {
+    if (['done', 'cancelled'].includes(task.status)) {
+      return sendJson(res, 409, { error: 'Закрытое поручение может повторно открыть только администратор.' });
+    }
     if (Object.keys(body).some(key => !['status', 'comment'].includes(key))) {
       return sendJson(res, 403, { error: 'Исполнитель может изменять только статус и комментарий.' });
     }
