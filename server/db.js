@@ -1039,16 +1039,34 @@ ensureColumn('order_items', 'variant_id', 'INTEGER REFERENCES product_variants(i
 ensureColumn('orders', 'delivery_address', 'TEXT');
 ensureColumn('orders', 'delivery_fee', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'referral_code', 'TEXT');
-// Старые коды грумеров уже выданы клиентам: не меняем и не удаляем их.
- // Новым грумерам персональные коды больше не генерируем.
-// Existing groomer codes (HVOST20-001, etc.) stay valid permanently.
-// Each salon gets one short, easy-to-type code: HV20-001, HV20-002, ...
-// Historical long salon codes are kept as aliases, never destroyed.
+// Для каждого нового грумера — собственный код на первую покупку (HV20-G-001).
+// Старые выданные коды (HVOST20-001 и т.д.) и коды салонов сохраняем.
+// Код грумера отличается от реферального GR-001 и от кода салона HV20-001.
+// Ранее зарегистрированным грумерам без кода заполним его безопасной миграцией.
 ensureColumn('partners', 'first_purchase_promo_code', 'TEXT');
 ensureColumn('points', 'first_purchase_promo_code', 'TEXT');
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_partners_first_purchase_promo
     ON partners(first_purchase_promo_code);
+
+  -- Промокод появляется в той же транзакции, что и новая запись грумера:
+  -- включая регистрацию из кабинета менеджера и прямые служебные INSERT.
+  -- Генерация от первичного ключа гарантирует разные коды даже при
+  -- одновременной регистрации нескольких грумеров на одной точке.
+  DROP TRIGGER IF EXISTS trg_partner_first_purchase_promo_insert;
+  CREATE TRIGGER trg_partner_first_purchase_promo_insert
+  AFTER INSERT ON partners
+  WHEN NEW.first_purchase_promo_code IS NULL OR TRIM(NEW.first_purchase_promo_code) = ''
+  BEGIN
+    UPDATE partners
+    SET first_purchase_promo_code = printf('HV20-G-%03d', NEW.id)
+    WHERE id = NEW.id;
+  END;
+
+  -- Идемпотентная миграция: не меняем уже выданные индивидуальные коды.
+  UPDATE partners
+  SET first_purchase_promo_code = printf('HV20-G-%03d', id)
+  WHERE first_purchase_promo_code IS NULL OR TRIM(first_purchase_promo_code) = '';
 
   CREATE TABLE IF NOT EXISTS first_purchase_point_promo_numbers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
