@@ -84,7 +84,8 @@ function roleStatement(account,refundQuery){
     role:account.role,role_label:ROLES[account.role],account_id:account.id,
     name:clean(account.full_name),point:clean(account.point_name),
     orders:eligible.length,commission,bonus,total:commission+bonus,
-    held_orders:held.length,held_amount:held.reduce((sum,o)=>sum+num(o.commission_amount),0),
+    held_orders:held.length,held_order_ids:held.map(o=>o.id),
+    held_amount:held.reduce((sum,o)=>sum+num(o.commission_amount),0),
     points:groupedPoints(account,eligible),bonuses,
   };
 }
@@ -108,7 +109,9 @@ function groupStatements(entries){
     const total=key=>p.statements.reduce((sum,s)=>sum+num(s[key]),0);
     return {name:p.name,roles,roles_label:roles.map(role=>ROLES[role]).join(' + '),
       statements:p.statements,commission:total('commission'),bonus:total('bonus'),
-      total:total('total'),held_orders:total('held_orders'),held_amount:total('held_amount')};
+      total:total('total'),held_orders:new Set(p.statements.flatMap(s=>s.held_order_ids)).size,
+      held_order_ids:[...new Set(p.statements.flatMap(s=>s.held_order_ids))],
+      held_amount:total('held_amount')};
   }).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name,'ru'))
     .map((p,index)=>({...p,index:index+1}));
 }
@@ -140,7 +143,8 @@ function collectPayoutBrief(now=new Date()){
   }
   return {
     generated_at:now.toISOString(),people,total:sum('total'),commission:sum('commission'),
-    bonus:sum('bonus'),held_orders:sum('held_orders'),held_amount:sum('held_amount'),
+    bonus:sum('bonus'),held_orders:new Set(people.flatMap(p=>p.held_order_ids)).size,
+    held_amount:sum('held_amount'),
     role_totals,identities_to_verify,
     note:'Справка предварительная. Выплаты не отмечены. Заказы с возвратами исключены до сверки с администратором. Суммы до налоговых удержаний.',
   };
