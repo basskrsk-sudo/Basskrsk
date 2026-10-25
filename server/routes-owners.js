@@ -5,6 +5,7 @@
 'use strict';
 
 const db = require('./db');
+const { validateOwnerGroomer } = require('./auto-groomer');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
@@ -33,7 +34,7 @@ function registerOwnerRoutes(router) {
   router.post('/api/salon-owners', async (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
     if (!payload) return;
-    const { full_name, phone, login, password, point_id } = ctx.body || {};
+    const { full_name, phone, login, password, point_id, groomer_partner_id } = ctx.body || {};
     if (!full_name || !phone || !login || !password) {
       return sendJson(res, 400, { error: 'Заполните ФИО, телефон, логин и пароль' });
     }
@@ -57,10 +58,12 @@ function registerOwnerRoutes(router) {
     const existingLogin = db.prepare('SELECT id FROM salon_owners WHERE login = ?').get(login);
     if (existingLogin) return sendJson(res, 409, { error: 'Такой логин уже занят' });
 
+    const groomerLink = validateOwnerGroomer(point_id, groomer_partner_id);
+    if (!groomerLink.valid) return sendJson(res, 400, { error: groomerLink.error });
     const info = db.prepare(`
-      INSERT INTO salon_owners (login, password_hash, full_name, phone, point_id, active)
-      VALUES (?, ?, ?, ?, ?, 1)
-    `).run(login, hashPassword(password), full_name, phone, point_id || null);
+      INSERT INTO salon_owners (login, password_hash, full_name, phone, point_id, groomer_partner_id, active)
+      VALUES (?, ?, ?, ?, ?, ?, 1)
+    `).run(login, hashPassword(password), full_name, phone, point_id || null, groomerLink.id);
     // Реферальный код присваивается сразу после вставки — включает
     // собственный id владельца, поэтому не может быть частью самого INSERT.
     const ownerCode = 'OWN-' + String(info.lastInsertRowid).padStart(3, '0');
@@ -195,16 +198,25 @@ function registerOwnerRoutes(router) {
     if (!payload) return;
     const existing = db.prepare('SELECT * FROM salon_owners WHERE id = ?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Владелец не найден' });
-    const { active, full_name, phone, point_id } = ctx.body || {};
+    const { active, full_name, phone, point_id, groomer_partner_id } = ctx.body || {};
     if (point_id) {
       const point = db.prepare('SELECT id FROM points WHERE id = ?').get(point_id);
       if (!point) return sendJson(res, 400, { error: 'Точка с таким id не найдена' });
     }
-    db.prepare('UPDATE salon_owners SET active=?, full_name=?, phone=?, point_id=? WHERE id=?').run(
+    const targetPointId = point_id !== undefined ? (point_id || null) : existing.point_id;
+    // A reassignment must not retain an old groomer from another point.
+    const targetGroomerId = groomer_partner_id !== undefined
+      ? groomer_partner_id
+      : (String(targetPointId || '') !== String(existing.point_id || '')
+          ? null : existing.groomer_partner_id);
+    const groomerLink = validateOwnerGroomer(targetPointId, targetGroomerId);
+    if (!groomerLink.valid) return sendJson(res, 400, { error: groomerLink.error });
+    db.prepare('UPDATE salon_owners SET active=?, full_name=?, phone=?, point_id=?, groomer_partner_id=? WHERE id=?').run(
       active !== undefined ? (active ? 1 : 0) : existing.active,
       full_name ?? existing.full_name,
       phone ?? existing.phone,
-      point_id !== undefined ? (point_id || null) : existing.point_id,
+      targetPointId,
+      groomerLink.id,
       ctx.params.id
     );
     sendJson(res, 200, { ok: true });
