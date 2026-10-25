@@ -39,6 +39,16 @@ function taskSnapshot(task) {
 }
 
 function registerTaskRoutes(router) {
+  // Notes from planning meetings are informational, not overdue assignments.
+  router.get('/api/tasks/meeting-notes', (req, res, ctx) => {
+    if (!requireAuth(['admin'])(req, res, ctx)) return;
+    const notes = db.prepare(
+      'SELECT source_key,meeting_date,title,note FROM task_meeting_notes ' +
+      'ORDER BY meeting_date DESC,source_key'
+    ).all();
+    sendJson(res, 200, { notes });
+  });
+
   router.get('/api/tasks', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;

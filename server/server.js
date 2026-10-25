@@ -53,6 +53,7 @@ const { registerPartnerClubRoutes } = require('./routes-partner-club');
 
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
 require('./task-seed').seedMeetingTasks();
+require('./task-seed-2026-10-25').seedMeeting20261025();
 // Страницы партнёрских салонов дополнительно сохраняются отдельным снимком
 // в /data и при необходимости восстанавливаются до запуска HTTP-сервера.
 require('./salon-page-storage').initializeSalonPagePersistence();
