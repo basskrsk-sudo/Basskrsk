@@ -2546,14 +2546,52 @@ const REVIEW_STATUS_LABELS = {
   rejected: '<span class="toggle-pill" style="background:#FDECEA;color:#9B2335;">✕ Отклонён</span>',
 };
 
+
+let reviewAdminRows = [];
+let reviewAdminPhotoUrls = [];
+async function toggleReviewPhotoGallery(index) {
+  const photos = reviewAdminRows[index]?.photos || [];
+  const target = document.getElementById('review-admin-photos-' + index);
+  if (!target) return;
+  if (target.childElementCount) { target.replaceChildren(); return; }
+  target.textContent = 'Загружаем фотографии…';
+  try {
+    const images = [];
+    for (const url of photos) {
+      const res = await authFetch(url);
+      if (!res.ok) throw new Error('Не удалось получить фотографию (' + res.status + ')');
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      reviewAdminPhotoUrls.push(objectUrl);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      const img = document.createElement('img');
+      img.src = objectUrl;
+      img.alt = 'Фото к отзыву';
+      img.style.cssText = 'width:108px;height:108px;object-fit:cover;border:1px solid var(--border);border-radius:7px;';
+      a.appendChild(img);
+      images.push(a);
+    }
+    if (!target.isConnected) return;
+    target.replaceChildren(...images);
+  } catch (err) {
+    if (target.isConnected) target.textContent = 'Ошибка загрузки фото: ' + err.message;
+  }
+}
+
 async function renderReviews() {
   const status = document.getElementById('reviews-status-filter').value;
   const res = await authFetch('/api/admin/reviews?status=' + status);
   const data = await res.json();
+  for (const url of reviewAdminPhotoUrls) URL.revokeObjectURL(url);
+  reviewAdminPhotoUrls = [];
   const reviews = data.reviews || [];
+  reviewAdminRows = reviews;
   document.getElementById('reviews-count').textContent = reviews.length + ' шт.';
 
-  document.getElementById('reviews-tbody').innerHTML = reviews.length ? reviews.map(function(r) {
+  document.getElementById('reviews-tbody').innerHTML = reviews.length ? reviews.map(function(r, index) {
     const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
     const actions = r.status === 'pending'
       ? '<button class="row-btn" onclick="setReviewStatus(' + r.id + ',\'approved\',' + !!r.guest + ')">✓ Одобрить</button> ' +
@@ -2565,7 +2603,8 @@ async function renderReviews() {
       '<td style="font-weight:500;">' + r.product_name + '</td>' +
       '<td>' + escapeOrderCell(r.customer_name || '—') + (r.guest ? ' <small>(гость)</small>' : '<br><span style="font-size:.72rem;color:var(--muted);font-family:monospace;">' + escapeOrderCell(r.customer_phone || '') + '</span>') + '</td>' +
       '<td style="color:var(--amber);white-space:nowrap;">' + stars + '</td>' +
-      '<td style="font-size:.83rem;max-width:280px;">' + (r.text ? escapeOrderCell(r.text) : '<span style="color:var(--muted);">без текста</span>') + '</td>' +
+      '<td style="font-size:.83rem;max-width:280px;">' + (r.text ? escapeOrderCell(r.text) : '<span style="color:var(--muted);">без текста</span>') +
+        (Array.isArray(r.photos) && r.photos.length ? '<div style="margin-top:.5rem;"><button class="row-btn" onclick="toggleReviewPhotoGallery(' + index + ')">📷 Фото (' + r.photos.length + ')</button><div id="review-admin-photos-' + index + '" style="display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.3rem;"></div></div>' : '') + '</td>' +
       '<td style="font-size:.78rem;color:var(--muted);">' + new Date(r.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('ru-RU') + '</td>' +
       '<td>' + REVIEW_STATUS_LABELS[r.status] + '</td>' +
       '<td class="r" style="white-space:nowrap;">' + actions + ' <button class="row-btn danger" onclick="deleteReview(' + r.id + ',' + !!r.guest + ')">🗑</button></td>' +

@@ -1910,6 +1910,12 @@
       </div>
       <div id="starPicker" style="font-size:1.9rem;margin-bottom:.9rem;letter-spacing:.12em;user-select:none;"></div>
       <textarea id="reviewText" rows="3" placeholder="Расскажите, как понравилось (необязательно)" style="width:100%;padding:.7rem .9rem;border:1.5px solid var(--border);border-radius:8px;font-family:'Manrope',sans-serif;font-size:.9rem;margin-bottom:.8rem;resize:vertical;"></textarea>
+      <div style="margin:0 0 .8rem;">
+        <label for="reviewPhotos" style="display:block;font-size:.86rem;font-weight:650;color:var(--deep);margin-bottom:.35rem;">📷 Фотографии к отзыву (до 3 шт.)</label>
+        <input id="reviewPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple onchange="previewReviewPhotos()" style="display:block;max-width:100%;font-size:.84rem;color:var(--text);">
+        <p style="font-size:.76rem;color:var(--muted);margin:.3rem 0;">Каждая фотография — до 4 МБ. Мы уменьшим её для быстрой загрузки. Фото появятся после проверки модератором.</p>
+        <div id="reviewPhotoPreview" style="display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.35rem;"></div>
+      </div>
       <div id="reviewFormMsg" style="font-size:.82rem;margin-bottom:.7rem;min-height:1.1em;"></div>
       <button class="btn-primary" onclick="submitReview()">Отправить отзыв</button>
       <button onclick="deleteMyReview()" id="deleteReviewBtn" style="display:none;margin-left:.8rem;background:none;border:none;color:#9B2335;font-size:.82rem;cursor:pointer;text-decoration:underline;font-family:'Manrope',sans-serif;">Удалить мой отзыв</button>
@@ -5216,6 +5222,75 @@ function buyDetailNow() {
 let reviewSelectedRating = 0; // выбор в звёздном пикере формы (0 — ещё не выбрано)
 let reviewOwnExistingId = null; // id уже поданного отзыва этого клиента на этот товар (для кнопки "удалить")
 
+let reviewPreviewUrls = [];
+function clearReviewPhotoPreview() {
+  for (const url of reviewPreviewUrls) URL.revokeObjectURL(url);
+  reviewPreviewUrls = [];
+  const preview = document.getElementById('reviewPhotoPreview');
+  if (preview) preview.replaceChildren();
+}
+function previewReviewPhotos() {
+  clearReviewPhotoPreview();
+  const files = Array.from(document.getElementById('reviewPhotos').files || []);
+  const preview = document.getElementById('reviewPhotoPreview');
+  const message = document.getElementById('reviewFormMsg');
+  if (files.length > 3) {
+    message.textContent = '⚠ Можно выбрать не больше трёх фотографий.';
+    message.style.color = '#9B2335';
+    document.getElementById('reviewPhotos').value = '';
+    return;
+  }
+  if (files.some(file => file.size > 4 * 1024 * 1024 || !['image/jpeg','image/png','image/webp'].includes(file.type))) {
+    message.textContent = '⚠ Нужны JPG, PNG или WebP до 4 МБ каждый.';
+    message.style.color = '#9B2335';
+    document.getElementById('reviewPhotos').value = '';
+    return;
+  }
+  message.textContent = '';
+  for (const file of files) {
+    const url = URL.createObjectURL(file);
+    reviewPreviewUrls.push(url);
+    const image = document.createElement('img');
+    image.src = url;
+    image.alt = file.name || 'Фото для отзыва';
+    image.style.cssText = 'width:82px;height:82px;object-fit:cover;border-radius:8px;border:1px solid var(--border)';
+    preview.appendChild(image);
+  }
+}
+function optimizeReviewPhoto(file) {
+  return new Promise((resolve, reject) => {
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 4 * 1024 * 1024) {
+      reject(new Error('Разрешены JPG, PNG и WebP до 4 МБ.')); return;
+    }
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        let data = canvas.toDataURL('image/webp', 0.8);
+        if (!data.startsWith('data:image/webp;')) data = canvas.toDataURL('image/jpeg', 0.8);
+        if (!/^data:image\/(webp|jpeg);base64,/.test(data) || data.length > 5_700_000) {
+          throw new Error('Фото получилось слишком большим. Выберите другое изображение.');
+        }
+        resolve(data);
+      } catch (err) { reject(err); }
+    };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Не удалось прочитать фотографию.')); };
+    image.src = url;
+  });
+}
+async function getReviewPhotosForSubmission() {
+  const files = Array.from(document.getElementById('reviewPhotos').files || []);
+  if (files.length > 3) throw new Error('Можно выбрать не больше трёх фотографий.');
+  return Promise.all(files.map(optimizeReviewPhoto));
+}
+
+
 // Строка из закрашенных/пустых звёзд для отображения (не кликабельно) —
 // используется в бейдже карточки товара и в шапке страницы товара.
 function renderStaticStars(rating) {
@@ -5241,6 +5316,9 @@ async function loadProductReviews(productId) {
   reviewSelectedRating = 0;
   reviewOwnExistingId = null;
   document.getElementById('reviewText').value = '';
+  const photoInput = document.getElementById('reviewPhotos');
+  if (photoInput) photoInput.value = '';
+  clearReviewPhotoPreview();
   document.getElementById('reviewFormMsg').textContent = '';
   document.getElementById('ownPendingNote').style.display = 'none';
   document.getElementById('deleteReviewBtn').style.display = 'none';
@@ -5307,6 +5385,9 @@ async function loadProductReviews(productId) {
         <div style="color:var(--amber);margin-bottom:.5rem;">${renderStaticStars(r.rating)}</div>
         ${r.verified_purchase ? '<div style="font-size:.76rem;color:#2D7D46;margin-bottom:.5rem;">✅ Подтверждённая покупка</div>' : ''}
         ${r.text ? `<p style="font-size:.9rem;color:var(--text);line-height:1.6;">${escapeHtml(r.text)}</p>` : ''}
+        ${Array.isArray(r.photos) && r.photos.length ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem;">
+          ${r.photos.map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" aria-label="Посмотреть фотографию отзыва"><img src="${escapeHtml(url)}" loading="lazy" alt="Фотография к отзыву" style="height:105px;width:105px;max-width:30vw;object-fit:cover;border-radius:9px;border:1px solid var(--border);"></a>`).join('')}
+        </div>` : ''}
       </div>`).join('') : '';
   } catch (e) {
     console.error('Не удалось загрузить отзывы:', e);
@@ -5329,10 +5410,14 @@ async function submitReview() {
     msgEl.style.color='#9B2335';return;
   }
   try {
+    const selectedPhotos = await getReviewPhotosForSubmission();
+    const payload = { rating: reviewSelectedRating, text,
+      ...(selectedPhotos.length ? { photos: selectedPhotos } : {}),
+      ...(token ? {} : {author_name, website:document.getElementById('guestReviewWebsite').value}) };
     const res = await fetch('/api/products/' + currentDetailId + (token ? '/reviews' : '/guest-reviews'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
-      body: JSON.stringify({ rating: reviewSelectedRating, text, ...(token ? {} : {author_name, website:document.getElementById('guestReviewWebsite').value}) }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -5344,7 +5429,7 @@ async function submitReview() {
     msgEl.textContent = '✅ ' + (data.message || 'Спасибо за отзыв!');
     msgEl.style.color = '#2D7D46';
   } catch (e) {
-    msgEl.textContent = '⚠ Ошибка сети. Попробуйте ещё раз.';
+    msgEl.textContent = '⚠ ' + (e.message || 'Ошибка сети. Попробуйте ещё раз.');
     msgEl.style.color = '#9B2335';
   }
 }
