@@ -29,7 +29,7 @@ function wrap(value,width){
   if(current)lines.push(current);
   return lines.length?lines:[''];
 }
-function payoutBriefPdfPages(report,font){
+function payoutBriefPdfPages(report,font,options={}){
   const pages=[];
   let lines=[],y=0,person=null,pageNo=0;
   function rectangle(x1,y1,x2,y2,fill){
@@ -54,7 +54,9 @@ function payoutBriefPdfPages(report,font){
         text(60,y,part,part.startsWith('Получатель:')?27:25);y+=38;
       }
       text(60,y,person.roles_label+(continuation?' (продолжение)':''),19,'#52695A');
-      y+=40;
+      y+=39;
+      text(60,y,'Период расчётов: '+(person.period?.label || 'не указан'),20,'#1C3A2F');
+      y+=43;
     }
   }
   function footer(){
@@ -86,6 +88,7 @@ function payoutBriefPdfPages(report,font){
       style==='total'?'#1B6944':'#263B2D');
     y+=height;
   }
+  if(!options.recipient){
   startPage(null);
   paragraph('Ведомость · '+report.people.length+' получателей', '#1C3A2F',27);
   line('Всего к выплате (предварительно)',report.total,'total');
@@ -96,7 +99,9 @@ function payoutBriefPdfPages(report,font){
   if(report.identities_to_verify?.length)paragraph('Совпадающие ФИО без подтверждённой личности не объединены; проверьте в админке.','#A33D32',17);
   paragraph('На следующих листах — отдельная справка каждому получателю. Если человек одновременно грумер и менеджер, начисления представлены в одной справке с разбивкой по ролям.', '#52695A',18);
   if(!report.people.length)paragraph('Невыплаченных начислений нет.');
-  for(const recipient of report.people){
+  }
+  const recipients=options.recipient ? [options.recipient] : report.people;
+  for(const recipient of recipients){
     startPage(recipient);
     line('Общая сумма к выплате',recipient.total,'total');
     line('Комиссии со всех ролей',recipient.commission);
@@ -106,9 +111,34 @@ function payoutBriefPdfPages(report,font){
       y+=20;
       paragraph(section.role_label+(section.point?' · '+section.point:''),'#1C3A2F',23);
       line('Вознаграждение с продаж ('+section.orders+' заказов)',section.commission,'heading');
-      for(const row of section.points){
-        const rate=(row.rate*100).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%';
-        line(row.point+' · '+row.orders+' заказов · '+rate,row.amount);
+      // Each order gets its own legible block with the original item snapshot,
+      // full paid sale value, recorded rate and its exact payable commission.
+      const sales=section.sales||[];
+      if(!sales.length)paragraph('Нет продаж в этом расчётном периоде.');
+      for(const sale of sales){
+        ensure(95);
+        const heading='Дата продажи: '+(sale.date||'не указана')+' · '+clean(sale.point,45);
+        const headerRows=wrap(heading,86);
+        for(const item of headerRows){
+          ensure(35);
+          rectangle(60,y-27,1180,y+11,'#F1F6F0');
+          text(75,y,item,17,'#1C3A2F');y+=32;
+        }
+        if(sale.order_code)paragraph('Заказ: '+clean(sale.order_code,75),'#586A5E',17);
+        if(Array.isArray(sale.items)&&sale.items.length){
+          for(const item of sale.items){
+            const itemTitle=clean(item.name,98)+(item.weight?' · '+clean(item.weight,28):'')+
+              ' · '+item.qty+' шт. × '+money(item.price);
+            paragraph('Товар: '+itemTitle,'#334B3C',18);
+          }
+        }else{
+          paragraph('Товары: состав заказа не сохранён','#A33D32',17);
+        }
+        const rate=(Number(sale.commission_rate||0)*100).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%';
+        ensure(37);
+        paragraph('Стоимость продажи: '+money(sale.sale_total)+' · Процент '+section.role_label.toLowerCase()+': '+rate+
+          ' · Вознаграждение: '+money(sale.commission_amount),'#1C3A2F',18);
+        y+=10;
       }
       for(const bonus of section.bonuses){
         line((bonus.type==='launch_bonus'?'Бонус за запуск':'Реферальный бонус')+' · '+bonus.point,bonus.amount);
@@ -125,14 +155,14 @@ function payoutBriefPdfPages(report,font){
 }
 
 let running=false;
-async function renderPayoutBriefPdf(report){
+async function renderPayoutBriefPdf(report,options={}){
   if(running)throw new Error('Другой PDF выплат уже формируется. Повторите запрос позже.');
   running=true;
   let dir;
   try{
     const {findFont,writePdfFromJpegs}=require('./weekly-report');
     dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'hvost-payout-brief-'));
-    const pages=payoutBriefPdfPages(report,findFont());
+    const pages=payoutBriefPdfPages(report,findFont(),options);
     let binary='convert';
     try{await run(binary,['-version']);}catch{binary='magick';await run(binary,['-version']);}
     const images=[];
