@@ -395,7 +395,7 @@ function registerPartnerRoutes(router) {
     const pointChanged = String(targetPointId || '') !== String(existing.point_id || '');
     if (pointChanged) {
       const linkedOwners = db.prepare(
-        'SELECT so.id, so.full_name FROM salon_owners so WHERE so.groomer_partner_id = ? AND so.point_id != ?'
+        'SELECT so.id, so.full_name FROM salon_owners so WHERE so.groomer_partner_id = ? AND (so.point_id IS NULL OR so.point_id != ?)'
       ).all(existing.id, targetPointId || '');
       if (linkedOwners.length) {
         return sendJson(res, 409, {
