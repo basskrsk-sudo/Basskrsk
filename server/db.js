@@ -862,6 +862,9 @@ CREATE TABLE IF NOT EXISTS guest_product_reviews (
 CREATE INDEX IF NOT EXISTS idx_guest_product_reviews_product ON guest_product_reviews(product_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_guest_product_reviews_rate ON guest_product_reviews(visitor_hash, created_at DESC);
 `);
+// Customer photos for reviews: file names only; originals live in persistent /data.
+ensureColumn('product_reviews', 'photos_json', "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn('guest_product_reviews', 'photos_json', "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn('points', 'manager_id', 'INTEGER REFERENCES managers(id)');
 ensureColumn('points', 'is_hub', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('partners', 'point_id', 'TEXT REFERENCES points(id)');
