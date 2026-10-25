@@ -39,7 +39,19 @@ dialog{width:min(650px,calc(100% - 1.4rem));max-height:90vh;overflow:auto;border
 <header><div class="header-inner"><div class="brand"><span class="brand-dot"></span> ХвостМаркет <span style="font-weight:500;opacity:.7;">/ Поручения</span></div><a href="/">На сайт ↗</a></div></header>
 <main class="wrap">
   <div id="loading">Проверяем персональную ссылку…</div>
-  <div id="accessError" class="error"><strong>Нет доступа к поручениям.</strong><p id="accessErrorText">Откройте страницу по персональной ссылке, полученной от администратора.</p></div>
+  <div id="accessError" class="error">
+    <strong id="accessErrorTitle">Доступ к поручениям</strong>
+    <p id="accessErrorText">Для первого входа нужен персональный код, выданный администратором.</p>
+    <form id="activationForm" onsubmit="activateTaskPage(event)" style="display:none;margin-top:.9rem;">
+      <label class="field" for="activationCode"><span>Персональный код (только для первого входа на этом устройстве)</span>
+        <input id="activationCode" name="activationCode" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Вставьте код из ссылки, полученной от администратора" style="max-width:460px;">
+      </label>
+      <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.75rem;">
+        <button type="submit" class="button" id="activationButton">Открыть поручения</button>
+        <span class="small">Код сохранится только в этом браузере. Не пересылайте его другим людям.</span>
+      </div>
+    </form>
+  </div>
   <div id="app">
     <div class="hero"><div><div class="chip" id="identity">🐾 Поручения</div><h1>Контроль поручений</h1><p class="intro">Задачи ХвостМаркета, сроки, прогресс и заметки планёрок. Ответственные могут просматривать все задачи, но редактировать только свои. Администратор управляет всеми.</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button id="createTaskBtn" class="button yellow" style="display:none" onclick="openTaskEditor()">+ Новое поручение</button><button class="button secondary" onclick="loadData()">↻ Обновить</button></div></div>
     <div class="stats" id="stats"></div>
@@ -84,6 +96,33 @@ dialog{width:min(650px,calc(100% - 1.4rem));max-height:90vh;overflow:auto;border
 'use strict';
 const BASE = '/api/task-page';
 let token = null, actor = null, tasks = [], members = [], notes = [], mode = 'all', editorTaskId = null;
+
+const FRIENDLY_PROFILES = Object.freeze({
+  'админ':'admin', 'алексей':'alexey', 'виталий':'vitaly',
+  'ангелина':'angelina', 'николай':'nikolay'
+});
+const PROFILE_SLUGS = Object.freeze({
+  admin:'Админ', alexey:'Алексей', vitaly:'Виталий',
+  angelina:'Ангелина', nikolay:'Николай'
+});
+const TOKEN_PATTERN = /^(?:[a-f0-9]{64}|[A-Za-z0-9_-]{22})$/;
+const CURRENT_PROFILE = (() => {
+  try {
+    const slug = decodeURIComponent(location.pathname).replace(/\/+$/, '').split('/').pop().toLowerCase();
+    return FRIENDLY_PROFILES[slug] || null;
+  } catch (_) { return null; }
+})();
+function storageKey(profileKey) { return 'hvostmarket:task-link:v1:' + profileKey; }
+function rememberToken(profileKey, accessCode) {
+  try { localStorage.setItem(storageKey(profileKey), accessCode); } catch (_) {}
+}
+function cachedToken(profileKey) {
+  try { return localStorage.getItem(storageKey(profileKey)); } catch (_) { return null; }
+}
+function forgetToken(profileKey) {
+  try { localStorage.removeItem(storageKey(profileKey)); } catch (_) {}
+}
+
 const $ = id => document.getElementById(id);
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function safeDate(v) { if(!v) return 'Не установлен'; if(!/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return escapeHtml(v); const x = String(v).split('-'); return x[2]+'.'+x[1]+'.'+x[0]; }
