@@ -1725,7 +1725,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <option value="ooo">ООО</option>
           </select>
         </div>
-        <div class="admin-field"><label for="ape-inn">ИНН</label><input type="text" id="ape-inn" inputmode="numeric" autocomplete="off" maxlength="12"></div>
+        <div class="admin-field"><label for="ape-inn">ИНН</label><input type="text" id="ape-inn" inputmode="numeric" autocomplete="off"></div>
         <div class="admin-field"><label for="ape-bank">Банковские реквизиты</label><textarea id="ape-bank" rows="3" maxlength="2000" style="width:100%;border:1px solid var(--border);border-radius:7px;padding:.6rem;font:inherit;box-sizing:border-box;resize:vertical;"></textarea></div>
         <p style="font-size:.76rem;line-height:1.5;color:var(--muted);">
           Изменения сохраняются в журнале администратора. Продажи, начисления, партнёрский код и история выплат не меняются.
@@ -6100,8 +6100,7 @@ async function saveAccountProfileEditor() {
   if (oldPhone !== newPhone &&
       !confirm('Номер телефона изменится. Для безопасности Telegram и MAX придётся подключить повторно. Продолжить?')) return;
   if (state.role === 'owner' && patch.point_id !== undefined &&
-      Number(state.person.paid_orders_count || 0) > 0 &&
-      !confirm('У салона уже есть оплаченные заказы. Переназначение владельца изменит последующие расчёты вознаграждения. Продолжить?')) return;
+      !confirm('Переназначение владельца может изменить невыплаченные начисления по уже оплаченным заказам на старой и новой точке. Проверьте расчёты после изменения. Продолжить?')) return;
 
   saveBtn.disabled = true;
   document.getElementById('ape-error').style.display = 'none';
