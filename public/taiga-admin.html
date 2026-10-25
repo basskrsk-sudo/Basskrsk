@@ -1701,6 +1701,42 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
     </div>
 
+    <!-- Исправление ошибочно внесённых менеджером данных (только администратор). -->
+    <div id="account-profile-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:110;padding:1rem;">
+      <div role="dialog" aria-modal="true" aria-labelledby="ape-heading" style="background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;">
+        <h3 id="ape-heading" style="margin-bottom:.35rem;">Редактировать анкету</h3>
+        <p id="ape-description" style="font-size:.78rem;color:var(--muted);line-height:1.5;margin:0 0 1rem;"></p>
+        <div id="ape-error" role="alert" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.6rem .8rem;border-radius:6px;margin-bottom:.8rem;"></div>
+        <div class="admin-field"><label for="ape-name">ФИО</label><input type="text" id="ape-name" maxlength="180"></div>
+        <div class="admin-field"><label for="ape-phone">Телефон</label><input type="tel" id="ape-phone" autocomplete="off"></div>
+        <div class="admin-field"><label for="ape-login">Логин для входа</label><input type="text" id="ape-login" autocomplete="off"></div>
+        <div class="admin-field"><label for="ape-point">Точка / салон</label><select id="ape-point" class="pm-select" onchange="loadEditProfileGroomers()"></select></div>
+        <div id="ape-owner-groomer-row" class="admin-field" style="display:none;">
+          <label for="ape-groomer">Грумер-владелец (если человек также грумер)</label>
+          <select id="ape-groomer" class="pm-select"></select>
+          <small style="font-size:.73rem;color:var(--muted);">Используется для автоматического назначения грумера при покупке.</small>
+        </div>
+        <div class="admin-field"><label for="ape-legal">Юридический статус</label>
+          <select id="ape-legal" class="pm-select">
+            <option value="">— Не указан —</option>
+            <option value="npd">Самозанятый (НПД)</option>
+            <option value="ip">ИП</option>
+            <option value="ooo">ООО</option>
+          </select>
+        </div>
+        <div class="admin-field"><label for="ape-inn">ИНН</label><input type="text" id="ape-inn" inputmode="numeric" autocomplete="off" maxlength="12"></div>
+        <div class="admin-field"><label for="ape-bank">Банковские реквизиты</label><textarea id="ape-bank" rows="3" maxlength="2000" style="width:100%;border:1px solid var(--border);border-radius:7px;padding:.6rem;font:inherit;box-sizing:border-box;resize:vertical;"></textarea></div>
+        <p style="font-size:.76rem;line-height:1.5;color:var(--muted);">
+          Изменения сохраняются в журнале администратора. Продажи, начисления, партнёрский код и история выплат не меняются.
+          При изменении номера телефона Telegram и MAX потребуется подключить заново.
+        </p>
+        <div style="display:flex;gap:.6rem;margin-top:1rem;">
+          <button type="button" class="row-btn" style="flex:1;" onclick="closeAccountProfileEditor()">Отмена</button>
+          <button type="button" id="ape-save" class="row-btn" style="flex:1;background:var(--forest);color:#fff;" onclick="saveAccountProfileEditor()">Сохранить исправления</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Связать владельца салона с его личным профилем грумера -->
     <div id="owner-groomer-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:100;">
       <div style="background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:420px;">
