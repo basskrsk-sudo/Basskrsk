@@ -1359,6 +1359,30 @@ ensureColumn('salon_owners', 'commission_rate', 'REAL NOT NULL DEFAULT 0.05');
  // Explicit link is optional: exact, unique telephone match is a safe fallback.
  ensureColumn('salon_owners', 'groomer_partner_id', 'INTEGER REFERENCES partners(id)');
 
+// Администратор исправляет анкетные данные, не затрагивая историю продаж.
+// Реквизиты доступны владельцам салонов по той же схеме, что и грумерам.
+ensureColumn('salon_owners', 'legal_form', 'TEXT');
+ensureColumn('salon_owners', 'inn', 'TEXT');
+ensureColumn('salon_owners', 'bank_details', 'TEXT');
+
+// Только для супер-админа: неизменяемый журнал исправлений анкет.
+// Значения банковских реквизитов в журнал НЕ сохраняем.
+db.exec(`
+CREATE TABLE IF NOT EXISTS account_profile_change_log (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_id     INTEGER,
+  admin_login  TEXT,
+  subject_type TEXT NOT NULL CHECK(subject_type IN ('partner', 'owner')),
+  subject_id   INTEGER NOT NULL,
+  subject_name TEXT,
+  changes_json TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_account_profile_change_log_created
+  ON account_profile_change_log(created_at DESC, id DESC);
+`);
+
+
 // ── ЭКОНОМИКА ПРОЕКТА ────────────────────────────────────────────────
 // Затраты на закуп товара админ вносит вручную (реальные суммы по факту
 // покупки — точнее, чем расчёт от cost_price за штуку, который не учитывает
