@@ -30,6 +30,7 @@ const {
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
 const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
+const { collectPayoutBrief, formatPayoutBriefMessage, buildPayoutBriefCsv } = require('./payout-brief');
 let lastUpdateId = 0;
 let polling = false;
 
@@ -66,6 +67,7 @@ async function configureBotProfile() {
       { command: 'newtask', description: 'Создать новую задачу' },
       { command: 'expense', description: 'Добавить трату бизнеса' },
       { command: 'salesweek', description: 'Отчёт по продажам за 7 дней' },
+      { command: 'payouts', description: 'Справка для выплат партнёрам' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
       { command: 'cancel', description: 'Отменить текущее действие' },
       { command: 'help', description: 'Как пользоваться ботом' },
@@ -110,7 +112,7 @@ function buildWelcomeMessage() {
     'Я помогу войти в личный кабинет и буду присылать важные уведомления о заказах, продажах и вознаграждениях.',
     '',
     'Сотрудникам: /tasks покажет активные поручения, /newtask создаст задачу, а /expense запишет трату бизнеса.',
-    'Администраторам: /salesweek соберёт отчёт по продажам за последние 7 дней.',
+    'Администраторам: /salesweek — продажи за 7 дней; /payouts — справки для выплаты грумерам, владельцам и менеджерам.',
     '',
     'Чтобы подключить кабинет, откройте на сайте вход через Telegram и перейдите по созданной ссылке.',
   ].join('\n');
@@ -123,6 +125,7 @@ function botActionButtons(chatId) {
   ]];
   if (chatId && adminCanReadSales(chatId)) {
     keyboard.push([{ text: '📊 Продажи за 7 дней', callback_data: 'sales:week' }]);
+    keyboard.push([{ text: '💸 Справки к выплатам', callback_data: 'payouts:prepare' }]);
   }
   if (chatId && require('./routes-partner-club').isClubModerator(chatId)) {
     keyboard.push([{ text: '🐾 Сообщение партнёрам', callback_data: 'club:new' }]);
@@ -192,6 +195,64 @@ async function sendSalesWeekReport(chatId) {
   }
 }
 
+
+async function sendPayoutBriefDocument(chatId, content, filename, caption, mime) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 50000);
+  try {
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    form.append('caption', String(caption).slice(0, 900));
+    form.append('document', new Blob([content], { type: mime }), filename);
+    const response = await fetch('https://api.telegram.org/bot' + TG_TOKEN + '/sendDocument', {
+      method: 'POST', body: form, signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.description || 'Telegram HTTP ' + response.status);
+    return true;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+async function sendPayoutBriefs(chatId) {
+  if (!adminCanReadSales(chatId)) {
+    await replyToChat(chatId, '🔒 Справки для выплат доступны только администраторам ХвостМаркета в личном Telegram.');
+    return;
+  }
+  let report;
+  try {
+    report = collectPayoutBrief();
+    await replyToChat(chatId, formatPayoutBriefMessage(report));
+  } catch (error) {
+    console.error('Ошибка расчёта справок для выплат:', error.message);
+    await replyToChat(chatId, '⚠️ Не удалось рассчитать справки для выплат. Проверьте журнал сервера.');
+    return;
+  }
+  const date = report.generated_at.slice(0, 10);
+  // Prepare both attachments independently: an ImageMagick error must not hide the CSV.
+  try {
+    const pdf = await require('./payout-brief-pdf').renderPayoutBriefPdf(report);
+    await sendPayoutBriefDocument(
+      chatId, pdf, 'HvostMarket_payouts_' + date + '.pdf',
+      'Справки для выплат: по одной секции на каждого получателя. Роли одного человека объединены.',
+      'application/pdf'
+    );
+  } catch (error) {
+    console.error('Не удалось отправить PDF справок для выплат:', error.message);
+    await replyToChat(chatId, '⚠️ PDF-справки не удалось сформировать или отправить. Сводка уже готова.');
+  }
+  try {
+    await sendPayoutBriefDocument(
+      chatId, buildPayoutBriefCsv(report), 'HvostMarket_payouts_' + date + '.csv',
+      'Детализация невыплаченных начислений по людям, ролям и точкам.',
+      'text/csv;charset=utf-8'
+    );
+  } catch (error) {
+    console.error('Не удалось отправить CSV справок для выплат:', error.message);
+    await replyToChat(chatId, '⚠️ Не удалось отправить CSV с детализацией. Повторите /payouts позднее.');
+  }
+}
+
 function accountRoleText(role) {
   if (role === 'partner') return 'грумера';
   if (role === 'manager') return 'менеджера';
@@ -236,6 +297,17 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (callback.data === 'payouts:prepare') {
+      const chat = callback.message?.chat;
+      const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
+      await callBotApi('answerCallbackQuery', {
+        callback_query_id: callback.id,
+        text: allowed ? 'Готовим справки к выплатам' : 'Нет доступа',
+        show_alert: !allowed,
+      });
+      if (allowed) await sendPayoutBriefs(chat.id);
+      return;
+    }
     if (callback.data === 'sales:week') {
       const chat = callback.message?.chat;
       const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
@@ -331,6 +403,10 @@ async function processUpdate(update) {
     }
   }
 
+  if (/^\/(?:payouts|payoutbrief)(?:@\w+)?$/i.test(text) || /^справк[аи] (?:для |к )?выплат[аым]?$/i.test(text)) {
+    await sendPayoutBriefs(msg.chat.id);
+    return;
+  }
   if (/^\/(?:salesweek|sales_week)(?:@\w+)?$/i.test(text) || /^отч[её]т(?: по продажам)? за неделю$/i.test(text)) {
     await sendSalesWeekReport(msg.chat.id);
     return;
