@@ -9,7 +9,7 @@ const test = require('node:test');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hvost-auto-groomer-'));
 process.env.DATA_DIR = dir;
 const db = require('./db');
-const { findDefaultGroomer, validateOwnerGroomer, normalizedPhone } = require('./auto-groomer');
+const { findDefaultGroomer, validateOwnerGroomer, normalizedPhone, resolveCheckoutGroomer } = require('./auto-groomer');
 
 function point(id) {
   db.prepare('INSERT INTO points(id,name,addr,icon,active) VALUES (?,?,?,?,1)')
@@ -103,6 +103,68 @@ test('owner-groomer link cannot point to inactive groomer or another salon', () 
   assert.equal(validateOwnerGroomer(pointA,activeB).valid,false);
   assert.equal(validateOwnerGroomer(pointA,inactiveA).valid,false);
   assert.equal(validateOwnerGroomer(null,activeA).valid,false);
+});
+test('checkout picks sole groomer when no choice; explicit self preserves zero commission', () => {
+  const id=point('auto-checkout-single');
+  const sole=groomer(id,'Грумер','79001110101');
+  const missing=resolveCheckoutGroomer({
+    pointId:id, partnerId:null, advisorSelection:null, selfOrderingPartner:null, fulfillmentType:'pickup',
+  });
+  assert.equal(missing.id,sole);
+  assert.equal(missing.source,'auto_single');
+  const self=resolveCheckoutGroomer({
+    pointId:id, partnerId:null, advisorSelection:'self', selfOrderingPartner:null, fulfillmentType:'pickup',
+  });
+  assert.equal(self.id,null);
+  assert.equal(self.source,'self');
+  const delivery=resolveCheckoutGroomer({
+    pointId:id, partnerId:null, advisorSelection:null, selfOrderingPartner:null, fulfillmentType:'home_delivery',
+  });
+  assert.equal(delivery.id,null);
+});
+
+test('checkout owner is default with multiple groomers, but manual selection overrides it', () => {
+  const id=point('auto-checkout-owner');
+  const ownerGroomer=groomer(id,'Владелец-грумер','79001110102');
+  const another=groomer(id,'Коллега','79001110103');
+  owner(id,'79001110102',ownerGroomer);
+  const base={pointId:id,advisorSelection:null,selfOrderingPartner:null,fulfillmentType:'pickup'};
+  assert.equal(resolveCheckoutGroomer({...base,partnerId:null}).id,ownerGroomer);
+  const manual=resolveCheckoutGroomer({...base,partnerId:another});
+  assert.equal(manual.id,another);
+  assert.equal(manual.source,'selected');
+  const selfOrder=resolveCheckoutGroomer({...base,partnerId:another,
+    selfOrderingPartner:{id:ownerGroomer,full_name:'Владелец-грумер'}});
+  assert.equal(selfOrder.id,ownerGroomer);
+  assert.equal(selfOrder.source,'self_order');
+});
+
+test('checkout does not randomly attribute when owner is unknown or a manual ID is invalid', () => {
+  const id=point('auto-checkout-unknown');
+  groomer(id,'Первый','79001110104');
+  const other=groomer(id,'Второй','79001110105');
+  const base={pointId:id,advisorSelection:null,selfOrderingPartner:null,fulfillmentType:'pickup'};
+  assert.throws(()=>resolveCheckoutGroomer({...base,partnerId:null}),error=>{
+    assert.equal(error.code,'ADVISOR_SELECTION_REQUIRED');return true;
+  });
+  assert.throws(()=>resolveCheckoutGroomer({...base,partnerId:999999}),error=>{
+    assert.equal(error.code,'PARTNER_POINT_MISMATCH');return true;
+  });
+  const unrelatedPoint=point('auto-checkout-other');
+  assert.throws(()=>resolveCheckoutGroomer({...base,pointId:unrelatedPoint,partnerId:other}),
+    error=>error.code==='PARTNER_POINT_MISMATCH');
+});
+
+test('both public checkout pages preselect only the backend-approved default', () => {
+  const qr=fs.readFileSync(path.join(__dirname,'..','public','p.html'),'utf8');
+  const catalog=fs.readFileSync(path.join(__dirname,'..','public','index.html'),'utf8');
+  const server=fs.readFileSync(path.join(__dirname,'routes-payment.js'),'utf8');
+  assert.match(qr,/CTX\.defaultPartnerId = partnersData\.default_partner_id/);
+  assert.match(qr,/advisor\.value = String\(CTX\.defaultPartnerId\)/);
+  assert.match(catalog,/data\.default_partner_id/);
+  assert.match(catalog,/groomerSel\.value = String\(automaticPartner\.id\)/);
+  assert.match(server,/resolveCheckoutGroomer\(/);
+  assert.match(server,/partnerId: authoritativePartnerId/);
 });
 test.after(()=>{
   try{db.close();}catch(_){}
