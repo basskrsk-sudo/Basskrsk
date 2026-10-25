@@ -5984,6 +5984,7 @@ async function openAccountProfileEditor(role, id) {
   if (!person) return;
 
   accountProfileEditState = { role: role, person: person };
+  document.getElementById('ape-save').disabled = true;
   document.getElementById('ape-error').style.display = 'none';
   document.getElementById('ape-heading').textContent =
     role === 'partner' ? 'Редактировать грумера' : 'Редактировать владельца салона';
@@ -6024,7 +6025,8 @@ async function openAccountProfileEditor(role, id) {
       select.appendChild(option);
     }
     select.value = person.point_id || '';
-    await loadEditProfileGroomers();
+    if (role === 'owner') await loadEditProfileGroomers();
+    else document.getElementById('ape-save').disabled = false;
   } catch (error) {
     if (accountProfileEditState && accountProfileEditState.person === person) {
       showAccountProfileError(error.message);
@@ -6036,6 +6038,7 @@ async function loadEditProfileGroomers() {
   const state = accountProfileEditState;
   if (!state || state.role !== 'owner') return;
   const sequence = ++accountEditGroomerSequence;
+  document.getElementById('ape-save').disabled = true;
   const pointId = document.getElementById('ape-point').value;
   const select = document.getElementById('ape-groomer');
   select.replaceChildren();
@@ -6043,7 +6046,10 @@ async function loadEditProfileGroomers() {
   empty.value = '';
   empty.textContent = '— Не назначен / определить по телефону —';
   select.appendChild(empty);
-  if (!pointId) return;
+  if (!pointId) {
+    document.getElementById('ape-save').disabled = false;
+    return;
+  }
   try {
     const response = await fetch('/api/points/' + encodeURIComponent(pointId) + '/partners', {cache:'no-store'});
     if (!response.ok) throw new Error('Не удалось получить список грумеров');
@@ -6066,6 +6072,7 @@ async function loadEditProfileGroomers() {
       select.appendChild(oldOption);
     }
     select.value = samePoint ? oldLink : '';
+    document.getElementById('ape-save').disabled = false;
   } catch (error) {
     if (sequence === accountEditGroomerSequence) showAccountProfileError(error.message);
   }
