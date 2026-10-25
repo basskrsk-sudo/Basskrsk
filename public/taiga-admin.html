@@ -1624,13 +1624,14 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="warehouse_delete">Удаление со склада</option>
               <option value="manager_action">Действия менеджеров</option>
               <option value="order_partner_change">Исправление грумера в заказе</option>
+              <option value="account_profile_change">Исправление анкет партнёров</option>
               <option value="bsc_settings_change">Изменение целей BSC</option>
             </select>
             <button class="row-btn" onclick="renderAuditLog()">↻ Обновить</button>
           </div>
         </div>
         <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
-          История удаления клиентов и складских позиций, исправлений грумера в оплаченных заказах, изменений целей BSC, а также операционных действий менеджеров. Доступна только супер-администраторам.
+          История удаления клиентов и складских позиций, исправлений грумера в оплаченных заказах, исправлений анкет грумеров и владельцев, изменений целей BSC, а также операционных действий менеджеров. Доступна только супер-администраторам.
         </p>
         <table class="tbl">
           <thead>
@@ -7368,6 +7369,25 @@ async function renderAuditLog() {
       const oldRate = event.old_commission_rate == null ? '—' : Math.round(Number(event.old_commission_rate) * 100) + '%';
       const newRate = Math.round(Number(event.new_commission_rate || 0) * 100) + '%';
       details = auditEscape(oldName) + ' (' + oldRate + ') → ' + auditEscape(newName) + ' (' + newRate + ')';
+    } else if (event.type === 'account_profile_change') {
+      action = 'Исправление анкеты';
+      target = (event.subject_type === 'partner' ? 'Грумер: ' : 'Владелец: ') +
+        auditEscape(event.subject_name || String(event.subject_id));
+      const fieldNames = {
+        full_name:'ФИО', phone:'Телефон', login:'Логин',
+        point_id:'Точка', groomer_partner_id:'Грумер-владелец',
+        legal_form:'Юридический статус', inn:'ИНН', bank_details:'Банковские реквизиты',
+      };
+      try {
+        const changes = JSON.parse(event.changes_json || '{}');
+        details = Object.entries(changes).map(function(entry) {
+          const change = entry[1] || {};
+          const before = String(change.old ?? '') || '—';
+          const after = String(change.new ?? '') || '—';
+          return '<b>' + auditEscape(fieldNames[entry[0]] || entry[0]) + '</b>: ' +
+            auditEscape(before) + ' → ' + auditEscape(after);
+        }).join('<br>') || 'Данные обновлены';
+      } catch (_) { details = 'Данные обновлены'; }
     } else if (event.type === 'bsc_settings_change') {
       action = 'Изменение BSC';
       target = 'Цели и веса стратегии';
