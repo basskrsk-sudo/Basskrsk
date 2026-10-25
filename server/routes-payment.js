@@ -5,6 +5,7 @@
 'use strict';
 
 const db = require('./db');
+const { findDefaultGroomer } = require('./auto-groomer');
 const yookassa = require('./yookassa');
 const { sendTelegram, buildOrderMessage } = require('./telegram');
 const { sendPaidOrderNotifications } = require('./order-notifications');
@@ -386,23 +387,46 @@ function registerPaymentRoutes(router) {
     const selfOrderingPartner = authoritativeFulfillment === 'pickup'
       ? findSelfOrderingPartner(pointId, customerPhone)
       : null;
-    const authoritativePartnerId = selfOrderingPartner ? selfOrderingPartner.id : partnerId;
+
+    // No choice is not the same as the explicit option "Выбрал всё сам".
+    // Existing customer-linked self-orders always take priority.
+    let authoritativePartnerId = selfOrderingPartner
+      ? selfOrderingPartner.id : (authoritativeFulfillment === 'pickup' ? partnerId : null);
     let selectedPartnerName = selfOrderingPartner ? selfOrderingPartner.full_name : null;
-    if (authoritativePartnerId && !selfOrderingPartner) {
-      const selectedPartner = db.prepare('SELECT id, point_id, full_name FROM partners WHERE id = ? AND active = 1').get(authoritativePartnerId);
-      if (!selectedPartner || !pointId || selectedPartner.point_id !== pointId) {
-        return sendJson(res, 400, { error: 'Выбранный сотрудник не работает на этой точке', code: 'PARTNER_POINT_MISMATCH' });
+
+    if (authoritativeFulfillment === 'pickup' && pointId &&
+        !authoritativePartnerId && advisorSelection !== 'self') {
+      const fallback = findDefaultGroomer(pointId);
+      if (fallback.partner) {
+        authoritativePartnerId = fallback.partner.id;
+        selectedPartnerName = fallback.partner.full_name;
+        console.log('[create-payment] Заказ ' + orderId +
+          ': автоматически назначен грумер #' + authoritativePartnerId +
+          ' (' + fallback.source + ')');
+      } else {
+        const hasActivePartner = db.prepare(
+          'SELECT 1 FROM partners WHERE point_id = ? AND active = 1 LIMIT 1'
+        ).get(pointId);
+        if (hasActivePartner) {
+          return sendJson(res, 400, {
+            error: 'Не удалось автоматически определить грумера-владельца салона. Выберите грумера или «Выбрал всё сам».',
+            code: 'ADVISOR_SELECTION_REQUIRED',
+          });
+        }
       }
-      selectedPartnerName = selectedPartner.full_name;
     }
-    if (authoritativeFulfillment === 'pickup' && pointId && !authoritativePartnerId && advisorSelection !== 'self') {
-      const hasActivePartner = db.prepare('SELECT 1 FROM partners WHERE point_id = ? AND active = 1 LIMIT 1').get(pointId);
-      if (hasActivePartner) {
+
+    if (authoritativePartnerId && !selfOrderingPartner) {
+      const selectedPartner = db.prepare(
+        'SELECT id, point_id, full_name FROM partners WHERE id = ? AND active = 1'
+      ).get(authoritativePartnerId);
+      if (!selectedPartner || !pointId || selectedPartner.point_id !== pointId) {
         return sendJson(res, 400, {
-          error: 'Выберите грумера или пункт «Выбрал всё сам»',
-          code: 'ADVISOR_SELECTION_REQUIRED',
+          error: 'Выбранный сотрудник не работает на этой точке',
+          code: 'PARTNER_POINT_MISMATCH',
         });
       }
+      selectedPartnerName = selectedPartner.full_name;
     }
 
     // Телефон имеет приоритет над выбором в форме: самозаказ автоматически
