@@ -149,7 +149,12 @@ function registerPartnerRoutes(router) {
       referrerPartner ? referrerPartner.id : null, referrerOwner ? referrerOwner.id : null,
       dStand ? 1 : 0, dPoster ? 1 : 0, dBasket ? 1 : 0
     );
-    // Промокод первой покупки теперь общий для салона; новые индивидуальные коды не выдаём.
+    // SQLite-триггер присваивает уникальный персональный промокод сразу после
+    // добавления грумера. Возвращаем его в форме регистрации и админ-уведомлении.
+    // Промокод привлечения других партнёров (GR-...) остаётся отдельным.
+    const firstPurchasePromoCode = db.prepare(
+      'SELECT first_purchase_promo_code FROM partners WHERE id = ?'
+    ).get(info.lastInsertRowid)?.first_purchase_promo_code;
 
     // Привязываем ту же точку к менеджеру — раньше это приходилось делать
     // вручную по Telegram-уведомлению. Если точку создавал администратор
@@ -203,6 +208,7 @@ function registerPartnerRoutes(router) {
     sendJson(res, 201, {
       ok: true,
       partner_code: partnerCode,
+      first_purchase_promo_code: firstPurchasePromoCode,
       id: info.lastInsertRowid,
       message: 'Партнёр зарегистрирован и уже может входить в свой кабинет.',
     });
@@ -211,7 +217,8 @@ function registerPartnerRoutes(router) {
     sendTelegram([
       '🖊 <b>Новая заявка партнёра — ХвостМаркет</b>',
       '',
-      '📋 Код: ' + partnerCode,
+      '📋 Код партнёра: ' + partnerCode,
+      firstPurchasePromoCode ? '🎁 Промокод −20% для первой покупки: ' + firstPurchasePromoCode : '',
       '👤 ' + full_name,
       '📞 ' + phone,
       '📍 Точка: ' + point.name + ' — ' + point.addr,
