@@ -6959,7 +6959,7 @@ async function renderPartners() {
   const promoList = document.getElementById('partners-promo-list');
   const partnersWithPromo = adminPartners.filter(function(p) { return p.first_purchase_promo_code; });
   promoList.innerHTML = '<div class="card" style="margin-bottom:1rem;">' +
-    '<div class="card-title">Ранее выданные промокоды грумеров на первую покупку</div>' +
+    '<div class="card-title">Персональные промокоды грумеров на первую покупку</div>' +
     '<p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка 20% применяется один раз по номеру телефона. Нажмите на код, чтобы скопировать.</p>' +
     (partnersWithPromo.length ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.65rem;">' +
       partnersWithPromo.map(function(p) {
@@ -6968,7 +6968,7 @@ async function renderPartners() {
           '<div style="font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeOrderCell(p.point_name || 'Точка не указана') + (p.active ? '' : ' · отключён') + '</div></div>' +
           '<button type="button" class="row-btn" style="margin:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(p.first_purchase_promo_code) + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)">' + escapeOrderCell(p.first_purchase_promo_code) + '</button>' +
         '</div>';
-      }).join('') + '</div>' : '<p style="color:var(--muted);font-size:.82rem;">Промокоды пока не созданы.</p>') +
+      }).join('') + '</div>' : '<p style="color:var(--muted);font-size:.82rem;">Промокодов пока нет.</p>') +
     '</div>';
 
   document.getElementById('partners-tbody').innerHTML = adminPartners.length ? adminPartners.map(function(p) {
