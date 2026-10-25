@@ -207,11 +207,15 @@ function registerOwnerRoutes(router) {
     }
     const targetPointId = point_id !== undefined ? (point_id || null) : existing.point_id;
     // A reassignment must not retain an old groomer from another point.
+    const pointChanged = String(targetPointId || '') !== String(existing.point_id || '');
     const targetGroomerId = groomer_partner_id !== undefined
-      ? groomer_partner_id
-      : (String(targetPointId || '') !== String(existing.point_id || '')
-          ? null : existing.groomer_partner_id);
-    const groomerLink = validateOwnerGroomer(targetPointId, targetGroomerId);
+      ? groomer_partner_id : (pointChanged ? null : existing.groomer_partner_id);
+    // Only revalidate an intentionally modified link (or when moving salons).
+    // Turning off an owner must remain possible even if a historical groomer
+    // association has meanwhile become inactive.
+    const groomerLink = (groomer_partner_id !== undefined || pointChanged)
+      ? validateOwnerGroomer(targetPointId, targetGroomerId)
+      : { valid: true, id: targetGroomerId ?? null };
     if (!groomerLink.valid) return sendJson(res, 400, { error: groomerLink.error });
     db.prepare('UPDATE salon_owners SET active=?, full_name=?, phone=?, point_id=?, groomer_partner_id=? WHERE id=?').run(
       active !== undefined ? (active ? 1 : 0) : existing.active,
