@@ -89,7 +89,7 @@ test('CSV has products, totals and reasons, but no customer phone',()=>{
   assert.doesNotMatch(csv,/79990000000/);
   const text=report.formatNoGroomerReport(value);
   assert.match(text,/оплаченные заказы без грумера/);
-  assert.match(text,/ненулевая ставка комиссии/);
+  assert.match(text,/Заказов с ненулевой ставкой/);
 });
 test.after(()=>{
   try{db.close();}catch(_){}
