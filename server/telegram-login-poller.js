@@ -29,6 +29,7 @@ const {
 } = require('./expense-bot-create');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
+const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
 let lastUpdateId = 0;
 let polling = false;
 
@@ -64,6 +65,7 @@ async function configureBotProfile() {
       { command: 'tasks', description: 'Мои активные поручения' },
       { command: 'newtask', description: 'Создать новую задачу' },
       { command: 'expense', description: 'Добавить трату бизнеса' },
+      { command: 'salesweek', description: 'Отчёт по продажам за 7 дней' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
       { command: 'cancel', description: 'Отменить текущее действие' },
       { command: 'help', description: 'Как пользоваться ботом' },
@@ -108,6 +110,7 @@ function buildWelcomeMessage() {
     'Я помогу войти в личный кабинет и буду присылать важные уведомления о заказах, продажах и вознаграждениях.',
     '',
     'Сотрудникам: /tasks покажет активные поручения, /newtask создаст задачу, а /expense запишет трату бизнеса.',
+    'Администраторам: /salesweek соберёт отчёт по продажам за последние 7 дней.',
     '',
     'Чтобы подключить кабинет, откройте на сайте вход через Telegram и перейдите по созданной ссылке.',
   ].join('\n');
@@ -118,6 +121,9 @@ function botActionButtons(chatId) {
     { text: '➕ Новая задача', callback_data: 'newtsk:start' },
     { text: '💳 Добавить трату', callback_data: 'expense:start' },
   ]];
+  if (chatId && adminCanReadSales(chatId)) {
+    keyboard.push([{ text: '📊 Продажи за 7 дней', callback_data: 'sales:week' }]);
+  }
   if (chatId && require('./routes-partner-club').isClubModerator(chatId)) {
     keyboard.push([{ text: '🐾 Сообщение партнёрам', callback_data: 'club:new' }]);
   }
@@ -141,6 +147,48 @@ async function sendTaskInbox(chatId) {
   );
   for (const task of inbox.tasks) {
     await replyToChat(chatId, taskBotCard(task), taskButtons(task, 'telegram'));
+  }
+}
+
+
+async function sendSalesWeekCsv(chatId, csvText, period) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    const filename = 'sales-week-' + period.start_utc.slice(0,10) + '_' + period.end_utc.slice(0,10) + '.csv';
+    form.append('caption', 'Подробные продажи по датам и точкам · ХвостМаркет');
+    form.append('document', new Blob([csvText], { type: 'text/csv;charset=utf-8' }), filename);
+    const response = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendDocument`, {
+      method: 'POST', body: form, signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.description || ('Telegram HTTP ' + response.status));
+    return true;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function sendSalesWeekReport(chatId) {
+  if (!adminCanReadSales(chatId)) {
+    await replyToChat(chatId, '🔒 Отчёт по продажам доступен только администраторам ХвостМаркета с подключённым Telegram.');
+    return;
+  }
+  try {
+    const report = collectSalesWeekReport();
+    await replyToChat(chatId, formatSalesWeekReport(report));
+    const csv = buildSalesWeekCsv(report);
+    try {
+      await sendSalesWeekCsv(chatId, csv, report.period);
+    } catch (error) {
+      console.warn('Не удалось прикрепить CSV отчёта по продажам:', error.message);
+      await replyToChat(chatId, '⚠️ Сводка сформирована, но CSV не удалось отправить. Повторите /salesweek позднее.');
+    }
+  } catch (error) {
+    console.error('Ошибка формирования отчёта по продажам:', error.message);
+    await replyToChat(chatId, '⚠️ Не удалось собрать отчёт. Проверьте журналы сервера.');
   }
 }
 
@@ -188,6 +236,15 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (callback.data === 'sales:week') {
+      const chat = callback.message?.chat;
+      const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
+      await callBotApi('answerCallbackQuery', {
+        callback_query_id: callback.id, text: allowed ? 'Формируем отчёт' : 'Нет доступа', show_alert: !allowed,
+      });
+      if (allowed) await sendSalesWeekReport(chat.id);
+      return;
+    }
     if (callback.data === 'club:new') {
       const chatId = callback.message?.chat?.id;
       const result = require('./routes-partner-club').startClubPost(chatId);
@@ -274,6 +331,10 @@ async function processUpdate(update) {
     }
   }
 
+  if (/^\/(?:salesweek|sales_week)(?:@\w+)?$/i.test(text) || /^отч[её]т(?: по продажам)? за неделю$/i.test(text)) {
+    await sendSalesWeekReport(msg.chat.id);
+    return;
+  }
   if (/^\/newtask(?:@\w+)?$/i.test(text) || /^новая задача$/i.test(text)) {
     cancelExpenseCreation('telegram', msg.chat.id);
     const result = startTaskCreation('telegram', msg.chat.id);
