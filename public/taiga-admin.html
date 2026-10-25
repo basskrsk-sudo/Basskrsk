@@ -848,7 +848,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div>
             <div style="color:var(--amber);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;">ХвостМаркет · доступ к поручениям</div>
             <h2 style="font-size:1.45rem;margin:.35rem 0;">Поручения — отдельная страница</h2>
-            <p style="color:rgba(255,255,255,.8);font-size:.84rem;line-height:1.6;max-width:730px;">У каждого ответственного есть персональная ссылка, открывающая его список. Все участники могут посмотреть все поручения, но изменять чужие задачи нельзя. Ссылки не требуют отдельного входа — храните их как пароли.</p>
+            <p style="color:rgba(255,255,255,.8);font-size:.84rem;line-height:1.6;max-width:730px;">У каждого ответственного есть персональная ссылка, открывающая его список. Все участники могут посмотреть все поручения, но изменять чужие задачи нельзя. После первого входа с персональным кодом сотрудник сможет пользоваться коротким именным адресом на своём устройстве.</p>
           </div>
           <button class="row-btn" style="background:var(--amber);color:var(--deep);font-weight:700;" onclick="loadTaskLinks()">↻ Обновить ссылки</button>
         </div>
@@ -859,8 +859,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
       <div class="card" style="background:var(--cream,#faf8f1);">
         <div class="card-title">Как использовать ссылки</div>
-        <p style="font-size:.85rem;line-height:1.65;">Отправьте каждому сотруднику только его персональную ссылку. При открытии сразу включится фильтр по исполнителю, а кнопка «Все поручения» покажет общие задачи. Административная ссылка даёт полный контроль над поручениями и связью с ответственными. Если ссылка попала посторонним — нажмите «Перевыпустить», и старая перестанет работать.</p>
-        <p style="font-size:.78rem;color:var(--muted);margin-top:.5rem;">Ссылки генерируются сервером и остаются действительными после обновлений Amvera. Не публикуйте их в общих чатах, открытых документах или на сайте.</p>
+        <p style="font-size:.85rem;line-height:1.65;">Первый раз отправьте сотруднику ссылку активации (с секретным кодом). После этого он сможет открывать короткий именной адрес без кода на том же устройстве. При открытии сразу включится фильтр по исполнителю, а кнопка «Все поручения» покажет общие задачи. Административный код даёт полный контроль над задачами. Если код попал посторонним — нажмите «Перевыпустить», чтобы отозвать старый.</p>
+        <p style="font-size:.78rem;color:var(--muted);margin-top:.5rem;">Короткие именные адреса можно показывать открыто — сами по себе они не дают доступа. Ссылки активации содержат персональный код: передавайте их только адресату. После перевыпуска потребуется повторная активация на его устройстве.</p>
       </div>
     </div>
 
@@ -4043,8 +4043,12 @@ function taskEsc(value) {
   });
 }
 let taskPrivateLinks = [];
+const taskFriendlyPaths = Object.freeze({admin:'Админ',alexey:'Алексей',vitaly:'Виталий',angelina:'Ангелина',nikolay:'Николай'});
 function fullTaskUrl(item) {
-  return window.location.origin + (item.short ? '/t' + item.short : '/tasks.html' + item.hash);
+  return window.location.origin + '/' + taskFriendlyPaths[item.profile];
+}
+function fullTaskActivationUrl(item) {
+  return fullTaskUrl(item) + (item.short || item.hash);
 }
 function renderTaskLinks() {
   const el = document.getElementById('task-private-links');
@@ -4055,7 +4059,8 @@ function renderTaskLinks() {
       '<div style="font-size:.86rem;font-weight:800;margin-bottom:.55rem;color:var(--deep);">' + taskEsc(item.label) + '</div>' +
       '<div style="display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;">' +
       '<input id="task-share-url-' + index + '" aria-label="Персональная ссылка ' + taskEsc(item.label) + '" type="text" readonly autocomplete="off" spellcheck="false" value="' + taskEsc(url) + '" style="flex:1;min-width:180px;padding:.65rem .75rem;border-radius:8px;border:1px solid var(--border);font-size:.78rem;">' +
-      '<button class="row-btn" onclick="copyTaskLink(' + index + ')">📋 Скопировать</button>' +
+      '<button class="row-btn" onclick="copyTaskLink(' + index + ')">📋 Скопировать адрес</button>' +
+      '<button class="row-btn" style="background:var(--amber);color:var(--deep);" onclick="copyTaskActivationLink(' + index + ')">🔑 Скопировать для первого входа</button>' +
       '<button class="row-btn" onclick="openTaskLink(' + index + ')">Открыть</button>' +
       '<button class="row-btn danger" onclick="rotateTaskLink(' + index + ')">Перевыпустить</button></div>' +
       '<div style="font-size:.71rem;color:var(--muted);margin-top:.45rem;">' +
@@ -4091,10 +4096,21 @@ async function copyTaskLink(index) {
     else window.prompt('Скопируйте персональную ссылку:',url);
   }
 }
+async function copyTaskActivationLink(index) {
+  const item=taskPrivateLinks[index];
+  if(!item)return;
+  const url=fullTaskActivationUrl(item);
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Ссылка первого входа для «'+item.label+'» скопирована. Передавайте лично.');
+  } catch(error) {
+    window.prompt('Скопируйте персональную ссылку активации:',url);
+  }
+}
 function openTaskLink(index) {
   const item=taskPrivateLinks[index];
   if(!item) return;
-  window.open(fullTaskUrl(item),'_blank','noopener,noreferrer');
+  window.open(fullTaskActivationUrl(item),'_blank','noopener,noreferrer');
 }
 async function rotateTaskLink(index) {
   const item=taskPrivateLinks[index];

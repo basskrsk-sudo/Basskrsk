@@ -240,8 +240,16 @@ const server = http.createServer(async (req, res) => {
     res.end();
     return;
   }
-  // Short task URLs: the capability secret is in the URL fragment, never sent to the server.
-  if ((req.method === 'GET' || req.method === 'HEAD') && (pathname === '/t' || pathname === '/t/')) {
+  // Friendly name-based task URLs. A predictable path is NOT an access key:
+  // all task data is still protected by the profile-specific capability token.
+  // The token is supplied on first activation and kept on the user's device.
+  let namedTaskPath = false;
+  try {
+    const cleanPath = decodeURIComponent(pathname).replace(/\/$/, '').toLowerCase();
+    namedTaskPath = ['/админ','/алексей','/виталий','/ангелина','/николай'].includes(cleanPath);
+  } catch (_) { /* malformed paths are rejected by the regular static handler */ }
+  if ((req.method === 'GET' || req.method === 'HEAD') &&
+      (namedTaskPath || pathname === '/t' || pathname === '/t/')) {
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Cache-Control', 'no-store');
     return serveStatic(req, res, '/tasks.html');

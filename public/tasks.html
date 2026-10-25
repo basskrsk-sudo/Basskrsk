@@ -39,9 +39,21 @@ dialog{width:min(650px,calc(100% - 1.4rem));max-height:90vh;overflow:auto;border
 <header><div class="header-inner"><div class="brand"><span class="brand-dot"></span> ХвостМаркет <span style="font-weight:500;opacity:.7;">/ Поручения</span></div><a href="/">На сайт ↗</a></div></header>
 <main class="wrap">
   <div id="loading">Проверяем персональную ссылку…</div>
-  <div id="accessError" class="error"><strong>Нет доступа к поручениям.</strong><p id="accessErrorText">Откройте страницу по персональной ссылке, полученной от администратора.</p></div>
+  <div id="accessError" class="error">
+    <strong id="accessErrorTitle">Доступ к поручениям</strong>
+    <p id="accessErrorText">Для первого входа нужен персональный код, выданный администратором.</p>
+    <form id="activationForm" onsubmit="activateTaskPage(event)" style="display:none;margin-top:.9rem;">
+      <label class="field" for="activationCode"><span>Персональный код (только для первого входа на этом устройстве)</span>
+        <input id="activationCode" name="activationCode" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Вставьте код из ссылки, полученной от администратора" style="max-width:460px;">
+      </label>
+      <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.75rem;">
+        <button type="submit" class="button" id="activationButton">Открыть поручения</button>
+        <span class="small">Код запоминается в этом браузере. Используйте личное устройство и не пересылайте код другим людям.</span>
+      </div>
+    </form>
+  </div>
   <div id="app">
-    <div class="hero"><div><div class="chip" id="identity">🐾 Поручения</div><h1>Контроль поручений</h1><p class="intro">Задачи ХвостМаркета, сроки, прогресс и заметки планёрок. Ответственные могут просматривать все задачи, но редактировать только свои. Администратор управляет всеми.</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button id="createTaskBtn" class="button yellow" style="display:none" onclick="openTaskEditor()">+ Новое поручение</button><button class="button secondary" onclick="loadData()">↻ Обновить</button></div></div>
+    <div class="hero"><div><div class="chip" id="identity">🐾 Поручения</div><h1>Контроль поручений</h1><p class="intro">Задачи ХвостМаркета, сроки, прогресс и заметки планёрок. Ответственные могут просматривать все задачи, но редактировать только свои. Администратор управляет всеми.</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button id="createTaskBtn" class="button yellow" style="display:none" onclick="openTaskEditor()">+ Новое поручение</button><button class="button secondary" onclick="loadData()">↻ Обновить</button><button class="button secondary" onclick="forgetThisDevice()" title="Удалить код доступа из этого браузера">Выйти</button></div></div>
     <div class="stats" id="stats"></div>
     <section class="panel">
       <div class="bar"><div class="tabs" id="modeTabs"><button class="tab" id="tabMine" onclick="setMode('mine')">Мои поручения</button><button class="tab" id="tabAll" onclick="setMode('all')">Все поручения</button></div><span class="small" id="resultsCount"></span></div>
@@ -84,6 +96,33 @@ dialog{width:min(650px,calc(100% - 1.4rem));max-height:90vh;overflow:auto;border
 'use strict';
 const BASE = '/api/task-page';
 let token = null, actor = null, tasks = [], members = [], notes = [], mode = 'all', editorTaskId = null;
+
+const FRIENDLY_PROFILES = Object.freeze({
+  'админ':'admin', 'алексей':'alexey', 'виталий':'vitaly',
+  'ангелина':'angelina', 'николай':'nikolay'
+});
+const PROFILE_SLUGS = Object.freeze({
+  admin:'Админ', alexey:'Алексей', vitaly:'Виталий',
+  angelina:'Ангелина', nikolay:'Николай'
+});
+const TOKEN_PATTERN = /^(?:[a-f0-9]{64}|[A-Za-z0-9_-]{22})$/;
+const CURRENT_PROFILE = (() => {
+  try {
+    const slug = decodeURIComponent(location.pathname).replace(/\/+$/, '').split('/').pop().toLowerCase();
+    return FRIENDLY_PROFILES[slug] || null;
+  } catch (_) { return null; }
+})();
+function storageKey(profileKey) { return 'hvostmarket:task-link:v1:' + profileKey; }
+function rememberToken(profileKey, accessCode) {
+  try { localStorage.setItem(storageKey(profileKey), accessCode); } catch (_) {}
+}
+function cachedToken(profileKey) {
+  try { return localStorage.getItem(storageKey(profileKey)); } catch (_) { return null; }
+}
+function forgetToken(profileKey) {
+  try { localStorage.removeItem(storageKey(profileKey)); } catch (_) {}
+}
+
 const $ = id => document.getElementById(id);
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function safeDate(v) { if(!v) return 'Не установлен'; if(!/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return escapeHtml(v); const x = String(v).split('-'); return x[2]+'.'+x[1]+'.'+x[0]; }
@@ -113,30 +152,93 @@ async function api(route, options = {}) {
   }
   return data;
 }
-function accessError(message) {
-  $('loading').style.display='none';$('app').style.display='none';$('accessError').style.display='block';
+function accessError(message, requestCode = true) {
+  $('loading').style.display='none';
+  $('app').style.display='none';
+  $('accessError').style.display='block';
   $('accessErrorText').textContent=message;
+  $('activationForm').style.display = requestCode ? 'block' : 'none';
+}
+function clearSecretFromAddress(profileKey) {
+  // Remove credential from URL and browser history after authorization.
+  const canonical = PROFILE_SLUGS[profileKey] ? '/' + PROFILE_SLUGS[profileKey] : location.pathname;
+  history.replaceState(null, '', canonical);
+}
+async function connectWithToken(candidate, expectedProfile) {
+  token = candidate;
+  const session = await api('/session');
+  const selected = session.actor;
+  if (expectedProfile && selected.key !== expectedProfile) {
+    const error = new Error('Этот код принадлежит другому участнику. Запросите нужный код.');
+    error.status = 403;
+    throw error;
+  }
+  actor = selected;
+  rememberToken(actor.key, token);
+  clearSecretFromAddress(actor.key);
+  mode = actor.is_admin ? 'all' : 'mine';
+  $('identity').textContent = actor.is_admin ? '🛡️ Администратор' : '🐾 '+actor.label;
+  $('tabMine').style.display = actor.is_admin ? 'none' : '';
+  $('createTaskBtn').style.display = actor.is_admin ? '' : 'none';
+  $('peopleBlock').style.display = actor.is_admin ? '' : 'none';
+  $('accessError').style.display='none';
+  $('loading').style.display='none';
+  $('app').style.display='block';
+  await loadData();
+}
+function forgetThisDevice() {
+  if (!actor) return;
+  const profileKey = actor.key;
+  forgetToken(profileKey);
+  token = null;
+  actor = null;
+  tasks = [];
+  members = [];
+  notes = [];
+  $('activationCode').value = '';
+  accessError('Доступ на этом устройстве сброшен. Для повторного входа понадобится персональный код.');
+}
+async function activateTaskPage(event) {
+  event.preventDefault();
+  const candidate = $('activationCode').value.trim();
+  if (!TOKEN_PATTERN.test(candidate)) {
+    accessError('Проверьте код: он должен быть скопирован целиком.');
+    return;
+  }
+  const button = $('activationButton');
+  button.disabled = true;
+  try {
+    await connectWithToken(candidate, CURRENT_PROFILE);
+    $('activationCode').value = '';
+  } catch (err) {
+    if (err.status === 401 && CURRENT_PROFILE) forgetToken(CURRENT_PROFILE);
+    accessError(err.status === 401
+      ? 'Код не действует или был заменён. Запросите новый у администратора.'
+      : err.message);
+  } finally {
+    button.disabled = false;
+  }
 }
 async function boot() {
   const rawHash = location.hash.slice(1);
   const hash = new URLSearchParams(rawHash);
-  token = hash.get('key') || (/^[A-Za-z0-9_-]{22}$/.test(rawHash) ? rawHash : null);
-  if (!/^(?:[a-f0-9]{64}|[A-Za-z0-9_-]{22})$/.test(token || '')) {
-    accessError('Эта страница доступна только по персональной ссылке. Попросите администратора прислать её.');
+  const fromLink = hash.get('key') || (TOKEN_PATTERN.test(rawHash) ? rawHash : null);
+  const cached = CURRENT_PROFILE && cachedToken(CURRENT_PROFILE);
+  const candidate = fromLink || cached;
+  if (!candidate || !TOKEN_PATTERN.test(candidate)) {
+    accessError('Для первого входа по именной ссылке нужен персональный код. Администратор может отправить ссылку активации или код.');
     return;
   }
   try {
-    const session = await api('/session');
-    actor = session.actor;
-    mode = actor.is_admin ? 'all' : 'mine';
-    $('identity').textContent = actor.is_admin ? '🛡️ Администратор' : '🐾 '+actor.label;
-    $('tabMine').style.display = actor.is_admin ? 'none' : '';
-    $('createTaskBtn').style.display = actor.is_admin ? '' : 'none';
-    $('peopleBlock').style.display = actor.is_admin ? '' : 'none';
-    $('loading').style.display='none'; $('app').style.display='block';
-    await loadData();
-  } catch(err) {
-    accessError(err.status===401 ? 'Ссылка не действует или была заменена. Обратитесь к администратору за новой.' : 'Не удалось открыть поручения: '+err.message);
+    await connectWithToken(candidate, CURRENT_PROFILE);
+  } catch (err) {
+    if (cached && candidate === cached && CURRENT_PROFILE && err.status === 401) {
+      forgetToken(CURRENT_PROFILE);
+    }
+    if (location.hash) history.replaceState(null, '', location.pathname);
+    accessError(err.status === 401
+      ? 'Сохранённый доступ устарел или был перевыпущен. Введите новый код.'
+      : err.message);
   }
 }
 async function loadData() {
@@ -144,7 +246,7 @@ async function loadData() {
     const result=await Promise.all([api('/tasks'),api('/assignees'),api('/meeting-notes')]);
     tasks=result[0].tasks || [];members=result[1].members || [];notes=result[2].notes || [];
     updateFilters();renderStats();renderTasks();renderNotes();if(actor.is_admin)renderPeople();
-  }catch(err){if(err.status===401)return accessError('Срок действия ссылки завершён: запросите новый адрес.');toast(err.message,true);}
+  }catch(err){if(err.status===401){if(actor)forgetToken(actor.key);return accessError('Ссылка была перевыпущена. Введите новый персональный код.');}toast(err.message,true);}
 }
 function setMode(selected) { mode=selected;renderTasks(); }
 function renderStats(){
