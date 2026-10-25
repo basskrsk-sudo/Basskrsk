@@ -102,6 +102,7 @@ function registerOwnerRoutes(router) {
       SELECT
         so.*,
         p.name AS point_name,
+        gp.full_name AS groomer_partner_name,
         COUNT(o.id) AS paid_orders_count,
         COALESCE(SUM(o.total), 0) AS paid_revenue,
         COALESCE(SUM(
@@ -112,6 +113,7 @@ function registerOwnerRoutes(router) {
         ), 0) AS month_paid_revenue
       FROM salon_owners so
       LEFT JOIN points p ON p.id = so.point_id
+      LEFT JOIN partners gp ON gp.id = so.groomer_partner_id
       LEFT JOIN orders o ON o.point_id = so.point_id AND o.status = 'paid'
       GROUP BY so.id
       ORDER BY so.id DESC
