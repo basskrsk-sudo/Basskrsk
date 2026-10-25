@@ -118,9 +118,10 @@ function accessError(message) {
   $('accessErrorText').textContent=message;
 }
 async function boot() {
-  const hash = new URLSearchParams(location.hash.slice(1));
-  token = hash.get('key');
-  if (!/^[a-f0-9]{64}$/.test(token || '')) {
+  const rawHash = location.hash.slice(1);
+  const hash = new URLSearchParams(rawHash);
+  token = hash.get('key') || (/^[A-Za-z0-9_-]{22}$/.test(rawHash) ? rawHash : null);
+  if (!/^(?:[a-f0-9]{64}|[A-Za-z0-9_-]{22})$/.test(token || '')) {
     accessError('Эта страница доступна только по персональной ссылке. Попросите администратора прислать её.');
     return;
   }

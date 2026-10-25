@@ -240,6 +240,12 @@ const server = http.createServer(async (req, res) => {
     res.end();
     return;
   }
+  // Short task URLs: the capability secret is in the URL fragment, never sent to the server.
+  if ((req.method === 'GET' || req.method === 'HEAD') && (pathname === '/t' || pathname === '/t/')) {
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Cache-Control', 'no-store');
+    return serveStatic(req, res, '/tasks.html');
+  }
   if ((req.method === 'GET' || req.method === 'HEAD') && (pathname === '/p' || pathname.startsWith('/p/'))) {
     return serveStatic(req, res, '/p.html');
   }

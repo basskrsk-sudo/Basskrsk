@@ -11,7 +11,7 @@ process.env.DATA_DIR = tmp;
 const db = require('./db');
 const { Router } = require('./http-utils');
 const {
-  registerTaskPageRoutes, accessToken, findAccess, PROFILES,
+  registerTaskPageRoutes, accessToken, shortToken, findAccess, PROFILES,
 } = require('./routes-task-page');
 const router = new Router();
 registerTaskPageRoutes(router);
@@ -58,6 +58,19 @@ test('five stable private profiles with independent unpredictable tokens', () =>
   assert.equal(findAccess(tokens.vitaly).assignee_id,vitaly);
   assert.equal(findAccess('f'.repeat(64)),null);
   assert.equal(accessToken('alexey',1),tokens.alexey);
+});
+
+test('short personal links authenticate the correct profile and keep full links valid', async () => {
+  const short = Object.fromEntries(PROFILES.map(p => [p.key,shortToken(p.key,1)]));
+  assert.equal(new Set(Object.values(short)).size,5);
+  for (const code of Object.values(short)) assert.match(code,/^[A-Za-z0-9_-]{22}$/);
+  assert.equal(findAccess(short.alexey).assignee_id,alexey);
+  assert.equal(findAccess(short.vitaly).assignee_id,vitaly);
+  assert.equal(findAccess(short.admin).is_admin,true);
+  const result = await request('GET','/api/task-page/tasks',short.alexey);
+  assert.equal(result.statusCode,200);
+  assert.equal(result.data.tasks.length,2);
+  assert.equal((await request('GET','/api/task-page/tasks','x'.repeat(22))).statusCode,401);
 });
 test('viewer needs a valid key; personal profile defaults are server-enforced', async () => {
   assert.equal((await request('GET','/api/task-page/session')).statusCode,401);
@@ -110,7 +123,10 @@ test('rotated profile keys revoke old links, including after module reload', asy
   db.prepare('UPDATE task_page_access SET generation=2 WHERE profile_key=?').run('alexey');
   assert.equal((await request('GET','/api/task-page/tasks',tokens.alexey)).statusCode,401);
   const token = accessToken('alexey',2);
+  const currentShort = shortToken('alexey',2);
   assert.equal((await request('GET','/api/task-page/tasks',token)).statusCode,200);
+  assert.equal((await request('GET','/api/task-page/tasks',shortToken('alexey',1))).statusCode,401);
+  assert.equal((await request('GET','/api/task-page/tasks',currentShort)).statusCode,200);
   delete require.cache[require.resolve('./routes-task-page')];
   const reloaded = require('./routes-task-page');
   assert.equal(reloaded.accessToken('alexey',2),token);
