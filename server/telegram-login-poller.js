@@ -30,6 +30,7 @@ const {
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
 const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
+const { collectNoGroomerReport, formatNoGroomerReport, buildNoGroomerCsv } = require('./no-groomer-report');
 const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
 let lastUpdateId = 0;
 let polling = false;
@@ -67,6 +68,7 @@ async function configureBotProfile() {
       { command: 'newtask', description: 'Создать новую задачу' },
       { command: 'expense', description: 'Добавить трату бизнеса' },
       { command: 'salesweek', description: 'Отчёт по продажам за 7 дней' },
+      { command: 'nogroomer', description: 'Оплаченные заказы без грумера' },
       { command: 'payouts', description: 'Справка для выплат партнёрам' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
       { command: 'cancel', description: 'Отменить текущее действие' },
@@ -112,7 +114,7 @@ function buildWelcomeMessage() {
     'Я помогу войти в личный кабинет и буду присылать важные уведомления о заказах, продажах и вознаграждениях.',
     '',
     'Сотрудникам: /tasks покажет активные поручения, /newtask создаст задачу, а /expense запишет трату бизнеса.',
-    'Администраторам: /salesweek — продажи за 7 дней; /payouts — справки для выплаты грумерам, владельцам и менеджерам.',
+    'Администраторам: /salesweek — продажи за 7 дней; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
     '',
     'Чтобы подключить кабинет, откройте на сайте вход через Telegram и перейдите по созданной ссылке.',
   ].join('\n');
@@ -125,6 +127,7 @@ function botActionButtons(chatId) {
   ]];
   if (chatId && adminCanReadSales(chatId)) {
     keyboard.push([{ text: '📊 Продажи за 7 дней', callback_data: 'sales:week' }]);
+    keyboard.push([{ text: '🔎 Заказы без грумера', callback_data: 'sales:nogroomer' }]);
     keyboard.push([{ text: '💸 Справки к выплатам', callback_data: 'payouts:prepare' }]);
   }
   if (chatId && require('./routes-partner-club').isClubModerator(chatId)) {
@@ -171,6 +174,39 @@ async function sendSalesWeekCsv(chatId, csvText, period) {
     return true;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+
+async function sendNoGroomerReport(chatId, days) {
+  if (!adminCanReadSales(chatId)) {
+    await replyToChat(chatId,
+      '🔒 Список заказов без грумера доступен только администраторам ХвостМаркета в личном чате.');
+    return;
+  }
+  try {
+    const report = collectNoGroomerReport(days);
+    await replyToChat(chatId, formatNoGroomerReport(report));
+    if (!report.orders.length) return;
+    const csv = buildNoGroomerCsv(report);
+    const periodSuffix = days ? '-' + days + 'days' : '-all';
+    const date = report.generated_at.slice(0,10);
+    try {
+      await sendPayoutBriefDocument(
+        chatId, csv, 'HvostMarket_no_groomer' + periodSuffix + '_' + date + '.csv',
+        'Заказы без грумера: номер, дата, точка, товары, сумма и причина. ' +
+          report.period.description + '.',
+        'text/csv;charset=utf-8'
+      );
+    } catch (error) {
+      console.warn('Не удалось отправить CSV заказов без грумера:', error.message);
+      await replyToChat(chatId,
+        '⚠️ Сводка готова, но CSV не удалось отправить. Повторите /nogroomer позднее.');
+    }
+  } catch (error) {
+    console.error('Ошибка отчёта по заказам без грумера:', error.message);
+    await replyToChat(chatId,
+      '⚠️ Не удалось собрать список заказов без грумера. Проверьте журналы сервера.');
   }
 }
 
@@ -311,6 +347,17 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (callback.data === 'sales:nogroomer') {
+      const chat = callback.message?.chat;
+      const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
+      await callBotApi('answerCallbackQuery', {
+        callback_query_id: callback.id,
+        text: allowed ? 'Собираем заказы без грумера' : 'Нет доступа',
+        show_alert: !allowed,
+      });
+      if (allowed) await sendNoGroomerReport(chat.id);
+      return;
+    }
     if (callback.data === 'payouts:prepare') {
       const chat = callback.message?.chat;
       const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
@@ -417,6 +464,17 @@ async function processUpdate(update) {
     }
   }
 
+  const noGroomerCommand = text.match(/^\/nogroomer(?:@\w+)?(?:\s+(\S+))?$/i);
+  if (noGroomerCommand) {
+    if (noGroomerCommand[1] && !['7', '30'].includes(noGroomerCommand[1])) {
+      await replyToChat(msg.chat.id,
+        'Используйте /nogroomer — за всё время, /nogroomer 7 или /nogroomer 30.');
+    } else {
+      await sendNoGroomerReport(msg.chat.id,
+        noGroomerCommand[1] ? Number(noGroomerCommand[1]) : undefined);
+    }
+    return;
+  }
   if (/^\/(?:payouts|payoutbrief)(?:@\w+)?$/i.test(text) || /^справк[аи] (?:для |к )?выплат[аым]?$/i.test(text)) {
     await sendPayoutBriefs(msg.chat.id);
     return;
