@@ -107,7 +107,7 @@ test('each recipient gets a standalone itemized sales report with a precise peri
   assert.match(message,/7% \(Менеджер\)/);
   assert.match(message,/Вознаграждение: 200 ₽/);
   const csv=buildPayoutBriefCsv(report);
-  assert.match(csv,/Дата продажи \(Красноярск\)/);
+  assert.match(csv,/Дата заказа\/продажи \(Красноярск\)/);
   assert.match(csv,/Наименования товаров/);
   assert.match(csv,/ORDER-A/);
   assert.match(csv,/23\.10\.2026/);
