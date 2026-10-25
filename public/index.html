@@ -6078,6 +6078,7 @@ async function checkPointGroomers(pointId) {
     const res = await fetch('/api/points/' + encodeURIComponent(pointId) + '/partners');
     if (!res.ok) throw new Error('Не удалось загрузить список');
     const data = await res.json();
+    if (document.getElementById('oPickupSelect').value !== pointId) return;
     const partners = data.partners || [];
     if (!partners.length) { reset(); return; }
 
@@ -6098,9 +6099,18 @@ async function checkPointGroomers(pointId) {
     const linkedPartner = partners.find(function(partner) {
       return String(partner.id) === linkedPartnerId;
     });
+    const automaticPartner = partners.find(function(partner) {
+      return String(partner.id) === String(data.default_partner_id || '');
+    });
     if (linkedPartner) {
       groomerSel.value = String(linkedPartner.id);
       linkHint.textContent = '✓ Советник определён по персональной ссылке: ' + linkedPartner.full_name;
+      linkHint.style.display = 'block';
+    } else if (automaticPartner) {
+      groomerSel.value = String(automaticPartner.id);
+      linkHint.textContent = '✓ По умолчанию выбран ' + automaticPartner.full_name +
+        (data.default_source === 'auto_single' ? ' — единственный грумер точки.' : ' — грумер-владелец салона.') +
+        ' При необходимости можно выбрать другого.';
       linkHint.style.display = 'block';
     }
   } catch (e) {
