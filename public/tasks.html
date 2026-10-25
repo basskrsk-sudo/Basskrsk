@@ -41,7 +41,7 @@ dialog{width:min(650px,calc(100% - 1.4rem));max-height:90vh;overflow:auto;border
   <div id="loading">Проверяем персональную ссылку…</div>
   <div id="accessError" class="error"><strong>Нет доступа к поручениям.</strong><p id="accessErrorText">Откройте страницу по персональной ссылке, полученной от администратора.</p></div>
   <div id="app">
-    <div class="hero"><div><div class="chip" id="identity">🐾 Поручения</div><h1>Контроль поручений</h1><p class="intro">Задачи ХвостМаркета, сроки, прогресс и заметки планёрок. Можно смотреть всю команду, но менять — только собственные поручения.</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button id="createTaskBtn" class="button yellow" style="display:none" onclick="openTaskEditor()">+ Новое поручение</button><button class="button secondary" onclick="loadData()">↻ Обновить</button></div></div>
+    <div class="hero"><div><div class="chip" id="identity">🐾 Поручения</div><h1>Контроль поручений</h1><p class="intro">Задачи ХвостМаркета, сроки, прогресс и заметки планёрок. Ответственные могут просматривать все задачи, но редактировать только свои. Администратор управляет всеми.</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button id="createTaskBtn" class="button yellow" style="display:none" onclick="openTaskEditor()">+ Новое поручение</button><button class="button secondary" onclick="loadData()">↻ Обновить</button></div></div>
     <div class="stats" id="stats"></div>
     <section class="panel">
       <div class="bar"><div class="tabs" id="modeTabs"><button class="tab" id="tabMine" onclick="setMode('mine')">Мои поручения</button><button class="tab" id="tabAll" onclick="setMode('all')">Все поручения</button></div><span class="small" id="resultsCount"></span></div>
