@@ -273,7 +273,7 @@ canvas#sigCanvas.has-sig{border-color:var(--deep);}
     <div style="font-size:3rem;margin-bottom:.5rem;">✅</div>
     <div class="card-title" style="text-align:center;">Готово! Вы зарегистрированы</div>
     <div id="success-details" style="text-align:left;font-size:.9rem;color:var(--text);line-height:1.9;background:var(--cream);border-radius:10px;padding:1.2rem 1.4rem;margin:1rem 0;"></div>
-    <p style="font-size:.85rem;color:var(--muted);">Можно сразу входить в личный кабинет по указанным логину и паролю. Реквизиты для выплат и формат размещения на точке уточним отдельно, когда точка будет готова к первым продажам.</p>
+    <p style="font-size:.85rem;color:var(--muted);">Персональный промокод даёт новым покупателям скидку 20% на товары при первой покупке. Он также доступен в кабинете грумера, вместе со ссылкой для покупателей. Можно сразу входить по указанным логину и паролю.</p>
   </div>
 
 </div>
@@ -422,7 +422,8 @@ async function submitForm() {
       '<strong>Партнёр:</strong> ' + ln + ' ' + fn + '<br>' +
       '<strong>Телефон:</strong> ' + phone + '<br>' +
       '<strong>Минимаркет:</strong> ' + (selectedPoint ? selectedPoint.icon + ' ' + selectedPoint.name + ' — ' + selectedPoint.addr : '') + '<br>' +
-      '<strong>Код партнёра:</strong> ' + data.partner_code;
+      '<strong>Код партнёра:</strong> ' + data.partner_code + '<br>' +
+      '<strong>Ваш промокод −20% на первую покупку:</strong> ' + (data.first_purchase_promo_code || 'Смотрите в кабинете грумера');
   } catch (e) {
     errBox.textContent = e.message;
     errBox.style.display = 'block';
