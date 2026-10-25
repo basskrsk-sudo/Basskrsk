@@ -56,7 +56,9 @@ function payoutBriefPdfPages(report,font,options={}){
       text(60,y,person.roles_label+(continuation?' (продолжение)':''),19,'#52695A');
       y+=39;
       text(60,y,'Период расчётов: '+(person.period?.label || 'не указан'),20,'#1C3A2F');
-      y+=43;
+      y+=29;
+      text(60,y,'Дата продажи — по времени создания оплаченного заказа.',16,'#64766B');
+      y+=35;
     }
   }
   function footer(){
