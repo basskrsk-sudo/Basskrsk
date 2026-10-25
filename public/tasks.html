@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<title>Поручения | ХвостМаркет</title>
+<style>
+:root{--forest:#1c3a2f;--forest2:#28513e;--green:#e3efdd;--mint:#f2f8ed;--yellow:#ffcf55;--cream:#faf8f1;--white:#fff;--ink:#23332b;--muted:#637269;--border:#dce5dc;--red:#a63b3b;--shadow:0 10px 25px rgba(25,54,35,.07)}
+*{box-sizing:border-box}body{font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:var(--cream);color:var(--ink);margin:0;line-height:1.45}button,input,select,textarea{font:inherit}button{cursor:pointer}a{color:var(--forest)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #85b6f4;outline-offset:2px}
+header{background:var(--forest);color:#fff;padding:1.1rem max(1.2rem,calc((100vw - 1230px)/2));box-shadow:var(--shadow)}
+.header-inner{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}.brand{font-size:1.15rem;font-weight:850;letter-spacing:-.025em;display:flex;align-items:center;gap:.5rem}.brand-dot{width:14px;height:14px;background:var(--yellow);border-radius:50%}.small{font-size:.8rem;color:var(--muted)}header .small{color:#d3e5d6}header a{color:#ebf5e3;text-decoration:none;font-size:.8rem}
+.wrap{max-width:1230px;margin:0 auto;padding:1.4rem 1.2rem 4rem}.hero{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.2rem}
+h1{font-size:clamp(1.55rem,3vw,2rem);margin:.1rem 0 .4rem;letter-spacing:-.035em}h2{font-size:1.15rem;margin:0}.intro{color:var(--muted);margin:0;max-width:720px;font-size:.88rem}
+.chip{display:inline-flex;align-items:center;gap:.4rem;border-radius:40px;background:var(--green);padding:.38rem .7rem;font-size:.76rem;font-weight:700;color:var(--forest)}
+.panel{background:#fff;border:1px solid var(--border);border-radius:16px;padding:1rem;box-shadow:var(--shadow);margin-bottom:1rem}
+.error{background:#fff8f4;border:1px solid #dfb3a9;color:#802b22;padding:1rem;border-radius:12px}
+.button{border:none;background:var(--forest);color:#fff;padding:.72rem 1rem;border-radius:10px;font-size:.83rem;font-weight:700}
+.button:hover{background:var(--forest2)}.button.secondary{background:#fff;color:var(--forest);border:1px solid var(--border)}
+.button.secondary:hover{background:var(--mint)}.button.yellow{background:var(--yellow);color:var(--forest)}.button.danger{color:var(--red)}
+.button.tiny{font-size:.75rem;padding:.42rem .62rem;border-radius:8px}.button:disabled{opacity:.5;cursor:default}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.7rem;margin-bottom:1rem}.stat{background:#fff;border:1px solid var(--border);border-radius:14px;padding:1rem}.stat span{display:block;color:var(--muted);font-size:.75rem}.stat strong{display:block;font-size:1.65rem;margin-top:.2rem}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin-bottom:.85rem}.tabs{display:flex;border:1px solid var(--border);border-radius:12px;background:var(--mint);padding:.24rem;gap:.25rem}.tab{border:0;padding:.65rem 1rem;border-radius:9px;background:transparent;color:var(--muted);font-weight:720;font-size:.82rem}.tab.active{background:var(--forest);color:#fff}
+.filters{display:grid;grid-template-columns:minmax(160px,2fr) repeat(3,minmax(120px,1fr));gap:.6rem;margin-bottom:1rem}.field{display:block}.field span{display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem}.field input,.field select,.field textarea{width:100%;border:1px solid #ced9ce;border-radius:10px;padding:.7rem .75rem;color:var(--ink);background:white;min-width:0}.field textarea{resize:vertical;min-height:100px}.field label{font-weight:500}
+.stack{display:grid;gap:.7rem}.task{border:1px solid var(--border);background:#fff;border-radius:13px;padding:1rem}.task.own{border-left:4px solid #eeb634}.task-head{display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap}.task-title{font-size:.97rem;font-weight:800;color:var(--forest);margin:0 0 .4rem}.task-meta{display:flex;flex-wrap:wrap;gap:.45rem .75rem;align-items:center;font-size:.77rem;color:var(--muted)}.task-desc{white-space:pre-wrap;font-size:.82rem;color:var(--ink);margin:.65rem 0;line-height:1.6}
+.pill{display:inline-flex;align-items:center;gap:.15rem;border-radius:30px;padding:.22rem .55rem;background:#eff4ec;color:var(--forest);font-weight:700;font-size:.72rem}.pill.new{background:#e8f2ff;color:#2c5d8a}.pill.in_progress{background:#fff2d5;color:#855707}.pill.done{background:#e3f4e7;color:#217344}.pill.blocked{background:#fbe7e7;color:#a63b3b}.pill.cancelled{background:#e8e8e8;color:#666}.pill.overdue{background:#ffeded;color:#a63b3b}
+.actions{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;margin-top:.7rem}.faded{color:var(--muted)}.history{margin-top:.8rem;padding:.7rem;background:var(--mint);border-radius:9px;display:grid;gap:.55rem}.history-row{font-size:.78rem;border-bottom:1px solid var(--border);padding-bottom:.45rem;white-space:pre-wrap;overflow-wrap:anywhere}.history-row:last-child{border-bottom:none}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.7rem}.note{border:1px solid var(--border);border-radius:11px;background:var(--mint);padding:.9rem}.note h3{font-size:.88rem;margin:.2rem 0}.note p{font-size:.82rem;line-height:1.5;margin:.3rem 0}
+.people{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.7rem}.person{padding:.85rem;border:1px solid var(--border);border-radius:12px}.person-title{display:flex;justify-content:space-between;gap:.5rem;margin-bottom:.6rem}
+#loading{text-align:center;margin:15vh 0;color:var(--muted)}#app,#accessError{display:none}
+dialog{width:min(650px,calc(100% - 1.4rem));max-height:90vh;overflow:auto;border:1px solid var(--border);border-radius:17px;padding:1.3rem;box-shadow:0 20px 100px rgba(0,0,0,.2)}dialog::backdrop{background:rgba(15,39,24,.6)}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:.8rem 0}.form-wide{grid-column:1/-1}.form-actions{display:flex;justify-content:flex-end;gap:.5rem;flex-wrap:wrap;margin-top:1rem}.checkline{display:flex;align-items:center;gap:.55rem;font-size:.85rem;margin:.65rem 0}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e4433;color:#fff;border-radius:10px;padding:.75rem 1rem;box-shadow:var(--shadow);max-width:min(90vw,580px);display:none;z-index:50;font-size:.82rem}
+@media(max-width:730px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.filters .search-field{grid-column:1/-1}header{padding:1rem}.wrap{padding:1.1rem .8rem 3rem}.stat strong{font-size:1.35rem}.form-grid{grid-template-columns:1fr}.form-wide{grid-column:1}}
+@media print{header,.bar,.filters,.actions,.button,dialog,.toast{display:none!important}.panel,.task{box-shadow:none;break-inside:avoid}.task-desc{display:block}.wrap{max-width:none}}
+</style>
+</head>
+<body>
+<header><div class="header-inner"><div class="brand"><span class="brand-dot"></span> ХвостМаркет <span style="font-weight:500;opacity:.7;">/ Поручения</span></div><a href="/">На сайт ↗</a></div></header>
+<main class="wrap">
+  <div id="loading">Проверяем персональную ссылку…</div>
+  <div id="accessError" class="error"><strong>Нет доступа к поручениям.</strong><p id="accessErrorText">Откройте страницу по персональной ссылке, полученной от администратора.</p></div>
+  <div id="app">
+    <div class="hero"><div><div class="chip" id="identity">🐾 Поручения</div><h1>Контроль поручений</h1><p class="intro">Задачи ХвостМаркета, сроки, прогресс и заметки планёрок. Можно смотреть всю команду, но менять — только собственные поручения.</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button id="createTaskBtn" class="button yellow" style="display:none" onclick="openTaskEditor()">+ Новое поручение</button><button class="button secondary" onclick="loadData()">↻ Обновить</button></div></div>
+    <div class="stats" id="stats"></div>
+    <section class="panel">
+      <div class="bar"><div class="tabs" id="modeTabs"><button class="tab" id="tabMine" onclick="setMode('mine')">Мои поручения</button><button class="tab" id="tabAll" onclick="setMode('all')">Все поручения</button></div><span class="small" id="resultsCount"></span></div>
+      <div class="filters">
+        <label class="field search-field"><span>Поиск</span><input id="search" placeholder="По названию или описанию" oninput="renderTasks()"></label>
+        <label class="field"><span>Статус</span><select id="statusFilter" onchange="renderTasks()"><option value="active">Активные</option><option value="all">Все статусы</option><option value="new">Новые</option><option value="in_progress">В работе</option><option value="blocked">Заблокированные</option><option value="done">Выполненные</option><option value="cancelled">Отменённые</option></select></label>
+        <label class="field"><span>Ответственный</span><select id="personFilter" onchange="renderTasks()"><option value="">Все ответственные</option></select></label>
+        <label class="field"><span>Планёрка</span><select id="meetingFilter" onchange="renderTasks()"><option value="">Все даты</option></select></label>
+      </div>
+      <div class="stack" id="taskList"></div>
+    </section>
+    <section class="panel" id="meetingNotesBlock"><div class="bar"><h2>📝 Для информации</h2><span class="small">Заметки планёрок — не поручения</span></div><div class="notes" id="meetingNotes"></div></section>
+    <section class="panel" id="peopleBlock" style="display:none"><div class="bar"><h2>Ответственные и связь</h2><span class="small">Доступно администратору</span></div><div class="people" id="peopleGrid"></div></section>
+  </div>
+</main>
+<dialog id="taskDialog">
+  <h2 id="dialogHeading">Поручение</h2><p class="small" id="dialogIntro"></p>
+  <form id="taskForm" onsubmit="saveTask(event)">
+    <div id="fullTaskFields" class="form-grid">
+      <label class="field form-wide"><span>Название *</span><input id="taskTitle" maxlength="250" required></label>
+      <label class="field"><span>Ответственный</span><select id="taskAssignee"></select></label>
+      <label class="field"><span>Дата планёрки</span><input id="taskMeeting" type="date"></label>
+      <label class="field"><span>Срок</span><input id="taskDue" type="date"></label>
+      <label class="field"><span>Приоритет</span><select id="taskPriority"><option value="normal">Обычный</option><option value="high">Высокий</option><option value="critical">Критический</option><option value="low">Низкий</option></select></label>
+      <label class="field"><span>Статус</span><select id="taskAdminStatus"><option value="new">Новая</option><option value="in_progress">В работе</option><option value="blocked">Заблокирована</option><option value="done">Выполнена</option><option value="cancelled">Отменена</option></select></label>
+      <label class="field"><span>Повторение</span><select id="taskRecurring"><option value="">Нет</option><option value="weekly:monday">По понедельникам</option><option value="monthly:10,25">10 и 25 числа</option></select></label>
+      <label class="field form-wide"><span>Описание / ожидаемый результат</span><textarea id="taskDescription" maxlength="4000" rows="4"></textarea></label>
+      <label class="checkline form-wide"><input type="checkbox" id="taskReminder" checked> Отправлять напоминания</label>
+    </div>
+    <div id="memberTaskFields" style="display:none">
+      <p id="memberTaskTitle" style="font-weight:800;color:var(--forest);"></p>
+      <label class="field"><span>Новый статус</span><select id="taskMemberStatus"><option value="new">Новая</option><option value="in_progress">В работе</option><option value="blocked">Заблокирована</option><option value="done">Выполнена</option></select></label>
+    </div>
+    <label class="field" style="margin-top:.65rem;"><span>Комментарий в историю выполнения (необязательно)</span><textarea id="taskComment" maxlength="2000" rows="3" placeholder="Что сделано, результат, препятствия…"></textarea></label>
+    <div class="form-actions"><button class="button secondary" type="button" onclick="closeTaskEditor()">Отмена</button><button id="saveTaskBtn" class="button" type="submit">Сохранить</button></div>
+  </form>
+</dialog>
+<div class="toast" id="toast"></div>
+<script>
+'use strict';
+const BASE = '/api/task-page';
+let token = null, actor = null, tasks = [], members = [], notes = [], mode = 'all', editorTaskId = null;
+const $ = id => document.getElementById(id);
+function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function safeDate(v) { if(!v) return 'Не установлен'; const x = String(v).split('-'); return x.length===3 ? x[2]+'.'+x[1]+'.'+x[0] : escapeHtml(v); }
+function todayKrasnoyarsk() {
+  const x = new Intl.DateTimeFormat('en-US',{ timeZone:'Asia/Krasnoyarsk',year:'numeric',month:'2-digit',day:'2-digit' }).formatToParts(new Date());
+  const p = Object.fromEntries(x.map(i => [i.type,i.value]));
+  return p.year+'-'+p.month+'-'+p.day;
+}
+function toast(message, error) {
+  const el = $('toast');
+  el.textContent = message; el.style.display='block';
+  el.style.background = error ? '#933634' : '#1e4433';
+  clearTimeout(toast.timeout);toast.timeout=setTimeout(() => el.style.display='none',4500);
+}
+async function api(route, options = {}) {
+  const headers = Object.assign({'Authorization':'TaskLink '+token},options.headers||{});
+  if(options.body && typeof options.body !== 'string') {
+    options.body = JSON.stringify(options.body);
+    headers['Content-Type'] = 'application/json';
+  }
+  const response = await fetch(BASE+route,{...options,headers,credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer'});
+  const data = await response.json().catch(() => ({}));
+  if(!response.ok) {
+    const error = new Error(data.error || 'Ошибка сервера: '+response.status);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+function accessError(message) {
+  $('loading').style.display='none';$('app').style.display='none';$('accessError').style.display='block';
+  $('accessErrorText').textContent=message;
+}
+async function boot() {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  token = hash.get('key');
+  if (!/^[a-f0-9]{64}$/.test(token || '')) {
+    accessError('Эта страница доступна только по персональной ссылке. Попросите администратора прислать её.');
+    return;
+  }
+  try {
+    const session = await api('/session');
+    actor = session.actor;
+    mode = actor.is_admin ? 'all' : 'mine';
+    $('identity').textContent = actor.is_admin ? '🛡️ Администратор' : '🐾 '+actor.label;
+    $('tabMine').style.display = actor.is_admin ? 'none' : '';
+    $('createTaskBtn').style.display = actor.is_admin ? '' : 'none';
+    $('peopleBlock').style.display = actor.is_admin ? '' : 'none';
+    $('loading').style.display='none'; $('app').style.display='block';
+    await loadData();
+  } catch(err) {
+    accessError(err.status===401 ? 'Ссылка не действует или была заменена. Обратитесь к администратору за новой.' : 'Не удалось открыть поручения: '+err.message);
+  }
+}
+async function loadData() {
+  try {
+    const result=await Promise.all([api('/tasks'),api('/assignees'),api('/meeting-notes')]);
+    tasks=result[0].tasks || [];members=result[1].members || [];notes=result[2].notes || [];
+    updateFilters();renderStats();renderTasks();renderNotes();if(actor.is_admin)renderPeople();
+  }catch(err){if(err.status===401)return accessError('Срок действия ссылки завершён: запросите новый адрес.');toast(err.message,true);}
+}
+function setMode(selected) { mode=selected;renderTasks(); }
+function renderStats(){
+  const mine=actor.is_admin?tasks:tasks.filter(t=>t.assignee_id===actor.assignee_id);
+  const active=mine.filter(t=>!['done','cancelled'].includes(t.status));
+  const overdue=active.filter(t=>t.due_date && t.due_date<todayKrasnoyarsk());
+  const waiting=mine.filter(t=>t.status==='new');
+  const done=mine.filter(t=>t.status==='done');
+  $('stats').innerHTML=[
+    ['Активные',active.length],['Просрочены',overdue.length],['Новые',waiting.length],['Выполнены',done.length]
+  ].map(row=>'<div class="stat"><span>'+row[0]+'</span><strong>'+row[1]+'</strong></div>').join('');
+}
+function updateFilters(){
+  const person=$('personFilter'),old=person.value;
+  person.innerHTML='<option value="">Все ответственные</option><option value="none">Не назначен</option>'+members.filter(m=>m.active).map(m=>'<option value="'+m.id+'">'+escapeHtml(m.full_name)+'</option>').join('');
+  person.value=Array.from(person.options).some(x=>x.value===old)?old:'';
+  const meeting=$('meetingFilter'),prev=meeting.value;
+  const dates=[...new Set(tasks.map(t=>t.meeting_date).filter(Boolean))].sort().reverse();
+  meeting.innerHTML='<option value="">Все даты</option>'+dates.map(date=>'<option value="'+escapeHtml(date)+'">'+safeDate(date)+'</option>').join('');
+  meeting.value=Array.from(meeting.options).some(x=>x.value===prev)?prev:'';
+}
+const STATUSES={new:'Новая',in_progress:'В работе',blocked:'Заблокирована',done:'Выполнена',cancelled:'Отменена'};
+const PRIORITIES={low:'Низкий',normal:'Обычный',high:'Высокий',critical:'Критический'};
+function renderTasks(){
+  $('tabAll').classList.toggle('active',mode==='all');
+  $('tabMine').classList.toggle('active',mode==='mine');
+  $('personFilter').disabled=mode==='mine';
+  const search=$('search').value.trim().toLowerCase();
+  const status=$('statusFilter').value,person=$('personFilter').value,meeting=$('meetingFilter').value;
+  const today=todayKrasnoyarsk();
+  const visible=tasks.filter(task=>{
+    if(mode==='mine' && task.assignee_id!==actor.assignee_id)return false;
+    if(status==='active' && ['done','cancelled'].includes(task.status))return false;
+    if(status!=='active' && status!=='all' && task.status!==status)return false;
+    if(mode==='all' && person==='none' && task.assignee_id)return false;
+    if(mode==='all' && person && person!=='none' && String(task.assignee_id||'')!==person)return false;
+    if(meeting && task.meeting_date!==meeting)return false;
+    if(search && !(String(task.title)+' '+String(task.description||'')+' '+String(task.assignee_name||'')).toLowerCase().includes(search))return false;
+    return true;
+  });
+  $('resultsCount').textContent='Показано: '+visible.length+' из '+tasks.length;
+  $('taskList').innerHTML=visible.length ? visible.map(task=>{
+    const overdue=task.due_date && task.due_date<today && !['done','cancelled'].includes(task.status);
+    const priority=task.priority==='critical'?'⚠️ Критический':(task.priority==='high'?'Высокий':PRIORITIES[task.priority]||'Обычный');
+    const canEdit=task.can_edit && (actor.is_admin || !['done','cancelled'].includes(task.status));
+    return '<article class="task'+(task.can_edit?' own':'')+'">' +
+      '<div class="task-head"><div style="max-width:900px;"><div class="task-title">'+escapeHtml(task.title)+'</div>' +
+      '<div class="task-meta"><span>👤 '+escapeHtml(task.assignee_name||'Не назначен')+'</span>'+
+      '<span>🗓 '+safeDate(task.due_date)+'</span><span>'+escapeHtml(priority)+'</span>'+
+      (task.meeting_date?'<span>Планёрка '+safeDate(task.meeting_date)+'</span>':'')+
+      (task.recurrence_rule?'<span>↻ Повторяется</span>':'')+'</div></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:.35rem;align-items:flex-start;"><span class="pill '+escapeHtml(task.status)+'">'+escapeHtml(STATUSES[task.status]||task.status)+'</span>' +
+      (overdue?'<span class="pill overdue">Просрочено</span>':'')+'</div></div>'+
+      (task.description?'<p class="task-desc">'+escapeHtml(task.description)+'</p>':'')+
+      '<div class="actions">'+(canEdit?'<button class="button tiny" onclick="openTaskEditor('+task.id+')">'+(actor.is_admin?'Изменить':'Статус / комментарий')+'</button>':'')+
+      (task.can_edit?'<button class="button secondary tiny" onclick="showTaskHistory('+task.id+')">История</button>':'')+
+      (actor.is_admin && !['done','cancelled'].includes(task.status)?'<button class="button secondary tiny" onclick="remindTask('+task.id+')">Напомнить</button>':'')+
+      (!task.can_edit?'<span class="small">Только просмотр</span>':'')+
+      '</div><div class="history" id="history-'+task.id+'" style="display:none;"></div></article>';
+  }).join('') : '<div style="text-align:center;padding:2rem;color:var(--muted)">По выбранным фильтрам поручений нет.</div>';
+}
+function renderNotes(){
+  $('meetingNotesBlock').style.display=notes.length?'':'none';
+  $('meetingNotes').innerHTML=notes.map(note=>'<div class="note"><div class="small">Планёрка '+safeDate(note.meeting_date)+'</div><h3>'+escapeHtml(note.title)+'</h3><p>'+escapeHtml(note.note)+'</p></div>').join('');
+}
+function renderPeople(){
+  $('peopleGrid').innerHTML=members.map(member=>
+    '<div class="person"><div class="person-title"><strong>'+escapeHtml(member.full_name)+'</strong><span class="small">'+(member.active?'Активен':'Неактивен')+'</span></div>'+
+    '<label class="field"><span>Телефон</span><input id="personPhone-'+member.id+'" placeholder="+7…" value="'+escapeHtml(member.phone||'')+'"></label>'+
+    '<label class="field" style="margin-top:.4rem;"><span>Зона ответственности</span><input id="personResponsibility-'+member.id+'" value="'+escapeHtml(member.responsibility||'')+'"></label>'+
+    '<div class="actions"><button class="button tiny secondary" onclick="savePerson('+member.id+')">Сохранить</button>'+
+    (member.active?'<button class="button tiny secondary" onclick="connectPerson('+member.id+',\'telegram\')">'+(member.telegram_connected?'✓ Telegram':'Telegram')+'</button>'+
+    '<button class="button tiny secondary" onclick="connectPerson('+member.id+',\'max\')">'+(member.max_connected?'✓ MAX':'MAX')+'</button>':'')+
+    '</div></div>'
+  ).join('');
+}
+function openTaskEditor(id){
+  if(!actor)return;
+  const task=id?tasks.find(t=>t.id===id):null;
+  if(task && !task.can_edit){toast('Изменять чужие поручения нельзя',true);return;}
+  if(!actor.is_admin && (!task || ['done','cancelled'].includes(task.status)))return;
+  editorTaskId=task?task.id:null;
+  $('dialogHeading').textContent=task?(actor.is_admin?'Изменить поручение':'Сообщить о ходе поручения'):'Новое поручение';
+  $('dialogIntro').textContent=actor.is_admin?'Администратор может изменять поручения всех сотрудников.':'Ваш статус и комментарий будут сохранены в истории.';
+  $('fullTaskFields').style.display=actor.is_admin?'grid':'none';
+  $('memberTaskFields').style.display=actor.is_admin?'none':'block';
+  $('taskComment').value='';
+  if(actor.is_admin){
+    $('taskTitle').required=true;
+    $('taskTitle').value=task?task.title:'';
+    $('taskDescription').value=task?task.description||'':'';
+    $('taskMeeting').value=task?task.meeting_date||'':todayKrasnoyarsk();
+    $('taskDue').value=task?task.due_date||'':'';
+    $('taskPriority').value=task?task.priority:'normal';
+    $('taskAdminStatus').value=task?task.status:'new';
+    $('taskRecurring').value=task?task.recurrence_rule||'':'';
+    $('taskReminder').checked=task?task.reminder_enabled:true;
+    $('taskAssignee').innerHTML='<option value="">Не назначен</option>'+members.filter(m=>m.active).map(m=>'<option value="'+m.id+'">'+escapeHtml(m.full_name)+'</option>').join('');
+    $('taskAssignee').value=task?task.assignee_id||'':'';
+  }else{
+    $('taskTitle').required=false;
+    $('memberTaskTitle').textContent=task.title;
+    $('taskMemberStatus').value=task.status;
+  }
+  $('taskDialog').showModal();
+}
+function closeTaskEditor(){ $('taskDialog').close(); }
+async function saveTask(event){
+  event.preventDefault(); if(!actor)return;
+  const btn=$('saveTaskBtn');btn.disabled=true;
+  try{
+    const body=actor.is_admin?{
+      title:$('taskTitle').value.trim(),description:$('taskDescription').value.trim(),
+      meeting_date:$('taskMeeting').value||null,due_date:$('taskDue').value||null,
+      assignee_id:$('taskAssignee').value||null,priority:$('taskPriority').value,
+      status:$('taskAdminStatus').value,recurrence_rule:$('taskRecurring').value||null,
+      reminder_enabled:$('taskReminder').checked,comment:$('taskComment').value.trim()
+    }:{status:$('taskMemberStatus').value,comment:$('taskComment').value.trim()};
+    const route=editorTaskId?'/tasks/'+editorTaskId:'/tasks';
+    await api(route,{method:editorTaskId?'PUT':'POST',body});
+    closeTaskEditor();toast('Поручение сохранено');await loadData();
+  }catch(err){toast(err.message,true)}finally{btn.disabled=false}
+}
+async function showTaskHistory(id){
+  const box=$('history-'+id);
+  if(!box)return;
+  if(box.style.display!=='none'){box.style.display='none';return;}
+  box.style.display='grid';box.textContent='Загружаем историю…';
+  try{
+    const {history}=await api('/tasks/'+id+'/history');
+    box.innerHTML=history.length?history.map(h=>{
+      let content=h.new_value||'';
+      // History may contain JSON snapshots: render plain text, never HTML.
+      if(content.length>900)content=content.slice(0,900)+'…';
+      return '<div class="history-row"><strong>'+escapeHtml(h.actor||'Система')+'</strong> · '+escapeHtml(h.created_at||'')+
+        '<div class="small">'+escapeHtml(h.action||'Статус')+'</div><div>'+escapeHtml(content)+'</div></div>';
+    }).join(''):'История пока пуста.';
+  }catch(err){box.textContent=err.message;}
+}
+async function remindTask(id) {
+  if(!actor.is_admin)return;
+  try{const result=await api('/tasks/'+id+'/remind',{method:'POST'});toast('Напоминание отправлено'+(result.deliveries?' в '+result.deliveries.filter(d=>d.ok).map(d=>d.channel).join(', '):''));}
+  catch(err){toast(err.message,true)}
+}
+async function savePerson(id){
+  try{await api('/assignees/'+id,{method:'PUT',body:{
+    phone:$('personPhone-'+id).value,
+    responsibility:$('personResponsibility-'+id).value
+  }});toast('Данные исполнителя сохранены');await loadData();}
+  catch(err){toast(err.message,true)}
+}
+async function connectPerson(id,channel){
+  try{
+    const response=await api('/assignees/'+id+'/connect/'+channel+'/start',{method:'POST'});
+    if(!response.deep_link)throw new Error('Ссылка подключения не получена');
+    window.open(response.deep_link,'_blank','noopener,noreferrer');
+    toast('Попросите ответственного подтвердить подключение в '+(channel==='telegram'?'Telegram':'MAX'));
+    for(let attempt=0;attempt<24;attempt++){
+      await new Promise(resolve=>setTimeout(resolve,3000));
+      if(!actor)return;
+      const check=await api('/assignees/'+id+'/connect/'+channel+'/check?token='+encodeURIComponent(response.token));
+      if(check.verified){toast('Канал подключён');await loadData();return;}
+    }
+  }catch(err){toast(err.message,true)}
+}
+boot();
+</script>
+</body>
+</html>
