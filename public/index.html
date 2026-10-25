@@ -2517,7 +2517,7 @@
       <div class="form-group"><label>Телефон *</label><input type="tel" id="oPhone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this); scheduleCheckoutTelegramOffer(); onFirstPurchasePromoContextChange();" onblur="liveValidatePhone(this); checkLoyaltyByPhone(); checkSelfOrderWarning(); showCheckoutTelegramOffer(); validateFirstPurchasePromo();" autocomplete="new-password"></div>
       <div id="loyalty-msg" style="font-size:.82rem;margin:-.6rem 0 1rem;min-height:1.1em;color:#2D7D46;"></div>
       <div class="form-group">
-        <label>Промокод салона −20% на первую покупку</label>
+        <label>Промокод грумера или салона −20% на первую покупку</label>
         <div style="display:flex;gap:.5rem;">
           <input type="text" id="oFirstPurchasePromo" placeholder="Например, HV20-001" oninput="this.value=this.value.toUpperCase(); onFirstPurchasePromoContextChange();" style="flex:1;min-width:0;">
           <button type="button" onclick="validateFirstPurchasePromo(true)" style="border:0;border-radius:8px;background:var(--deep);color:#fff;padding:0 .9rem;font-weight:600;cursor:pointer;">Применить</button>
