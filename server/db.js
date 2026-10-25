@@ -1355,6 +1355,9 @@ db.exec("UPDATE orders SET created_at = datetime('now') WHERE created_at IS NULL
 // (их доли не уменьшаются). DEFAULT 0.05 автоматически применится и к уже
 // существующим владельцам, и к новым — ничего вручную донастраивать не нужно.
 ensureColumn('salon_owners', 'commission_rate', 'REAL NOT NULL DEFAULT 0.05');
+ // The salon owner may also have a partner (groomer) account.
+ // Explicit link is optional: exact, unique telephone match is a safe fallback.
+ ensureColumn('salon_owners', 'groomer_partner_id', 'INTEGER REFERENCES partners(id)');
 
 // ── ЭКОНОМИКА ПРОЕКТА ────────────────────────────────────────────────
 // Затраты на закуп товара админ вносит вручную (реальные суммы по факту
