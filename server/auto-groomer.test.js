@@ -117,6 +117,11 @@ test('checkout picks sole groomer when no choice; explicit self preserves zero c
   });
   assert.equal(self.id,null);
   assert.equal(self.source,'self');
+  const conflicting=resolveCheckoutGroomer({
+    pointId:id, partnerId:sole, advisorSelection:'self',
+    selfOrderingPartner:null, fulfillmentType:'pickup',
+  });
+  assert.equal(conflicting.id,null,'explicit self must not be overridden by a stale partner ID');
   const delivery=resolveCheckoutGroomer({
     pointId:id, partnerId:null, advisorSelection:null, selfOrderingPartner:null, fulfillmentType:'home_delivery',
   });
