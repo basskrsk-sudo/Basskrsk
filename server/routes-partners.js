@@ -2,6 +2,7 @@
 'use strict';
 
 const db = require('./db');
+const { findDefaultGroomer } = require('./auto-groomer');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
@@ -40,7 +41,12 @@ function registerPartnerRoutes(router) {
   // грумеров, клиент выбирает, кто его обслуживал.
   router.get('/api/points/:pointId/partners', (req, res, ctx) => {
     const rows = db.prepare('SELECT id, full_name FROM partners WHERE point_id = ? AND active = 1 ORDER BY full_name').all(ctx.params.pointId);
-    sendJson(res, 200, { partners: rows });
+    const suggestion = findDefaultGroomer(ctx.params.pointId);
+    sendJson(res, 200, {
+      partners: rows,
+      default_partner_id: suggestion.partner ? suggestion.partner.id : null,
+      default_source: suggestion.source,
+    });
   });
 
   // GET /api/points/:pointId/is-self-order?phone=... — публичный, для
