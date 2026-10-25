@@ -75,7 +75,7 @@ function personPeriod(statements){
   if(!timestamps.length)return {start:null,end:null,label:'Дата начислений не указана'};
   const start=Math.min(...timestamps),end=Math.max(...timestamps);
   return {start:new Date(start).toISOString(),end:new Date(end).toISOString(),
-    label:formatSaleDate(start)+(start===end?'':' — '+formatSaleDate(end))};
+    label:formatSaleDate(start)+(formatSaleDate(start)===formatSaleDate(end)?'':' — '+formatSaleDate(end))};
 }
 function itemListLabel(items){
   if(!items.length)return 'Состав заказа не сохранён';
@@ -265,7 +265,7 @@ function formatRecipientPayoutMessage(person,generatedAt){
     '',
     '🛒 Продажи:',
   ];
-  let remaining=3500,shown=0,totalSales=0;
+  const messageBudget=3500;let shown=0,totalSales=0;
   for(const section of person.statements){
     totalSales+=(section.sales||[]).length;
     if(!(section.sales||[]).length)continue;
@@ -275,7 +275,7 @@ function formatRecipientPayoutMessage(person,generatedAt){
         '  '+products+'\n'+
         '  Продажа: '+money(sale.sale_total)+' · '+(sale.commission_rate*100).toLocaleString('ru-RU',{maximumFractionDigits:2})+
         '% ('+section.role_label+') · Вознаграждение: '+money(sale.commission_amount);
-      if(shown>=5 || output.join('\n').length+row.length+600>remaining)break;
+      if(shown>=5 || output.join('\n').length+row.length+600>messageBudget)break;
       output.push(row);shown++;
     }
   }
