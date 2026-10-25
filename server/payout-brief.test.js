@@ -9,7 +9,7 @@ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'hvost-payout-brief-'));
 process.env.DATA_DIR=temp;
 const db=require('./db');
 const {
-  collectPayoutBrief,buildPayoutBriefCsv,formatPayoutBriefMessage,
+  collectPayoutBrief,buildPayoutBriefCsv,formatPayoutBriefMessage,formatRecipientPayoutMessage,
   sameRecipient,normalizePhone,
 }=require('./payout-brief');
 const {payoutBriefPdfPages}=require('./payout-brief-pdf');
@@ -43,6 +43,14 @@ const order1=insertOrder('ORDER-A',groomer1,1000,'paid');
 const order2=insertOrder('ORDER-PARTIAL',groomer1,500,'paid',100);
 const order3=insertOrder('ORDER-OTHER',groomer2,500,'paid');
 insertOrder('ORDER-PENDING',groomer1,250,'pending');
+// Historical line items and dates must be reproduced from orders, not current catalog.
+db.prepare('UPDATE orders SET created_at=? WHERE id=?').run('2026-10-23 07:20:00',order1);
+db.prepare('UPDATE orders SET created_at=? WHERE id=?').run('2026-10-24 08:15:00',order2);
+db.prepare('UPDATE orders SET created_at=? WHERE id=?').run('2026-10-24 09:30:00',order3);
+const addItem=db.prepare('INSERT INTO order_items(order_id,name,weight,price,qty) VALUES (?,?,?,?,?)');
+addItem.run(order1,'Бычий корень','50 г',500,2);
+addItem.run(order2,'Кроличья лапка','1 шт.',500,1);
+addItem.run(order3,'Лёгкое говяжье','50 г',250,2);
 const snapshotBefore=db.prepare("SELECT COUNT(*) AS n FROM partner_payouts").get().n;
 const report=collectPayoutBrief(new Date('2026-10-25T13:00:00Z'));
 
@@ -87,6 +95,36 @@ test('CSV and PDF both include one combined personal section and explicit role b
   assert.match(combined[0],/Бонус за запуск/);
   assert.match(combined[0],/ИТОГО к выплате/);
 });
+test('each recipient gets a standalone itemized sales report with a precise period',()=>{
+  const dual=report.people.find(p=>p.roles.includes('partner')&&p.roles.includes('manager'));
+  assert.ok(dual);
+  assert.equal(dual.period.label,'23.10.2026 — 24.10.2026');
+  const message=formatRecipientPayoutMessage(dual,report.generated_at);
+  assert.match(message,/Период расчётов: 23\.10\.2026 — 24\.10\.2026/);
+  assert.match(message,/Бычий корень/);
+  assert.match(message,/Стоимость продажи|Продажа: 1 000 ₽/);
+  assert.match(message,/20% \(Грумер\)/);
+  assert.match(message,/7% \(Менеджер\)/);
+  assert.match(message,/Вознаграждение: 200 ₽/);
+  const csv=buildPayoutBriefCsv(report);
+  assert.match(csv,/Дата продажи \(Красноярск\)/);
+  assert.match(csv,/Наименования товаров/);
+  assert.match(csv,/ORDER-A/);
+  assert.match(csv,/23\.10\.2026/);
+  assert.match(csv,/Бычий корень/);
+  assert.doesNotMatch(csv,/ORDER-PARTIAL/,'refunded orders require manual review');
+  const pages=payoutBriefPdfPages(report,'/usr/share/fonts/dejavu/DejaVuSans.ttf',{recipient:dual});
+  assert.ok(pages.length>=1);
+  const document=pages.join('\n');
+  assert.match(document,/Получатель: Иван Иванов/);
+  assert.match(document,/Период расчётов: 23\.10\.2026/);
+  assert.match(document,/Бычий корень/);
+  assert.match(document,/Стоимость продажи: 1 000 ₽/);
+  assert.match(document,/Ставка \(Грумер\): 20%/);
+  assert.match(document,/Вознаграждение: 200 ₽/);
+  assert.doesNotMatch(document,/Петрова Анна/,'must not include other recipient');
+});
+
 test('identity matching uses confirmed contact, not name alone',()=>{
   assert.equal(normalizePhone('8 (999) 111-22-33'),'9991112233');
   assert.equal(normalizePhone('+7 999 111-22-33'),'9991112233');
