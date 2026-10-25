@@ -12,6 +12,7 @@ const { sendTelegram } = require('./telegram');
 const { computeManagerCommissionRate } = require('./routes-managers');
 const { normalizePhone } = require('./routes-customers');
 const { logManagerAction } = require('./audit-log');
+const { normalizeProfile, isLoginAvailable, logProfileCorrection, ProfileCorrectionError } = require('./profile-corrections');
 const {
   createPartnerPayout,
   getUnpaidSummary,
@@ -361,49 +362,93 @@ function registerPartnerRoutes(router) {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
     const existing = db.prepare('SELECT * FROM partners WHERE id = ?').get(ctx.params.id);
-    if (!existing) return sendJson(res, 404, { error: 'Партнёр не найден' });
+    if (!existing) return sendJson(res, 404, { error: 'Грумер не найден' });
+    const patch = ctx.body || {};
     const {
-      active, commission_rate, full_name, phone, point_name, point_address, point_id,
+      active, commission_rate, point_id, point_name, point_address,
       display_stand, display_poster, display_basket,
-    } = ctx.body || {};
+    } = patch;
 
-    // Привязка к существующей точке — так несколько грумеров могут работать
-    // с одной и той же точкой (общий складской учёт), а не заводить каждый
-    // свою отдельную с нуля.
-    if (point_id !== undefined && point_id !== existing.point_id) {
-      if (point_id) {
-        const pointRow = db.prepare('SELECT * FROM points WHERE id = ?').get(point_id);
-        if (!pointRow) return sendJson(res, 400, { error: 'Точка с таким id не найдена' });
+    let profile;
+    try { profile = normalizeProfile(existing, patch); }
+    catch (error) {
+      if (error instanceof ProfileCorrectionError) return sendJson(res, 400, { error: error.message });
+      throw error;
+    }
+    if (!isLoginAvailable(db, 'partners', profile.values.login, existing.id)) {
+      return sendJson(res, 409, { error: 'Такой логин грумера уже занят' });
+    }
+
+    let targetPointId = existing.point_id;
+    let pointRow = null;
+    const pointTouched = point_id !== undefined;
+    if (pointTouched) {
+      if (point_id !== null && typeof point_id !== 'string') {
+        return sendJson(res, 400, { error: 'Неверный идентификатор точки' });
+      }
+      targetPointId = String(point_id || '').trim() || null;
+      if (targetPointId) {
+        pointRow = db.prepare('SELECT id, name, addr FROM points WHERE id = ?').get(targetPointId);
+        if (!pointRow) return sendJson(res, 400, { error: 'Точка не найдена' });
+      }
+    }
+    const pointChanged = String(targetPointId || '') !== String(existing.point_id || '');
+    if (pointChanged) {
+      const linkedOwners = db.prepare(
+        'SELECT so.id, so.full_name FROM salon_owners so WHERE so.groomer_partner_id = ? AND so.point_id != ?'
+      ).all(existing.id, targetPointId || '');
+      if (linkedOwners.length) {
+        return sendJson(res, 409, {
+          error: 'Этот грумер привязан как грумер-владелец салона. Сначала исправьте привязку в карточке владельца.',
+        });
       }
     }
 
-    // Если формат размещения передан явно (хотя бы одно из трёх полей) —
-    // проверяем, что хотя бы один вариант остаётся включённым.
     const formatTouched = display_stand !== undefined || display_poster !== undefined || display_basket !== undefined;
     const nextStand = display_stand !== undefined ? !!display_stand : !!existing.display_stand;
     const nextPoster = display_poster !== undefined ? !!display_poster : !!existing.display_poster;
     const nextBasket = display_basket !== undefined ? !!display_basket : !!existing.display_basket;
     if (formatTouched && !nextStand && !nextPoster && !nextBasket) {
-      return sendJson(res, 400, { error: 'Нужно оставить хотя бы один формат размещения: стойка, картинка или корзинка' });
+      return sendJson(res, 400, { error: 'Нужно оставить хотя бы один формат размещения' });
     }
+    const nextName = pointChanged && pointRow ? pointRow.name :
+      (point_name !== undefined ? String(point_name || '').trim() : existing.point_name);
+    const nextAddress = pointChanged && pointRow ? pointRow.addr :
+      (point_address !== undefined ? point_address : existing.point_address);
+    if (!nextName) return sendJson(res, 400, { error: 'Название точки не может быть пустым' });
 
-    db.prepare(`
-      UPDATE partners SET
-        active = ?, commission_rate = ?, full_name = ?, phone = ?, point_name = ?, point_address = ?, point_id = ?,
-        display_stand = ?, display_poster = ?, display_basket = ?
-      WHERE id = ?
-    `).run(
-      active !== undefined ? (active ? 1 : 0) : existing.active,
-      commission_rate ?? existing.commission_rate,
-      full_name ?? existing.full_name,
-      phone ?? existing.phone,
-      point_name ?? existing.point_name,
-      point_address !== undefined ? point_address : existing.point_address,
-      point_id !== undefined ? (point_id || null) : existing.point_id,
-      nextStand ? 1 : 0, nextPoster ? 1 : 0, nextBasket ? 1 : 0,
-      ctx.params.id
-    );
-    sendJson(res, 200, { ok: true });
+    let transactionOpen = false;
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      transactionOpen = true;
+      db.prepare(
+        'UPDATE partners SET active=?, commission_rate=?, full_name=?, phone=?, login=?, ' +
+        'legal_form=?, inn=?, bank_details=?, point_id=?, point_name=?, point_address=?, ' +
+        'display_stand=?, display_poster=?, display_basket=?, ' +
+        'telegram_chat_id=?, max_chat_id=? WHERE id=?'
+      ).run(
+        active !== undefined ? (active ? 1 : 0) : existing.active,
+        commission_rate ?? existing.commission_rate,
+        profile.values.full_name, profile.values.phone, profile.values.login,
+        profile.values.legal_form, profile.values.inn, profile.values.bank_details,
+        targetPointId, nextName, nextAddress,
+        nextStand ? 1 : 0, nextPoster ? 1 : 0, nextBasket ? 1 : 0,
+        profile.phoneChanged ? null : existing.telegram_chat_id,
+        profile.phoneChanged ? null : existing.max_chat_id,
+        existing.id
+      );
+      const updated = { ...existing, ...profile.values, point_id: targetPointId };
+      logProfileCorrection(db, payload, 'partner', existing, updated);
+      db.exec('COMMIT');
+      transactionOpen = false;
+      sendJson(res, 200, { ok: true, telegram_reconnect_required: profile.phoneChanged });
+    } catch (error) {
+      if (transactionOpen) {
+        try { db.exec('ROLLBACK'); } catch (_) {}
+      }
+      console.error('[admin] Correction of groomer failed:', error);
+      sendJson(res, 500, { error: 'Не удалось сохранить исправления грумера' });
+    }
   });
 
   // POST /api/partners/:id/reset-password — админ сбрасывает пароль партнёру,
