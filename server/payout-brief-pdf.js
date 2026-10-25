@@ -136,7 +136,7 @@ function payoutBriefPdfPages(report,font,options={}){
         }
         const rate=(Number(sale.commission_rate||0)*100).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%';
         ensure(37);
-        paragraph('Стоимость продажи: '+money(sale.sale_total)+' · Процент '+section.role_label.toLowerCase()+': '+rate+
+        paragraph('Стоимость продажи: '+money(sale.sale_total)+' · Ставка ('+section.role_label+'): '+rate+
           ' · Вознаграждение: '+money(sale.commission_amount),'#1C3A2F',18);
         y+=10;
       }
