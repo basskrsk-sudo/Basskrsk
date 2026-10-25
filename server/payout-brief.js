@@ -38,6 +38,52 @@ function sameRecipient(a,b){
   const aInn=inn(a.inn),bInn=inn(b.inn);
   return !!(aInn&&aInn===bInn);
 }
+
+const LOCAL_TIME_ZONE='Asia/Krasnoyarsk';
+function parseSaleMoment(input){
+  const raw=String(input||'').trim();
+  if(!raw)return null;
+  const utc=/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(raw)
+    ?raw.replace(' ','T')+'Z':raw;
+  const ms=Date.parse(utc);
+  return Number.isFinite(ms)?ms:null;
+}
+function formatSaleDateTime(input){
+  const ms=parseSaleMoment(input);
+  if(ms===null)return 'Дата не указана';
+  return new Intl.DateTimeFormat('ru-RU',{timeZone:LOCAL_TIME_ZONE,
+    year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',
+    hour12:false}).format(new Date(ms));
+}
+function formatSaleDate(ms){
+  if(ms===null || !Number.isFinite(ms))return 'не указана';
+  return new Intl.DateTimeFormat('ru-RU',{timeZone:LOCAL_TIME_ZONE,
+    year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ms));
+}
+function personPeriod(statements){
+  const timestamps=[];
+  for(const section of statements){
+    for(const sale of section.sales||[]){
+      const ms=parseSaleMoment(sale.created_at);
+      if(ms!==null)timestamps.push(ms);
+    }
+    for(const bonus of section.bonuses||[]){
+      const ms=parseSaleMoment(bonus.accrued_at);
+      if(ms!==null)timestamps.push(ms);
+    }
+  }
+  if(!timestamps.length)return {start:null,end:null,label:'Дата начислений не указана'};
+  const start=Math.min(...timestamps),end=Math.max(...timestamps);
+  return {start:new Date(start).toISOString(),end:new Date(end).toISOString(),
+    label:formatSaleDate(start)+(start===end?'':' — '+formatSaleDate(end))};
+}
+function itemListLabel(items){
+  if(!items.length)return 'Состав заказа не сохранён';
+  return items.map(item=>
+    clean(item.name,90)+(item.weight?' ('+clean(item.weight,24)+')':'')+
+    ' ×'+item.qty+' по '+money(item.price)).join('; ');
+}
+
 function accounts(){
   return [
     ...db.prepare('SELECT id,full_name,phone,inn,telegram_chat_id,point_name,point_id FROM partners ORDER BY id')
@@ -66,7 +112,33 @@ function groupedPoints(account,orders){
   }
   return [...result.values()].sort((a,b)=>b.amount-a.amount||a.point.localeCompare(b.point,'ru'));
 }
-function roleStatement(account,refundQuery){
+
+function createOrderItemReader(){
+  const stmt=db.prepare('SELECT name,weight,price,qty FROM order_items WHERE order_id=? ORDER BY id');
+  const cache=new Map();
+  return function getItems(orderId){
+    if(!cache.has(orderId)){
+      cache.set(orderId,stmt.all(orderId).map(row=>({
+        name:clean(row.name,100),weight:clean(row.weight,25),
+        price:num(row.price),qty:num(row.qty),
+      })));
+    }
+    return cache.get(orderId);
+  };
+}
+function formatSale(account,order,getItems){
+  const items=getItems(order.id);
+  return {
+    order_id:order.id,order_code:clean(order.order_code,60),
+    created_at:order.created_at, date:formatSaleDateTime(order.created_at),
+    point:clean(order.point_name||account.point_name||'Без точки'),
+    items, items_label:itemListLabel(items),
+    sale_total:num(order.total),commission_rate:num(order.commission_rate),
+    commission_amount:num(order.commission_amount),
+  };
+}
+
+function roleStatement(account,refundQuery,getItems){
   const eligible=[],held=[];
   for(const order of pendingOrders(account)){
     const refund=refundQuery.get(order.id);
@@ -86,7 +158,10 @@ function roleStatement(account,refundQuery){
     orders:eligible.length,commission,bonus,total:commission+bonus,
     held_orders:held.length,held_order_ids:held.map(o=>o.id),
     held_amount:held.reduce((sum,o)=>sum+num(o.commission_amount),0),
-    points:groupedPoints(account,eligible),bonuses,
+    points:groupedPoints(account,eligible),
+    sales:eligible.map(order=>formatSale(account,order,getItems)).sort((a,b)=>
+      String(a.created_at||'').localeCompare(String(b.created_at||'')) || a.order_id-b.order_id),
+    bonuses,
   };
 }
 function groupStatements(entries){
@@ -108,6 +183,7 @@ function groupStatements(entries){
     const roles=[...new Set(p.statements.map(s=>s.role))];
     const total=key=>p.statements.reduce((sum,s)=>sum+num(s[key]),0);
     return {name:p.name,roles,roles_label:roles.map(role=>ROLES[role]).join(' + '),
+      period:personPeriod(p.statements),
       statements:p.statements,commission:total('commission'),bonus:total('bonus'),
       total:total('total'),held_orders:new Set(p.statements.flatMap(s=>s.held_order_ids)).size,
       held_order_ids:[...new Set(p.statements.flatMap(s=>s.held_order_ids))],
@@ -124,8 +200,9 @@ function collectPayoutBrief(now=new Date()){
   const cache=new Map();
   const refundQuery={get(id){if(!cache.has(id))cache.set(id,fetchRefund.get(id)||null);return cache.get(id)}};
   const entries=[];
+  const getItems=createOrderItemReader();
   for(const account of accounts()){
-    const statement=roleStatement(account,refundQuery);
+    const statement=roleStatement(account,refundQuery,getItems);
     if(statement.total>0||statement.held_orders)entries.push({account,statement});
   }
   const people=groupStatements(entries);
@@ -176,29 +253,80 @@ function formatPayoutBriefMessage(report){
   lines.push('','Это НЕ подтверждение перевода денег. Выплаты в базе не меняются.');
   return lines.join('\n').slice(0,3900);
 }
+
+function formatRecipientPayoutMessage(person,generatedAt){
+  const output=[
+    '💸 ХвостМаркет — справка к выплате',
+    '👤 '+clean(person.name,75),
+    'Роли: '+person.roles.map(role=>ROLES[role]).join(' + '),
+    '📅 Период расчётов: '+person.period.label,
+    'Срез начислений: '+formatSaleDateTime(generatedAt)+' (Красноярск)',
+    'Основа: все ещё невыплаченные заказы и бонусы.',
+    '',
+    '🛒 Продажи:',
+  ];
+  let remaining=3500,shown=0,totalSales=0;
+  for(const section of person.statements){
+    totalSales+=(section.sales||[]).length;
+    if(!(section.sales||[]).length)continue;
+    for(const sale of section.sales){
+      const products=clean(sale.items_label,195);
+      const row='• '+sale.date+' · '+clean(sale.point,55)+'\n'+
+        '  '+products+'\n'+
+        '  Продажа: '+money(sale.sale_total)+' · '+(sale.commission_rate*100).toLocaleString('ru-RU',{maximumFractionDigits:2})+
+        '% ('+section.role_label+') · Вознаграждение: '+money(sale.commission_amount);
+      if(shown>=5 || output.join('\n').length+row.length+600>remaining)break;
+      output.push(row);shown++;
+    }
+  }
+  if(!shown)output.push('Продаж к расчёту нет.');
+  if(totalSales>shown)output.push('…ещё '+(totalSales-shown)+' продаж. Все строки — в отдельном PDF.');
+  if(person.bonus){
+    output.push('','🎁 Начисленные бонусы: '+money(person.bonus));
+    for(const section of person.statements)for(const bonus of section.bonuses||[])
+      output.push('• '+clean(bonus.point,55)+' ('+section.role_label+'): '+money(bonus.amount));
+  }
+  output.push('',
+    'Комиссия: '+money(person.commission),
+    'Бонусы: '+money(person.bonus),
+    '💚 ИТОГО к выплате: '+money(person.total));
+  if(person.held_orders)output.push('⚠️ На сверке '+person.held_orders+' заказ(ов) с возвратами — в сумму не включены.');
+  output.push('📎 Полная детализация по датам, товарам и ставкам — в персональном PDF.',
+    'Справка предварительная: деньги не перечислены.');
+  return output.join('\n').slice(0,3950);
+}
+
 function csvCell(value){
   let text=String(value??'').replace(/[\x00-\x1f\x7f]/g,' ').trim();
   if(/^[=+@-]/.test(text))text="'"+text;
   return '"'+text.replace(/"/g,'""')+'"';
 }
 function buildPayoutBriefCsv(report){
-  const rows=[['№','Получатель','Роль','Точка','Заказов','Выручка (руб.)','Ставка',
-    'Комиссия (руб.)','Бонус (руб.)','Итого (руб.)','Заказов на сверке'].map(csvCell).join(';')];
-  for(const p of report.people){
-    for(const s of p.statements){
-      for(const point of s.points){
-        rows.push([p.index,p.name,s.role_label,point.point,point.orders,point.revenue,
-          Math.round(point.rate*10000)/100+'%',point.amount,0,point.amount,''].map(csvCell).join(';'));
+  const rows=[['Получатель','Роль','Период расчётов','Дата продажи (Красноярск)',
+    'Заказ','Точка','Наименования товаров','Стоимость продажи (руб.)',
+    'Процент партнёра','Вознаграждение (руб.)','Тип начисления'].map(csvCell).join(';')];
+  for(const person of report.people){
+    for(const section of person.statements){
+      for(const sale of section.sales||[]){
+        rows.push([person.name,section.role_label,person.period.label,
+          sale.date,sale.order_code,sale.point,sale.items_label,sale.sale_total,
+          (sale.commission_rate*100).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%',
+          sale.commission_amount,'Продажа'].map(csvCell).join(';'));
       }
-      for(const bonus of s.bonuses){
-        rows.push([p.index,p.name,s.role_label,'Бонус: '+bonus.point,0,0,'',0,bonus.amount,bonus.amount,''].map(csvCell).join(';'));
+      for(const bonus of section.bonuses||[]){
+        rows.push([person.name,section.role_label,person.period.label,
+          formatSaleDateTime(bonus.accrued_at),'',bonus.point,'Бонус за подключение / рекомендацию',
+          '', '',bonus.amount,bonus.type==='launch_bonus'?'Бонус за запуск':'Реферальный бонус']
+          .map(csvCell).join(';'));
       }
-      if(s.held_orders)rows.push([p.index,p.name,s.role_label,'Заказы с возвратами (на сверке)',
-        s.held_orders,'','',0,0,0,s.held_orders].map(csvCell).join(';'));
     }
+    rows.push([person.name,'ИТОГО',person.period.label,'','','','', '',
+      '',person.total,'Итого к выплате'].map(csvCell).join(';'));
   }
-  rows.push(['ИТОГО','','','','','','',report.commission,report.bonus,report.total,report.held_orders].map(csvCell).join(';'));
+  rows.push(['ОБЩИЙ ИТОГ','','','','','','','',
+    '',report.total,'Все получатели'].map(csvCell).join(';'));
   return '\uFEFF'+rows.join('\r\n')+'\r\n';
 }
 module.exports={collectPayoutBrief,formatPayoutBriefMessage,buildPayoutBriefCsv,
-  groupStatements,sameRecipient,normalizePhone,namesCompatible,money,clean};
+  groupStatements,sameRecipient,normalizePhone,namesCompatible,money,clean,
+  formatRecipientPayoutMessage,formatSaleDateTime,personPeriod,itemListLabel};
