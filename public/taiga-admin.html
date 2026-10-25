@@ -885,6 +885,11 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div id="task-history-box" style="display:none;margin-top:1rem;padding:1rem;background:var(--cream,#F7F5EF);border-radius:10px;"></div>
       </div>
 
+      <div class="card" id="task-meeting-notes-card" style="display:none;margin-bottom:1rem;">
+        <div class="card-title">📝 Для информации — итоги планёрок</div>
+        <div id="task-meeting-notes-list" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.7rem;"></div>
+      </div>
+
       <div class="card">
         <div class="card-title">Ответственные и каналы связи</div>
         <p style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:1rem;">Сохраните телефон и попросите человека один раз подтвердить подключение в боте. После этого напоминания будут уходить автоматически сразу в оба подключённых канала.</p>
@@ -4065,6 +4070,7 @@ async function deleteBusinessExpense(id) {
 
 // ── КОНТРОЛЬ ПОРУЧЕНИЙ ─────────────────────────────────────────────
 let meetingTasks = [];
+let meetingNotes = [];
 let taskMembers = [];
 let taskSummary = {};
 
@@ -4105,9 +4111,10 @@ function taskDueHtml(task) {
 }
 
 async function loadTaskControl() {
-  const responses = await Promise.all([authFetch('/api/tasks'), authFetch('/api/task-assignees')]);
+  const responses = await Promise.all([authFetch('/api/tasks'), authFetch('/api/task-assignees'), authFetch('/api/tasks/meeting-notes')]);
   const taskData = await responses[0].json();
   const memberData = await responses[1].json();
+  const noteData = responses[2].ok ? await responses[2].json() : { notes: [] };
   if (!responses[0].ok || !responses[1].ok) {
     showToast((taskData && taskData.error) || (memberData && memberData.error) || 'Не удалось загрузить поручения');
     return;
@@ -4115,10 +4122,25 @@ async function loadTaskControl() {
   meetingTasks = taskData.tasks || [];
   taskSummary = taskData.summary || {};
   taskMembers = memberData.members || [];
+  meetingNotes = noteData.notes || [];
   renderTaskSummary();
   renderTaskFilters();
   renderTasksTable();
+  renderTaskMeetingNotes();
   renderTaskMembers();
+}
+
+function renderTaskMeetingNotes() {
+  const card = document.getElementById('task-meeting-notes-card');
+  const list = document.getElementById('task-meeting-notes-list');
+  if (!card || !list) return;
+  card.style.display = meetingNotes.length ? 'block' : 'none';
+  list.innerHTML = meetingNotes.map(function(item) {
+    return '<div style="padding:.8rem .9rem;border:1px solid var(--border);border-radius:10px;background:var(--cream,#F7F5EF);">' +
+      '<div style="font-size:.72rem;color:var(--muted);margin-bottom:.35rem;">Планёрка ' + taskEsc(item.meeting_date) + '</div>' +
+      '<strong style="font-size:.86rem;color:var(--deep);">' + taskEsc(item.title) + '</strong>' +
+      '<p style="font-size:.8rem;line-height:1.5;color:var(--text);margin:.35rem 0 0;">' + taskEsc(item.note) + '</p></div>';
+  }).join('');
 }
 
 function renderTaskSummary() {
