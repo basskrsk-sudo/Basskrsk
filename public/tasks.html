@@ -86,7 +86,7 @@ const BASE = '/api/task-page';
 let token = null, actor = null, tasks = [], members = [], notes = [], mode = 'all', editorTaskId = null;
 const $ = id => document.getElementById(id);
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function safeDate(v) { if(!v) return 'Не установлен'; const x = String(v).split('-'); return x.length===3 ? x[2]+'.'+x[1]+'.'+x[0] : escapeHtml(v); }
+function safeDate(v) { if(!v) return 'Не установлен'; if(!/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return escapeHtml(v); const x = String(v).split('-'); return x[2]+'.'+x[1]+'.'+x[0]; }
 function todayKrasnoyarsk() {
   const x = new Intl.DateTimeFormat('en-US',{ timeZone:'Asia/Krasnoyarsk',year:'numeric',month:'2-digit',day:'2-digit' }).formatToParts(new Date());
   const p = Object.fromEntries(x.map(i => [i.type,i.value]));
