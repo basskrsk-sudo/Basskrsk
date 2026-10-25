@@ -9,7 +9,10 @@ class ProfileCorrectionError extends Error {}
 
 function phoneSignature(value) {
   const digits = String(value || '').replace(/\D/g, '');
-  return digits.length >= 10 ? digits.slice(-10) : digits;
+  // Российский номер с 8 / +7 / без кода — один и тот же контакт.
+  if (digits.length === 11 && /^[78]/.test(digits)) return '7' + digits.slice(1);
+  if (digits.length === 10 && digits[0] === '9') return '7' + digits;
+  return digits;
 }
 
 function normalizeProfile(existing, patch = {}) {
