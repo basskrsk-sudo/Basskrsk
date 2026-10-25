@@ -261,6 +261,7 @@ function formatRecipientPayoutMessage(person,generatedAt){
     'Роли: '+person.roles.map(role=>ROLES[role]).join(' + '),
     '📅 Период расчётов: '+person.period.label,
     'Срез начислений: '+formatSaleDateTime(generatedAt)+' (Красноярск)',
+    'Дата продажи указана по времени создания оплаченного заказа.',
     'Основа: все ещё невыплаченные заказы и бонусы.',
     '',
     '🛒 Продажи:',
@@ -302,7 +303,7 @@ function csvCell(value){
   return '"'+text.replace(/"/g,'""')+'"';
 }
 function buildPayoutBriefCsv(report){
-  const rows=[['Получатель','Роль','Период расчётов','Дата продажи (Красноярск)',
+  const rows=[['Получатель','Роль','Период расчётов','Дата заказа/продажи (Красноярск)',
     'Заказ','Точка','Наименования товаров','Стоимость продажи (руб.)',
     'Процент партнёра','Вознаграждение (руб.)','Тип начисления'].map(csvCell).join(';')];
   for(const person of report.people){
