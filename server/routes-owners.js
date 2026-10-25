@@ -12,6 +12,7 @@ const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
+const { normalizeProfile, isLoginAvailable, logProfileCorrection, ProfileCorrectionError } = require('./profile-corrections');
 const {
   createOwnerPayout,
   getOwnerUnpaidSummary,
@@ -200,32 +201,76 @@ function registerOwnerRoutes(router) {
     if (!payload) return;
     const existing = db.prepare('SELECT * FROM salon_owners WHERE id = ?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Владелец не найден' });
-    const { active, full_name, phone, point_id, groomer_partner_id } = ctx.body || {};
-    if (point_id) {
-      const point = db.prepare('SELECT id FROM points WHERE id = ?').get(point_id);
-      if (!point) return sendJson(res, 400, { error: 'Точка с таким id не найдена' });
+    const patch = ctx.body || {};
+    const { active, point_id, groomer_partner_id } = patch;
+    let profile;
+    try { profile = normalizeProfile(existing, patch); }
+    catch (error) {
+      if (error instanceof ProfileCorrectionError) return sendJson(res, 400, { error: error.message });
+      throw error;
     }
-    const targetPointId = point_id !== undefined ? (point_id || null) : existing.point_id;
-    // A reassignment must not retain an old groomer from another point.
+    if (!isLoginAvailable(db, 'salon_owners', profile.values.login, existing.id)) {
+      return sendJson(res, 409, { error: 'Такой логин владельца уже занят' });
+    }
+
+    let targetPointId = existing.point_id;
+    if (point_id !== undefined) {
+      if (point_id !== null && typeof point_id !== 'string') {
+        return sendJson(res, 400, { error: 'Неверный идентификатор точки' });
+      }
+      targetPointId = String(point_id || '').trim() || null;
+      if (targetPointId) {
+        const point = db.prepare('SELECT id FROM points WHERE id = ?').get(targetPointId);
+        if (!point) return sendJson(res, 400, { error: 'Точка с таким id не найдена' });
+      }
+    }
+
     const pointChanged = String(targetPointId || '') !== String(existing.point_id || '');
+    if (pointChanged && targetPointId) {
+      const occupied = db.prepare('SELECT id FROM salon_owners WHERE point_id = ? AND id != ? LIMIT 1')
+        .get(targetPointId, existing.id);
+      if (occupied) return sendJson(res, 409, { error: 'На этой точке уже есть владелец' });
+    }
+
+    // Перенос на другую точку не сохраняет привязку к чужому грумеру.
     const targetGroomerId = groomer_partner_id !== undefined
       ? groomer_partner_id : (pointChanged ? null : existing.groomer_partner_id);
-    // Only revalidate an intentionally modified link (or when moving salons).
-    // Turning off an owner must remain possible even if a historical groomer
-    // association has meanwhile become inactive.
-    const groomerLink = (groomer_partner_id !== undefined || pointChanged)
+    const groomerLink = groomer_partner_id !== undefined || pointChanged
       ? validateOwnerGroomer(targetPointId, targetGroomerId)
-      : { valid: true, id: targetGroomerId ?? null };
+      : { valid: true, id: existing.groomer_partner_id ?? null };
     if (!groomerLink.valid) return sendJson(res, 400, { error: groomerLink.error });
-    db.prepare('UPDATE salon_owners SET active=?, full_name=?, phone=?, point_id=?, groomer_partner_id=? WHERE id=?').run(
-      active !== undefined ? (active ? 1 : 0) : existing.active,
-      full_name ?? existing.full_name,
-      phone ?? existing.phone,
-      targetPointId,
-      groomerLink.id,
-      ctx.params.id
-    );
-    sendJson(res, 200, { ok: true });
+
+    let transactionOpen = false;
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      transactionOpen = true;
+      db.prepare(
+        'UPDATE salon_owners SET active=?, full_name=?, phone=?, login=?, point_id=?, ' +
+        'groomer_partner_id=?, legal_form=?, inn=?, bank_details=?, telegram_chat_id=?, max_chat_id=? WHERE id=?'
+      ).run(
+        active !== undefined ? (active ? 1 : 0) : existing.active,
+        profile.values.full_name, profile.values.phone, profile.values.login,
+        targetPointId, groomerLink.id,
+        profile.values.legal_form, profile.values.inn, profile.values.bank_details,
+        profile.phoneChanged ? null : existing.telegram_chat_id,
+        profile.phoneChanged ? null : existing.max_chat_id,
+        existing.id
+      );
+      const updated = {
+        ...existing, ...profile.values, point_id: targetPointId,
+        groomer_partner_id: groomerLink.id,
+      };
+      logProfileCorrection(db, payload, 'owner', existing, updated);
+      db.exec('COMMIT');
+      transactionOpen = false;
+      sendJson(res, 200, { ok: true, telegram_reconnect_required: profile.phoneChanged });
+    } catch (error) {
+      if (transactionOpen) {
+        try { db.exec('ROLLBACK'); } catch (_) {}
+      }
+      console.error('[admin] Correction of salon owner failed:', error);
+      sendJson(res, 500, { error: 'Не удалось сохранить исправления владельца' });
+    }
   });
 
   // POST /api/salon-owners/:id/reset-password — админ сбрасывает пароль
