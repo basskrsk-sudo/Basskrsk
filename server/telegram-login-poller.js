@@ -30,7 +30,7 @@ const {
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
 const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
-const { collectPayoutBrief, formatPayoutBriefMessage, buildPayoutBriefCsv } = require('./payout-brief');
+const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
 let lastUpdateId = 0;
 let polling = false;
 
@@ -229,27 +229,41 @@ async function sendPayoutBriefs(chatId) {
     return;
   }
   const date = report.generated_at.slice(0, 10);
-  // Prepare both attachments independently: an ImageMagick error must not hide the CSV.
-  try {
-    const pdf = await require('./payout-brief-pdf').renderPayoutBriefPdf(report);
-    await sendPayoutBriefDocument(
-      chatId, pdf, 'HvostMarket_payouts_' + date + '.pdf',
-      'Справки для выплат: по одной секции на каждого получателя. Роли одного человека объединены.',
-      'application/pdf'
-    );
-  } catch (error) {
-    console.error('Не удалось отправить PDF справок для выплат:', error.message);
-    await replyToChat(chatId, '⚠️ PDF-справки не удалось сформировать или отправить. Сводка уже готова.');
+  if (!report.people.length) return;
+  const renderPdf = require('./payout-brief-pdf').renderPayoutBriefPdf;
+  let failedDocuments = 0;
+  // Each payee gets a separate Telegram message and an individual printable PDF.
+  // Combined profiles (e.g. a groomer and manager) are one payee, not two.
+  for (const person of report.people) {
+    await replyToChat(chatId, formatRecipientPayoutMessage(person, report.generated_at));
+    try {
+      const pdf = await renderPdf(report, { recipient: person });
+      const fileName = 'HvostMarket_payout_' + String(person.index).padStart(3,'0') + '_' + date + '.pdf';
+      await sendPayoutBriefDocument(
+        chatId, pdf, fileName,
+        'Справка: ' + person.name + ' · ' + person.roles_label + ' · ' +
+          'период ' + (person.period?.label || 'не определён') +
+          ' · к выплате ' + person.total + ' ₽',
+        'application/pdf'
+      );
+    } catch (error) {
+      failedDocuments++;
+      console.error('Не удалось отправить PDF-справку получателю №'+person.index+':', error.message);
+      await replyToChat(chatId, '⚠️ PDF для «'+person.name+'» не сформирован или не доставлен. Повторите /payouts позже.');
+    }
   }
   try {
     await sendPayoutBriefDocument(
       chatId, buildPayoutBriefCsv(report), 'HvostMarket_payouts_' + date + '.csv',
-      'Детализация невыплаченных начислений по людям, ролям и точкам.',
+      'Общая CSV-детализация: период, даты, товары, суммы продаж, ставки и вознаграждения.',
       'text/csv;charset=utf-8'
     );
   } catch (error) {
     console.error('Не удалось отправить CSV справок для выплат:', error.message);
     await replyToChat(chatId, '⚠️ Не удалось отправить CSV с детализацией. Повторите /payouts позднее.');
+  }
+  if (failedDocuments) {
+    await replyToChat(chatId, '⚠️ Не удалось отправить '+failedDocuments+' персональных PDF из '+report.people.length+'.');
   }
 }
 
