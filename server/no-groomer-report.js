@@ -148,7 +148,7 @@ function formatNoGroomerReport(report) {
     '❔ «Не выбран»: ' + report.unassigned_count,
   ];
   if (report.rate_without_partner) {
-    lines.push('⚠️ У ' + report.rate_without_partner + ' заказов без назначенного грумера зафиксирована ненулевая ставка комиссии. Проверьте атрибуцию.');
+    lines.push('⚠️ Заказов с ненулевой ставкой, но без грумера: ' + report.rate_without_partner + '. Проверьте атрибуцию перед выплатами.');
   }
   lines.push('', 'Последние заказы:');
   if (!report.count) lines.push('Таких оплаченных заказов нет.');
