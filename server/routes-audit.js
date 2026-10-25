@@ -98,6 +98,16 @@ function registerAuditRoutes(router) {
       LIMIT ?
     `).all(limit);
 
+    const profileEvents = type && type !== 'account_profile_change' ? [] : db.prepare(`
+      SELECT
+        'account_profile_change' AS type,
+        id, created_at, admin_id, admin_login,
+        subject_type, subject_id, subject_name, changes_json
+      FROM account_profile_change_log
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `).all(limit);
+
     const bscEvents = type && type !== 'bsc_settings_change' ? [] : db.prepare(`
       SELECT
         'bsc_settings_change' AS type,
@@ -111,7 +121,7 @@ function registerAuditRoutes(router) {
       LIMIT ?
     `).all(limit);
 
-    const events = customerEvents.concat(warehouseEvents, managerEvents, orderPartnerEvents, bscEvents)
+    const events = customerEvents.concat(warehouseEvents, managerEvents, orderPartnerEvents, profileEvents, bscEvents)
       .sort((a, b) => {
         const byDate = String(b.created_at).localeCompare(String(a.created_at));
         if (byDate) return byDate;
