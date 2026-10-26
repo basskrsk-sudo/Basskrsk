@@ -1662,6 +1662,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="">Все действия</option>
               <option value="customer_delete">Удаление клиентов</option>
               <option value="warehouse_delete">Удаление со склада</option>
+              <option value="warehouse_decrease">Уменьшение остатка склада</option>
               <option value="manager_action">Действия менеджеров</option>
               <option value="order_partner_change">Исправление грумера в заказе</option>
               <option value="account_profile_change">Исправление анкет партнёров</option>
@@ -1672,7 +1673,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </div>
         </div>
         <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
-          История удаления клиентов и складских позиций, исправлений грумера в оплаченных заказах, исправлений анкет, уточнений дат создания точек, изменений целей BSC, а также действий менеджеров. Доступна только супер-администраторам.
+          История удаления клиентов и складских позиций, уменьшений складских остатков, исправлений грумера в оплаченных заказах, исправлений анкет, уточнений дат создания точек, изменений целей BSC, а также действий менеджеров. Доступна только супер-администраторам.
         </p>
         <table class="tbl">
           <thead>
@@ -5888,7 +5889,7 @@ async function saveWarehouseDecrease() {
   }
   if (!confirm('Уменьшить складской остаток «' + state.name + ' (' + state.weight +
       ')» с ' + state.expected_qty + ' до ' + newQty +
-      ' шт.?\\n\\nПричина: ' + reason)) return;
+      ' шт.?\n\nПричина: ' + reason)) return;
   const save = document.getElementById('warehouse-decrease-save');
   save.disabled = true;
   document.getElementById('warehouse-decrease-error').style.display = 'none';
@@ -7547,10 +7548,17 @@ async function renderAuditLog() {
       details = 'ID: ' + event.customer_id + ' · заказов: ' + event.orders_count +
         ' · потрачено: ' + Number(event.total_spent || 0).toLocaleString('ru-RU') + ' ₽' +
         ' · косточек: ' + Number(event.bones_balance || 0).toLocaleString('ru-RU');
-    } else if (event.type === 'warehouse_delete') {
-      action = 'Удаление со склада';
-      target = auditEscape(event.product_name) + ' <span style="color:var(--muted);">(' + auditEscape(event.weight) + ')</span>';
-      details = 'Склад: ' + auditEscape(event.city_name || event.city_id) + ' · удалено: ' + Number(event.old_qty || 0) + ' шт.';
+    } else if (event.type === 'warehouse_delete' || event.type === 'warehouse_decrease') {
+      const decreased = event.type === 'warehouse_decrease';
+      action = decreased ? 'Уменьшение остатка склада' : 'Удаление со склада';
+      target = auditEscape(event.product_name) +
+        ' <span style="color:var(--muted);">(' + auditEscape(event.weight) + ')</span>';
+      const previous = Number(event.old_qty || 0);
+      const latest = Number(event.new_qty || 0);
+      details = 'Склад: ' + auditEscape(event.city_name || event.city_id) +
+        (decreased
+          ? ' · ' + previous + ' → ' + latest + ' шт. (−' + (previous - latest) + ' шт.)'
+          : ' · удалено: ' + previous + ' шт.');
     } else if (event.type === 'order_partner_change') {
       action = 'Исправление грумера';
       target = 'Заказ <span style="font-family:monospace;">' + auditEscape(event.order_code) + '</span>';
