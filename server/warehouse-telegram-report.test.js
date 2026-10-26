@@ -108,7 +108,7 @@ test('all-city summary is separate from a detailed Excel-friendly CSV', () => {
   const csv=buildWarehouseStockCsv(result);
   assert.equal(csv.charCodeAt(0),0xFEFF);
   const lines=csv.trim().split('\r\n');
-  assert.ok(lines.length>=10);
+  assert.equal(lines.length,9); // header + 4 Krasnoyarsk + 3 SPB + 1 historical city
   assert.ok(lines.some(line=>line.includes('Архивный')));
   assert.ok(lines.some(line=>line.includes('"0"')));
   assert.match(lines[0],/Остаток, шт/);
