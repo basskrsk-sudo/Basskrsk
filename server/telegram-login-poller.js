@@ -35,6 +35,10 @@ const {
   formatBusinessYearReport, buildBusinessYearCsv, buildBusinessPointsCsv,
 } = require('./business-year-report');
 const { sendTelegramCsvDocument } = require('./telegram-csv-upload');
+const {
+  collectWarehouseStockReport, formatWarehouseStockMessages,
+  formatWarehouseStockSummary, buildWarehouseStockCsv,
+} = require('./warehouse-telegram-report');
 const { collectNoGroomerReport, formatNoGroomerReport, buildNoGroomerCsv } = require('./no-groomer-report');
 const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
 let lastUpdateId = 0;
@@ -75,6 +79,7 @@ async function configureBotProfile() {
       { command: 'salesweek', description: 'Отчёт по продажам за 7 дней' },
       { command: 'business', description: 'Бизнес по месяцам и за год' },
       { command: 'businesspoints', description: 'Все точки: CSV со статистикой' },
+      { command: 'stock', description: 'Актуальные остатки центрального склада' },
       { command: 'nogroomer', description: 'Оплаченные заказы без грумера' },
       { command: 'payouts', description: 'Справка для выплат партнёрам' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
@@ -121,7 +126,7 @@ function buildWelcomeMessage() {
     'Я помогу войти в личный кабинет и буду присылать важные уведомления о заказах, продажах и вознаграждениях.',
     '',
     'Сотрудникам: /tasks покажет активные поручения, /newtask создаст задачу, а /expense запишет трату бизнеса.',
-    'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
+    'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /stock — остатки центрального склада; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
     '',
     'Чтобы подключить кабинет, откройте на сайте вход через Telegram и перейдите по созданной ссылке.',
   ].join('\n');
@@ -136,6 +141,7 @@ function botActionButtons(chatId) {
     keyboard.push([{ text: '📊 Продажи за 7 дней', callback_data: 'sales:week' }]);
     keyboard.push([{ text: '📈 Бизнес по месяцам и за год', callback_data: 'sales:business' }]);
     keyboard.push([{ text: '🏪 Все точки · CSV', callback_data: 'sales:businesspoints' }]);
+    keyboard.push([{ text: '📦 Остатки центрального склада', callback_data: 'warehouse:stock' }]);
     keyboard.push([{ text: '🔎 Заказы без грумера', callback_data: 'sales:nogroomer' }]);
     keyboard.push([{ text: '💸 Справки к выплатам', callback_data: 'payouts:prepare' }]);
   }
@@ -240,6 +246,68 @@ async function sendSalesWeekReport(chatId) {
   }
 }
 
+
+// /stock [city_id|city_name] — только для администраторов в ЛИЧНОМ чате.
+// На каждом запросе перечитывается реальная складская таблица SQLite.
+async function sendWarehouseStockReport(chatId, citySelector = '') {
+  if (!adminCanReadSales(chatId)) {
+    await replyToChat(chatId,
+      '🔒 Остатки центрального склада доступны только администраторам ХвостМаркета в личном чате.');
+    return;
+  }
+
+  let report;
+  try {
+    report = collectWarehouseStockReport(citySelector);
+  } catch (error) {
+    if (error.code === 'UNKNOWN_WAREHOUSE_CITY') {
+      const available = (error.cities || []).map(city =>
+        city.name + ' — /stock ' + city.id).join('\n');
+      await replyToChat(chatId,
+        'Город не найден. Доступные городские склады:\n' +
+        (available || 'Складские города ещё не заведены.') +
+        '\n\nИспользуйте /stock для общего отчёта.');
+    } else {
+      console.error('[stock-report] Ошибка формирования складского отчёта:', error);
+      await replyToChat(chatId,
+        '⚠️ Не удалось получить актуальные остатки склада. Подробности в журнале Amvera.');
+    }
+    return;
+  }
+
+  try {
+    const detailed = formatWarehouseStockMessages(report);
+    // Не отправляем десятки отдельных сообщений, если ассортимент вырос.
+    // CSV всегда содержит все позиции без ограничений на число строк.
+    const messages = detailed.length <= 7
+      ? (report.cities.length > 1
+        ? [formatWarehouseStockSummary(report), ...detailed] : detailed)
+      : [formatWarehouseStockSummary(report) +
+        '\nПолный перечень слишком длинный для сообщений; все позиции — в CSV.'];
+    const csv = buildWarehouseStockCsv(report);
+    for (const text of messages) {
+      await callBotApi('sendMessage', { chat_id: chatId, text });
+      // Не отправляем несколько сообщений подряд в обход лимитов Telegram.
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    }
+    await sendTelegramCsvDocument({
+      token: TG_TOKEN, chatId, csvText: csv,
+      filename: 'warehouse-stock-' + report.generated_at.slice(0,10) + '.csv',
+      caption: 'Актуальные остатки центральных складов ХвостМаркета · ' +
+        report.local_time + ' (Красноярск)',
+    });
+  } catch (error) {
+    console.error('[stock-report] Ошибка отправки складского отчёта:', {
+      message: error.message, telegramCode: error.telegramCode || null,
+      status: error.status || null, retryAfter: error.retryAfter || null,
+    });
+    const reason = error.telegramCode
+      ? 'Telegram вернул ошибку ' + error.telegramCode + '.'
+      : 'Возникла ошибка доставки.';
+    await replyToChat(chatId, '⚠️ Не удалось полностью доставить отчёт об остатках. ' +
+      reason + ' Повторите /stock. Подробности в журнале Amvera.');
+  }
+}
 
 // /business [ГГГГ] — финансовая динамика с начала календарного года
 // по Красноярску или полный выбранный прошлый год.
@@ -475,6 +543,17 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (callback.data === 'warehouse:stock') {
+      const chat = callback.message?.chat;
+      const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
+      await callBotApi('answerCallbackQuery', {
+        callback_query_id: callback.id,
+        text: allowed ? 'Собираем актуальные остатки' : 'Нет доступа',
+        show_alert: !allowed,
+      });
+      if (allowed) await sendWarehouseStockReport(chat.id);
+      return;
+    }
     if (callback.data === 'sales:nogroomer') {
       const chat = callback.message?.chat;
       const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
@@ -614,6 +693,17 @@ async function processUpdate(update) {
     }
   }
 
+  const stockCommand = text.match(/^\/stock(?:@\w+)?(?:\s+(.+))?$/i);
+  if (stockCommand) {
+    const citySelector = (stockCommand[1] || '').trim();
+    if (citySelector.length > 80 || /[\x00-\x1f\x7f]/.test(citySelector)) {
+      await replyToChat(msg.chat.id,
+        'Формат: /stock — все города, /stock krsk — склад Красноярска.');
+    } else {
+      await sendWarehouseStockReport(msg.chat.id, citySelector);
+    }
+    return;
+  }
   const noGroomerCommand = text.match(/^\/nogroomer(?:@\w+)?(?:\s+(\S+))?$/i);
   if (noGroomerCommand) {
     if (noGroomerCommand[1] && !['7', '30'].includes(noGroomerCommand[1])) {
