@@ -1441,6 +1441,31 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </thead>
           <tbody id="warehouse-tbody"></tbody>
         </table>
+        <p style="font-size:.78rem;color:var(--muted);margin-top:.75rem;line-height:1.5;">Для исправления завышенного количества нажмите «Уменьшить». Укажите правильный остаток и причину. Продажи и остатки мини-маркетов не изменяются.</p>
+      </div>
+
+      <!-- Исправление ошибочно завышенного остатка центрального склада. -->
+      <div id="warehouse-decrease-modal" role="presentation" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.55);align-items:center;justify-content:center;z-index:115;padding:1rem;">
+        <div role="dialog" aria-modal="true" aria-labelledby="warehouse-decrease-title" style="background:white;border-radius:12px;padding:1.5rem;max-width:490px;width:100%;max-height:90vh;overflow-y:auto;">
+          <h3 id="warehouse-decrease-title" style="margin-bottom:.35rem;">Уменьшить остаток склада</h3>
+          <p id="warehouse-decrease-product" style="font-size:.9rem;margin:0 0 1rem;"></p>
+          <p style="font-size:.86rem;margin:0 0 .8rem;">Сейчас на складе: <strong id="warehouse-decrease-current">0</strong> шт.</p>
+          <div class="admin-field">
+            <label for="warehouse-decrease-new">Правильный остаток после исправления, шт.</label>
+            <input id="warehouse-decrease-new" type="number" min="0" step="1" required oninput="updateWarehouseDecreasePreview()">
+          </div>
+          <p id="warehouse-decrease-preview" style="font-size:.83rem;color:var(--muted);margin:.2rem 0 .7rem;"></p>
+          <div class="admin-field">
+            <label for="warehouse-decrease-reason">Почему уменьшаем остаток? (обязательно)</label>
+            <textarea id="warehouse-decrease-reason" rows="3" maxlength="500" placeholder="Например: при приходе по накладной ошибочно внесли 25 шт. вместо 20 шт." style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:7px;padding:.6rem;font:inherit;resize:vertical;"></textarea>
+          </div>
+          <p style="font-size:.75rem;line-height:1.5;color:var(--muted);">Действие будет записано в журнал: товар, город, старое и новое количество, причина и администратор. Уменьшение не удалит товар из каталога.</p>
+          <div id="warehouse-decrease-error" role="alert" style="display:none;background:#FDECEA;color:#9B2335;font-size:.83rem;padding:.6rem .8rem;border-radius:6px;margin:.7rem 0;"></div>
+          <div style="display:flex;gap:.6rem;margin-top:1rem;">
+            <button type="button" class="row-btn" style="flex:1" onclick="closeWarehouseDecrease()">Отмена</button>
+            <button type="button" id="warehouse-decrease-save" class="row-btn" style="flex:1;background:var(--forest);color:white;" onclick="saveWarehouseDecrease()">Подтвердить уменьшение</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -5791,9 +5816,12 @@ async function renderWarehouse() {
     return '<tr>' +
       '<td style="font-weight:500;">' + r.product_name + '</td>' +
       '<td>' + r.weight + '</td>' +
-      '<td class="r"><input type="number" min="0" value="' + r.qty + '" style="width:70px;text-align:right;" ' +
-        'onchange="updateWarehouseStock(' + r.variant_id + ', this.value)"></td>' +
-      '<td class="r"><button class="row-btn" style="color:#9B2335;border-color:#E9B8BF;" ' +
+      '<td class="r">' + Number(r.qty) + ' шт.</td>' +
+      '<td class="r"><button class="row-btn" style="margin-right:.3rem;" ' +
+        'data-variant-id="' + r.variant_id + '" data-product="' + encodeURIComponent(r.product_name) + '" ' +
+        'data-weight="' + encodeURIComponent(r.weight) + '" data-qty="' + Number(r.qty) + '" ' +
+        'onclick="openWarehouseDecrease(this)" ' + (Number(r.qty) <= 0 ? 'disabled' : '') + '>Уменьшить</button> ' +
+        '<button class="row-btn" style="color:#9B2335;border-color:#E9B8BF;" ' +
         'data-variant-id="' + r.variant_id + '" data-product="' + encodeURIComponent(r.product_name) + '" ' +
         'data-weight="' + encodeURIComponent(r.weight) + '" data-qty="' + r.qty + '" ' +
         'onclick="deleteWarehouseStock(this)">Удалить</button></td>' +
@@ -5801,11 +5829,85 @@ async function renderWarehouse() {
   }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:2rem;">Склад этого города пуст</td></tr>';
 }
 
-async function updateWarehouseStock(variantId, value) {
-  const qty = Math.max(0, parseInt(value, 10) || 0);
+// Вся корректировка проходит через POST /api/warehouse/stock/decrease:
+// фронтенд не должен менять склад скрыто по onchange.
+let warehouseDecreaseState = null;
+function closeWarehouseDecrease() {
+  warehouseDecreaseState = null;
+  document.getElementById('warehouse-decrease-modal').style.display = 'none';
+}
+function showWarehouseDecreaseError(message) {
+  const el = document.getElementById('warehouse-decrease-error');
+  el.textContent = String(message || 'Не удалось сохранить исправление');
+  el.style.display = 'block';
+}
+function openWarehouseDecrease(button) {
   const cityId = document.getElementById('warehouse-city-filter').value;
-  await authFetch('/api/warehouse/stock', { method: 'PUT', body: { variant_id: variantId, qty, city_id: cityId } });
-  await renderWarehouse();
+  const variantId = Number(button.dataset.variantId);
+  const qty = Number(button.dataset.qty);
+  if (!cityId || !Number.isSafeInteger(variantId) || variantId <= 0 ||
+      !Number.isSafeInteger(qty) || qty <= 0) return;
+  const name = decodeURIComponent(button.dataset.product || '');
+  const weight = decodeURIComponent(button.dataset.weight || '');
+  warehouseDecreaseState = { city_id: cityId, variant_id: variantId, expected_qty: qty, name: name, weight: weight };
+  document.getElementById('warehouse-decrease-product').textContent =
+    name + ' (' + weight + ') · центральный склад ' + cityId;
+  document.getElementById('warehouse-decrease-current').textContent = qty;
+  document.getElementById('warehouse-decrease-new').value = String(qty - 1);
+  document.getElementById('warehouse-decrease-new').max = String(qty - 1);
+  document.getElementById('warehouse-decrease-reason').value = '';
+  document.getElementById('warehouse-decrease-error').style.display = 'none';
+  document.getElementById('warehouse-decrease-save').disabled = false;
+  updateWarehouseDecreasePreview();
+  document.getElementById('warehouse-decrease-modal').style.display = 'flex';
+}
+function updateWarehouseDecreasePreview() {
+  const state = warehouseDecreaseState;
+  if (!state) return;
+  const raw = document.getElementById('warehouse-decrease-new').value;
+  const newQty = raw === '' ? NaN : Number(raw);
+  const text = Number.isSafeInteger(newQty) && newQty >= 0 && newQty < state.expected_qty
+    ? 'Будет уменьшено на ' + (state.expected_qty - newQty) + ' шт. (' + state.expected_qty + ' → ' + newQty + ').'
+    : 'Введите целое число от 0 до ' + (state.expected_qty - 1) + '.';
+  document.getElementById('warehouse-decrease-preview').textContent = text;
+}
+async function saveWarehouseDecrease() {
+  const state = warehouseDecreaseState;
+  if (!state) return;
+  const qtyInput = document.getElementById('warehouse-decrease-new').value;
+  const newQty = qtyInput === '' ? NaN : Number(qtyInput);
+  const reason = document.getElementById('warehouse-decrease-reason').value.trim();
+  if (!Number.isSafeInteger(newQty) || newQty < 0 || newQty >= state.expected_qty) {
+    showWarehouseDecreaseError('Новый остаток должен быть целым числом от 0 до ' +
+      (state.expected_qty - 1) + '.');
+    return;
+  }
+  if (reason.length < 8 || reason.length > 500) {
+    showWarehouseDecreaseError('Укажите причину исправления длиной от 8 до 500 символов.');
+    return;
+  }
+  if (!confirm('Уменьшить складской остаток «' + state.name + ' (' + state.weight +
+      ')» с ' + state.expected_qty + ' до ' + newQty +
+      ' шт.?\\n\\nПричина: ' + reason)) return;
+  const save = document.getElementById('warehouse-decrease-save');
+  save.disabled = true;
+  document.getElementById('warehouse-decrease-error').style.display = 'none';
+  try {
+    const response = await authFetch('/api/warehouse/stock/decrease', {
+      method:'POST', body: {
+        city_id:state.city_id, variant_id:state.variant_id,
+        expected_qty:state.expected_qty, new_qty:newQty, reason:reason
+      }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Не удалось уменьшить остаток');
+    closeWarehouseDecrease();
+    await renderWarehouse();
+  } catch (error) {
+    showWarehouseDecreaseError(error.message);
+  } finally {
+    save.disabled = false;
+  }
 }
 
 async function deleteWarehouseStock(button) {
