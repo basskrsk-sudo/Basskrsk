@@ -406,7 +406,7 @@ function registerProductRoutes(router) {
     if (!payload) return;
     const point = db.prepare('SELECT id, name, created_at FROM points WHERE id = ?').get(ctx.params.id);
     if (!point) return sendJson(res, 404, { error: 'Точка не найдена' });
-    if (point.created_at) return sendJson(res, 409, {
+    if (String(point.created_at || '').trim()) return sendJson(res, 409, {
       error: 'У точки уже есть дата создания. Сохранённая историческая дата не перезаписывается.',
     });
 
@@ -433,7 +433,7 @@ function registerProductRoutes(router) {
       opened = true;
       const updated = db.prepare(`
         UPDATE points SET created_at = ?, created_at_source = 'manual_date_only'
-        WHERE id = ? AND created_at IS NULL
+        WHERE id = ? AND (created_at IS NULL OR TRIM(created_at) = '')
       `).run(createdAtUtc, point.id);
       if (!updated.changes) {
         db.exec('ROLLBACK');
