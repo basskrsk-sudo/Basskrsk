@@ -5354,17 +5354,23 @@ async function renderPointsManagement() {
   adminAllPoints = data.points || [];
   const launchByPoint = new Map((checklistData.points || []).map(function(row) { return [row.point_id, row]; }));
   const cityName = (id) => (ADMIN_CITIES_CACHE || []).find((c) => c.id === id)?.name || id;
+  const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
+    timeZone:'Asia/Krasnoyarsk', day:'2-digit', month:'2-digit', year:'numeric',
+  });
   document.getElementById('points-mgmt-count').textContent = adminAllPoints.length + ' шт.';
   document.getElementById('points-mgmt-tbody').innerHTML = adminAllPoints.map(function(p) {
     const type = p.is_hub ? 'Хаб' : (p.manager_id ? 'Через менеджера №' + p.manager_id : 'Добавлена вручную');
     const launch = launchByPoint.get(p.id);
     const createdAt = p.created_at && !Number.isNaN(new Date(String(p.created_at).replace(' ', 'T') + 'Z').getTime())
-      ? new Intl.DateTimeFormat('ru-RU', {timeZone:'Asia/Krasnoyarsk',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(String(p.created_at).replace(' ', 'T') + 'Z'))
+      ? dateFormatter.format(new Date(String(p.created_at).replace(' ', 'T') + 'Z'))
       : null;
     const createdSource = p.created_at_source === 'manager_action_log' ? 'по журналу менеджера' :
       p.created_at_source === 'manual_date_only' ? 'дата внесена вручную' : 'зафиксирована при создании';
     const dateCell = createdAt
-      ? '<span title="' + escapeOrderCell(createdSource) + '">' + escapeOrderCell(createdAt) + '</span>'
+      ? '<span title="' + escapeOrderCell(createdSource) + '">' + escapeOrderCell(createdAt) + '</span>' +
+        (p.created_at_source !== 'recorded' && p.created_at_source
+          ? '<br><span style="font-size:.68rem;color:var(--muted);">' + escapeOrderCell(createdSource) + '</span>'
+          : '')
       : '<span style="color:var(--muted);font-size:.76rem;">Неизвестна</span>' +
         (currentAdminRole === 'super' ? '<br><button class="row-btn" data-point-id="' +
           escapeOrderCell(p.id) + '" onclick="openPointCreationDateModal(this.dataset.pointId)">Уточнить</button>' : '');
