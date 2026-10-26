@@ -59,6 +59,7 @@ function blankMonth(year, month) {
     manual_expenses: 0, partner_commission: 0, manager_commission: 0,
     owner_commission: 0, tax: 0, acquiring: 0, total_costs: 0, net_profit: 0,
     average_check: 0, margin_percent: 0, active_points: 0, new_points: 0,
+    registered_points_known: 0,
     revenue_change_percent: 0, revenue_change_text: '0%',
     sales_change_text: '0%', profit_change: null,
   };
@@ -89,6 +90,7 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
   const byKey = new Map(months.map((row) => [row.key, row]));
   const monthlyPointSets = new Map(months.map((row) => [row.key, new Set()]));
   const yearPointSet = new Set();
+  const annualPointSales = new Map();
 
   // Группировка выполняется SQLite: не выгружаем в Node.js все чеки сети.
   // Ставка грумера — снимок из заказа, остальные ставки из справочников
@@ -134,28 +136,59 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
       month.owner_commission += revenue * (ownerRates.get(point) || 0);
       monthlyPointSets.get(month.key).add(point);
       yearPointSet.add(point);
+      let annual = annualPointSales.get(point);
+      if (!annual) {
+        annual = {sales:0, revenue:0, months:new Set()};
+        annualPointSales.set(point,annual);
+      }
+      annual.sales += number(sale.sales);
+      annual.revenue += revenue;
+      annual.months.add(month.key);
     }
   }
 
-  // Открытие точки = дата создания записи points, а НЕ первая продажа.
-  // Исторические точки без подтверждённого created_at не распределяются
-  // произвольно между месяцами. Источники: автоматическая отметка INSERT,
-  // журнал создания менеджером или уточнённая суперадмином дата.
-  const createdPoints = db.prepare(`
-    SELECT id, strftime('%Y-%m', created_at, '+7 hours') AS created_month
-    FROM points
-    WHERE created_at IS NOT NULL AND TRIM(created_at) != ''
-      AND created_at < ?
-  `).all(untilUtc);
-  for (const point of createdPoints) {
+  // Включаем ВСЕ существующие в реестре точки: действующие, отключённые,
+  // без продаж и без известной даты регистрации. Дата создания берётся
+  // исключительно из points.created_at, никогда из даты первого заказа.
+  // Для выбранного прошлого года показываем нынешний реестр (снимков
+  // удалённых точек в системе нет), но их продажи — только за этот год.
+  const points = db.prepare(`
+    SELECT p.id, p.name, p.addr, p.city_id, c.name AS city_name,
+           p.active, p.is_hub, p.created_at, p.created_at_source,
+           strftime('%Y-%m', p.created_at, '+7 hours') AS created_month,
+           strftime('%Y-%m-%d', p.created_at, '+7 hours') AS created_local_date
+    FROM points p LEFT JOIN cities c ON c.id = p.city_id
+    ORDER BY p.name COLLATE NOCASE, p.id
+  `).all().map((point) => {
+    const paid = annualPointSales.get(String(point.id));
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(String(point.created_local_date || ''));
+    return {
+      id: String(point.id), name: String(point.name || point.id),
+      address: String(point.addr || ''), city: String(point.city_name || point.city_id || '—'),
+      active: !!point.active, is_hub: !!point.is_hub,
+      created_at: validDate ? String(point.created_at) : null,
+      created_date: validDate ? point.created_local_date : null,
+      created_month: validDate ? point.created_month : null,
+      created_source: validDate ? (point.created_at_source || 'unknown') : null,
+      sales: paid ? paid.sales : 0, revenue: paid ? paid.revenue : 0,
+      months_with_sales: paid ? paid.months.size : 0,
+    };
+  });
+  const pointsMissingDates = points.filter((point) => !point.created_date);
+  const unknownCreationDates = pointsMissingDates.length;
+  const datedBeforeReport = points.filter((point) =>
+    point.created_at && point.created_at < untilUtc);
+  for (const point of datedBeforeReport) {
     const m = byKey.get(point.created_month);
     if (m) m.new_points++;
   }
-  const unknownCreationDates = number(db.prepare(`
-    SELECT COUNT(*) AS total FROM points
-    WHERE created_at IS NULL OR TRIM(created_at) = ''
-      OR strftime('%Y-%m',created_at,'+7 hours') IS NULL
-  `).get().total);
+  for (const m of months) {
+    // Зарегистрированные к концу месяца, включая точки без продаж.
+    // Неизвестные даты не приписываются произвольному месяцу.
+    m.registered_points_known = datedBeforeReport.filter(
+      (point) => point.created_month <= m.key
+    ).length;
+  }
 
   // Траты учитываем по дате их фактического совершения, а не ввода в бот.
   const endExpensesExclusive = isCurrentYear
@@ -212,12 +245,16 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
     ]) totals[field] += m[field];
   }
   totals.active_points = yearPointSet.size; // Уникальные точки за год, НЕ сумма по месяцам.
+  totals.registered_points_known = datedBeforeReport.length;
   totals.average_check = totals.sales ? Math.round(totals.revenue / totals.sales) : 0;
   totals.margin_percent = totals.revenue ? Math.round(totals.net_profit / totals.revenue * 1000) / 10 : 0;
 
   return {
     year, is_current_year: isCurrentYear, months, totals,
     unknown_creation_dates: unknownCreationDates,
+    points, missing_creation_dates: pointsMissingDates,
+    total_points_in_registry: points.length,
+    points_with_known_registration: points.length - unknownCreationDates,
     period: {
       from_local: year + '-01-01',
       through_local: isCurrentYear
@@ -251,7 +288,8 @@ function formatBusinessYearReport(report) {
       '   💸 затраты ' + rub(m.total_costs) +
       ' · 📈 прибыль ' + signedRub(m.net_profit) +
       (m.profit_change === null ? '' : ' (Δ ' + signedRub(m.profit_change) + ')') +
-      ' · 🏪 ' + m.active_points + ' / +' + m.new_points
+      ' · 🏪 ' + m.active_points + ' / +' + m.new_points +
+      ' · всего ' + m.registered_points_known
     );
   }
   lines.push(
@@ -264,16 +302,23 @@ function formatBusinessYearReport(report) {
     '📈 Расчётная прибыль: ' + signedRub(t.net_profit) +
       ' · маржа: ' + t.margin_percent.toLocaleString('ru-RU') + '%',
     '🏪 Точек с продажами: ' + t.active_points +
-      ' · зарегистрировано точек: ' + t.new_points,
+      ' · новых зарегистрировано: ' + t.new_points,
+    '🗂 В реестре всего точек: ' + report.total_points_in_registry +
+      ' (из них ' + report.points.filter((point) => point.sales === 0).length +
+      ' без продаж за отчётный год)',
     '💼 Комиссии: грумеры ' + rub(t.partner_commission) +
       ', менеджеры ' + rub(t.manager_commission) +
       ', владельцы ' + rub(t.owner_commission),
     '🧾 Налог 6%: ' + rub(t.tax) + ' · эквайринг 2%: ' + rub(t.acquiring),
     '',
-    '🏪 В строке месяца: точки с продажами / новые созданные карточки.',
+    '🏪 В строке месяца: точки с продажами / новые записи / всего записей с датой.',
     ...(report.unknown_creation_dates ? [
-      '⚠️ Точек без подтверждённой даты создания: ' + report.unknown_creation_dates +
-      '. В новых точках по месяцам они не учтены.'
+      '⚠️ Уточните даты создания ' + report.unknown_creation_dates + ' точек:',
+      ...report.missing_creation_dates.slice(0,8).map((point) =>
+        '— ' + cleanReportLabel(point.name,44) + ' (' + cleanReportLabel(point.id,30) + ')'),
+      ...(report.missing_creation_dates.length > 8
+        ? ['…ещё ' + (report.missing_creation_dates.length - 8) + ' — в файле «Все точки».'] : []),
+      'Они включены в реестр, но не в помесячный подсчёт новых точек.'
     ] : []),
     'ℹ️ Это управленческая оценка, не бухгалтерская прибыль: ' +
       'учтены внесённые траты и расчётные комиссии/налог/эквайринг. ' +
@@ -285,8 +330,14 @@ function formatBusinessYearReport(report) {
   return message;
 }
 
+function cleanReportLabel(value, length) {
+  return String(value || '').replace(/[\\x00-\\x1f\\x7f]/g,' ').replace(/\\s+/g,' ').trim().slice(0,length);
+}
 function csvCell(value) {
-  return '"' + String(value ?? '').replace(/"/g, '""') + '"';
+  let out = String(value ?? '').replace(/[\\x00-\\x1f\\x7f]/g, ' ').trim();
+  // Не допускаем выполнения формул Excel из имени/адреса партнёрской точки.
+  if (typeof value !== 'number' && /^[=+@-]/.test(out)) out = "'" + out;
+  return '"' + out.replace(/"/g, '""') + '"';
 }
 function buildBusinessYearCsv(report) {
   const fields = [
@@ -295,6 +346,7 @@ function buildBusinessYearCsv(report) {
     'Комиссия менеджерам, ₽','Комиссия владельцам, ₽','Налог 6%, ₽',
     'Эквайринг 2%, ₽','Учтённые затраты, ₽','Расчётная прибыль, ₽',
     'Маржа, %','Точки с продажами','Новые точки (создание карточки)',
+    'Всего точек с датой регистрации к концу месяца',
     'Динамика выручки к предыдущему месяцу',
     'Динамика заказов к предыдущему месяцу',
     'Изменение прибыли к предыдущему месяцу, ₽',
@@ -306,7 +358,7 @@ function buildBusinessYearCsv(report) {
       m.key, m.revenue, m.sales, m.average_check, m.manual_expenses,
       m.partner_commission, m.manager_commission, m.owner_commission,
       m.tax, m.acquiring, m.total_costs, m.net_profit, m.margin_percent,
-      m.active_points, m.new_points, m.revenue_change_text || '',
+      m.active_points, m.new_points, m.registered_points_known, m.revenue_change_text || '',
       m.sales_change_text || '', m.profit_change === null ? '' : m.profit_change,
       m === report.totals ? report.unknown_creation_dates : '',
     ].map(csvCell).join(';'));
@@ -314,8 +366,35 @@ function buildBusinessYearCsv(report) {
   return '\uFEFF' + lines.join('\r\n') + '\r\n';
 }
 
+function buildBusinessPointsCsv(report) {
+  const columns = [
+    'Точка', 'ID точки', 'Город', 'Адрес', 'Статус', 'Тип',
+    'Дата регистрации точки (Красноярск)', 'Источник даты',
+    'Оплаченных заказов за ' + report.year, 'Выручка за ' + report.year + ', ₽',
+    'Месяцев с продажами', 'Требуется уточнить дату?',
+  ];
+  const sourceName = {
+    recorded: 'Автоматически зафиксирована при создании',
+    manager_action_log: 'Восстановлена из журнала менеджера',
+    manual_date_only: 'Уточнена супер-администратором',
+  };
+  const lines = [columns.map(csvCell).join(';')];
+  for (const p of report.points) {
+    lines.push([
+      p.name, p.id, p.city, p.address,
+      p.active ? 'Активна' : 'Отключена',
+      p.is_hub ? 'Хаб' : 'Точка',
+      p.created_date || 'НЕТ ДАННЫХ',
+      p.created_date ? (sourceName[p.created_source] || 'Историческая дата') : 'Требуется уточнение',
+      p.sales, p.revenue, p.months_with_sales,
+      p.created_date ? 'Нет' : 'ДА',
+    ].map(csvCell).join(';'));
+  }
+  return '\\uFEFF' + lines.join('\\r\\n') + '\\r\\n';
+}
+
 module.exports = {
   MIN_YEAR, currentKrasnoyarskYear, localMidnightAsUtc,
   changePercent, collectBusinessYearReport,
-  formatBusinessYearReport, buildBusinessYearCsv,
+  formatBusinessYearReport, buildBusinessYearCsv, buildBusinessPointsCsv,
 };
