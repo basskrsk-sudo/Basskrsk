@@ -34,6 +34,7 @@ const {
   currentKrasnoyarskYear, collectBusinessYearReport,
   formatBusinessYearReport, buildBusinessYearCsv, buildBusinessPointsCsv,
 } = require('./business-year-report');
+const { sendTelegramCsvDocument } = require('./telegram-csv-upload');
 const { collectNoGroomerReport, formatNoGroomerReport, buildNoGroomerCsv } = require('./no-groomer-report');
 const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
 let lastUpdateId = 0;
@@ -261,8 +262,9 @@ async function sendBusinessYearReport(chatId, requestedYear) {
     }
     return;
   }
-  // Отправляем обе детализации: финансовые месяцы и ВСЕ точки сети,
-  // включая отключённые и ни разу не совершившие продажу.
+  // Подготавливаем каждый документ отдельно. Раньше исключение из
+  // buildBusinessPointsCsv называлось "не удалось прикрепить файл", хотя
+  // обращения к Telegram могло не быть вовсе.
   const files = [
     {
       filename: 'business-' + report.year + '.csv',
@@ -276,37 +278,40 @@ async function sendBusinessYearReport(chatId, requestedYear) {
     },
   ];
   for (const file of files) {
+    let csv;
     try {
-      await sendBusinessYearCsv(chatId, file.create(), file.filename, file.caption);
+      csv = file.create();
+      if (typeof csv !== 'string' || !csv.length) {
+        throw new Error('CSV returned an empty or invalid value');
+      }
     } catch (error) {
-      console.warn('[business-report] Не удалось отправить ' + file.filename + ':', error.message);
-      await replyToChat(chatId, '⚠️ Не удалось прикрепить файл «' + file.filename + '». Повторите /business позднее.');
+      console.error('[business-report] Ошибка формирования CSV ' + file.filename + ':', error);
+      await replyToChat(chatId, '⚠️ Не удалось сформировать файл «' + file.filename + '». Ошибка записана в журнал Amvera.');
+      continue;
+    }
+    // Telegram ограничивает отправку нескольких сообщений подряд в один чат.
+    // Интервал плюс корректный retry_after (429) находятся под контролем.
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    try {
+      await sendTelegramCsvDocument({
+        token: TG_TOKEN, chatId, csvText: csv,
+        filename: file.filename, caption: file.caption,
+      });
+      console.log('[business-report] CSV отправлен:', file.filename, 'размер', Buffer.byteLength(csv, 'utf8'));
+    } catch (error) {
+      console.error('[business-report] Ошибка отправки CSV ' + file.filename + ':', {
+        message: error.message, status: error.status || null,
+        telegramCode: error.telegramCode || null,
+        retryAfter: error.retryAfter || null,
+      });
+      const reason = error.telegramCode === 429
+        ? 'Telegram временно ограничил частоту отправки (429).'
+        : (error.telegramCode ? 'Telegram вернул ошибку ' + error.telegramCode + '.' :
+          'Возникла сетевая ошибка при отправке документа.');
+      await replyToChat(chatId, '⚠️ Файл «' + file.filename + '» сформирован, но не доставлен. ' + reason + ' Подробности записаны в журнал Amvera.');
     }
   }
 }
-
-async function sendBusinessYearCsv(chatId, csvText, filename, caption) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  try {
-    const form = new FormData();
-    form.append('chat_id', String(chatId));
-    form.append('caption', caption);
-    form.append('document', new Blob([csvText], {
-      type: 'text/csv;charset=utf-8',
-    }), filename);
-    const response = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendDocument`, {
-      method: 'POST', body: form, signal: controller.signal,
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) {
-      throw new Error(data.description || ('Telegram HTTP ' + response.status));
-    }
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 
 async function sendPayoutBriefDocument(chatId, content, filename, caption, mime) {
   const controller = new AbortController();
