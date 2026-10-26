@@ -11,10 +11,29 @@ process.env.DATA_DIR = dir;
 const db = require('./db');
 const report = require('./business-year-report');
 
-for (const id of ['test-business-p1','test-business-p2','test-business-p3']) {
+for (const id of [
+  'test-business-p1','test-business-p2','test-business-p3',
+  'test-business-p4','test-business-p5',
+]) {
   db.prepare('INSERT INTO points(id,name,addr,icon,active) VALUES (?,?,?,?,1)')
     .run(id, 'Test ' + id, 'Test address', '🐾');
 }
+// Даты создания точек отличаются от первых продаж.
+// p1 создана в декабре, первая продажа в январе;
+// p2 создана в январе, первая продажа в феврале;
+// p4 создана в феврале, но не совершила ни одной продажи.
+// p5 — старый салон без сохранившейся даты создания.
+for (const [pointId, date] of [
+  ['test-business-p1','2025-12-20 00:00:00'],
+  ['test-business-p2','2026-01-20 00:00:00'],
+  ['test-business-p3','2025-12-10 00:00:00'],
+  ['test-business-p4','2026-02-14 00:00:00'],
+]) {
+  db.prepare("UPDATE points SET created_at=?, created_at_source='recorded' WHERE id=?")
+    .run(date,pointId);
+}
+db.prepare("UPDATE points SET created_at=NULL, created_at_source=NULL WHERE id='test-business-p5'")
+  .run();
 const managerId = db.prepare(
   'INSERT INTO managers(mgr_code,login,password_hash,full_name,phone) VALUES (?,?,?,?,?)'
 ).run('MGR-BUSINESS-TEST','manager-test','hash','Test manager','79990000001').lastInsertRowid;
@@ -77,18 +96,18 @@ test('Jan includes paid net sales and costs; growth compares to preceding Decemb
   assert.equal(jan.total_costs,890);
   assert.equal(jan.net_profit,510);
   assert.equal(jan.active_points,1);
-  assert.equal(jan.new_points,1);
+  assert.equal(jan.new_points,1); // p2 registered, although it has no January sales
   assert.equal(jan.revenue_change_percent,600);
   assert.equal(jan.sales_change_text,'+100%');
   assert.equal(jan.profit_change,null);
 });
 
-test('Feb first sale for second point, but not fully-refunded January sale', () => {
+test('Feb counts created point p4 without sales, not the first-sale point p2', () => {
   const feb = report.collectBusinessYearReport(2026,now).months[1];
   assert.equal(feb.revenue,800);
   assert.equal(feb.sales,1);
   assert.equal(feb.active_points,1);
-  assert.equal(feb.new_points,1);
+  assert.equal(feb.new_points,1); // p4 created in February, 0 paid orders
   assert.equal(feb.total_costs,364);
   assert.equal(feb.net_profit,436);
   assert.equal(feb.revenue_change_percent,-42.9);
@@ -102,6 +121,8 @@ test('year totals use unique points, annual margins and avoid double counting', 
   assert.equal(r.totals.sales,3);
   assert.equal(r.totals.active_points,2);
   assert.equal(r.totals.new_points,2);
+  assert.equal(r.unknown_creation_dates,1);
+  assert.match(report.formatBusinessYearReport(r),/без подтверждённой даты создания/);
   assert.equal(r.totals.manual_expenses,750);
   assert.equal(r.totals.net_profit,896);
   const message = report.formatBusinessYearReport(r);
@@ -113,6 +134,7 @@ test('year totals use unique points, annual margins and avoid double counting', 
   assert.match(csv,/2026-01/);
   assert.match(csv,/ИТОГО 2026/);
   assert.match(csv,/Изменение прибыли к предыдущему месяцу/);
+  assert.match(csv,/Новые точки \(создание карточки\)/);
 });
 
 test('past year has 12 complete rows, and invalid years are rejected', () => {
