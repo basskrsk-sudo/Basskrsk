@@ -1295,12 +1295,27 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
         <table class="tbl">
           <thead>
-            <tr><th>Точка</th><th>Промокод −20%</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Открытие</th><th>Статус</th><th class="r">Действие</th></tr>
+            <tr><th>Точка</th><th>Дата создания</th><th>Промокод −20%</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Открытие</th><th>Статус</th><th class="r">Действие</th></tr>
           </thead>
           <tbody id="points-mgmt-tbody"></tbody>
         </table>
       </div>
 
+      <!-- Восстановление даты создания старой карточки без исторической метки. -->
+      <div id="point-created-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.55);align-items:center;justify-content:center;z-index:120;padding:1rem;">
+        <div role="dialog" aria-modal="true" aria-labelledby="point-created-title" style="background:white;border-radius:12px;padding:1.5rem;max-width:450px;width:100%;">
+          <h3 id="point-created-title">Уточнить дату создания точки</h3>
+          <p id="point-created-name" style="color:var(--muted);font-size:.83rem;margin:.4rem 0 1rem;"></p>
+          <p style="font-size:.8rem;line-height:1.55;color:var(--muted);margin-bottom:.9rem;">Укажите дату, когда карточку точки впервые внесли в ХвостМаркет. Используйте документ, переписку или другой подтверждённый источник. Не подменяйте её датой первой продажи.</p>
+          <div class="admin-field"><label for="point-created-date">Дата регистрации точки (Красноярск)</label><input type="date" id="point-created-date" required></div>
+          <div class="admin-field"><label for="point-created-reason">Откуда известна дата?</label><textarea id="point-created-reason" maxlength="500" rows="3" placeholder="Например: сообщение о создании точки в служебном Telegram от …" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:7px;padding:.6rem;font:inherit;resize:vertical;"></textarea></div>
+          <div id="point-created-error" role="alert" style="display:none;color:#9B2335;background:#FDECEA;border-radius:6px;padding:.7rem;margin:.65rem 0;font-size:.8rem;"></div>
+          <div style="display:flex;gap:.6rem;margin-top:1rem;">
+            <button class="row-btn" style="flex:1" onclick="closePointCreationDateModal()">Отмена</button>
+            <button id="point-created-save" class="row-btn" style="flex:1;background:var(--forest);color:#fff" onclick="savePointCreationDate()">Сохранить дату</button>
+          </div>
+        </div>
+      </div>
       <!-- Модалка добавления точки -->
       <div id="point-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:100;">
         <div style="background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:380px;">
@@ -5270,6 +5285,55 @@ function renderStock() {
 // ── УПРАВЛЕНИЕ ТОЧКАМИ (создание/деактивация/удаление) ────────────────
 let adminAllPoints = [];
 
+// Исторические точки без отметки creation_at: дата уточняется суперадмином
+// по подтверждённым данным с обязательной записью источника в журнал.
+let pointCreatedModalId = null;
+function closePointCreationDateModal() {
+  pointCreatedModalId = null;
+  document.getElementById('point-created-modal').style.display = 'none';
+}
+function openPointCreationDateModal(id) {
+  if (currentAdminRole !== 'super') return;
+  const point = (adminAllPoints || []).find(p => String(p.id) === String(id));
+  if (!point || point.created_at) return;
+  pointCreatedModalId = point.id;
+  document.getElementById('point-created-name').textContent = point.name + ' · ' + (point.addr || '');
+  document.getElementById('point-created-date').value = '';
+  document.getElementById('point-created-date').max = new Date(Date.now() + 7*3600000).toISOString().slice(0,10);
+  document.getElementById('point-created-reason').value = '';
+  document.getElementById('point-created-error').style.display = 'none';
+  document.getElementById('point-created-save').disabled = false;
+  document.getElementById('point-created-modal').style.display = 'flex';
+}
+async function savePointCreationDate() {
+  if (!pointCreatedModalId || currentAdminRole !== 'super') return;
+  const date = document.getElementById('point-created-date').value;
+  const reason = document.getElementById('point-created-reason').value.trim();
+  const errorEl = document.getElementById('point-created-error');
+  errorEl.style.display = 'none';
+  if (!date || reason.length < 8) {
+    errorEl.textContent = 'Укажите дату и подтверждающий источник (от 8 символов).';
+    errorEl.style.display = 'block';
+    return;
+  }
+  const saveBtn = document.getElementById('point-created-save');
+  saveBtn.disabled = true;
+  try {
+    const resp = await authFetch('/api/points/' + encodeURIComponent(pointCreatedModalId) + '/created-at', {
+      method: 'PUT', body: { created_date: date, reason },
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Не удалось сохранить дату');
+    closePointCreationDateModal();
+    await renderPointsManagement();
+  } catch (e) {
+    errorEl.textContent = e.message || 'Не удалось сохранить';
+    errorEl.style.display = 'block';
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
 async function renderPointsManagement() {
   const filterSel = document.getElementById('points-city-filter');
   const currentFilterValue = filterSel.value; // читаем ДО перезагрузки списка городов, иначе выбор потеряется
@@ -5293,12 +5357,23 @@ async function renderPointsManagement() {
   document.getElementById('points-mgmt-tbody').innerHTML = adminAllPoints.map(function(p) {
     const type = p.is_hub ? 'Хаб' : (p.manager_id ? 'Через менеджера №' + p.manager_id : 'Добавлена вручную');
     const launch = launchByPoint.get(p.id);
+    const createdAt = p.created_at && !Number.isNaN(new Date(String(p.created_at).replace(' ', 'T') + 'Z').getTime())
+      ? new Intl.DateTimeFormat('ru-RU', {timeZone:'Asia/Krasnoyarsk',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(String(p.created_at).replace(' ', 'T') + 'Z'))
+      : null;
+    const createdSource = p.created_at_source === 'manager_action_log' ? 'по журналу менеджера' :
+      p.created_at_source === 'manual_date_only' ? 'дата внесена вручную' : 'зафиксирована при создании';
+    const dateCell = createdAt
+      ? '<span title="' + escapeOrderCell(createdSource) + '">' + escapeOrderCell(createdAt) + '</span>'
+      : '<span style="color:var(--muted);font-size:.76rem;">Неизвестна</span>' +
+        (currentAdminRole === 'super' ? '<br><button class="row-btn" data-point-id="' +
+          escapeOrderCell(p.id) + '" onclick="openPointCreationDateModal(this.dataset.pointId)">Уточнить</button>' : '');
     const launchCell = launch
       ? '<span class="launch-progress-pill ' + (launch.ready ? 'ready' : 'pending') + '">' +
         (launch.ready ? '✓ Готова' : launch.percent + '% · осталось ' + launch.remaining) + '</span>'
       : '<span style="color:var(--muted);">—</span>';
     return '<tr>' +
       '<td style="font-weight:500;">' + escapeOrderCell(p.icon + ' ' + p.name) + '</td>' +
+      '<td style="font-size:.79rem;">' + dateCell + '</td>' +
       '<td><button type="button" class="row-btn" data-promo="' + escapeOrderCell(p.first_purchase_promo_code || '') + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + escapeOrderCell(p.first_purchase_promo_code || '—') + '</button></td>' +
       '<td style="font-size:.82rem;color:var(--muted);">' + cityName(p.city_id) + '</td>' +
       '<td style="font-size:.82rem;color:var(--muted);">' + p.addr + '</td>' +
