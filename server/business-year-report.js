@@ -138,12 +138,19 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
       yearPointSet.add(point);
       let annual = annualPointSales.get(point);
       if (!annual) {
-        annual = {sales:0, revenue:0, months:new Set()};
+        annual = {sales:0, revenue:0, months:new Set(), by_month:new Map()};
         annualPointSales.set(point,annual);
       }
       annual.sales += number(sale.sales);
       annual.revenue += revenue;
       annual.months.add(month.key);
+      let monthlyPoint = annual.by_month.get(month.key);
+      if (!monthlyPoint) {
+        monthlyPoint = { sales: 0, revenue: 0 };
+        annual.by_month.set(month.key, monthlyPoint);
+      }
+      monthlyPoint.sales += number(sale.sales);
+      monthlyPoint.revenue += revenue;
     }
   }
 
@@ -172,6 +179,7 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
       created_source: validDate ? (point.created_at_source || 'unknown') : null,
       sales: paid ? paid.sales : 0, revenue: paid ? paid.revenue : 0,
       months_with_sales: paid ? paid.months.size : 0,
+      monthly_sales: paid ? Object.fromEntries(paid.by_month) : {},
     };
   });
   const pointsMissingDates = points.filter((point) => !point.created_date);
@@ -373,6 +381,8 @@ function buildBusinessPointsCsv(report) {
     'Дата регистрации точки (Красноярск)', 'Источник даты',
     'Оплаченных заказов за ' + report.year, 'Выручка за ' + report.year + ', ₽',
     'Месяцев с продажами', 'Требуется уточнить дату?',
+    ...report.months.flatMap((month) =>
+      [month.key + ': заказов', month.key + ': выручка, ₽']),
   ];
   const sourceName = {
     recorded: 'Автоматически зафиксирована при создании',
@@ -389,6 +399,10 @@ function buildBusinessPointsCsv(report) {
       p.created_date ? (sourceName[p.created_source] || 'Историческая дата') : 'Требуется уточнение',
       p.sales, p.revenue, p.months_with_sales,
       p.created_date ? 'Нет' : 'ДА',
+      ...report.months.flatMap((month) => {
+        const values = p.monthly_sales[month.key];
+        return [values ? values.sales : 0, values ? values.revenue : 0];
+      }),
     ].map(csvCell).join(';'));
   }
   return '\uFEFF' + lines.join('\r\n') + '\r\n';
