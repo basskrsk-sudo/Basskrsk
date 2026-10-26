@@ -139,8 +139,23 @@ function fallbackRussian(subject) {
 }
 function releaseChange(message) {
   const subject = firstLine(message) || 'Change description unavailable';
-  const en = firstLine(footer(message, 'en') || subject);
-  const ru = firstLine(footer(message, 'ru') || LEGACY_RU.get(subject) || fallbackRussian(subject));
+  const providedEnglish = footer(message, 'en');
+  const providedRussian = footer(message, 'ru');
+  let en = firstLine(providedEnglish || subject);
+  let ru = firstLine(providedRussian || LEGACY_RU.get(subject) || fallbackRussian(subject));
+  if (!providedEnglish && /[А-Яа-яЁё]/.test(subject)) {
+    // Never place a Russian-only commit subject under the English heading.
+    // Without a human translation, describe only the known commit category.
+    const parts = subject.match(/^([a-z]+)(?:\(([^)]+)\))?!?:/i);
+    const englishType = {
+      feat: 'New feature', fix: 'Bug fix', chore: 'Maintenance',
+      test: 'Test updates', polish: 'UI refinement', refactor: 'Refactoring',
+      docs: 'Documentation', perf: 'Performance improvement',
+    };
+    en = (englishType[parts?.[1]?.toLowerCase()] || 'Change') +
+      ' (' + (parts?.[2] || 'HvostMarket') + '; see Russian description)';
+    if (!providedRussian) ru = subject;
+  }
   return { en, ru };
 }
 function statusChange(en, ru) {
