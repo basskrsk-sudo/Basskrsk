@@ -157,21 +157,42 @@ function shorten(text, maxLength) {
 }
 // Telegram accepts at most 4096 UTF-16 units; the rest of the deployment
 // metadata stays in the parent module. Keep both languages, not just the first.
-function formatBilingualTelegramChanges(changes, limit = 10) {
-  const values = (Array.isArray(changes) ? changes : []).slice(-limit);
-  const hidden = Math.max(0, (changes?.length || 0) - values.length);
-  const lines = ['🇬🇧 <b>Changes — English:</b>'];
-  for (const [index, item] of values.entries()) {
-    lines.push((index + 1) + '. ' + escapeHtml(shorten(item.en, 140)));
+function formatBilingualTelegramChanges(changes, limit = 10, maxChars = 2900) {
+  const all = Array.isArray(changes) ? changes : [];
+  const maximum = Math.max(0, Math.min(all.length, Number(limit) || 0));
+  // Preserve both languages and valid HTML even if many commits contain
+  // characters whose escaped form is longer than the original.
+  for (let count = maximum; count > 0; count--) {
+    const values = all.slice(-count);
+    const hidden = all.length - count;
+    const lines = ['🇬🇧 <b>Changes — English:</b>'];
+    for (const [index, item] of values.entries()) {
+      lines.push((index + 1) + '. ' + escapeHtml(shorten(item.en, 140)));
+    }
+    if (hidden) lines.push('… ' + hidden + ' earlier changes omitted');
+    lines.push('', '🇷🇺 <b>Изменения — русский:</b>');
+    for (const [index, item] of values.entries()) {
+      lines.push((index + 1) + '. ' + escapeHtml(shorten(item.ru, 150)));
+    }
+    if (hidden) lines.push('… Ещё ' + hidden + ' более ранних изменений');
+    if (lines.join('\n').length <= maxChars) return lines;
   }
-  if (hidden) lines.push('… ' + hidden + ' earlier changes omitted');
-  lines.push('', '🇷🇺 <b>Изменения — русский:</b>');
-  for (const [index, item] of values.entries()) {
-    lines.push((index + 1) + '. ' + escapeHtml(shorten(item.ru, 150)));
-  }
-  if (hidden) lines.push('… Ещё ' + hidden + ' более ранних изменений');
-  return lines;
+  if (all.length) return [
+    '🇬🇧 <b>Changes — English:</b>',
+    'Detailed changes exceeded the Telegram length limit.',
+    '',
+    '🇷🇺 <b>Изменения — русский:</b>',
+    'Подробное описание изменений превысило ограничение длины Telegram.',
+  ];
+  return [
+    '🇬🇧 <b>Changes — English:</b>',
+    'No changes were listed.',
+    '',
+    '🇷🇺 <b>Изменения — русский:</b>',
+    'Изменения не указаны.',
+  ];
 }
+
 module.exports = {
   releaseChange, statusChange, formatBilingualTelegramChanges, fallbackRussian,
 };
