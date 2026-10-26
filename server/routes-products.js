@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const db = require('./db');
 const { sendJson } = require('./http-utils');
-const { requireAuth, tryAuth } = require('./routes-auth');
+const { requireAuth, requireSuperAdmin, tryAuth } = require('./routes-auth');
 const { reverseAndDeleteOrdersBy } = require('./order-reversal');
 const { getReviewSummary } = require('./routes-reviews');
 const { sendTelegram } = require('./telegram');
@@ -395,6 +395,66 @@ function registerProductRoutes(router) {
       geocoded,
       formatted_address: geocodedAddress,
     });
+  });
+
+  // PUT /api/points/:id/created-at — только супер-админ может восстановить
+  // дату для исторической точки, если её нельзя извлечь из журнала создания.
+  // Это НЕ дата деплоя и НЕ дата первой продажи. Время не выдумываем:
+  // сохраняем начало указанного дня в Красноярске и отдельно источник даты.
+  router.put('/api/points/:id/created-at', (req, res, ctx) => {
+    const payload = requireSuperAdmin(req, res, ctx);
+    if (!payload) return;
+    const point = db.prepare('SELECT id, name, created_at FROM points WHERE id = ?').get(ctx.params.id);
+    if (!point) return sendJson(res, 404, { error: 'Точка не найдена' });
+    if (point.created_at) return sendJson(res, 409, {
+      error: 'У точки уже есть дата создания. Сохранённая историческая дата не перезаписывается.',
+    });
+
+    const date = String(ctx.body?.created_date || '').trim();
+    const reason = String(ctx.body?.reason || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return sendJson(res, 400, { error: 'Введите дату создания в формате ГГГГ-ММ-ДД' });
+    }
+    const [year, month, day] = date.split('-').map(Number);
+    const localDateMillis = Date.UTC(year, month - 1, day);
+    if (year < 2020 || !Number.isFinite(localDateMillis)
+        || new Date(localDateMillis).toISOString().slice(0,10) !== date
+        || date > new Date(Date.now() + 7 * 3600000).toISOString().slice(0,10)) {
+      return sendJson(res, 400, { error: 'Дата создания некорректна или находится в будущем' });
+    }
+    if (reason.length < 8 || reason.length > 500) {
+      return sendJson(res, 400, { error: 'Укажите подтверждающий источник даты (8–500 символов)' });
+    }
+    const createdAtUtc = new Date(localDateMillis - 7 * 3600000)
+      .toISOString().slice(0,19).replace('T',' ');
+    let opened = false;
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      opened = true;
+      const updated = db.prepare(`
+        UPDATE points SET created_at = ?, created_at_source = 'manual_date_only'
+        WHERE id = ? AND created_at IS NULL
+      `).run(createdAtUtc, point.id);
+      if (!updated.changes) {
+        db.exec('ROLLBACK');
+        opened = false;
+        return sendJson(res, 409, { error: 'Дата точки уже появилась. Обновите страницу.' });
+      }
+      db.prepare(`
+        INSERT INTO point_creation_date_backfills
+          (point_id, point_name, local_date, reason, admin_id, admin_login)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(point.id, point.name, date, reason, payload.id, payload.login);
+      db.exec('COMMIT');
+      opened = false;
+      sendJson(res, 200, {
+        ok: true, point_id: point.id, created_date: date, source: 'manual_date_only',
+      });
+    } catch (error) {
+      if (opened) { try { db.exec('ROLLBACK'); } catch (_) {} }
+      console.error('[points] Не удалось восстановить дату создания точки:', error);
+      sendJson(res, 500, { error: 'Не удалось сохранить дату создания точки' });
+    }
   });
 
   // PUT /api/points/:id/manager — назначить/сменить/снять менеджера у уже
