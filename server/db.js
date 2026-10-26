@@ -90,7 +90,9 @@ CREATE TABLE IF NOT EXISTS points (
   lng              REAL,                                  -- долгота
   manager_id    INTEGER REFERENCES managers(id),  -- кто отвечает за пополнение этой точки (NULL = хаб)
   is_hub           INTEGER NOT NULL DEFAULT 0,           -- 1 — исходные 3 точки без менеджера-логиста
-  active           INTEGER NOT NULL DEFAULT 1            -- 0 — скрыта из чекаута/списков, но история заказов сохранена
+  active           INTEGER NOT NULL DEFAULT 1,           -- 0 — скрыта из чекаута/списков, но история заказов сохранена
+  created_at       TEXT,                                 -- дата и время СОЗДАНИЯ записи, UTC
+  created_at_source TEXT                                 -- recorded | manager_action_log | manual_date_only
 );
 
 CREATE TABLE IF NOT EXISTS products (
@@ -1696,6 +1698,62 @@ ensureColumn('manager_points', 'referred_owner_amount', 'INTEGER');
   `);
   console.log('Миграция: warehouse_stock переведён на раздельные склады по городам (существующие остатки отнесены к Красноярску).');
 })();
+
+// ── ДАТА РЕГИСТРАЦИИ ТОЧКИ ───────────────────────────────────────
+// До этой версии points не содержала created_at. ВАЖНО: установка новой
+// колонки не должна записывать дату деплоя как дату создания старой точки.
+// Все новые записи фиксируются SQLite-триггером в момент INSERT (UTC).
+// Для старых точек восстанавливаем дату только при наличии явного события
+// «Создание точки» в журнале менеджеров; для остальных оставляем NULL.
+ensureColumn('points', 'created_at', 'TEXT');
+ensureColumn('points', 'created_at_source', 'TEXT');
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS trg_points_capture_created_at
+  AFTER INSERT ON points
+  WHEN NEW.created_at IS NULL OR TRIM(NEW.created_at) = ''
+       OR NEW.created_at_source IS NULL OR TRIM(NEW.created_at_source) = ''
+  BEGIN
+    UPDATE points SET
+      created_at = COALESCE(NULLIF(TRIM(NEW.created_at), ''), datetime('now')),
+      created_at_source = COALESCE(NULLIF(TRIM(NEW.created_at_source), ''), 'recorded')
+    WHERE id = NEW.id;
+  END;
+
+  CREATE INDEX IF NOT EXISTS idx_points_created_at ON points(created_at);
+
+  CREATE TABLE IF NOT EXISTS point_creation_date_backfills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    point_id TEXT NOT NULL,
+    point_name TEXT NOT NULL,
+    local_date TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    admin_id INTEGER,
+    admin_login TEXT,
+    recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+// Дата из журнала существует только у точек, созданных менеджером. Действия
+// по последующему назначению менеджера или регистрации грумера сюда не входят.
+db.exec(`
+  UPDATE points
+  SET created_at = (
+        SELECT MIN(m.created_at) FROM manager_action_log AS m
+        WHERE m.action = 'Создание точки'
+          AND m.target_type = 'point'
+          AND m.target_id = points.id
+          AND m.created_at IS NOT NULL
+      ),
+      created_at_source = 'manager_action_log'
+  WHERE (created_at IS NULL OR TRIM(created_at) = '')
+    AND EXISTS (
+        SELECT 1 FROM manager_action_log AS m
+        WHERE m.action = 'Создание точки'
+          AND m.target_type = 'point'
+          AND m.target_id = points.id
+          AND m.created_at IS NOT NULL
+    );
+`);
 
 require('./payout-reports').initializeReports(db);
 module.exports = db;
