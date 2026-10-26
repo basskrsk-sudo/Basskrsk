@@ -1640,13 +1640,14 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="manager_action">Действия менеджеров</option>
               <option value="order_partner_change">Исправление грумера в заказе</option>
               <option value="account_profile_change">Исправление анкет партнёров</option>
+              <option value="point_creation_date_backfill">Уточнение дат создания точек</option>
               <option value="bsc_settings_change">Изменение целей BSC</option>
             </select>
             <button class="row-btn" onclick="renderAuditLog()">↻ Обновить</button>
           </div>
         </div>
         <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
-          История удаления клиентов и складских позиций, исправлений грумера в оплаченных заказах, исправлений анкет грумеров и владельцев, изменений целей BSC, а также операционных действий менеджеров. Доступна только супер-администраторам.
+          История удаления клиентов и складских позиций, исправлений грумера в оплаченных заказах, исправлений анкет, уточнений дат создания точек, изменений целей BSC, а также действий менеджеров. Доступна только супер-администраторам.
         </p>
         <table class="tbl">
           <thead>
@@ -7469,6 +7470,11 @@ async function renderAuditLog() {
             auditEscape(before) + ' → ' + auditEscape(after);
         }).join('<br>') || 'Данные обновлены';
       } catch (_) { details = 'Данные обновлены'; }
+    } else if (event.type === 'point_creation_date_backfill') {
+      action = 'Уточнение даты точки';
+      target = auditEscape(event.point_name || event.point_id || '—');
+      details = 'Дата создания: ' + auditEscape(event.local_date || '—') +
+        ' · точка ' + auditEscape(event.point_id || '—');
     } else if (event.type === 'bsc_settings_change') {
       action = 'Изменение BSC';
       target = 'Цели и веса стратегии';
