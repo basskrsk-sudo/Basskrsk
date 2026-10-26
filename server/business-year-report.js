@@ -137,20 +137,25 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
     }
   }
 
-  // У points нет достоверной даты открытия; "новая" — первая оплаченная
-  // (не полностью возвращённая) продажа точки за всё время её существования.
-  const firstSales = db.prepare(`
-    SELECT o.point_id AS point_id,
-           strftime('%Y-%m',MIN(o.created_at),'+7 hours') AS first_month
-    FROM orders o
-    WHERE ${VALID_SALE} AND o.point_id IS NOT NULL AND o.point_id != ''
-      AND o.created_at < ?
-    GROUP BY o.point_id
+  // Открытие точки = дата создания записи points, а НЕ первая продажа.
+  // Исторические точки без подтверждённого created_at не распределяются
+  // произвольно между месяцами. Источники: автоматическая отметка INSERT,
+  // журнал создания менеджером или уточнённая суперадмином дата.
+  const createdPoints = db.prepare(`
+    SELECT id, strftime('%Y-%m', created_at, '+7 hours') AS created_month
+    FROM points
+    WHERE created_at IS NOT NULL AND TRIM(created_at) != ''
+      AND created_at < ?
   `).all(untilUtc);
-  for (const first of firstSales) {
-    const m = byKey.get(first.first_month);
+  for (const point of createdPoints) {
+    const m = byKey.get(point.created_month);
     if (m) m.new_points++;
   }
+  const unknownCreationDates = number(db.prepare(`
+    SELECT COUNT(*) AS total FROM points
+    WHERE created_at IS NULL OR TRIM(created_at) = ''
+      OR strftime('%Y-%m',created_at,'+7 hours') IS NULL
+  `).get().total);
 
   // Траты учитываем по дате их фактического совершения, а не ввода в бот.
   const endExpensesExclusive = isCurrentYear
@@ -212,6 +217,7 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
 
   return {
     year, is_current_year: isCurrentYear, months, totals,
+    unknown_creation_dates: unknownCreationDates,
     period: {
       from_local: year + '-01-01',
       through_local: isCurrentYear
@@ -221,7 +227,7 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
     },
     assumptions: {
       tax_rate: TAX_RATE, acquiring_rate: ACQUIRING_RATE,
-      new_point_definition: 'first_paid_sale',
+      new_point_definition: 'point_record_created_at',
       profit_is_estimate: true,
     },
   };
@@ -258,13 +264,16 @@ function formatBusinessYearReport(report) {
     '📈 Расчётная прибыль: ' + signedRub(t.net_profit) +
       ' · маржа: ' + t.margin_percent.toLocaleString('ru-RU') + '%',
     '🏪 Точек с продажами: ' + t.active_points +
-      ' · впервые с продажей: ' + t.new_points,
+      ' · зарегистрировано точек: ' + t.new_points,
     '💼 Комиссии: грумеры ' + rub(t.partner_commission) +
       ', менеджеры ' + rub(t.manager_commission) +
       ', владельцы ' + rub(t.owner_commission),
     '🧾 Налог 6%: ' + rub(t.tax) + ' · эквайринг 2%: ' + rub(t.acquiring),
     '',
-    '🏪 В строке месяца: активные точки / новые с первой продажей.',
+    '🏪 В строке месяца: точки с продажами / новые созданные карточки.',
+    ...(report.unknown_creation_dates ? [
+      '⚠️ ' + report.unknown_creation_dates + ' точек без подтверждённой даты создания не включены в подсчёт новых.'
+    ] : []),
     'ℹ️ Это управленческая оценка, не бухгалтерская прибыль: ' +
       'учтены внесённые траты и расчётные комиссии/налог/эквайринг. ' +
       'Заказы — по дате создания, выручка после возвратов. ' +
@@ -284,7 +293,7 @@ function buildBusinessYearCsv(report) {
     'Средний чек, ₽','Ручные расходы, ₽','Комиссия грумерам, ₽',
     'Комиссия менеджерам, ₽','Комиссия владельцам, ₽','Налог 6%, ₽',
     'Эквайринг 2%, ₽','Учтённые затраты, ₽','Расчётная прибыль, ₽',
-    'Маржа, %','Активные точки','Новые точки с первой продажей',
+    'Маржа, %','Точки с продажами','Новые точки (создание карточки)',
     'Динамика выручки к предыдущему месяцу',
     'Динамика заказов к предыдущему месяцу',
     'Изменение прибыли к предыдущему месяцу, ₽',
