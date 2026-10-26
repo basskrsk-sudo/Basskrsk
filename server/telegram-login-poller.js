@@ -285,17 +285,32 @@ async function sendWarehouseStockReport(chatId, citySelector = '') {
       : [formatWarehouseStockSummary(report) +
         '\nПолный перечень слишком длинный для сообщений; все позиции — в CSV.'];
     const csv = buildWarehouseStockCsv(report);
+    let failedTextPages = 0;
     for (const text of messages) {
-      await callBotApi('sendMessage', { chat_id: chatId, text });
+      try {
+        await callBotApi('sendMessage', { chat_id: chatId, text });
+      } catch (error) {
+        // Не теряем полный CSV из-за ошибки отправки одной текстовой страницы.
+        console.warn('[stock-report] Текстовая страница не доставлена:', error.message);
+        failedTextPages++;
+      }
       // Не отправляем несколько сообщений подряд в обход лимитов Telegram.
       await new Promise(resolve => setTimeout(resolve, 1200));
     }
+    const selectedCity = citySelector && report.cities.length === 1
+      ? '-' + report.cities[0].id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32)
+      : '-all';
     await sendTelegramCsvDocument({
       token: TG_TOKEN, chatId, csvText: csv,
-      filename: 'warehouse-stock-' + report.generated_at.slice(0,10) + '.csv',
+      filename: 'warehouse-stock' + selectedCity + '-' +
+        report.generated_at.slice(0,10) + '.csv',
       caption: 'Актуальные остатки центральных складов ХвостМаркета · ' +
         report.local_time + ' (Красноярск)',
     });
+    if (failedTextPages) {
+      await replyToChat(chatId,
+        '⚠️ Часть текстового отчёта не доставлена, но полный список остатков отправлен в CSV.');
+    }
   } catch (error) {
     console.error('[stock-report] Ошибка отправки складского отчёта:', {
       message: error.message, telegramCode: error.telegramCode || null,
