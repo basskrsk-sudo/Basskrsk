@@ -50,6 +50,7 @@ test('reports fresh warehouse balances from all active cities and inactive citie
   assert.equal(result.total_qty,22);
   assert.equal(result.city_count,3);
   assert.equal(result.local_time.includes('07:00'),true); // UTC+7
+  assert.equal(result.local_date,'2026-10-26');
   const krsk = result.cities.find(c=>c.id==='krsk');
   assert.equal(krsk.total_qty,14);
   assert.equal(krsk.positions_in_stock,2);
@@ -61,6 +62,11 @@ test('reports fresh warehouse balances from all active cities and inactive citie
   assert.equal(krsk.items.some(i=>i.variant_id===archivedMissing),false);
   assert.equal(result.cities.some(c=>c.id==='inactive-empty'),false);
   assert.equal(result.cities.find(c=>c.id==='old-city').active,false);
+});
+
+test('the stock snapshot uses the local date after Krasnoyarsk midnight', () => {
+  const report=collectWarehouseStockReport('krsk',new Date('2026-10-25T19:00:00Z'));
+  assert.equal(report.local_date,'2026-10-26');
 });
 
 test('filters by city code or case-insensitive full city name', () => {
