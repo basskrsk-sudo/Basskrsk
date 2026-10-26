@@ -134,7 +134,7 @@ test('year totals use unique points, annual margins and avoid double counting', 
   assert.equal(r.points.find(p => p.id === 'test-business-p2').sales,1);
   assert.equal(r.months[0].registered_points_known,3);
   assert.equal(r.months[1].registered_points_known,4);
-  assert.match(report.formatBusinessYearReport(r),/Уточните даты создания 1 точек/);
+  assert.match(report.formatBusinessYearReport(r),/Дата регистрации неизвестна у точек \\(1\\)/);
   assert.match(report.formatBusinessYearReport(r),/test-business-p5/);
   assert.equal(r.totals.manual_expenses,750);
   assert.equal(r.totals.net_profit,896);
