@@ -74,6 +74,7 @@ async function configureBotProfile() {
       { command: 'expense', description: 'Добавить трату бизнеса' },
       { command: 'salesweek', description: 'Отчёт по продажам за 7 дней' },
       { command: 'business', description: 'Бизнес по месяцам и за год' },
+      { command: 'businesspoints', description: 'Все точки: CSV со статистикой' },
       { command: 'nogroomer', description: 'Оплаченные заказы без грумера' },
       { command: 'payouts', description: 'Справка для выплат партнёрам' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
@@ -120,7 +121,7 @@ function buildWelcomeMessage() {
     'Я помогу войти в личный кабинет и буду присылать важные уведомления о заказах, продажах и вознаграждениях.',
     '',
     'Сотрудникам: /tasks покажет активные поручения, /newtask создаст задачу, а /expense запишет трату бизнеса.',
-    'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
+    'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
     '',
     'Чтобы подключить кабинет, откройте на сайте вход через Telegram и перейдите по созданной ссылке.',
   ].join('\n');
@@ -134,6 +135,7 @@ function botActionButtons(chatId) {
   if (chatId && adminCanReadSales(chatId)) {
     keyboard.push([{ text: '📊 Продажи за 7 дней', callback_data: 'sales:week' }]);
     keyboard.push([{ text: '📈 Бизнес по месяцам и за год', callback_data: 'sales:business' }]);
+    keyboard.push([{ text: '🏪 Все точки · CSV', callback_data: 'sales:businesspoints' }]);
     keyboard.push([{ text: '🔎 Заказы без грумера', callback_data: 'sales:nogroomer' }]);
     keyboard.push([{ text: '💸 Справки к выплатам', callback_data: 'payouts:prepare' }]);
   }
@@ -313,6 +315,51 @@ async function sendBusinessYearReport(chatId, requestedYear) {
   }
 }
 
+// /businesspoints [ГГГГ] — отдельная выгрузка полного реестра всех точек.
+// Не заставляем повторно получать годовые файлы при сбое второго вложения.
+async function sendBusinessPointsOnly(chatId, requestedYear) {
+  if (!adminCanReadSales(chatId)) {
+    await replyToChat(chatId,
+      '🔒 Финансовая статистика доступна только администраторам ХвостМаркета в личном чате.');
+    return;
+  }
+  let report;
+  let csv;
+  try {
+    report = collectBusinessYearReport(requestedYear);
+    csv = buildBusinessPointsCsv(report);
+  } catch (error) {
+    if (error.code === 'INVALID_BUSINESS_YEAR') {
+      await replyToChat(chatId, 'Укажите год от 2020 до ' + currentKrasnoyarskYear() +
+        '. Например: /businesspoints или /businesspoints 2025.');
+    } else {
+      console.error('[business-points] Ошибка формирования реестра точек:', error);
+      await replyToChat(chatId, '⚠️ Не удалось сформировать реестр точек. Ошибка записана в журнал Amvera.');
+    }
+    return;
+  }
+  const filename = 'business-points-' + report.year + '.csv';
+  try {
+    await sendTelegramCsvDocument({
+      token: TG_TOKEN, chatId, csvText: csv, filename,
+      caption: 'ВСЕ точки ХвостМаркета: помесячные продажи, даты регистрации и статусы · ' + report.year,
+    });
+    console.log('[business-points] CSV отправлен:', filename);
+  } catch (error) {
+    console.error('[business-points] CSV не доставлен:', {
+      filename, message: error.message,
+      status: error.status || null, telegramCode: error.telegramCode || null,
+      retryAfter: error.retryAfter || null,
+    });
+    const reason = error.telegramCode === 429
+      ? 'Telegram ограничил частоту отправки (429).'
+      : (error.telegramCode ? 'Telegram ответил ошибкой ' + error.telegramCode + '.' :
+        'Возникла сетевая ошибка.');
+    await replyToChat(chatId, '⚠️ Реестр сформирован, но не доставлен. ' + reason +
+      ' Подробности в журнале Amvera.');
+  }
+}
+
 async function sendPayoutBriefDocument(chatId, content, filename, caption, mime) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 50000);
@@ -450,6 +497,17 @@ async function processUpdate(update) {
       if (allowed) await sendPayoutBriefs(chat.id);
       return;
     }
+    if (callback.data === 'sales:businesspoints') {
+      const chat = callback.message?.chat;
+      const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
+      await callBotApi('answerCallbackQuery', {
+        callback_query_id: callback.id,
+        text: allowed ? 'Собираем реестр всех точек' : 'Нет доступа',
+        show_alert: !allowed,
+      });
+      if (allowed) await sendBusinessPointsOnly(chat.id);
+      return;
+    }
     if (callback.data === 'sales:business') {
       const chat = callback.message?.chat;
       const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
@@ -569,6 +627,17 @@ async function processUpdate(update) {
   }
   if (/^\/(?:payouts|payoutbrief)(?:@\w+)?$/i.test(text) || /^справк[аи] (?:для |к )?выплат[аым]?$/i.test(text)) {
     await sendPayoutBriefs(msg.chat.id);
+    return;
+  }
+  const businessPointsCommand = text.match(/^\/businesspoints(?:@\w+)?(?:\s+(.+))?$/i);
+  if (businessPointsCommand) {
+    const arg = businessPointsCommand[1];
+    if (arg && !/^\d{4}$/.test(arg)) {
+      await replyToChat(msg.chat.id,
+        'Формат: /businesspoints — текущий год, /businesspoints 2025 — выбранный год.');
+    } else {
+      await sendBusinessPointsOnly(msg.chat.id, arg ? Number(arg) : undefined);
+    }
     return;
   }
   const businessCommand = text.match(/^\/business(?:@\w+)?(?:\s+(.+))?$/i);
