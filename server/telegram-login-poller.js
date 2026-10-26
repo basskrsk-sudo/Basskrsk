@@ -553,7 +553,7 @@ async function processUpdate(update) {
     await sendPayoutBriefs(msg.chat.id);
     return;
   }
-  const businessCommand = text.match(/^\/business(?:@\w+)?(?:\s+(\S+))?$/i);
+  const businessCommand = text.match(/^\/business(?:@\w+)?(?:\s+(.+))?$/i);
   if (businessCommand) {
     const arg = businessCommand[1];
     if (arg && !/^\d{4}$/.test(arg)) {
