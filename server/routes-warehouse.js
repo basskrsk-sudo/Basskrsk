@@ -67,20 +67,139 @@ function registerWarehouseRoutes(router) {
     sendJson(res, 200, { stock: rows, city_id: cityId });
   });
 
-  // PUT /api/warehouse/stock — прямая корректировка остатка (инвентаризация/исправление ошибки).
-  // Обычный приход товара должен идти через /api/warehouse/receipts — там сохраняется история.
+  // Старый API прямой установки количества нужен для совместимости, но
+  // уменьшать остаток без причины и журнала через него больше нельзя.
+  // Уменьшение — только POST /api/warehouse/stock/decrease ниже.
   router.put('/api/warehouse/stock', (req, res, ctx) => {
     const payload = requireAuth(['admin', 'warehouse'])(req, res, ctx);
     if (!payload) return;
     const { variant_id, qty, city_id } = ctx.body || {};
-    if (!variant_id || typeof qty !== 'number' || qty < 0) {
-      return sendJson(res, 400, { error: 'Укажите variant_id и неотрицательное qty' });
+    if (!Number.isSafeInteger(variant_id) || variant_id <= 0 ||
+        !Number.isSafeInteger(qty) || qty < 0) {
+      return sendJson(res, 400, { error: 'Укажите корректные целые variant_id и qty ≥ 0' });
     }
     const cityId = resolveCityId(payload, city_id);
     if (!cityId) return sendJson(res, 400, { error: 'Не удалось определить город — укажите city_id' });
+    let opened = false;
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      opened = true;
+      const row = db.prepare(
+        'SELECT qty FROM warehouse_stock WHERE city_id = ? AND variant_id = ?'
+      ).get(cityId, variant_id);
+      const previousQty = row ? row.qty : 0;
+      if (qty < previousQty) {
+        db.exec('ROLLBACK');
+        opened = false;
+        return sendJson(res, 409, {
+          error: 'Для уменьшения остатка используйте кнопку «Уменьшить»: нужно указать причину и подтвердить изменение.',
+          current_qty: previousQty,
+        });
+      }
+      db.prepare(
+        'INSERT INTO warehouse_stock (city_id, variant_id, qty) VALUES (?, ?, ?) ' +
+        'ON CONFLICT(city_id, variant_id) DO UPDATE SET qty = excluded.qty'
+      ).run(cityId, variant_id, qty);
+      db.exec('COMMIT');
+      opened = false;
+      sendJson(res, 200, { ok: true, old_qty: previousQty, new_qty: qty });
+    } catch (error) {
+      if (opened) { try { db.exec('ROLLBACK'); } catch (_) {} }
+      console.error('[warehouse] Ошибка установки остатка:', error);
+      sendJson(res, 500, { error: 'Не удалось обновить складской остаток' });
+    }
+  });
 
-    db.prepare('INSERT OR REPLACE INTO warehouse_stock (city_id, variant_id, qty) VALUES (?, ?, ?)').run(cityId, variant_id, qty);
-    sendJson(res, 200, { ok: true });
+  // Корректировка ошибочно завышенного остатка — только учётки администраторов.
+  // Изменение проводится транзакционно с сохранением снимка товара, даты,
+  // причины и исполнителя. Остатки точек, заказы и приходы НЕ затрагиваются.
+  router.post('/api/warehouse/stock/decrease', (req, res, ctx) => {
+    const payload = requireAuth(['admin'])(req, res, ctx);
+    if (!payload) return;
+    const { variant_id, city_id, expected_qty, new_qty, reason } = ctx.body || {};
+    const cityId = resolveCityId(payload, city_id);
+    if (!cityId || typeof cityId !== 'string' || cityId.length > 100 ||
+        !Number.isSafeInteger(variant_id) || variant_id <= 0 ||
+        !Number.isSafeInteger(expected_qty) || expected_qty <= 0 ||
+        !Number.isSafeInteger(new_qty) || new_qty < 0) {
+      return sendJson(res, 400, {
+        error: 'Укажите город, товар, исходный остаток и новое количество целыми неотрицательными числами.',
+      });
+    }
+    if (typeof reason !== 'string' || reason.trim().length < 8 || reason.trim().length > 500) {
+      return sendJson(res, 400, { error: 'Опишите причину исправления (8–500 символов).' });
+    }
+    if (new_qty >= expected_qty) {
+      return sendJson(res, 400, { error: 'Новый остаток должен быть меньше текущего.' });
+    }
+
+    let opened = false;
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      opened = true;
+      const row = db.prepare(`
+        SELECT ws.qty, p.name AS product_name, v.weight
+        FROM warehouse_stock ws
+        JOIN product_variants v ON v.id = ws.variant_id
+        JOIN products p ON p.id = v.product_id
+        WHERE ws.city_id = ? AND ws.variant_id = ?
+      `).get(cityId, variant_id);
+      if (!row) {
+        db.exec('ROLLBACK'); opened = false;
+        return sendJson(res, 404, { error: 'Товар на складе указанного города не найден.' });
+      }
+      if (row.qty !== expected_qty) {
+        db.exec('ROLLBACK'); opened = false;
+        return sendJson(res, 409, {
+          error: 'Остаток склада уже изменился. Обновите список и повторите корректировку.',
+          current_qty: row.qty,
+        });
+      }
+      // Отчёт менеджера ещё не списан со склада: уменьшение ниже его объёма
+      // сделает подтверждение перемещения невозможным.
+      const pending = db.prepare(`
+        SELECT COALESCE(SUM(smi.qty), 0) AS qty
+        FROM stock_movements sm
+        JOIN stock_movement_items smi ON smi.movement_id = sm.id
+        WHERE sm.status = 'pending' AND sm.city_id = ? AND smi.variant_id = ?
+      `).get(cityId, variant_id);
+      const pendingQty = Number(pending?.qty || 0);
+      if (new_qty < pendingQty) {
+        db.exec('ROLLBACK'); opened = false;
+        return sendJson(res, 409, {
+          error: 'Нельзя уменьшить остаток до ' + new_qty +
+            ' шт.: в несогласованных перемещениях указано ' + pendingQty +
+            ' шт. Сначала проверьте или отклоните соответствующие перемещения.',
+          pending_qty: pendingQty,
+        });
+      }
+      const result = db.prepare(`
+        UPDATE warehouse_stock SET qty = ?
+        WHERE city_id = ? AND variant_id = ? AND qty = ?
+      `).run(new_qty, cityId, variant_id, expected_qty);
+      if (result.changes !== 1) {
+        throw new Error('Складской остаток изменился во время подтверждения');
+      }
+      db.prepare(`
+        INSERT INTO warehouse_stock_adjustments
+          (city_id, variant_id, product_name, weight, old_qty, new_qty, action,
+           reason, admin_id, admin_login)
+        VALUES (?, ?, ?, ?, ?, ?, 'decrease', ?, ?, ?)
+      `).run(
+        cityId, variant_id, row.product_name, row.weight,
+        row.qty, new_qty, reason.trim(), payload.id, payload.login || null
+      );
+      db.exec('COMMIT');
+      opened = false;
+      sendJson(res, 200, {
+        ok: true, city_id: cityId, variant_id,
+        old_qty: row.qty, new_qty, decreased_by: row.qty - new_qty,
+      });
+    } catch (error) {
+      if (opened) { try { db.exec('ROLLBACK'); } catch (_) {} }
+      console.error('[warehouse] Ошибка уменьшения остатка:', error);
+      sendJson(res, 500, { error: 'Не удалось сохранить корректировку склада. Остаток не изменён.' });
+    }
   });
 
   // DELETE /api/warehouse/stock/:variantId — убрать лишнюю позицию именно
