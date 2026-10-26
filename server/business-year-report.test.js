@@ -173,6 +173,54 @@ test('other years keep all twelve months, future years and fractions rejected', 
   assert.throws(()=>report.collectBusinessYearReport(2026.5,now),/Выберите год/);
 });
 
+test('exact Telegram presentation matches September/October 2026 sample', () => {
+  const example = {
+    year:2026, is_current_year:true,
+    period:{from_local:'2026-09-01',through_local:'2026-10-26'},
+    months:[
+      {name:'Сен',number:9,revenue:3770,sales:11,average_check:343,
+        revenue_change_text:'с нуля',sales_change_text:'с нуля',
+        new_points:3,registered_points_known:3},
+      {name:'Окт',number:10,revenue:2598,sales:9,average_check:289,
+        revenue_change_text:'-31,1%',sales_change_text:'-18,2%',
+        new_points:4,registered_points_known:7},
+    ],
+    totals:{revenue:6368,sales:20,average_check:318,active_points:4,new_points:7},
+    total_points_in_registry:7,
+    points:Array.from({length:7},(_,i)=>({sales:i<4?1:0})),
+    unknown_creation_dates:0,
+  };
+  const formatted = report.formatBusinessYearReport(example)
+    .replace(/[\u00a0\u202f]/g,' ');
+  const expected = [
+    'ХвостМаркет · бизнес 2026',
+    '',
+    '🗓 01.09–26.10.2026 · Красноярск (год ещё не завершён)',
+    '',
+    '📊 По месяцам (в скобках — к предыдущему месяцу):',
+    '',
+    'Сен:',
+    '💚 3 770 ₽ (с нуля) ·',
+    '🧾 11 (с нуля) ·',
+    '🛍 343 ₽',
+    '🏪 +3 (с нуля), всего 3',
+    '',
+    'Окт:',
+    '💚 2 598 ₽ (-31,1%) ·',
+    '🧾 9 (-18,2%) ·',
+    '🛍 289 ₽',
+    '🏪 +4, всего 7',
+    '',
+    '📅 ИТОГО 2026 (с начала года)',
+    '💚 Выручка: 6 368 ₽',
+    '🧾 Оплаченных заказов: 20',
+    '🛍 Средний чек: 318 ₽',
+    '🏪 Точек с продажами: 4 · новых зарегистрировано: 7',
+    '🗂 В реестре всего точек: 7 (из них 3 без продаж за отчётный год)',
+  ].join('\n');
+  assert.equal(formatted,expected);
+});
+
 test.after(() => {
   try { db.close(); } catch (_) {}
   fs.rmSync(dir,{recursive:true,force:true});
