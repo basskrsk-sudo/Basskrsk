@@ -30,6 +30,10 @@ const {
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
 const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
+const {
+  currentKrasnoyarskYear, collectBusinessYearReport,
+  formatBusinessYearReport, buildBusinessYearCsv,
+} = require('./business-year-report');
 const { collectNoGroomerReport, formatNoGroomerReport, buildNoGroomerCsv } = require('./no-groomer-report');
 const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
 let lastUpdateId = 0;
@@ -68,6 +72,7 @@ async function configureBotProfile() {
       { command: 'newtask', description: 'Создать новую задачу' },
       { command: 'expense', description: 'Добавить трату бизнеса' },
       { command: 'salesweek', description: 'Отчёт по продажам за 7 дней' },
+      { command: 'business', description: 'Бизнес по месяцам и за год' },
       { command: 'nogroomer', description: 'Оплаченные заказы без грумера' },
       { command: 'payouts', description: 'Справка для выплат партнёрам' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
@@ -114,7 +119,7 @@ function buildWelcomeMessage() {
     'Я помогу войти в личный кабинет и буду присылать важные уведомления о заказах, продажах и вознаграждениях.',
     '',
     'Сотрудникам: /tasks покажет активные поручения, /newtask создаст задачу, а /expense запишет трату бизнеса.',
-    'Администраторам: /salesweek — продажи за 7 дней; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
+    'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
     '',
     'Чтобы подключить кабинет, откройте на сайте вход через Telegram и перейдите по созданной ссылке.',
   ].join('\n');
@@ -127,6 +132,7 @@ function botActionButtons(chatId) {
   ]];
   if (chatId && adminCanReadSales(chatId)) {
     keyboard.push([{ text: '📊 Продажи за 7 дней', callback_data: 'sales:week' }]);
+    keyboard.push([{ text: '📈 Бизнес по месяцам и за год', callback_data: 'sales:business' }]);
     keyboard.push([{ text: '🔎 Заказы без грумера', callback_data: 'sales:nogroomer' }]);
     keyboard.push([{ text: '💸 Справки к выплатам', callback_data: 'payouts:prepare' }]);
   }
@@ -228,6 +234,63 @@ async function sendSalesWeekReport(chatId) {
   } catch (error) {
     console.error('Ошибка формирования отчёта по продажам:', error.message);
     await replyToChat(chatId, '⚠️ Не удалось собрать отчёт. Проверьте журналы сервера.');
+  }
+}
+
+
+// /business [ГГГГ] — финансовая динамика с начала календарного года
+// по Красноярску или полный выбранный прошлый год.
+async function sendBusinessYearReport(chatId, requestedYear) {
+  if (!adminCanReadSales(chatId)) {
+    await replyToChat(chatId,
+      '🔒 Финансовая статистика доступна только администраторам ХвостМаркета в личном чате.');
+    return;
+  }
+  let report;
+  try {
+    report = collectBusinessYearReport(requestedYear);
+    await replyToChat(chatId, formatBusinessYearReport(report));
+  } catch (error) {
+    if (error.code === 'INVALID_BUSINESS_YEAR') {
+      await replyToChat(chatId,
+        'Укажите год от 2020 до ' + currentKrasnoyarskYear() +
+        '. Например: /business или /business 2025.');
+    } else {
+      console.error('[business-report] Не удалось сформировать отчёт:', error);
+      await replyToChat(chatId, '⚠️ Не удалось собрать бизнес-статистику. Проверьте журналы сервера.');
+    }
+    return;
+  }
+  try {
+    // CSV с BOM и разделителем ; корректно открывается в российском Excel.
+    const csv = buildBusinessYearCsv(report);
+    await sendBusinessYearCsv(chatId, csv, report.year);
+  } catch (error) {
+    console.warn('[business-report] Не удалось отправить CSV:', error.message);
+    await replyToChat(chatId,
+      '⚠️ Сводка сформирована, но CSV не удалось отправить. Повторите /business позднее.');
+  }
+}
+
+async function sendBusinessYearCsv(chatId, csvText, year) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    form.append('caption', 'Помесячные показатели, затраты и расчётная прибыль · ХвостМаркет ' + year);
+    form.append('document', new Blob([csvText], {
+      type: 'text/csv;charset=utf-8',
+    }), 'business-' + year + '.csv');
+    const response = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendDocument`, {
+      method: 'POST', body: form, signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.description || ('Telegram HTTP ' + response.status));
+    }
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -369,6 +432,17 @@ async function processUpdate(update) {
       if (allowed) await sendPayoutBriefs(chat.id);
       return;
     }
+    if (callback.data === 'sales:business') {
+      const chat = callback.message?.chat;
+      const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
+      await callBotApi('answerCallbackQuery', {
+        callback_query_id: callback.id,
+        text: allowed ? 'Собираем годовой отчёт' : 'Нет доступа',
+        show_alert: !allowed,
+      });
+      if (allowed) await sendBusinessYearReport(chat.id);
+      return;
+    }
     if (callback.data === 'sales:week') {
       const chat = callback.message?.chat;
       const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
@@ -477,6 +551,17 @@ async function processUpdate(update) {
   }
   if (/^\/(?:payouts|payoutbrief)(?:@\w+)?$/i.test(text) || /^справк[аи] (?:для |к )?выплат[аым]?$/i.test(text)) {
     await sendPayoutBriefs(msg.chat.id);
+    return;
+  }
+  const businessCommand = text.match(/^\/business(?:@\w+)?(?:\s+(\S+))?$/i);
+  if (businessCommand) {
+    const arg = businessCommand[1];
+    if (arg && !/^\d{4}$/.test(arg)) {
+      await replyToChat(msg.chat.id,
+        'Формат: /business — текущий год, /business 2025 — полный выбранный год.');
+    } else {
+      await sendBusinessYearReport(msg.chat.id, arg ? Number(arg) : undefined);
+    }
     return;
   }
   if (/^\/(?:salesweek|sales_week)(?:@\w+)?$/i.test(text) || /^отч[её]т(?: по продажам)? за неделю$/i.test(text)) {
