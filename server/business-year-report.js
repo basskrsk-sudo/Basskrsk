@@ -11,6 +11,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const TAX_RATE = 0.06;
 const ACQUIRING_RATE = 0.02;
 const MIN_YEAR = 2020;
+const FIRST_MONTH_2026 = 9; // ХвостМаркет начал работу в сентябре 2026.
 const MONTH_NAMES = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
   'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 const VALID_SALE = "o.status = 'paid' " +
@@ -81,12 +82,20 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
     throw error;
   }
   const isCurrentYear = year === today.year;
-  const includedMonths = isCurrentYear ? today.month : 12;
+  // Год основания ХвостМаркета начался в сентябре. Для других лет период
+  // остаётся календарным (с января); месяцы до сентября 2026 исключаем и
+  // из сообщения, и из финансовых итогов, и из обоих CSV.
+  const firstMonth = year === 2026 ? FIRST_MONTH_2026 : 1;
+  const includedMonths = isCurrentYear
+    ? Math.max(0, today.month - firstMonth + 1) : 13 - firstMonth;
   const untilUtc = isCurrentYear ? isoUtc(now) : localMidnightAsUtc(year + 1, 1);
-  // Начало предыдущего декабря позволяет честно посчитать изменение января.
-  const fromUtc = localMidnightAsUtc(year - 1, 12);
+  // Для январского отчёта прошлый декабрь нужен лишь для % сравнения.
+  // В сентябре 2026 начинаем с нуля без сравнения с августом.
+  const fromUtc = firstMonth === 1
+    ? localMidnightAsUtc(year - 1, 12)
+    : localMidnightAsUtc(year, firstMonth);
 
-  const months = Array.from({ length: includedMonths }, (_, i) => blankMonth(year, i + 1));
+  const months = Array.from({ length: includedMonths }, (_, i) => blankMonth(year, firstMonth + i));
   const byKey = new Map(months.map((row) => [row.key, row]));
   const monthlyPointSets = new Map(months.map((row) => [row.key, new Set()]));
   const yearPointSet = new Set();
@@ -232,6 +241,12 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
     m.revenue_change_percent = changePercent(m.revenue, priorRevenue);
     m.revenue_change_text = changeText(m.revenue, priorRevenue);
     m.sales_change_text = changeText(m.sales, priorSales);
+    if (year === 2026 && m.number === FIRST_MONTH_2026) {
+      // Первому месяцу работы не с чем сравнивать; условная база — ноль.
+      m.revenue_change_percent = null;
+      m.revenue_change_text = 'с нуля';
+      m.sales_change_text = 'с нуля';
+    }
     m.profit_change = priorProfit === null ? null : m.net_profit - priorProfit;
     priorRevenue = m.revenue;
     priorSales = m.sales;
@@ -264,7 +279,7 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
     total_points_in_registry: points.length,
     points_with_known_registration: points.length - unknownCreationDates,
     period: {
-      from_local: year + '-01-01',
+      from_local: monthKey(year, firstMonth) + '-01',
       through_local: isCurrentYear
         ? monthKey(today.year, today.month) + '-' + pad(today.day)
         : year + '-12-31',
@@ -280,60 +295,61 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
 
 function formatBusinessYearReport(report) {
   const t = report.totals;
+  const startDate = report.period.from_local.slice(5).split('-').reverse().join('.');
+  const endDate = report.period.through_local.slice(5).split('-').reverse().join('.');
   const lines = [
-    '📈 ХвостМаркет · бизнес ' + report.year,
-    '🗓 01.01–' + report.period.through_local.slice(5).split('-').reverse().join('.') +
-      '.' + report.year + ' · Красноярск' +
+    'ХвостМаркет · бизнес ' + report.year,
+    '',
+    '🗓 ' + startDate + '–' + endDate + '.' + report.year +
+      ' · Красноярск' +
       (report.is_current_year ? ' (год ещё не завершён)' : ''),
     '',
-    '📊 По месяцам (в скобках — выручка к предыдущему месяцу):',
+    '📊 По месяцам (в скобках — к предыдущему месяцу):',
+    '',
   ];
+
   for (const m of report.months) {
+    const isInitialPeriod = report.year === 2026 && m.number === FIRST_MONTH_2026;
+    const beforeMonth = m.registered_points_known - m.new_points;
+    const fromZero = isInitialPeriod && beforeMonth === 0
+      ? ' (с нуля)' : '';
     lines.push(
-      m.name + ': 💚 ' + rub(m.revenue) + ' (' + m.revenue_change_text + ')' +
-      ' · 🧾 ' + m.sales + ' (' + m.sales_change_text + ')' +
-      ' · 🛍 ' + rub(m.average_check),
-      '   💸 затраты ' + rub(m.total_costs) +
-      ' · 📈 прибыль ' + signedRub(m.net_profit) +
-      (m.profit_change === null ? '' : ' (Δ ' + signedRub(m.profit_change) + ')') +
-      ' · 🏪 ' + m.active_points + ' / +' + m.new_points +
-      ' · всего ' + m.registered_points_known
+      m.name + ':',
+      '💚 ' + rub(m.revenue) + ' (' + m.revenue_change_text + ') ·',
+      '🧾 ' + m.sales + ' (' + m.sales_change_text + ') ·',
+      '🛍 ' + rub(m.average_check),
+      '🏪 +' + m.new_points + fromZero + ', всего ' + m.registered_points_known,
+      ''
     );
   }
+
   lines.push(
-    '',
     '📅 ИТОГО ' + report.year + (report.is_current_year ? ' (с начала года)' : ''),
     '💚 Выручка: ' + rub(t.revenue),
-    '🧾 Оплаченных заказов: ' + t.sales + ' · средний чек: ' + rub(t.average_check),
-    '💸 Учтённые затраты: ' + rub(t.total_costs) +
-      ' (из них внесено вручную: ' + rub(t.manual_expenses) + ')',
-    '📈 Расчётная прибыль: ' + signedRub(t.net_profit) +
-      ' · маржа: ' + t.margin_percent.toLocaleString('ru-RU') + '%',
+    '🧾 Оплаченных заказов: ' + t.sales,
+    '🛍 Средний чек: ' + rub(t.average_check),
     '🏪 Точек с продажами: ' + t.active_points +
       ' · новых зарегистрировано: ' + t.new_points,
     '🗂 В реестре всего точек: ' + report.total_points_in_registry +
       ' (из них ' + report.points.filter((point) => point.sales === 0).length +
-      ' без продаж за отчётный год)',
-    '💼 Комиссии: грумеры ' + rub(t.partner_commission) +
-      ', менеджеры ' + rub(t.manager_commission) +
-      ', владельцы ' + rub(t.owner_commission),
-    '🧾 Налог 6%: ' + rub(t.tax) + ' · эквайринг 2%: ' + rub(t.acquiring),
-    '',
-    '🏪 В строке месяца: точки с продажами / новые записи / всего записей с датой.',
-    ...(report.unknown_creation_dates ? [
-      '⚠️ Дата регистрации неизвестна у точек (' + report.unknown_creation_dates + '):',
-      ...report.missing_creation_dates.slice(0,8).map((point) =>
-        '— ' + cleanReportLabel(point.name,44) + ' (' + cleanReportLabel(point.id,30) + ')'),
-      ...(report.missing_creation_dates.length > 8
-        ? ['…ещё ' + (report.missing_creation_dates.length - 8) + ' — в файле «Все точки».'] : []),
-      '❓ Когда эти точки создали? Уточните подтверждённые даты в админке → Точки → Уточнить.',
-      'Пока дата не указана, точка остаётся в реестре, но не учитывается как новая в месяце.'
-    ] : []),
-    'ℹ️ Это управленческая оценка, не бухгалтерская прибыль: ' +
-      'учтены внесённые траты и расчётные комиссии/налог/эквайринг. ' +
-      'Заказы — по дате создания, выручка после возвратов. ' +
-      'Помесячная детализация и полный реестр ВСЕХ точек, включая без продаж, — в двух CSV.'
+      ' без продаж за отчётный год)'
   );
+
+  // Исторические точки без даты остаются в реестре, но не приписываются к
+  // определённому месяцу. Нужные данные запрашиваем прямо в том же отчёте.
+  if (report.unknown_creation_dates) {
+    lines.push(
+      '',
+      '⚠️ Дата регистрации неизвестна у точек (' + report.unknown_creation_dates + '):',
+      ...report.missing_creation_dates.slice(0, 8).map((point) =>
+        '— ' + cleanReportLabel(point.name, 44) + ' (' + cleanReportLabel(point.id, 30) + ')'),
+      ...(report.missing_creation_dates.length > 8
+        ? ['…ещё ' + (report.missing_creation_dates.length - 8) + ' — в CSV «Все точки».']
+        : []),
+      '❓ Уточните даты создания этих точек в админке → Точки → Уточнить.'
+    );
+  }
+
   const message = lines.join('\n');
   if (message.length > 4000) throw new Error('Годовой отчёт превышает лимит Telegram');
   return message;
