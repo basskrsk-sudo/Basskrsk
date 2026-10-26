@@ -37,9 +37,11 @@ function registerAuditRoutes(router) {
       LIMIT ?
     `).all(limit);
 
-    const warehouseEvents = type && type !== 'warehouse_delete' ? [] : db.prepare(`
+    const warehouseAction = type === 'warehouse_delete' ? 'delete'
+      : type === 'warehouse_decrease' ? 'decrease' : null;
+    const warehouseEvents = type && !warehouseAction ? [] : db.prepare(`
       SELECT
-        'warehouse_delete' AS type,
+        'warehouse_' || w.action AS type,
         w.id,
         w.created_at,
         w.admin_id,
@@ -55,9 +57,10 @@ function registerAuditRoutes(router) {
         w.action
       FROM warehouse_stock_adjustments w
       LEFT JOIN cities c ON c.id = w.city_id
+      WHERE (? IS NULL OR w.action = ?)
       ORDER BY w.created_at DESC, w.id DESC
       LIMIT ?
-    `).all(limit);
+    `).all(warehouseAction, warehouseAction, limit);
 
     const managerEvents = type && type !== 'manager_action' ? [] : db.prepare(`
       SELECT
