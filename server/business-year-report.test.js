@@ -122,7 +122,20 @@ test('year totals use unique points, annual margins and avoid double counting', 
   assert.equal(r.totals.active_points,2);
   assert.equal(r.totals.new_points,2);
   assert.equal(r.unknown_creation_dates,1);
-  assert.match(report.formatBusinessYearReport(r),/без подтверждённой даты создания/);
+  assert.equal(r.total_points_in_registry,5);
+  assert.equal(r.points_with_known_registration,4);
+  const missing = r.missing_creation_dates.map(p => p.id);
+  assert.deepEqual(missing,['test-business-p5']);
+  const p4 = r.points.find(p => p.id === 'test-business-p4');
+  assert.equal(p4.sales,0); // non-selling points remain in the full report
+  assert.equal(p4.revenue,0);
+  assert.equal(p4.created_date,'2026-02-14');
+  assert.equal(r.points.find(p => p.id === 'test-business-p2').created_date,'2026-01-20');
+  assert.equal(r.points.find(p => p.id === 'test-business-p2').sales,1);
+  assert.equal(r.months[0].registered_points_known,3);
+  assert.equal(r.months[1].registered_points_known,4);
+  assert.match(report.formatBusinessYearReport(r),/Уточните даты создания 1 точек/);
+  assert.match(report.formatBusinessYearReport(r),/test-business-p5/);
   assert.equal(r.totals.manual_expenses,750);
   assert.equal(r.totals.net_profit,896);
   const message = report.formatBusinessYearReport(r);
@@ -135,6 +148,15 @@ test('year totals use unique points, annual margins and avoid double counting', 
   assert.match(csv,/ИТОГО 2026/);
   assert.match(csv,/Изменение прибыли к предыдущему месяцу/);
   assert.match(csv,/Новые точки \(создание карточки\)/);
+  assert.match(csv,/Всего точек с датой регистрации к концу месяца/);
+  const pointsCsv = report.buildBusinessPointsCsv(r);
+  assert.ok(pointsCsv.startsWith('\uFEFF'));
+  assert.equal(pointsCsv.trim().split('\r\n').length,6); // header + 5 points
+  assert.match(pointsCsv,/Test test-business-p5/);
+  assert.match(pointsCsv,/НЕТ ДАННЫХ/);
+  assert.match(pointsCsv,/Отключена|Активна/);
+  assert.match(pointsCsv,/2026-02-14/);
+  assert.match(pointsCsv,/ДА/);
 });
 
 test('past year has 12 complete rows, and invalid years are rejected', () => {
