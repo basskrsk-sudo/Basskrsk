@@ -303,7 +303,7 @@ async function sendWarehouseStockReport(chatId, citySelector = '') {
     await sendTelegramCsvDocument({
       token: TG_TOKEN, chatId, csvText: csv,
       filename: 'warehouse-stock' + selectedCity + '-' +
-        report.generated_at.slice(0,10) + '.csv',
+        report.local_date + '.csv',
       caption: 'Актуальные остатки центральных складов ХвостМаркета · ' +
         report.local_time + ' (Красноярск)',
     });
