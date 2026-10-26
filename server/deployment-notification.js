@@ -6,6 +6,7 @@ const http = require('node:http');
 const https = require('node:https');
 const { sendEmail } = require('./email');
 const { sendTelegram } = require('./telegram');
+const { releaseChange, statusChange, formatBilingualTelegramChanges } = require('./deployment-release-notes');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const INFO_FILE = path.join(__dirname, '..', 'build-info.json');
@@ -74,26 +75,55 @@ function githubJson(route) {
 }
 
 async function listDeploymentChanges(sha, previous) {
-  if (!/^[0-9a-f]{40}$/i.test(sha)) return ['Коммит недоступен: список изменений не определён.'];
+  if (!/^[0-9a-f]{40}$/i.test(sha)) {
+    return [statusChange(
+      'GitHub commit SHA unavailable: changes cannot be determined.',
+      'Коммит GitHub недоступен: не удалось определить изменения.'
+    )];
+  }
   try {
     let commits;
     if (previous && /^[0-9a-f]{40}$/i.test(previous.git_commit) && previous.git_commit !== sha) {
       const response = await githubJson('compare/' + previous.git_commit + '...' + sha);
       commits = response.commits || [];
-      if (response.ahead_by > commits.length) {
-        return ['Более ' + commits.length + ' коммитов — показаны последние из полученных.', ...commits.slice(-12).map(x => x.commit.message.split('\n')[0])];
-      }
-    } else if (previous && previous.sent_at) {
-      // Older notification records do not contain a commit SHA.
-      commits = await githubJson('commits?sha=' + sha + '&since=' + encodeURIComponent(previous.sent_at) + '&per_page=30');
-    } else {
-      return ['Первая сборка с журналом изменений: сравнение с предыдущей версией недоступно.'];
+      const hasMore = response.ahead_by > commits.length;
+      const changes = commits.slice(-15).map(commit => releaseChange(commit.commit.message));
+      if (hasMore) changes.unshift(statusChange(
+        'The comparison contains more commits than GitHub returned; latest available changes are listed.',
+        'В сравнении больше коммитов, чем вернул GitHub; показаны последние доступные изменения.'
+      ));
+      return changes.length ? changes : [statusChange(
+        'No source changes detected between deployments.',
+        'Между сборками изменений кода не обнаружено.'
+      )];
     }
-    if (!commits.length) return ['Изменений кода между запусками не обнаружено.'];
-    return commits.slice(-15).map(x => x.commit.message.split('\n')[0]);
+    if (previous && previous.sent_at && previous.git_commit !== sha) {
+      // Legacy notification records can have only the notification timestamp.
+      const results = await githubJson('commits?sha=' + sha +
+        '&since=' + encodeURIComponent(previous.sent_at) + '&per_page=30');
+      commits = [...results].reverse();
+    } else if (previous && previous.git_commit === sha) {
+      return [statusChange(
+        'This deployment contains the same GitHub commit as the previous notification.',
+        'В этой сборке тот же коммит GitHub, что и в предыдущем уведомлении.'
+      )];
+    } else {
+      return [statusChange(
+        'First tracked deployment: no previous revision is available for comparison.',
+        'Первая сборка с журналом изменений: предыдущая версия для сравнения недоступна.'
+      )];
+    }
+    if (!commits.length) return [statusChange(
+      'No source changes detected between deployments.',
+      'Между сборками изменений кода не обнаружено.'
+    )];
+    return commits.slice(-15).map(commit => releaseChange(commit.commit.message));
   } catch (err) {
-    console.warn('Deploy email: не удалось получить изменения GitHub:', err.message);
-    return ['Не удалось загрузить историю изменений GitHub.'];
+    console.warn('Deploy notifier: GitHub change history unavailable:', err.message);
+    return [statusChange(
+      'Could not load the GitHub change history.',
+      'Не удалось загрузить историю изменений GitHub.'
+    )];
   }
 }
 
@@ -126,7 +156,12 @@ async function notifyDeployment(port) {
   const version = info.version || 'unknown';
   const sha = info.git_commit && info.git_commit !== 'unknown' ? info.git_commit : (process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'не удалось определить');
   const allPagesOk = pages.every(p => p.ok);
-  const changes = await listDeploymentChanges(sha, previous);
+  // Telegram and email may have different last-successful notifications.
+  // Prefer Telegram's saved commit so the bot describes changes since its own
+  // previous message, even when SMTP was disabled or temporarily unavailable.
+  const changes = await listDeploymentChanges(sha,
+    (telegramPrevious && (telegramPrevious.git_commit || telegramPrevious.sent_at))
+      ? telegramPrevious : previous);
   const text = [
     'ХвостМаркет: новая сборка успешно запустилась.',
     '',
@@ -136,8 +171,8 @@ async function notifyDeployment(port) {
     'Идентификатор сборки: ' + info.build_id,
     'Коммит GitHub: ' + sha,
     '',
-    'ЧТО ИЗМЕНИЛОСЬ В ЭТОЙ ВЕРСИИ',
-    ...changes.map((item, i) => (i + 1) + '. ' + item),
+    'WHAT CHANGED — ENGLISH / ИЗМЕНЕНИЯ — РУССКИЙ',
+    ...changes.map((item, i) => (i + 1) + '. ' + item.en + ' / ' + item.ru),
     'Образ собран (UTC): ' + (info.built_at || 'неизвестно'),
     'Запущен и проверен (UTC): ' + now.toISOString(),
     'Среда: ' + (process.env.DEPLOY_ENV || 'Amvera'),
@@ -160,11 +195,10 @@ async function notifyDeployment(port) {
       ...pages.map(p => (p.ok ? '✅ ' : '⚠️ ') + escapeHtml(p.path) + ' — HTTP ' + p.status),
       'Время запуска (UTC): ' + escapeHtml(now.toISOString()),
       '',
-      '<b>Изменения:</b>',
-      ...changes.slice(0,12).map((item,i) => (i+1)+'. '+escapeHtml(item).slice(0,260)),
+      ...formatBilingualTelegramChanges(changes, 10),
       '',
       'Проверки выполнены локально в Amvera; оплата и внешняя доступность не тестировались.'
-    ].join('\n').slice(0,3950);
+    ].join('\n');
     try {
       const sent = await sendTelegram(telegramText);
       if (sent.ok) {
