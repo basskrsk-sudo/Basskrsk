@@ -331,10 +331,10 @@ function formatBusinessYearReport(report) {
 }
 
 function cleanReportLabel(value, length) {
-  return String(value || '').replace(/[\\x00-\\x1f\\x7f]/g,' ').replace(/\\s+/g,' ').trim().slice(0,length);
+  return String(value || '').replace(/[\x00-\x1f\x7f]/g,' ').replace(/\s+/g,' ').trim().slice(0,length);
 }
 function csvCell(value) {
-  let out = String(value ?? '').replace(/[\\x00-\\x1f\\x7f]/g, ' ').trim();
+  let out = String(value ?? '').replace(/[\x00-\x1f\x7f]/g, ' ').trim();
   // Не допускаем выполнения формул Excel из имени/адреса партнёрской точки.
   if (typeof value !== 'number' && /^[=+@-]/.test(out)) out = "'" + out;
   return '"' + out.replace(/"/g, '""') + '"';
@@ -390,7 +390,7 @@ function buildBusinessPointsCsv(report) {
       p.created_date ? 'Нет' : 'ДА',
     ].map(csvCell).join(';'));
   }
-  return '\\uFEFF' + lines.join('\\r\\n') + '\\r\\n';
+  return '\uFEFF' + lines.join('\r\n') + '\r\n';
 }
 
 module.exports = {
