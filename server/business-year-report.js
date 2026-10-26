@@ -272,7 +272,8 @@ function formatBusinessYearReport(report) {
     '',
     '🏪 В строке месяца: точки с продажами / новые созданные карточки.',
     ...(report.unknown_creation_dates ? [
-      '⚠️ ' + report.unknown_creation_dates + ' точек без подтверждённой даты создания не включены в подсчёт новых.'
+      '⚠️ Точек без подтверждённой даты создания: ' + report.unknown_creation_dates +
+      '. В новых точках по месяцам они не учтены.'
     ] : []),
     'ℹ️ Это управленческая оценка, не бухгалтерская прибыль: ' +
       'учтены внесённые траты и расчётные комиссии/налог/эквайринг. ' +
@@ -297,6 +298,7 @@ function buildBusinessYearCsv(report) {
     'Динамика выручки к предыдущему месяцу',
     'Динамика заказов к предыдущему месяцу',
     'Изменение прибыли к предыдущему месяцу, ₽',
+    'Точек без даты создания (во всей базе)',
   ];
   const lines = [fields.map(csvCell).join(';')];
   for (const m of [...report.months, report.totals]) {
@@ -306,6 +308,7 @@ function buildBusinessYearCsv(report) {
       m.tax, m.acquiring, m.total_costs, m.net_profit, m.margin_percent,
       m.active_points, m.new_points, m.revenue_change_text || '',
       m.sales_change_text || '', m.profit_change === null ? '' : m.profit_change,
+      m === report.totals ? report.unknown_creation_dates : '',
     ].map(csvCell).join(';'));
   }
   return '\uFEFF' + lines.join('\r\n') + '\r\n';
