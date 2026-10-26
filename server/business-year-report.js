@@ -217,7 +217,7 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
     FROM expenses
     WHERE expense_date >= ? AND expense_date < ?
     GROUP BY substr(expense_date,1,7)
-  `).all(year + '-01-01', endExpensesExclusive);
+  `).all(monthKey(year, firstMonth) + '-01', endExpensesExclusive);
   for (const expense of expenses) {
     const m = byKey.get(expense.month);
     if (m) m.manual_expenses += number(expense.total);
