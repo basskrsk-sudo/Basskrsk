@@ -60,6 +60,7 @@ function blankMonth(year, month) {
     owner_commission: 0, tax: 0, acquiring: 0, total_costs: 0, net_profit: 0,
     average_check: 0, margin_percent: 0, active_points: 0, new_points: 0,
     revenue_change_percent: 0, revenue_change_text: '0%',
+    sales_change_text: '0%', profit_change: null,
   };
 }
 
@@ -113,10 +114,12 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
   `).all(fromUtc, untilUtc);
 
   let previousDecemberRevenue = 0;
+  let previousDecemberSales = 0;
   for (const sale of orders) {
     const revenue = number(sale.revenue);
     if (sale.month === monthKey(year - 1, 12)) {
       previousDecemberRevenue += revenue;
+      previousDecemberSales += number(sale.sales);
       continue;
     }
     const month = byKey.get(sale.month);
@@ -166,6 +169,8 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
   }
 
   let priorRevenue = previousDecemberRevenue;
+  let priorSales = previousDecemberSales;
+  let priorProfit = null;
   for (const m of months) {
     m.active_points = monthlyPointSets.get(m.key).size;
     m.partner_commission = Math.round(m.partner_commission);
@@ -180,10 +185,20 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
     m.margin_percent = m.revenue ? Math.round(m.net_profit / m.revenue * 1000) / 10 : 0;
     m.revenue_change_percent = changePercent(m.revenue, priorRevenue);
     m.revenue_change_text = changeText(m.revenue, priorRevenue);
+    m.sales_change_text = changeText(m.sales, priorSales);
+    m.profit_change = priorProfit === null ? null : m.net_profit - priorProfit;
     priorRevenue = m.revenue;
+    priorSales = m.sales;
+    priorProfit = m.net_profit;
   }
 
-  const totals = blankMonth(year, 0);
+  const totals = blankMonth(year, 1);
+  totals.key = 'ИТОГО ' + year;
+  totals.name = 'Год';
+  totals.number = null;
+  totals.revenue_change_percent = null;
+  totals.revenue_change_text = '';
+  totals.sales_change_text = '';
   for (const m of months) {
     for (const field of [
       'sales','revenue','refunds','manual_expenses','partner_commission',
@@ -225,9 +240,11 @@ function formatBusinessYearReport(report) {
   for (const m of report.months) {
     lines.push(
       m.name + ': 💚 ' + rub(m.revenue) + ' (' + m.revenue_change_text + ')' +
-      ' · 🧾 ' + m.sales + ' · 🛍 ' + rub(m.average_check),
+      ' · 🧾 ' + m.sales + ' (' + m.sales_change_text + ')' +
+      ' · 🛍 ' + rub(m.average_check),
       '   💸 затраты ' + rub(m.total_costs) +
       ' · 📈 прибыль ' + signedRub(m.net_profit) +
+      (m.profit_change === null ? '' : ' (Δ ' + signedRub(m.profit_change) + ')') +
       ' · 🏪 ' + m.active_points + ' / +' + m.new_points
     );
   }
@@ -269,14 +286,17 @@ function buildBusinessYearCsv(report) {
     'Эквайринг 2%, ₽','Учтённые затраты, ₽','Расчётная прибыль, ₽',
     'Маржа, %','Активные точки','Новые точки с первой продажей',
     'Динамика выручки к предыдущему месяцу',
+    'Динамика заказов к предыдущему месяцу',
+    'Изменение прибыли к предыдущему месяцу, ₽',
   ];
   const lines = [fields.map(csvCell).join(';')];
-  for (const m of [...report.months, { ...report.totals, key: 'ИТОГО ' + report.year }]) {
+  for (const m of [...report.months, report.totals]) {
     lines.push([
       m.key, m.revenue, m.sales, m.average_check, m.manual_expenses,
       m.partner_commission, m.manager_commission, m.owner_commission,
       m.tax, m.acquiring, m.total_costs, m.net_profit, m.margin_percent,
       m.active_points, m.new_points, m.revenue_change_text || '',
+      m.sales_change_text || '', m.profit_change === null ? '' : m.profit_change,
     ].map(csvCell).join(';'));
   }
   return '\uFEFF' + lines.join('\r\n') + '\r\n';
