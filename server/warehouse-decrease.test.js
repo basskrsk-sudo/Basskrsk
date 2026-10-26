@@ -41,7 +41,8 @@ function call(verb, endpoint, role, body = {}, query = {}) {
   const handler = routeMap.get(verb+' '+endpoint);
   assert.equal(typeof handler,'function','missing '+verb+' '+endpoint);
   const token = signToken({
-    role, id: 9, login: role+'-warehouse-tester',
+    role: role === 'super' ? 'admin' : role,
+    id: 9, login: role+'-warehouse-tester',
     ...(role==='super' ? {adminRole:'super'} : {}),
   });
   const req = { headers: { authorization:'Bearer '+token } };
