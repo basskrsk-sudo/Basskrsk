@@ -32,7 +32,7 @@ const TG_TOKEN = process.env.TG_TOKEN || '';
 const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
 const {
   currentKrasnoyarskYear, collectBusinessYearReport,
-  formatBusinessYearReport, buildBusinessYearCsv,
+  formatBusinessYearReport, buildBusinessYearCsv, buildBusinessPointsCsv,
 } = require('./business-year-report');
 const { collectNoGroomerReport, formatNoGroomerReport, buildNoGroomerCsv } = require('./no-groomer-report');
 const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
@@ -261,27 +261,40 @@ async function sendBusinessYearReport(chatId, requestedYear) {
     }
     return;
   }
-  try {
-    // CSV с BOM и разделителем ; корректно открывается в российском Excel.
-    const csv = buildBusinessYearCsv(report);
-    await sendBusinessYearCsv(chatId, csv, report.year);
-  } catch (error) {
-    console.warn('[business-report] Не удалось отправить CSV:', error.message);
-    await replyToChat(chatId,
-      '⚠️ Сводка сформирована, но CSV не удалось отправить. Повторите /business позднее.');
+  // Отправляем обе детализации: финансовые месяцы и ВСЕ точки сети,
+  // включая отключённые и ни разу не совершившие продажу.
+  const files = [
+    {
+      filename: 'business-' + report.year + '.csv',
+      caption: 'Помесячные показатели, затраты и расчётная прибыль · ХвостМаркет ' + report.year,
+      create: () => buildBusinessYearCsv(report),
+    },
+    {
+      filename: 'business-points-' + report.year + '.csv',
+      caption: 'ВСЕ точки ХвостМаркета: даты регистрации, статусы, продажи, недостающие даты · ' + report.year,
+      create: () => buildBusinessPointsCsv(report),
+    },
+  ];
+  for (const file of files) {
+    try {
+      await sendBusinessYearCsv(chatId, file.create(), file.filename, file.caption);
+    } catch (error) {
+      console.warn('[business-report] Не удалось отправить ' + file.filename + ':', error.message);
+      await replyToChat(chatId, '⚠️ Не удалось прикрепить файл «' + file.filename + '». Повторите /business позднее.');
+    }
   }
 }
 
-async function sendBusinessYearCsv(chatId, csvText, year) {
+async function sendBusinessYearCsv(chatId, csvText, filename, caption) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
   try {
     const form = new FormData();
     form.append('chat_id', String(chatId));
-    form.append('caption', 'Помесячные показатели, затраты и расчётная прибыль · ХвостМаркет ' + year);
+    form.append('caption', caption);
     form.append('document', new Blob([csvText], {
       type: 'text/csv;charset=utf-8',
-    }), 'business-' + year + '.csv');
+    }), filename);
     const response = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendDocument`, {
       method: 'POST', body: form, signal: controller.signal,
     });
