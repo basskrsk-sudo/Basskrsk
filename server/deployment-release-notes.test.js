@@ -32,6 +32,18 @@ test('unknown commit types are summarized in Russian without inventing details',
   assert.match(fallbackRussian('fix(checkout): broken discount'), /Исправлена работа/);
 });
 
+test('Cyrillic source commit titles retain Russian detail but get an English category', () => {
+  const result = releaseChange('fix(admin): Исправлена карточка точки');
+  assert.match(result.en, /^Bug fix/);
+  assert.match(result.ru, /Исправлена карточка точки/);
+  const explicit = releaseChange([
+    'fix(admin): Исправлена карточка точки',
+    'Release-notes-en: Fixed salon profile data.',
+    'Release-notes-ru: Исправлена карточка точки.',
+  ].join('\n'));
+  assert.equal(explicit.en, 'Fixed salon profile data.');
+});
+
 test('changes always appear English first, followed by matching Russian entries', () => {
   const changes = [
     releaseChange('fix(test): validate Russian missing-date prompt with literal text'),
