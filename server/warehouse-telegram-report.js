@@ -102,9 +102,16 @@ function collectWarehouseStockReport(selector = '', now = new Date()) {
   }
 
   const cities = Array.from(byCity.values());
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: KRASNOYARSK_TIMEZONE,
+    year:'numeric', month:'2-digit', day:'2-digit',
+  }).formatToParts(now);
+  const datePart = (type) => parts.find(part => part.type === type)?.value || '';
+  const localDate = datePart('year') + '-' + datePart('month') + '-' + datePart('day');
   return {
     generated_at: now.toISOString(),
     local_time: asOfKrasnoyarsk(now),
+    local_date: localDate,
     cities,
     city_count: cities.length,
     total_qty: cities.reduce((a, c) => a + c.total_qty, 0),
