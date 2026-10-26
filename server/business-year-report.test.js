@@ -79,6 +79,8 @@ test('Jan includes paid net sales and costs; growth compares to preceding Decemb
   assert.equal(jan.active_points,1);
   assert.equal(jan.new_points,1);
   assert.equal(jan.revenue_change_percent,600);
+  assert.equal(jan.sales_change_text,'+100%');
+  assert.equal(jan.profit_change,null);
 });
 
 test('Feb first sale for second point, but not fully-refunded January sale', () => {
@@ -90,6 +92,8 @@ test('Feb first sale for second point, but not fully-refunded January sale', () 
   assert.equal(feb.total_costs,364);
   assert.equal(feb.net_profit,436);
   assert.equal(feb.revenue_change_percent,-42.9);
+  assert.equal(feb.sales_change_text,'-50%');
+  assert.equal(feb.profit_change,-74);
 });
 
 test('year totals use unique points, annual margins and avoid double counting', () => {
@@ -108,6 +112,7 @@ test('year totals use unique points, annual margins and avoid double counting', 
   assert.ok(csv.startsWith('\uFEFF'));
   assert.match(csv,/2026-01/);
   assert.match(csv,/ИТОГО 2026/);
+  assert.match(csv,/Изменение прибыли к предыдущему месяцу/);
 });
 
 test('past year has 12 complete rows, and invalid years are rejected', () => {
