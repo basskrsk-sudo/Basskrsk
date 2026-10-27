@@ -126,16 +126,10 @@ async function sendTaskReminder(taskId, options = {}) {
 }
 
 async function runTaskReminderCheck(now = new Date()) {
-  const tasks = db.prepare(`
-    SELECT id FROM meeting_tasks
-    WHERE reminder_enabled = 1 AND status NOT IN ('done', 'cancelled') AND assignee_id IS NOT NULL
-  `).all();
-  const results = [];
-  for (const task of tasks) {
-    const result = await sendTaskReminder(task.id, { now });
-    if (!result.skipped) results.push({ task_id: task.id, ...result });
-  }
-  return results;
+  // Утренние напоминания больше не отправляются по одной задаче.
+  // Отчёт группируется по ответственному: один PDF в Telegram, одна сводка в MAX.
+  // Ручное напоминание по отдельному поручению сохранено через sendTaskReminder.
+  return require('./task-daily-digest').runDailyTaskDigest(now);
 }
 
 function scheduleTaskReminders() {
