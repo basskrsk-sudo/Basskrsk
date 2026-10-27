@@ -17,6 +17,9 @@ const {
   taskButtons,
 } = require('./task-bot-actions');
 const {
+  handleTaskDueCallback, handleTaskDueMessage, cancelTaskDueInput,
+} = require('./task-bot-due');
+const {
   cancelTaskCreation,
   handleTaskCreateCallback,
   handleTaskCreateMessage,
@@ -571,7 +574,28 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (/^tsk:due:/.test(callback.data || '')) {
+      const chat = callback.message?.chat;
+      const allowed = chat?.type === 'private' &&
+        String(callback.from?.id) === String(chat.id);
+      const result = allowed
+        ? handleTaskDueCallback('telegram', chat.id, callback.data)
+        : {ok:false,message:'Изменять сроки можно только в своём личном чате.'};
+      try {
+        await callBotApi('answerCallbackQuery', {
+          callback_query_id:callback.id,
+          text:result?.ok ? 'Готово' : String(result?.message || 'Ошибка действия').slice(0,180),
+          show_alert:!result?.ok,
+        });
+      } catch (error) {
+        console.warn('[tasks] Не удалось подтвердить изменение срока:',error.message);
+      }
+      if (allowed && result) await editOrReplyTaskCard(callback,result);
+      return;
+    }
     if (/^tsk:(?:page|open|confirm):/.test(callback.data || '')) {
+      if (callback.message?.chat?.type === 'private')
+        cancelTaskDueInput('telegram',callback.message.chat.id);
       const chat = callback.message?.chat;
       const allowed = chat?.type === 'private' &&
         String(callback.from?.id) === String(chat.id);
@@ -675,6 +699,9 @@ async function processUpdate(update) {
     const chatId = callback.message && callback.message.chat
       ? callback.message.chat.id
       : callback.from && callback.from.id;
+    // Switching actions ends an unfinished custom-date entry.
+    if (/^(?:newtsk:|expense:|tsk:\d+:(?:work|status|done):)/.test(callback.data || ''))
+      cancelTaskDueInput('telegram',chatId);
     const result = handleExpenseCallback('telegram', chatId, callback.data)
       || handleTaskCreateCallback('telegram', chatId, callback.data)
       || handleTaskCallback('telegram', chatId, callback.data);
@@ -800,12 +827,14 @@ async function processUpdate(update) {
     return;
   }
   if (/^\/newtask(?:@\w+)?$/i.test(text) || /^новая задача$/i.test(text)) {
+    cancelTaskDueInput('telegram', msg.chat.id);
     cancelExpenseCreation('telegram', msg.chat.id);
     const result = startTaskCreation('telegram', msg.chat.id);
     await replyToChat(msg.chat.id, result.message, result.replyMarkup);
     return;
   }
   if (/^\/expense(?:@\w+)?$/i.test(text) || /^добавить трату$/i.test(text)) {
+    cancelTaskDueInput('telegram', msg.chat.id);
     const result = startExpenseCreation('telegram', msg.chat.id);
     await replyToChat(msg.chat.id, result.message, result.replyMarkup);
     return;
@@ -815,9 +844,10 @@ async function processUpdate(update) {
     const expenseCancelled = cancelExpenseCreation('telegram', msg.chat.id);
     const statusCancelled = db.prepare('DELETE FROM task_bot_pending_inputs WHERE channel = ? AND chat_id = ?')
       .run('telegram', String(msg.chat.id)).changes > 0;
+    const dateCancelled = cancelTaskDueInput('telegram', msg.chat.id);
     await replyToChat(
       msg.chat.id,
-      createCancelled || expenseCancelled || statusCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
+      createCancelled || expenseCancelled || statusCancelled || dateCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
       botActionButtons(msg.chat.id)
     );
     return;
@@ -827,7 +857,13 @@ async function processUpdate(update) {
     return;
   }
   if (/^\/tasks(?:@\w+)?$/i.test(text) || /^мои поручения$/i.test(text)) {
+    cancelTaskDueInput('telegram', msg.chat.id);
     await sendTaskInbox(msg.chat.id);
+    return;
+  }
+  const dueChange = handleTaskDueMessage('telegram', msg.chat.id, text);
+  if (dueChange) {
+    await replyToChat(msg.chat.id, dueChange.message, dueChange.replyMarkup);
     return;
   }
   const expenseCreation = handleExpenseMessage('telegram', msg.chat.id, text);
