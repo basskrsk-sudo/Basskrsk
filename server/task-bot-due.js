@@ -131,6 +131,7 @@ function saveDueDate(chatId, task, date) {
     return {ok:false,message:'Ошибка при сохранении срока. Изменение не применено.'};
   }
   cancelTaskDueInput(CHANNEL,chatId);
+  clearOtherDrafts(chatId);
   const reopened=handleTaskListNavigation(CHANNEL,chatId,'tsk:open:'+task.id);
   return {
     ok:true,updated:true,
@@ -155,6 +156,8 @@ function handleTaskDueCallback(channel, chatId, rawPayload, now = new Date()) {
     replyMarkup:taskListMarkup()};
 
   if(action==='menu'){
+    // Opening the date editor ends any unrelated unfinished bot dialog.
+    clearOtherDrafts(chatId);
     cancelTaskDueInput(CHANNEL,chatId);
     return {ok:true,message:
       '📅 Скорректировать срок поручения №'+task.id+'\n'+task.title+
