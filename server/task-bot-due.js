@@ -174,7 +174,8 @@ function handleTaskDueCallback(channel, chatId, rawPayload, now = new Date()) {
     ).run(CHANNEL,String(chatId),task.id,old,expiresAt);
     return {ok:true,message:
       '🗓 Введите новый срок поручения №'+task.id+' одним сообщением.\n'+
-      'Формат: ДД.ММ.ГГГГ (например, 15.11.2026).\n'+
+      'Формат: ДД.ММ.ГГГГ (например, '+
+        dateText(addDays(todayInKrasnoyarsk(now),14))+').\n'+
       'Нельзя назначить прошедшую дату.\n'+
       'Для отмены отправьте /cancel.',
       replyMarkup:{inline_keyboard:[[
@@ -224,7 +225,9 @@ function handleTaskDueMessage(channel,chatId,text,now=new Date()){
   const today=todayInKrasnoyarsk(now);
   if(!desired||!isValidRequestedDate(desired,today)){
     return {ok:false,message:
-      'Некорректная или прошедшая дата. Укажите ДД.ММ.ГГГГ, например 15.11.2026, не раньше сегодняшнего дня.\nДля отмены: /cancel.'};
+      'Некорректная или прошедшая дата. Укажите ДД.ММ.ГГГГ, например '+
+      dateText(addDays(today,14))+
+      ', не раньше сегодняшнего дня.\nДля отмены: /cancel.'};
   }
   cancelTaskDueInput(channel,chatId);
   return dateConfirmation(task,desired);
