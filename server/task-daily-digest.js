@@ -75,31 +75,47 @@ function queuedAssignees(){
 async function sendTelegramTaskPdf(chatId,report,bytes){
   if(!TG_TOKEN)throw Error('Telegram token is not configured');
   const blob=new Blob([bytes],{type:'application/pdf'});
-  const form=new FormData();
-  form.append('chat_id',String(chatId));
-  form.append('caption','📋 Поручения ХвостМаркета · '+report.local_date+
-    '\n🔴 Просрочено: '+report.totals.overdue+
-    ' · 🟢 В работе: '+report.totals.work+
-    ' · 📅 Позже: '+report.totals.later+
-    '\nДля управления откройте список кнопкой ниже.');
-  form.append('reply_markup',JSON.stringify(taskListMarkup()));
-  form.append('document',blob,
-    'HvostMarket_tasks_'+report.local_date+'_'+report.assignee.id+'.pdf');
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),30000);
-  try{
-    const response=await fetch('https://api.telegram.org/bot'+TG_TOKEN+'/sendDocument',{
-      method:'POST',body:form,signal:controller.signal,
-    });
-    const result=await response.json().catch(()=>({}));
-    if(!response.ok||!result.ok){
-      const error=new Error(result.description||'Telegram HTTP '+response.status);
-      error.status=response.status;
-      throw error;
+  for(let attempt=0;attempt<3;attempt++){
+    const form=new FormData();
+    form.append('chat_id',String(chatId));
+    form.append('caption','📋 Поручения ХвостМаркета · '+report.local_date+
+      '\n🔴 Просрочено: '+report.totals.overdue+
+      ' · 🟢 В работе: '+report.totals.work+
+      ' · 📅 Позже: '+report.totals.later+
+      '\nДля управления откройте список кнопкой ниже.');
+    form.append('reply_markup',JSON.stringify(taskListMarkup()));
+    form.append('document',blob,
+      'HvostMarket_tasks_'+report.local_date+'_'+report.assignee.id+'.pdf');
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),30000);
+    let response,result;
+    try{
+      response=await fetch('https://api.telegram.org/bot'+TG_TOKEN+'/sendDocument',{
+        method:'POST',body:form,signal:controller.signal,
+      });
+      result=await response.json().catch(()=>({}));
+    }finally{clearTimeout(timeout);}
+    if(response.ok&&result.ok)
+      return {ok:true,message_id:result.result?.message_id||null};
+    // HTTP 429 means Telegram explicitly REJECTED this upload. Retry is safe.
+    // Never retry an ambiguous network timeout, which might have been delivered.
+    const status=Number(result.error_code||response.status);
+    const seconds=Number(result.parameters?.retry_after);
+    if(status===429&&attempt<2){
+      const wait=Number.isFinite(seconds)&&seconds>0?Math.ceil(seconds):2;
+      if(wait<=60){
+        await new Promise(resolve=>setTimeout(resolve,wait*1000+300));
+        continue;
+      }
     }
-    return {ok:true,message_id:result.result?.message_id||null};
-  }finally{clearTimeout(timeout);}
+    const error=new Error(result.description||'Telegram HTTP '+response.status);
+    error.status=response.status;
+    error.retryAfter=Number.isFinite(seconds)&&seconds>0?seconds:null;
+    throw error;
+  }
+  throw Error('Telegram PDF upload failed');
 }
+
 function maxSummary(report){
   const items=[
     '📋 ХвостМаркет · поручения на '+report.local_date,
