@@ -192,6 +192,8 @@ function handleTaskDueCallback(channel, chatId, rawPayload, now = new Date()) {
     if(due==='-'&&task.recurrence_rule){
       return {ok:false,message:'Нельзя убрать срок у повторяющегося поручения.'};
     }
+    // Selecting a quick date supersedes any unfinished typed-date prompt.
+    cancelTaskDueInput(CHANNEL,chatId);
     return dateConfirmation(task,due);
   }
   if(action==='save'){
