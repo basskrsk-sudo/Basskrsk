@@ -1581,6 +1581,19 @@ CREATE TABLE IF NOT EXISTS task_bot_pending_inputs (
   PRIMARY KEY(channel, chat_id)
 );
 
+-- Ввод новой даты поручения из Telegram: одна короткая сессия на чат,
+-- привязанная к исходному сроку. Не используем таблицу статусов поручений,
+-- чтобы введённая дата не стала ошибочно текстом отчёта о выполнении.
+CREATE TABLE IF NOT EXISTS task_bot_due_drafts (
+  channel      TEXT NOT NULL CHECK(channel IN ('telegram', 'max')),
+  chat_id      TEXT NOT NULL,
+  task_id      INTEGER NOT NULL REFERENCES meeting_tasks(id) ON DELETE CASCADE,
+  expected_due TEXT NOT NULL,
+  expires_at   TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY(channel, chat_id)
+);
+
 -- Черновик пошагового создания поручения из Telegram. Храним его в базе,
 -- а не в памяти процесса: перезапуск или деплой между шагами не потеряет
 -- уже введённое название и выбранного ответственного.
