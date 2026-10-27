@@ -1549,6 +1549,25 @@ CREATE TABLE IF NOT EXISTS task_reminder_log (
   UNIQUE(task_id, reminder_key, channel)
 );
 
+-- Ежедневная сводка задач: не более одного утреннего PDF в Telegram
+-- и одного сводного сообщения в MAX на ответственного и локальную дату.
+-- Статус unknown/pending после неопределённого сетевого исхода не
+-- ретраим автоматически, чтобы случайно не отправить PDF дважды.
+CREATE TABLE IF NOT EXISTS task_daily_digest_log (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  assignee_id  INTEGER NOT NULL REFERENCES task_assignees(id) ON DELETE CASCADE,
+  local_date   TEXT NOT NULL,
+  channel      TEXT NOT NULL CHECK(channel IN ('telegram','max')),
+  status       TEXT NOT NULL DEFAULT 'pending',
+  error        TEXT,
+  message_id   TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  sent_at      TEXT,
+  UNIQUE(assignee_id, local_date, channel)
+);
+CREATE INDEX IF NOT EXISTS idx_task_daily_digest_date
+  ON task_daily_digest_log(local_date, status);
+
 -- После кнопки «Сообщить статус» следующее текстовое сообщение сотрудника
 -- относится к конкретному поручению. Одна активная форма на чат исключает
 -- неоднозначность и автоматически истекает через сутки.
