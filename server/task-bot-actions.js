@@ -18,6 +18,7 @@ function taskButtons(task, channel) {
           { text: '▶️ В работу', callback_data: payload('work') },
           { text: '💬 Статус', callback_data: payload('status') },
         ],
+        [{ text: '📅 Скорректировать срок', callback_data: 'tsk:due:menu:' + task.id + ':' + due }],
         [{ text: '✅ Выполнено', callback_data: payload('done') }],
       ],
     };
@@ -153,6 +154,7 @@ function handleTaskListNavigation(channel,chatId,value){
     replyMarkup:{inline_keyboard:[
       [{text:'▶️ В работу',callback_data:'tsk:'+task.id+':work:'+due},
        {text:'💬 Статус',callback_data:'tsk:'+task.id+':status:'+due}],
+      [{text:'📅 Скорректировать срок',callback_data:'tsk:due:menu:'+task.id+':'+due}],
       [{text:'✅ Выполнено',callback_data:'tsk:confirm:'+task.id+':'+due}],
       [{text:'◀ Все задачи',callback_data:'tsk:page:0'}],
     ]},
@@ -245,6 +247,7 @@ function handleTaskStatusMessage(channel, chatId, text) {
 }
 
 module.exports = {
+  assignedTask,
   getTaskInbox,
   getTaskPage, taskPageMessage, taskListMarkup, handleTaskListNavigation,
   handleTaskCallback,
