@@ -10,6 +10,7 @@ const db = require('./db');
 const crypto = require('node:crypto');
 const {
   getTaskInbox,
+  getTaskPage, taskPageMessage, taskListMarkup, handleTaskListNavigation,
   handleTaskCallback,
   handleTaskStatusMessage,
   taskBotCard,
@@ -74,6 +75,7 @@ async function configureBotProfile() {
     ['setMyCommands', { commands: [
       { command: 'start', description: 'Открыть помощника ХвостМаркета' },
       { command: 'tasks', description: 'Мои активные поручения' },
+      { command: 'taskpdf', description: 'Свежий PDF моих поручений' },
       { command: 'newtask', description: 'Создать новую задачу' },
       { command: 'expense', description: 'Добавить трату бизнеса' },
       { command: 'salesweek', description: 'Отчёт по продажам за 7 дней' },
@@ -125,7 +127,7 @@ function buildWelcomeMessage() {
     '',
     'Я помогу войти в личный кабинет и буду присылать важные уведомления о заказах, продажах и вознаграждениях.',
     '',
-    'Сотрудникам: /tasks покажет активные поручения, /newtask создаст задачу, а /expense запишет трату бизнеса.',
+    'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /stock — остатки центрального склада; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
     '',
     'Чтобы подключить кабинет, откройте на сайте вход через Telegram и перейдите по созданной ссылке.',
@@ -152,25 +154,36 @@ function botActionButtons(chatId) {
 }
 
 async function sendTaskInbox(chatId) {
-  const inbox = getTaskInbox('telegram', chatId);
-  if (!inbox) {
-    await replyToChat(chatId, 'Ваш Telegram ещё не связан с ответственным. Подключите его в разделе «Поручения» админки.');
-    return;
-  }
-  if (!inbox.tasks.length) {
-    await replyToChat(chatId, '✅ У вас нет активных поручений.', botActionButtons(chatId));
-    return;
-  }
-  await replyToChat(
-    chatId,
-    `Активные поручения: ${inbox.tasks.length}. Выберите действие под нужной задачей.`,
-    botActionButtons(chatId)
-  );
-  for (const task of inbox.tasks) {
-    await replyToChat(chatId, taskBotCard(task), taskButtons(task, 'telegram'));
-  }
+  const result = taskPageMessage(getTaskPage('telegram', chatId));
+  await replyToChat(chatId, result.message, result.replyMarkup || undefined);
 }
 
+async function sendFreshTaskPdf(chatId) {
+  const result = await require('./task-daily-digest').sendManualTaskPdf(chatId);
+  if (!result.ok) await replyToChat(chatId, result.message);
+}
+
+// В списках поручений обновляем одно сообщение, не засоряя переписку.
+// Для PDF-документа editMessageText неприменим — открываем одну отдельную
+// страницу списка; дальше переключения страниц идут в этом же сообщении.
+async function editOrReplyTaskCard(callback, result) {
+  const chatId = callback.message?.chat?.id;
+  const messageId = callback.message?.message_id;
+  if (chatId && messageId && typeof callback.message.text === 'string') {
+    try {
+      await callBotApi('editMessageText', {
+        chat_id: chatId, message_id: messageId,
+        text: result.message,
+        ...(result.replyMarkup ? { reply_markup: result.replyMarkup } :
+          { reply_markup: { inline_keyboard: [] } }),
+      });
+      return;
+    } catch (e) {
+      console.warn('[tasks] Не удалось обновить карточку, отправляем новую:', e.message);
+    }
+  }
+  if (chatId) await replyToChat(chatId, result.message, result.replyMarkup);
+}
 
 async function sendSalesWeekCsv(chatId, csvText, period) {
   const controller = new AbortController();
@@ -558,6 +571,25 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (/^tsk:(?:page|open|confirm):/.test(callback.data || '')) {
+      const chat = callback.message?.chat;
+      const allowed = chat?.type === 'private' &&
+        String(callback.from?.id) === String(chat.id);
+      const result = allowed
+        ? handleTaskListNavigation('telegram', chat.id, callback.data)
+        : { ok: false, message:'Поручения доступны только в личном чате.' };
+      try {
+        await callBotApi('answerCallbackQuery', {
+          callback_query_id: callback.id,
+          text: result?.ok ? 'Готово' : String(result?.message || 'Нет доступа').slice(0,180),
+          show_alert: !result?.ok,
+        });
+      } catch (error) {
+        console.warn('[tasks] Ошибка подтверждения нажатия:', error.message);
+      }
+      if (allowed && result?.ok) await editOrReplyTaskCard(callback, result);
+      return;
+    }
     if (callback.data === 'warehouse:stock') {
       const chat = callback.message?.chat;
       const allowed = chat?.type === 'private' && adminCanReadSales(chat.id);
@@ -656,7 +688,14 @@ async function processUpdate(update) {
       } catch (error) {
         console.warn('Не удалось подтвердить нажатие кнопки Telegram:', error.message);
       }
-      await replyToChat(chatId, result.message, result.replyMarkup);
+      if (/^tsk:\d+:(?:work|status|done):/.test(callback.data || '')) {
+        await editOrReplyTaskCard(callback, {
+          message: result.message,
+          replyMarkup: taskListMarkup(),
+        });
+      } else {
+        await replyToChat(chatId, result.message, result.replyMarkup);
+      }
       if (result.created && result.task && result.assignee && result.assignee.telegram_chat_id) {
         await replyToChat(
           result.assignee.telegram_chat_id,
@@ -781,6 +820,10 @@ async function processUpdate(update) {
       createCancelled || expenseCancelled || statusCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
       botActionButtons(msg.chat.id)
     );
+    return;
+  }
+  if (/^\/taskpdf(?:@\w+)?$/i.test(text)) {
+    await sendFreshTaskPdf(msg.chat.id);
     return;
   }
   if (/^\/tasks(?:@\w+)?$/i.test(text) || /^мои поручения$/i.test(text)) {
