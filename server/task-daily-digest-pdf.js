@@ -97,7 +97,15 @@ function taskDigestPdfPages(report,font){
       const task=tasks[index];
       const parts=cardParts(task);
       const height=Math.max(98,parts.height);
+      const beforePageCount=pages.length;
       ensure(height+23);
+      if(pages.length>beforePageCount){
+        // При переносе списка на следующий лист повторяем название раздела.
+        rect(60,y-27,1180,y+24,section.color);
+        text(80,y+7,section.name+' (продолжение)',22,'#FFFFFF');
+        y+=67;
+        ensure(height+23);
+      }
       const top=y-31;
       rect(62,top,1180,top+height,index%2===0?'#F3F7F3':'#FFFFFF');
       rect(62,top,69,top+height,section.color);
