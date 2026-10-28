@@ -23,8 +23,8 @@ const order = id => ({
 });
 const items = [{ name:'Сердце говяжье', qty:1 }];
 
-test('ten endings are different, positive, and rotate through the entire set',()=>{
-  assert.equal(SALE_ENDINGS.length,10);
+test('twenty endings are different, positive, and rotate through the entire set',()=>{
+  assert.equal(SALE_ENDINGS.length,20);
   assert.equal(new Set(SALE_ENDINGS).size,10);
   for(const text of SALE_ENDINGS){
     assert.ok(text.length>=20 && text.length<=110);
@@ -32,7 +32,8 @@ test('ten endings are different, positive, and rotate through the entire set',()
   }
   assert.equal(saleEndingAt(0),SALE_ENDINGS[0]);
   assert.equal(saleEndingAt(9),SALE_ENDINGS[9]);
-  assert.equal(saleEndingAt(10),SALE_ENDINGS[0]);
+  assert.equal(saleEndingAt(10),SALE_ENDINGS[10]);
+  assert.equal(saleEndingAt(20),SALE_ENDINGS[0]);
   assert.equal(saleEndingAt(21),SALE_ENDINGS[1]);
   assert.throws(()=>saleEndingAt(-1),RangeError);
   assert.throws(()=>saleEndingAt(1.5),RangeError);
@@ -50,7 +51,7 @@ test('every confirmed sale receives a new ending, draft format and order idempot
     assert.match(current.message,/Партнёрская точка: «Мистер Лапсик»/);
     assert.match(current.message,/🦴 Сердце говяжье/);
     assert.match(current.message,/💚 360 ₽/);
-    assert.equal(lines.at(-1),SALE_ENDINGS[i%10]);
+    assert.equal(lines.at(-1),SALE_ENDINGS[i%20]);
     if(i>0)assert.notEqual(lines.at(-1),event('paid:'+(id-1)).message.split('\n').at(-1));
     assert.equal(club.recordPaidOrder(order(id),items),false);
     assert.equal(count(),i+1);
@@ -58,7 +59,7 @@ test('every confirmed sale receives a new ending, draft format and order idempot
 });
 
 test('preview shows the upcoming ending and does not consume the rotation',()=>{
-  const upcoming=SALE_ENDINGS[23%10];
+  const upcoming=SALE_ENDINGS[23%20];
   const preview=club.preview('sales',{
     point:'Мистер Лапсик',product:'Сердце говяжье',amount:360,
   });
@@ -78,7 +79,7 @@ test('reloading the club code keeps rotation using the persistent database',()=>
   const restarted=require('./routes-partner-club');
   assert.equal(restarted.recordPaidOrder(order(1235),items),true);
   assert.equal(count(),previous+1);
-  assert.ok(event('paid:1235').message.endsWith(SALE_ENDINGS[previous%10]));
+  assert.ok(event('paid:1235').message.endsWith(SALE_ENDINGS[previous%20]));
 });
 
 test('first-sale congratulations and unpaid/refunded order filtering stay unchanged',()=>{
