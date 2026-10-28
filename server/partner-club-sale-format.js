@@ -27,6 +27,20 @@ function normalizedAutoSaleMessage(message) {
   );
 }
 
+// Replaces *only* the congratulation, preserving salon, product and price.
+// Also understands older stored drafts without blank lines.
+function withSaleEnding(message, ending) {
+  const normalized = normalizedAutoSaleMessage(message);
+  const lines = normalized.split('\n');
+  if (lines[0] !== '🐾 Новая покупка!' || lines[1] !== '' ||
+      !lines[2]?.startsWith('🏪 ') || lines[3] !== '' ||
+      !lines[4]?.startsWith('🦴 ') || !lines[5]?.startsWith('💚 ') ||
+      lines[6] !== '' || !String(ending||'').trim()) {
+    return null;
+  }
+  return saleMessage(lines[0], lines[2], lines[4], lines[5], String(ending));
+}
+
 function saleMessageHtml(message) {
   const normalized = normalizedAutoSaleMessage(message);
   // Telegram parses HTML. Escape untrusted salon names, product titles and
@@ -45,5 +59,6 @@ function saleMessageHtml(message) {
 module.exports = {
   saleMessage,
   normalizedAutoSaleMessage,
+  withSaleEnding,
   saleMessageHtml,
 };
