@@ -45,7 +45,8 @@ test('every confirmed sale receives a new ending, draft format and order idempot
     const current=event('paid:'+id);
     assert.equal(current.event_type,'sales');
     const lines=current.message.split('\n');
-    assert.match(current.message,/🐾 Новая покупка!/);
+    assert.match(current.message,/🐾 Новая покупка!\n\n🏪 /);
+    assert.match(current.message,/»\n\n🦴 Сердце говяжье\n💚 360 ₽\n\n/);
     assert.match(current.message,/Партнёрская точка: «Мистер Лапсик»/);
     assert.match(current.message,/🦴 Сердце говяжье/);
     assert.match(current.message,/💚 360 ₽/);
@@ -61,7 +62,8 @@ test('preview shows the upcoming ending and does not consume the rotation',()=>{
   const preview=club.preview('sales',{
     point:'Мистер Лапсик',product:'Сердце говяжье',amount:360,
   });
-  assert.match(preview,/Новая покупка!/);
+  assert.match(preview,/Новая покупка!\n\n🏪 /);
+  assert.match(preview,/»\n\n🦴 Сердце говяжье\n💚 360 ₽\n\n/);
   assert.ok(preview.endsWith(upcoming));
   assert.equal(count(),23);
   assert.equal(club.recordPaidOrder(order(1234),items),true);
@@ -95,6 +97,8 @@ test('first-sale congratulations and unpaid/refunded order filtering stay unchan
   assert.equal(club.recordPaidOrder(first,items),true);
   assert.equal(event('first-sale:point:club-first-sale-point').event_type,'first_sale');
   assert.match(event('first-sale:point:club-first-sale-point').message,/Поздравляем команду/);
+  assert.match(event('first-sale:point:club-first-sale-point').message,
+    /🎉 Первая продажа!\n\n🏪 /);
   assert.equal(count(),previous);
 });
 
