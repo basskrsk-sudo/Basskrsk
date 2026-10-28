@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  saleMessage, normalizedAutoSaleMessage, saleMessageHtml,
+  saleMessage, normalizedAutoSaleMessage, saleMessageHtml, withSaleEnding,
 } = require('./partner-club-sale-format');
 
 const notice = saleMessage(
@@ -96,4 +96,18 @@ test('moderator edits and existing rich formatting are not altered by this helpe
   const old = '🐾 Новая покупка!\n🏪 Партнёрская точка: «Мистер Лапсик»\n🦴 Сердце говяжье\n💚 360 ₽\nФинал';
   assert.equal(normalizedAutoSaleMessage(normalizedAutoSaleMessage(old)),
     normalizedAutoSaleMessage(old));
+});
+
+
+test('changing the greeting keeps the original sale and money fields unchanged', () => {
+  const chosen='🐶 Новое поздравление от команды!';
+  const changed=withSaleEnding(notice,chosen);
+  assert.equal(changed,notice.slice(0,notice.lastIndexOf('\n')+1)+chosen);
+  assert.match(saleMessageHtml(changed),/<b>«Мистер Лапсик»<\/b>/);
+  const legacy=[
+    '🐾 Новая покупка!','🏪 Партнёрская точка: «Мистер Лапсик»',
+    '🦴 Сердце говяжье','💚 360 ₽','Спасибо за покупку!'
+  ].join('\n');
+  assert.equal(withSaleEnding(legacy,chosen),changed);
+  assert.equal(withSaleEnding('Ручной пост',chosen),null);
 });
