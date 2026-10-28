@@ -129,7 +129,7 @@ test('older drafts with generic endings can be replaced without changing the sal
   ).run(id,'100100');
   const result=await club.handleClubCallback('100100','club:reroll:'+id);
   assert.equal(result.ok,true);
-  assert.equal(chosen().ending_index, (SALE_ENDINGS.indexOf(sale.message.trim().split('\n').at(-1))+1)%20);
+  assert.equal(db.prepare('SELECT ending_index FROM partner_club_sale_endings_override WHERE event_id=?').get(id).ending_index,0);
   assert.match(result.preview_html,/🏪 Партнёрская точка: <b>«Тестовая точка»<\/b>/);
   assert.match(result.preview_html,/🦴 Кроличьи лапки\n💚 290 ₽\n\n/);
   assert.ok(result.preview_html.endsWith(SALE_ENDINGS[0]));
