@@ -5,8 +5,8 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireSuperAdmin } = require('./routes-auth');
 const { safeMarkdownHtml, htmlFromTelegramEntities } = require('./telegram-formatting');
-const { saleEndingAt } = require('./partner-club-sale-endings');
-const { saleMessage, saleMessageHtml } = require('./partner-club-sale-format');
+const { SALE_ENDINGS, saleEndingAt } = require('./partner-club-sale-endings');
+const { saleMessage, saleMessageHtml, withSaleEnding } = require('./partner-club-sale-format');
 
 const FLAGS=['sales','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
 const DEFAULTS=Object.freeze({sales:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
@@ -220,6 +220,9 @@ db.exec("CREATE TABLE IF NOT EXISTS partner_club_delivery_log(event_id INTEGER P
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_reviews(event_id INTEGER PRIMARY KEY, state TEXT NOT NULL DEFAULT 'pending', reviewer_chat_id TEXT, edited_message TEXT, requested_at TEXT, claimed_at TEXT)");
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_bot_inputs(chat_id TEXT PRIMARY KEY, mode TEXT NOT NULL CHECK(mode IN ('new','edit')), event_id INTEGER, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_message_formats(event_id INTEGER PRIMARY KEY REFERENCES partner_club_events(id) ON DELETE CASCADE,message_html TEXT,edited_html TEXT)");
+// Persistent congratulations picked by the moderator. Do not modify sale records
+// (including product, salon or amount), or lose the selected ending on restart.
+db.exec("CREATE TABLE IF NOT EXISTS partner_club_sale_endings_override(event_id INTEGER PRIMARY KEY REFERENCES partner_club_events(id) ON DELETE CASCADE, ending_index INTEGER NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 const escapeHtml=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
 function richPost(rawText, entities=[], offset=0){
@@ -243,10 +246,15 @@ function clubMessageHtml(event){
  // A moderator's edits and saved rich formatting always take precedence.
  if (event.edited_message) return rich?.edited_html || safeMarkdownHtml(event.edited_message);
  if (rich?.message_html) return rich.message_html;
- // Add line spacing and safe HTML <b> tags to automatic sale posts at delivery.
- // Older drafts get the same presentation without rewriting their DB records.
- if (event.event_type === 'sales' || event.event_type === 'first_sale')
-   return saleMessageHtml(event.message);
+ // The chosen congratulation is stored separately from the purchase details.
+ if (event.event_type === 'sales') {
+   const chosen=db.prepare('SELECT ending_index FROM partner_club_sale_endings_override WHERE event_id=?').get(event.id);
+   const index=chosen?.ending_index;
+   const changed=Number.isSafeInteger(index) ? withSaleEnding(event.message, SALE_ENDINGS[index]) : null;
+   return saleMessageHtml(changed || event.message);
+ }
+ // Older drafts and first sales keep the same paragraph spacing and bold salon.
+ if (event.event_type === 'first_sale') return saleMessageHtml(event.message);
  return safeMarkdownHtml(event.message);
 }
 
@@ -257,14 +265,36 @@ function reviewerForClub(){
  return r&&r.role==='super'&&r.active&&r.telegram_chat_id?String(r.telegram_chat_id):null;
 }
 function isClubModerator(chatId){return !!chatId&&String(chatId)===reviewerForClub();}
-function reviewButtons(id){return {inline_keyboard:[[{text:'✅ Отправить в группу',callback_data:'club:send:'+id},{text:'✏️ Скорректировать',callback_data:'club:edit:'+id}],[{text:'🚫 Отклонить',callback_data:'club:reject:'+id}]]};}
+function reviewButtons(id, canChangeGreeting=false){
+ return {inline_keyboard:[
+   ...(canChangeGreeting ? [[{text:'🔄 Другое поздравление',callback_data:'club:reroll:'+id}]] : []),
+   [{text:'✅ Отправить в группу',callback_data:'club:send:'+id},
+    {text:'✏️ Скорректировать',callback_data:'club:edit:'+id}],
+   [{text:'🚫 Отклонить',callback_data:'club:reject:'+id}]
+ ]};
+}
 async function handleClubCallback(chatId,data){
- if(!/^club:(send|edit|reject):[0-9]+$/.test(data))return null;
+ if(!/^club:(send|edit|reject|reroll):[0-9]+$/.test(data))return null;
  if(String(chatId)!==reviewerForClub())return {message:'Недостаточно прав',ok:false};
  const [,action,idText]=data.split(':');const id=Number(idText);
  const row=db.prepare("SELECT e.*,r.state,r.edited_message FROM partner_club_events e JOIN partner_club_reviews r ON r.event_id=e.id WHERE e.id=?").get(id);
  if(!row||row.state==='sent'||row.state==='rejected')return {message:'Этот черновик уже обработан',ok:false};
  if(row.state==='sending')return {message:'Публикация уже обрабатывается. Проверьте сообщения группы.',ok:false};
+ if(action==='reroll'){
+   if(row.event_type!=='sales' || row.state!=='pending' || row.edited_message)
+     return {ok:false,message:'Поздравление можно менять только в неотредактированном черновике обычной продажи.'};
+   const previous=db.prepare('SELECT ending_index FROM partner_club_sale_endings_override WHERE event_id=?').get(id);
+   // Respect the current ending, including a ten-ending draft created by an older version.
+   const lastLine=String(row.message||'').trim().split(/\r?\n/).pop()?.trim();
+   const initial=SALE_ENDINGS.indexOf(lastLine);
+   const current=Number.isSafeInteger(previous?.ending_index) ? previous.ending_index : initial;
+   const next=(current+1)%SALE_ENDINGS.length;
+   if(!withSaleEnding(row.message,SALE_ENDINGS[next]))
+     return {ok:false,message:'Не удалось найти поздравление в этом черновике. Используйте «Скорректировать».'};
+   db.prepare("INSERT INTO partner_club_sale_endings_override(event_id,ending_index) VALUES(?,?) ON CONFLICT(event_id) DO UPDATE SET ending_index=excluded.ending_index,updated_at=CURRENT_TIMESTAMP").run(id,next);
+   const preview='🐾 <b>Черновик для Клуба партнёров #'+id+'</b>\n\n'+clubMessageHtml(row);
+   return {ok:true,rerolled:true,message:'🔄 Поздравление изменено (вариант '+(next+1)+' из '+SALE_ENDINGS.length+').',preview_html:preview,reply_markup:reviewButtons(id,true)};
+ }
  if(action==='edit'){
    db.prepare("UPDATE partner_club_reviews SET state='editing' WHERE event_id=?").run(id);
    setClubInput(chatId,'edit',id);
@@ -375,7 +405,7 @@ async function sendClubUpdates(){
    if(!settings().enabled)break;
    if(!settings()[ev.event_type])continue;
    const message='🐾 <b>Черновик для Клуба партнёров #'+ev.id+'</b>\n\n'+clubMessageHtml(ev);
-   const result=await require('./telegram').sendToChat(reviewer,message,{reply_markup:reviewButtons(ev.id)});
+   const result=await require('./telegram').sendToChat(reviewer,message,{reply_markup:reviewButtons(ev.id,ev.event_type==='sales')});
    if(!result.ok)break;
    db.prepare("INSERT OR IGNORE INTO partner_club_reviews(event_id,state,reviewer_chat_id,requested_at) VALUES(?,'pending',?,CURRENT_TIMESTAMP)").run(ev.id,reviewer);
   }
