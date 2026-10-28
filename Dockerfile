@@ -1,3 +1,4 @@
+# Rebuild trigger 2026-10-28: reactivate Telegram release notification for the ten rotating partner-club sale endings.
 # Тайга — сервер сайта. Node 22+ обязателен: используется встроенный node:sqlite
 # (доступен начиная с Node 22.5), поэтому база данных работает без единой
 # внешней npm-зависимости — nothing to "npm install" вообще.
