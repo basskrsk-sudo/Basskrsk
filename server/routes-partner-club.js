@@ -5,6 +5,7 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireSuperAdmin } = require('./routes-auth');
 const { safeMarkdownHtml, htmlFromTelegramEntities } = require('./telegram-formatting');
+const { saleEndingAt } = require('./partner-club-sale-endings');
 
 const FLAGS=['sales','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
 const DEFAULTS=Object.freeze({sales:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
@@ -21,6 +22,12 @@ function settings(){let row=db.prepare('SELECT config_json FROM partner_club_set
 return {...DEFAULTS,...saved,include_groomer_names:false};}
 function money(n){return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(Number(n)||0)+' ₽';}
 function queue(key,type,message){return db.prepare("INSERT OR IGNORE INTO partner_club_events(event_key,event_type,message,status) VALUES (?,?,?,'draft')").run(key,type,message).changes>0;}
+function nextSaleEnding(){
+  // Persist rotation via the database: rejected and pending posts still count.
+  // No reset when the server restarts; retries of an order cannot add new events.
+  const count=db.prepare("SELECT COUNT(*) AS n FROM partner_club_events WHERE event_type='sales'").get()?.n||0;
+  return saleEndingAt(Number(count));
+}
 function safeText(v){return String(v||'').replace(/[<>\u0000-\u001f]/g,' ').trim().slice(0,100);}
 function venueType(point) {
   // Prefer the registered point type; fall back to the manager point classification.
@@ -61,7 +68,7 @@ function recordPaidOrder(order,items,demo=false){
       return queue('first-sale:point:'+String(point.id),'first_sale',message);
     }
   }
-  const message='🐾 Новая покупка!\n'+location+'\n🦴 '+product+'\n💚 '+money(order.total)+'\nСпасибо за покупку!';
+  const message='🐾 Новая покупка!\n'+location+'\n🦴 '+product+'\n💚 '+money(order.total)+'\n\n'+nextSaleEnding();
   return queue('paid:'+order.id,'sales',message);
 }
 function range(period){const now=new Date();const today=now.toISOString().slice(0,10);
@@ -105,7 +112,7 @@ function preview(type,data={}){
  const point=safeText(data.point||'БаркЛай'),item=safeText(data.product||'Лёгкое говяжье, 50 г');
  const count=Math.max(0,Math.floor(Number(data.count)||18)),amount=Math.max(0,Number(data.amount)||4500);
  switch(type){
-  case 'sales':return '🐾 Новая покупка!\n🏪 Партнёрская точка: «'+point+'»'+'\n🦴 '+item+'\n💚 '+money(amount);
+  case 'sales':return '🐾 Новая покупка!\n🏪 Партнёрская точка: «'+point+'»'+'\n🦴 '+item+'\n💚 '+money(amount)+'\n\n'+nextSaleEnding();
   case 'first_sale':return ['🎉 Первая продажа!','🏪 Партнёрская точка: «'+point+'»','🦴 '+item,'💚 '+money(amount),'','👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾'].join('\n');
   case 'daily':return '☀️ Итоги вчерашнего дня\n🐾 Продаж: '+count+'\n💚 Выручка: '+money(amount)+'\nСпасибо партнёрам!';
   case 'weekly':return '🏆 Итоги недели\n🐾 Продаж: '+count+'\nОтмечаем достижения без публичного сравнения неактивных партнёров.';
