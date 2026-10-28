@@ -689,11 +689,44 @@ async function processUpdate(update) {
       if (chatId) await replyToChat(chatId, result.message);
       return;
     }
-    if (/^club:(send|edit|reject):\d+$/.test(callback.data||'')) {
+    if (/^club:(send|edit|reject|reroll):\d+$/.test(callback.data||'')) {
       const club=require('./routes-partner-club');
       const result=await club.handleClubCallback(callback.message?.chat?.id,callback.data);
+      if(result?.rerolled){
+        // Replace the original draft in-place, preserving its approval buttons.
+        // The selected ending is already persisted before this Telegram call.
+        let updated=false;
+        try{
+          await callBotApi('editMessageText',{
+            chat_id:callback.message.chat.id,
+            message_id:callback.message.message_id,
+            text:result.preview_html,
+            parse_mode:'HTML',
+            reply_markup:result.reply_markup,
+          });
+          updated=true;
+        }catch(error){
+          console.warn('[partner-club] Не удалось обновить черновик, отправляем новый:',error.message);
+        }
+        try{
+          await callBotApi('answerCallbackQuery',{
+            callback_query_id:callback.id,
+            text:String(result.message).slice(0,180),
+            show_alert:false,
+          });
+        }catch(error){
+          console.warn('[partner-club] Не удалось подтвердить смену поздравления:',error.message);
+        }
+        if(!updated){
+          // Some older drafts can no longer be edited by Telegram.
+          // Send a fresh, correctly formatted copy rather than losing the preview.
+          await replyToChat(callback.message.chat.id,result.preview_html,result.reply_markup,'HTML');
+        }
+        return;
+      }
       await callBotApi('answerCallbackQuery',{callback_query_id:callback.id,text:String(result?.message||'Готово').slice(0,180),show_alert:!result?.ok});
-      if(result)await replyToChat(callback.message.chat.id,result.message);
+      if(result && !/^club:reroll:/.test(callback.data||''))
+        await replyToChat(callback.message.chat.id,result.message);
       return;
     }
     const chatId = callback.message && callback.message.chat
