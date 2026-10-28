@@ -6,6 +6,7 @@ const { sendJson } = require('./http-utils');
 const { requireSuperAdmin } = require('./routes-auth');
 const { safeMarkdownHtml, htmlFromTelegramEntities } = require('./telegram-formatting');
 const { saleEndingAt } = require('./partner-club-sale-endings');
+const { saleMessage, saleMessageHtml } = require('./partner-club-sale-format');
 
 const FLAGS=['sales','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
 const DEFAULTS=Object.freeze({sales:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
@@ -63,12 +64,14 @@ function recordPaidOrder(order,items,demo=false){
   if(point&&!order.is_partner_self_order&&settings().first_sale){
     const previous=db.prepare("SELECT 1 FROM orders WHERE point_id=? AND id<>? AND status='paid' AND COALESCE(is_partner_self_order,0)=0 LIMIT 1").get(point.id,order.id);
     if(!previous){
-      const message=['🎉 Первая продажа!',location,'🦴 '+product,'💚 '+money(order.total),'',
-        '👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾'].join('\n');
+      const message=saleMessage('🎉 Первая продажа!',location,'🦴 '+product,
+        '💚 '+money(order.total),
+        '👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾');
       return queue('first-sale:point:'+String(point.id),'first_sale',message);
     }
   }
-  const message='🐾 Новая покупка!\n'+location+'\n🦴 '+product+'\n💚 '+money(order.total)+'\n\n'+nextSaleEnding();
+  const message=saleMessage('🐾 Новая покупка!',location,'🦴 '+product,
+    '💚 '+money(order.total),nextSaleEnding());
   return queue('paid:'+order.id,'sales',message);
 }
 function range(period){const now=new Date();const today=now.toISOString().slice(0,10);
@@ -112,8 +115,11 @@ function preview(type,data={}){
  const point=safeText(data.point||'БаркЛай'),item=safeText(data.product||'Лёгкое говяжье, 50 г');
  const count=Math.max(0,Math.floor(Number(data.count)||18)),amount=Math.max(0,Number(data.amount)||4500);
  switch(type){
-  case 'sales':return '🐾 Новая покупка!\n🏪 Партнёрская точка: «'+point+'»'+'\n🦴 '+item+'\n💚 '+money(amount)+'\n\n'+nextSaleEnding();
-  case 'first_sale':return ['🎉 Первая продажа!','🏪 Партнёрская точка: «'+point+'»','🦴 '+item,'💚 '+money(amount),'','👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾'].join('\n');
+  case 'sales':return saleMessage('🐾 Новая покупка!',
+    '🏪 Партнёрская точка: «'+point+'»','🦴 '+item,'💚 '+money(amount),nextSaleEnding());
+  case 'first_sale':return saleMessage('🎉 Первая продажа!',
+    '🏪 Партнёрская точка: «'+point+'»','🦴 '+item,'💚 '+money(amount),
+    '👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾');
   case 'daily':return '☀️ Итоги вчерашнего дня\n🐾 Продаж: '+count+'\n💚 Выручка: '+money(amount)+'\nСпасибо партнёрам!';
   case 'weekly':return '🏆 Итоги недели\n🐾 Продаж: '+count+'\nОтмечаем достижения без публичного сравнения неактивных партнёров.';
   case 'milestones':return '🎉 Новый рекорд: '+count+' продаж!';
@@ -234,7 +240,14 @@ function saveClubFormat(id,messageHtml,edited=false){
 }
 function clubMessageHtml(event){
  const rich=db.prepare('SELECT message_html,edited_html FROM partner_club_message_formats WHERE event_id=?').get(event.id);
- return event.edited_message?(rich?.edited_html||safeMarkdownHtml(event.edited_message)):(rich?.message_html||safeMarkdownHtml(event.message));
+ // A moderator's edits and saved rich formatting always take precedence.
+ if (event.edited_message) return rich?.edited_html || safeMarkdownHtml(event.edited_message);
+ if (rich?.message_html) return rich.message_html;
+ // Add line spacing and safe HTML <b> tags to automatic sale posts at delivery.
+ // Older drafts get the same presentation without rewriting their DB records.
+ if (event.event_type === 'sales' || event.event_type === 'first_sale')
+   return saleMessageHtml(event.message);
+ return safeMarkdownHtml(event.message);
 }
 
 function reviewerForClub(){
