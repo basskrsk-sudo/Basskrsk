@@ -472,7 +472,10 @@ async function validateQrPromo(showEmptyError) {
     return false;
   }
   try {
-    var res = await fetch('/api/first-purchase-promo/validate?code=' + encodeURIComponent(code) + '&phone=' + encodeURIComponent(phone));
+    // Для промокодов салонов серверу необходим ID выбранной точки.
+    var res = await fetch('/api/first-purchase-promo/validate?code=' + encodeURIComponent(code)
+      + '&phone=' + encodeURIComponent(phone)
+      + '&point_id=' + encodeURIComponent(CTX.pointId));
     var data = await res.json();
     QR_PROMO_VALID = !!data.valid;
     QR_PROMO_PERCENT = data.valid ? data.discount_percent : 0;
