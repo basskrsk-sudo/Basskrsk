@@ -8,8 +8,8 @@ const { safeMarkdownHtml, htmlFromTelegramEntities } = require('./telegram-forma
 const { SALE_ENDINGS, saleEndingAt } = require('./partner-club-sale-endings');
 const { saleMessage, saleMessageHtml, withSaleEnding } = require('./partner-club-sale-format');
 
-const FLAGS=['sales','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
-const DEFAULTS=Object.freeze({sales:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
+const FLAGS=['sales','record_check','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
+const DEFAULTS=Object.freeze({sales:true,record_check:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
 db.exec(`CREATE TABLE IF NOT EXISTS partner_club_settings(id INTEGER PRIMARY KEY CHECK(id=1),config_json TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS partner_club_events(id INTEGER PRIMARY KEY AUTOINCREMENT,event_key TEXT UNIQUE NOT NULL,event_type TEXT NOT NULL,message TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL DEFAULT 'draft' CHECK(status='draft'));
 CREATE INDEX IF NOT EXISTS idx_partner_club_events_created ON partner_club_events(created_at DESC);`);
@@ -54,25 +54,70 @@ function welcomeNewPoint(point) {
   // Permanent idempotency key: further groomers at this point won't cause repeats.
   return queue('welcome:point:' + String(point.id), 'new_points', message);
 }
+// Broadcast a new all-time record in a separate moderated partner-club draft.
+// The first eligible customer payment sets the baseline; ties are not records.
+function recordCheckMessage(location,product,total,previous){
+ return [
+   '🏆 Новый рекорд ХвостМаркета по сумме чека!',
+   '',
+   location,
+   '',
+   '🦴 '+product,
+   '💚 Рекордный чек: '+money(total),
+   '',
+   '🥈 Предыдущий рекорд: '+money(previous),
+   '📈 Превышение: +'+money(total-previous),
+   '',
+   '🎉 Поздравляем команду! Вместе устанавливаем новые рекорды! 🐾'
+ ].join('\n');
+}
+function queueRecordCheck(order,product,location){
+ // A demo checkout has no YooKassa payment ID. Do not count test receipts.
+ if(!settings().record_check || order.is_partner_self_order || !order.yookassa_payment_id)return false;
+ const total=Number(order.total);
+ if(!Number.isFinite(total)||total<=0)return false;
+ const row=db.prepare(`
+   SELECT MAX(total) AS previous_max FROM orders
+   WHERE id<>? AND status='paid'
+     AND yookassa_payment_id IS NOT NULL
+     AND COALESCE(refund_status,'')!='refunded'
+     AND COALESCE(is_partner_self_order,0)=0
+ `).get(order.id);
+ if(row?.previous_max==null)return false;
+ const previous=Number(row.previous_max);
+ if(!Number.isFinite(previous)||total<=previous)return false;
+ return queue('record-check:'+String(order.id),'record_check',
+   recordCheckMessage(location,product,total,previous));
+}
 function recordPaidOrder(order,items,demo=false){
-  if(demo||!order||order.status!=='paid'||order.refund_status==='refunded')return false;
-  const point=order.point_id?db.prepare('SELECT id,name FROM points WHERE id=?').get(order.point_id):null;
-  const product=(items||[]).map(i=>safeText(i.name)+(i.qty>1?' ×'+i.qty:'')).join(', ').slice(0,190)||'товар для питомца';
-  const location='🏪 '+venueType(point||{id:order.point_id})+': «'+safeText(point?.name||order.pickup_point||'Точка')+'»';
-  // First paid CUSTOMER order only. Other paid orders prevent retrospective greetings.
-  // Permanent event key also prevents repeat milestones after restarts or order removal.
-  if(point&&!order.is_partner_self_order&&settings().first_sale){
-    const previous=db.prepare("SELECT 1 FROM orders WHERE point_id=? AND id<>? AND status='paid' AND COALESCE(is_partner_self_order,0)=0 LIMIT 1").get(point.id,order.id);
-    if(!previous){
-      const message=saleMessage('🎉 Первая продажа!',location,'🦴 '+product,
-        '💚 '+money(order.total),
-        '👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾');
-      return queue('first-sale:point:'+String(point.id),'first_sale',message);
-    }
-  }
-  const message=saleMessage('🐾 Новая покупка!',location,'🦴 '+product,
-    '💚 '+money(order.total),nextSaleEnding());
-  return queue('paid:'+order.id,'sales',message);
+ if(demo||!order||order.status!=='paid'||order.refund_status==='refunded')return false;
+ const point=order.point_id?db.prepare('SELECT id,name FROM points WHERE id=?').get(order.point_id):null;
+ const product=(items||[]).map(i=>safeText(i.name)+(i.qty>1?' ×'+i.qty:'')).join(', ').slice(0,190)||'товар для питомца';
+ // A delivery address may be embedded in pickup_point. Never publish it to a group.
+ const location=order.fulfillment_type==='home_delivery'||order.needs_delivery
+   ? '🏪 Заказ через сайт с доставкой'
+   : '🏪 '+venueType(point||{id:order.point_id})+': «'+safeText(point?.name||order.pickup_point||'Точка')+'»';
+ let isFirstSale=false;
+ let saleQueued=false;
+ // First paid CUSTOMER order only. Other paid orders prevent retrospective greetings.
+ // Permanent event key also prevents repeat milestones after restarts or order removal.
+ if(point&&!order.is_partner_self_order&&settings().first_sale){
+   const previous=db.prepare("SELECT 1 FROM orders WHERE point_id=? AND id<>? AND status='paid' AND COALESCE(is_partner_self_order,0)=0 LIMIT 1").get(point.id,order.id);
+   if(!previous){
+     isFirstSale=true;
+     const message=saleMessage('🎉 Первая продажа!',location,'🦴 '+product,
+       '💚 '+money(order.total),
+       '👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾');
+     saleQueued=queue('first-sale:point:'+String(point.id),'first_sale',message);
+   }
+ }
+ if(!isFirstSale){
+   const message=saleMessage('🐾 Новая покупка!',location,'🦴 '+product,
+     '💚 '+money(order.total),nextSaleEnding());
+   saleQueued=queue('paid:'+order.id,'sales',message);
+ }
+ const recordQueued=queueRecordCheck(order,product,location);
+ return saleQueued||recordQueued;
 }
 function range(period){const now=new Date();const today=now.toISOString().slice(0,10);
   if(period==='yesterday')return {start:`date('now','-1 day')`,end:`date('now')`};
@@ -117,6 +162,7 @@ function preview(type,data={}){
  switch(type){
   case 'sales':return saleMessage('🐾 Новая покупка!',
     '🏪 Партнёрская точка: «'+point+'»','🦴 '+item,'💚 '+money(amount),nextSaleEnding());
+  case 'record_check':return recordCheckMessage('🏪 Партнёрская точка: «'+point+'»',item,amount,Math.max(0,Number(data.previous_amount)||3500));
   case 'first_sale':return saleMessage('🎉 Первая продажа!',
     '🏪 Партнёрская точка: «'+point+'»','🦴 '+item,'💚 '+money(amount),
     '👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾');
@@ -254,7 +300,7 @@ function clubMessageHtml(event){
    return saleMessageHtml(changed || event.message);
  }
  // Older drafts and first sales keep the same paragraph spacing and bold salon.
- if (event.event_type === 'first_sale') return saleMessageHtml(event.message);
+ if (event.event_type === 'first_sale' || event.event_type === 'record_check') return saleMessageHtml(event.message);
  return safeMarkdownHtml(event.message);
 }
 
@@ -307,6 +353,13 @@ async function handleClubCallback(chatId,data){
  }
  const c=settings();
  if(!c.chat_id || (!c.enabled && row.event_type!=='manual'))return {ok:false,message:'Рассылка выключена в админке'};
+ // A refunded or deleted record-holder must not be celebrated after approval.
+ if(row.event_type==='record_check'){
+   const recordedOrderId=Number(String(row.event_key).replace(/^record-check:/,''));
+   const recordedOrder=db.prepare('SELECT status,refund_status FROM orders WHERE id=?').get(recordedOrderId);
+   if(!recordedOrder||recordedOrder.status!=='paid'||recordedOrder.refund_status==='refunded')
+     return {ok:false,message:'Публикация заблокирована: рекордный заказ отменён или возвращён.'};
+ }
  if(row.event_type==='sales'&&c.sales_mode==='limit'){
    const count=db.prepare("SELECT COUNT(*) n FROM partner_club_delivery_log WHERE delivered_at>=datetime('now','-1 hour')").get().n;
    if(count>=5)return {ok:false,message:'Лимит 5 публикаций за час достигнут. Можно подтвердить позднее.'};
