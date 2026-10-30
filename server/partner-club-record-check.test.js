@@ -71,9 +71,11 @@ test('only a strictly higher real customer payment creates an independent record
   assert.equal(club.recordPaidOrder(recordToModerate,products),true);
   assert.equal(countRecords(),1);
   const draft=announcement(recordToModerate);
-  assert.match(draft.message,/Рекордный чек: 750 ₽/);
-  assert.match(draft.message,/Предыдущий рекорд: 400 ₽/);
-  assert.match(draft.message,/Превышение: \+350 ₽/);
+  assert.match(draft.message,/Рекордный чек:\n750 ₽/);
+  assert.doesNotMatch(draft.message,/Рекордный чек:[^\\n]*\\d+ ₽/);
+  assert.match(draft.message,/^💚 Рекордный чек:\\n750 ₽$/m);
+  assert.match(draft.message,/Предыдущий рекорд:\n400 ₽/);
+  assert.match(draft.message,/Превышение:\n\+350 ₽/);
   assert.match(draft.message,/Дог Стиль/);
   assert.equal(club.recordPaidOrder(recordToModerate,products),false);
   assert.equal(countRecords(),1);
@@ -96,7 +98,7 @@ test('only a strictly higher real customer payment creates an independent record
 
   const next=paid(1200);
   club.recordPaidOrder(next,products);
-  assert.match(announcement(next).message,/Предыдущий рекорд: 950 ₽/);
+  assert.match(announcement(next).message,/Предыдущий рекорд:\n950 ₽/);
   assert.equal(countRecords(),3);
 
   const delivery=paid(1300,{pointId:null,delivery:true,pickupPoint:'Доставка на дом — ул. Секретная, 99'});

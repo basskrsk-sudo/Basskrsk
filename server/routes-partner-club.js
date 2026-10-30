@@ -63,10 +63,15 @@ function recordCheckMessage(location,product,total,previous){
    location,
    '',
    '🦴 '+product,
-   '💚 Рекордный чек: '+money(total),
    '',
-   '🥈 Предыдущий рекорд: '+money(previous),
-   '📈 Превышение: +'+money(total-previous),
+   '💚 Рекордный чек:',
+   money(total),
+   '',
+   '🥈 Предыдущий рекорд:',
+   money(previous),
+   '',
+   '📈 Превышение:',
+   '+'+money(total-previous),
    '',
    '🎉 Поздравляем команду! Вместе устанавливаем новые рекорды! 🐾'
  ].join('\n');
