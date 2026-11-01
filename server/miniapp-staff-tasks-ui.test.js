@@ -152,12 +152,12 @@ test('manager can change own task status, add report and edit due date by authen
  assert.equal(change.options.headers.Authorization,'Bearer manager-jwt');
  assert.equal(JSON.parse(change.options.body).status,'in_progress');
  assert.equal(JSON.parse(change.options.body).expected_status,'new');
- h.elements.mtTaskNote.value='Позвонила владельцу салона';
+ h.elements.mtTaskNote={value:'Позвонила владельцу салона'};
  h.clickTask('save-note',41);
  await flush();
  const note=h.requests.filter(r=>r.url==='/api/miniapp/tasks/41').at(-1);
  assert.equal(JSON.parse(note.options.body).comment,'Позвонила владельцу салона');
- h.elements.mtTaskDue.value='2026-12-31';
+ h.elements.mtTaskDue={value:'2026-12-31'};
  h.clickTask('save-due',41);
  await flush();
  const due=h.requests.filter(r=>r.url==='/api/miniapp/tasks/41').at(-1);
