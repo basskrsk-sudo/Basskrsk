@@ -29,3 +29,49 @@
 .work-muted-link{display:block;margin:10px 0;text-align:center;font-size:12px}
 .work-quiet{color:var(--muted);font-size:11px;line-height:1.6;margin:12px 0}
 @media(max-width:360px){.work-role{padding:12px 10px}.work-role strong{font-size:12px}.work-stat strong{font-size:18px}.work-auth-card,.work-surface{padding:14px}}
+
+/* Executive (business founder, NOT grooming salon owner) dashboard */
+.founder-banner{padding:18px;border-radius:19px;margin-bottom:14px;background:linear-gradient(135deg,#093c30,#19684d);color:#fff;box-shadow:0 9px 25px rgba(3,58,44,.13)}
+.founder-banner>span{font-size:10px;letter-spacing:1.15px;font-weight:900;color:#e5c76f;display:block;margin-bottom:7px}
+.founder-banner h1{font-size:23px;line-height:1.2;margin:0 0 7px;letter-spacing:-.5px}
+.founder-banner p{font-size:12px;margin:0 0 5px;color:#d9e9de;font-weight:800}
+.founder-banner small{font-size:11px;color:#b8d5c6;line-height:1.4}
+.founder-periods{display:flex;gap:6px;margin:0 0 13px;overflow-x:auto}
+.founder-period{flex:1;white-space:nowrap;border:1px solid #dae5d9;background:#fff;color:#527361;border-radius:11px;padding:10px 5px;font-size:11px;font-weight:800}
+.founder-period.active{background:#114d39;color:#fff;border-color:#114d39}
+.founder-heading{margin-bottom:13px}
+.founder-heading h2{margin:0 0 4px;font-size:15px}
+.founder-heading p{margin:0;font-size:11px;color:var(--muted);line-height:1.4}
+.founder-section{margin:12px 0}
+.founder-section .work-stats{margin:10px 0 12px}
+.founder-section .work-stat{box-shadow:none}
+.founder-section .work-stat strong{font-size:17px}
+.founder-row{display:flex;justify-content:space-between;align-items:flex-start;padding:10px 0;border-bottom:1px solid #e7eee6;gap:10px}
+.founder-row:last-child{border-bottom:none}
+.founder-row>div{flex:1;min-width:0}
+.founder-row strong{display:block;font-size:12px;line-height:1.5;color:#26473a}
+.founder-row small{display:block;font-size:10px;line-height:1.5;color:#809487;margin-top:3px}
+.founder-row>b{font-size:12px;color:var(--green);flex-shrink:0;text-align:right;max-width:110px}
+.founder-subhead{font-size:12px;margin:17px 0 4px;color:#325b42}
+.founder-bars{display:flex;align-items:flex-end;gap:8px;justify-content:space-between;padding:12px 0 0;height:146px}
+.founder-month{height:100%;display:flex;flex-direction:column;align-items:center;min-width:0;flex:1;gap:3px}
+.founder-barbox{flex:1;width:100%;max-width:38px;display:flex;align-items:flex-end;border-radius:6px 6px 0 0;background:#edf3eb}
+.founder-bar{display:block;width:100%;background:linear-gradient(180deg,#31a878,#16684d);border-radius:6px 6px 0 0}
+.founder-month strong{font-size:11px;color:#315543;font-weight:800}
+.founder-month small{font-size:9px;color:#7c9385}
+.founder-target{padding:8px 1px 15px}
+.founder-target>strong{font-size:28px;color:var(--green);font-weight:900}
+.founder-target>strong span{font-size:15px;color:#93a99a;font-weight:700}
+.founder-target>small{display:block;margin-top:7px;font-size:10px;color:var(--muted)}
+.founder-track{height:9px;background:#e8eee4;border-radius:15px;overflow:hidden}
+.founder-track i{display:block;height:100%;background:#24a373;border-radius:15px}
+.founder-readiness{font-size:11px;font-weight:800;border-radius:11px;padding:10px 12px;background:#f3f6e9;color:#456443}
+.founder-disclaimer{font-size:10px;line-height:1.6;color:#697f70;background:#f5f7f3;padding:10px;border-radius:10px;margin:10px 0 0}
+.founder-risk-count{font-weight:800;font-size:12px;margin-bottom:5px;color:#4e6754}
+.founder-updated{font-size:10px;text-align:center;color:#8da295;padding:12px 5px 5px}
+.founder-setup{margin-top:15px}
+.founder-setup .work-input{margin-bottom:3px}
+.founder-setup label{display:block;margin-top:10px;font-size:11px;font-weight:800}
+.founder-setup .founder-checkbox{display:flex;align-items:center;gap:8px;margin:12px 0}
+.founder-setup .founder-checkbox input{width:18px;height:18px}
+.founder-setup button{margin-top:10px}
