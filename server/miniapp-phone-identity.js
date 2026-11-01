@@ -80,10 +80,15 @@ function accountMatchesForRole(role, phone, userId) {
   const table = ACCOUNT_TABLES[role];
   if (!table || !phone) return [];
   const select = role === 'customer'
-    ? 'SELECT id, name, lname, phone FROM customers'
-    : 'SELECT id, login, full_name, phone FROM ' + table + ' WHERE active = 1';
+    ? 'SELECT id, name, lname, phone, telegram_chat_id FROM customers'
+    : 'SELECT id, login, full_name, phone, telegram_chat_id FROM ' + table + ' WHERE active = 1';
   return db.prepare(select).all()
-    .filter(row => registeredPhoneMatch(row.phone, phone))
+    .filter(row =>
+      registeredPhoneMatch(row.phone, phone) &&
+      // Never silently take over an existing account tied to another
+      // Telegram user, even if that number was later reassigned.
+      (!row.telegram_chat_id || String(row.telegram_chat_id) === String(userId))
+    )
     .map(row => ({
       role, id: row.id, login: row.login || null,
       name: (role === 'customer'
