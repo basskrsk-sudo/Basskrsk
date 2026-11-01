@@ -1,0 +1,57 @@
+name: Temporary live Mini App smoke check
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/miniapp-live-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-production:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production site and Mini App assets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import time
+          import urllib.request
+          from urllib.error import URLError, HTTPError
+
+          root = "https://xn--80adktilqfjfx.xn--p1ai"
+          checks = [
+              ("/miniapp.html", lambda b: b"miniapp-work.js" in b and b'id="workPage"' in b, "Telegram Mini App main screen"),
+              ("/miniapp-work.js", lambda b: b"HvostMiniAppWork" in b and b"managerDashboard" in b, "four staff role dashboards"),
+              ("/miniapp-work.css", lambda b: b"work-auth-card" in b, "staff role styles"),
+              ("/api/points", lambda b: isinstance(json.loads(b)["points"], list), "live salons API"),
+              ("/api/products", lambda b: isinstance(json.loads(b)["products"], list), "live catalog API"),
+          ]
+
+          failed = []
+          for path, check, label in checks:
+              last = ""
+              for attempt in range(3):
+                  try:
+                      request = urllib.request.Request(root + path, headers={"User-Agent": "HvostMarket-miniapp-live-smoke/1.0"})
+                      with urllib.request.urlopen(request, timeout=20) as response:
+                          data = response.read(3000000)
+                          ok = response.status == 200 and bool(check(data))
+                          last = "HTTP " + str(response.status) + ", content=" + ("verified" if ok else "unexpected")
+                          if ok:
+                              print("PASS", label, path, last, flush=True)
+                              break
+                  except Exception as e:
+                      last = str(e)[:230]
+                  if attempt < 2:
+                      time.sleep(8)
+              else:
+                  print("FAIL", label, path, last, flush=True)
+                  failed.append(path)
+          if failed:
+              raise SystemExit("Live production smoke check failed on " + ", ".join(failed))
+          print("All production Mini App routes are available")
+          PY
