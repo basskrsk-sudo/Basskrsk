@@ -179,7 +179,7 @@ test('signed Telegram initData gates role discovery and passwordless sessions', 
     assert.ok(profiles.result.accounts.some(a => a.role === 'manager'));
     assert.equal(JSON.stringify(profiles.result).includes(PHONE), false, 'no raw phone leakage');
 
-    const forged = invoke('/api/miniapp/session', { initData: signed + '&phone=79130001122', role: 'manager' });
+    const forged = invoke('/api/miniapp/session', { initData: signed, phone: '79130001122', role: 'manager' });
     assert.equal(forged.status, 200);
     assert.equal(verifyToken(forged.result.token).role, 'manager');
 
