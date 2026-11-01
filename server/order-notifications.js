@@ -5,6 +5,7 @@
 
 const db = require('./db');
 const { sendToChat } = require('./telegram');
+const { preference } = require('./notification-preferences');
 
 function escapeHtml(value) {
   return String(value == null ? '' : value)
@@ -157,6 +158,37 @@ function findManagerAndPoint(order) {
   return { manager, point, rate: link ? link.commission_rate : null };
 }
 
+function buildMinimalSaleNotice(order, items, kind) {
+  return [
+    '🐾 <b>' + escapeHtml(kind) + '</b>',
+    '',
+    '🏪 ' + escapeHtml(order.pickup_point || 'Партнёрская точка'),
+    '📋 Заказ: ' + escapeHtml(order.order_code),
+    itemsText(items),
+    '',
+    '💚 <b>' + money(order.total) + '</b>',
+  ].join('\n');
+}
+
+function optedInSaleSubscribers(order) {
+  if (!order.point_id) return [];
+  const result = [];
+  // Owners are scoped ONLY to their assigned salon. New owner messages are
+  // off by default until their own account explicitly enables the toggle.
+  const owners = db.prepare('SELECT id, telegram_chat_id FROM salon_owners WHERE point_id=? AND active=1 AND telegram_chat_id IS NOT NULL').all(order.point_id);
+  for (const account of owners) {
+    if (preference('owner',account.id,'sales')) result.push({role:'owner',account});
+  }
+  for (const role of ['admin','founder']) {
+    const table = role === 'admin' ? 'admins' : 'business_founders';
+    const accounts = db.prepare('SELECT id,telegram_chat_id FROM '+table+' WHERE active=1 AND telegram_chat_id IS NOT NULL').all();
+    for (const account of accounts) {
+      if(preference(role,account.id,'sales')) result.push({role,account});
+    }
+  }
+  return result;
+}
+
 async function sendPaidOrderNotifications(order, items) {
   const customer = findCustomer(order.customer_phone);
   const partner = findPartner(order);
@@ -164,13 +196,17 @@ async function sendPaidOrderNotifications(order, items) {
   const deliveries = [];
 
   const customerChatId = connectedChatId('customer', customer);
-  if (customerChatId) deliveries.push({ role: 'customer', promise: sendToChat(customerChatId, buildCustomerMessage(order, items)) });
+  if (customerChatId && preference('customer', customer.id, 'purchase')) deliveries.push({ role: 'customer', promise: sendToChat(customerChatId, buildCustomerMessage(order, items)) });
 
   const partnerChatId = connectedChatId('partner', partner);
-  if (partnerChatId) deliveries.push({ role: 'partner', promise: sendToChat(partnerChatId, buildPartnerMessage(order, items, partner)) });
+  if (partnerChatId && preference('partner', partner.id, 'sales')) deliveries.push({ role: 'partner', promise: sendToChat(partnerChatId, buildPartnerMessage(order, items, partner)) });
 
   const managerChatId = connectedChatId('manager', manager);
-  if (managerChatId) deliveries.push({ role: 'manager', promise: sendToChat(managerChatId, buildManagerMessage(order, items, manager, point, partner, rate)) });
+  if (managerChatId && preference('manager', manager.id, 'sales')) deliveries.push({ role: 'manager', promise: sendToChat(managerChatId, buildManagerMessage(order, items, manager, point, partner, rate)) });
+  for (const {role,account} of optedInSaleSubscribers(order)) {
+    deliveries.push({role, promise:sendToChat(String(account.telegram_chat_id),
+      buildMinimalSaleNotice(order,items,role==='owner'?'Новая продажа вашего салона':'Новая продажа ХвостМаркета'))});
+  }
 
   const settled = await Promise.allSettled(deliveries.map((item) => item.promise));
   settled.forEach((result, index) => {
