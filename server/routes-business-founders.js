@@ -127,10 +127,11 @@ function pointRanking(start) {
     'SELECT id,name,addr,city_id,created_at FROM points WHERE active = 1 AND COALESCE(is_hub,0) = 0 ORDER BY name'
   ).all();
   const sales = db.prepare(
-    'SELECT point_id,MAX(created_at) AS last_paid, COUNT(*) AS n,' +
+    'SELECT point_id,MAX(CASE WHEN refund_status != ? THEN created_at END) AS last_paid,' +
+    ' SUM(CASE WHEN refund_status = ? OR total-COALESCE(refunded_amount,0) <= 0 THEN 0 ELSE 1 END) AS n,' +
     ' SUM(CASE WHEN refund_status = ? THEN 0 ELSE MAX(0,total-COALESCE(refunded_amount,0)) END) AS net ' +
     'FROM orders WHERE status = ? AND created_at >= ? GROUP BY point_id'
-  ).all('refunded','paid',start);
+  ).all('refunded','refunded','refunded','paid',start);
   const map = new Map(sales.map(r=>[r.point_id,r]));
   return points.map(p=>{
     const s=map.get(p.id);
@@ -254,9 +255,9 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
       active_points:Number(db.prepare(
         'SELECT COUNT(*) AS n FROM points WHERE active=1 AND COALESCE(is_hub,0)=0'
       ).get().n||0),
-      sold_points_period:pointRanking(bounds.from).filter(p=>p.orders>0).length,
-      top_points:pointRanking(bounds.from).slice(0,7),
-      silent_points:pointRanking(bounds.from).filter(p=>p.orders===0).slice(0,7),
+      sold_points_period:pointRows.filter(p=>p.orders>0).length,
+      top_points:pointRows.filter(p=>p.orders>0).slice(0,7),
+      silent_points:pointRows.filter(p=>p.orders===0).slice(0,7),
     },
     strategy:strategicReadiness(date),
     bsc:founderScorecard(),
