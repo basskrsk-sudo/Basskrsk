@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { verifyPassword, signToken, hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
 const { safeFounder } = require('./business-founders');
+const { telegramStartLink } = require('./telegram-bot-identity');
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // час на использование ссылки
 
@@ -132,10 +133,9 @@ function registerAuthRoutes(router) {
       VALUES (?, ?, ?, ?, ?)
     `).run(token, phoneOrAccount, payload.role, payload.id, expiresAt);
 
-    const botUsername = String(process.env.TG_BOT_USERNAME || 'taiga_dog_bot').replace(/^@/, '');
     sendJson(res, 200, {
       token,
-      deep_link: `https://t.me/${botUsername}?start=${token}`,
+      deep_link: telegramStartLink(token),
       telegram_connected: !!account.telegram_chat_id,
     });
   });
@@ -388,8 +388,7 @@ function registerAuthRoutes(router) {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 минут на переход в бота
     db.prepare('INSERT INTO telegram_login_tokens (token, phone, expires_at) VALUES (?, ?, ?)').run(token, digits, expiresAt);
 
-    const botUsername = process.env.TG_BOT_USERNAME || 'taiga_dog_bot';
-    sendJson(res, 200, { token, deep_link: 'https://t.me/' + botUsername + '?start=' + token });
+    sendJson(res, 200, { token, deep_link: telegramStartLink(token) });
   });
 
   // GET /api/customer/telegram/check?token=... — фронтенд опрашивает, подтвердил ли клиент вход в боте
@@ -464,8 +463,7 @@ function registerAuthRoutes(router) {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     db.prepare("INSERT INTO telegram_login_tokens (token, phone, role, expires_at) VALUES (?, ?, 'partner', ?)").run(token, digits, expiresAt);
 
-    const botUsername = process.env.TG_BOT_USERNAME || 'taiga_dog_bot';
-    sendJson(res, 200, { token, deep_link: 'https://t.me/' + botUsername + '?start=' + token });
+    sendJson(res, 200, { token, deep_link: telegramStartLink(token) });
   });
 
   // GET /api/partners/telegram/check?token=...
@@ -534,8 +532,7 @@ function registerAuthRoutes(router) {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     db.prepare("INSERT INTO telegram_login_tokens (token, phone, role, expires_at) VALUES (?, ?, 'manager', ?)").run(token, digits, expiresAt);
 
-    const botUsername = process.env.TG_BOT_USERNAME || 'taiga_dog_bot';
-    sendJson(res, 200, { token, deep_link: 'https://t.me/' + botUsername + '?start=' + token });
+    sendJson(res, 200, { token, deep_link: telegramStartLink(token) });
   });
 
   // GET /api/managers/telegram/check?token=...
