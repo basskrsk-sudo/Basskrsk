@@ -15,6 +15,7 @@
 
 const db = require('./db');
 const { sendToChat } = require('./telegram');
+const { preference } = require('./notification-preferences');
 const { awardBones } = require('./bones');
 
 const WINBACK_INACTIVE_DAYS = 30;   // не заказывал столько дней — считаем "затих"
@@ -28,7 +29,7 @@ function findWinbackCandidates() {
       AND last_order_at IS NOT NULL
       AND last_order_at <= datetime('now', '-' || ? || ' days')
       AND winback_sent_at IS NULL
-  `).all(WINBACK_INACTIVE_DAYS);
+  `).all(WINBACK_INACTIVE_DAYS).filter(customer => preference('customer', customer.id, 'offers'));
 }
 
 function buildWinbackMessage(customer) {
