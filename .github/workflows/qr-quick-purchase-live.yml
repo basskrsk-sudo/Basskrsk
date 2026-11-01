@@ -1,0 +1,86 @@
+name: Temporary QR quick-purchase production smoke
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/qr-quick-purchase-live.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-live:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm live QR landing, catalog and old QR redirect without buying
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          base='https://xn--80adktilqfjfx.xn--p1ai'
+          headers={'Cache-Control':'no-cache','User-Agent':'HvostMarket-QR-Live-Smoke/2026-11-01'}
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,req,fp,code,msg,headers,newurl):
+                  return None
+          opener=urllib.request.build_opener(NoRedirect)
+
+          def get(url,follow=True):
+              req=urllib.request.Request(url,headers=headers)
+              with (urllib.request.urlopen(req,timeout=22) if follow else opener.open(req,timeout=22)) as response:
+                  return response.status,response.read(),response.headers
+
+          for attempt in range(1,9):
+              try:
+                  code,raw,_=get(base+'/api/points')
+                  assert code==200,'points failed HTTP '+str(code)
+                  pd=json.loads(raw)
+                  points=pd.get('points',pd) if isinstance(pd,dict) else pd
+                  assert isinstance(points,list) and points,'no public points available'
+                  code,raw,_=get(base+'/api/products')
+                  assert code==200,'products failed HTTP '+str(code)
+                  pd=json.loads(raw)
+                  products=pd.get('products',pd) if isinstance(pd,dict) else pd
+                  assert isinstance(products,list) and products,'no public products available'
+                  code,raw,_=get(base+'/p.html')
+                  page=raw.decode('utf-8')
+                  for marker in ['/api/create-payment','/api/payment-status/','/api/order-payment-status/',
+                                 'startPayment()', 'showPhoneStep()', 'Возьмите товар с полки',
+                                 'Весь каталог этой точки']:
+                      assert marker in page,'QR checkout page missing '+marker
+                  assert code==200,'QR quick page failed HTTP '+str(code)
+                  point=next((p for p in points if p.get('active') is not False and p.get('id')),points[0])
+                  product=next((p for p in products if p.get('slug') and p.get('variants')),None)
+                  assert product,'no product with slug and variants'
+                  pid=urllib.parse.quote(str(point['id']),safe='')
+                  slug=urllib.parse.quote(str(product['slug']),safe='')
+                  qrpath='/p/'+pid+'/'+slug
+                  code,raw,_=get(base+qrpath)
+                  assert code==200,'QR URL not accessible'
+                  qr=raw.decode('utf-8')
+                  assert 'function parseParams()' in qr and '/api/create-payment' in qr
+                  # Already printed QR codes using ?ref=...&product=... must still
+                  # land on this exact lightweight page, not Telegram account entry.
+                  oldurl=base+'/?ref='+pid+'&product='+slug
+                  try:
+                      oldstatus,_,oldheaders=get(oldurl,False)
+                  except urllib.error.HTTPError as exc:
+                      oldstatus,oldheaders=exc.code,exc.headers
+                  assert oldstatus in (301,302,303,307,308), 'old QR URL did not redirect, HTTP '+str(oldstatus)
+                  assert str(oldheaders.get('Location','')).endswith(qrpath), 'old QR redirects to unexpected path'
+                  print('PASS: public points and product catalogs HTTP 200',flush=True)
+                  print('PASS: QR lightweight landing and existing purchase/payment-confirmation JS HTTP 200',flush=True)
+                  print('PASS: real product QR path responds HTTP 200',flush=True)
+                  print('PASS: already printed ?ref=...&product=... QR redirects to the lightweight page',flush=True)
+                  print('SAFE CHECK: No payment created, no orders placed and no money charged',flush=True)
+                  break
+              except Exception as err:
+                  print('Attempt',attempt,repr(err),flush=True)
+                  if attempt<8: time.sleep(8)
+          else:
+              raise SystemExit('FAIL: live QR quick-purchase smoke test did not complete successfully')
+          PY
