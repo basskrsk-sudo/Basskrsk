@@ -94,3 +94,39 @@ test('customer can shop before verification without opening protected staff cabi
   h.root.events.click({ target: { closest() { return malicious; } } });
   assert.deepEqual(h.navigations, ['shop'], 'unverified user cannot open admin via forged DOM action');
 });
+
+
+test('verified active groomer-owner sees a single salon role in customer profile', () => {
+  const h=customerHarness();
+  h.setStatus({
+    loaded:true,verified:true,combinedSalon:true,contactVerified:true,
+    accounts:[{role:'partner',name:'Грумер'},{role:'owner',name:'Владелец салона'},
+      {role:'admin',name:'Администратор'}],
+    ambiguousRoles:[],phoneMasked:'+7 (***) ***-**-06',error:'',
+  });
+  h.window.HvostMiniAppCustomer.render({first_name:'Юлия'},true);
+  assert.match(h.root.innerHTML,/data-customer-role="salon"/);
+  assert.match(h.root.innerHTML,/Мой салон и продажи/);
+  assert.match(h.root.innerHTML,/data-customer-role="admin"/);
+  assert.doesNotMatch(h.root.innerHTML,/data-customer-role="partner"/);
+  assert.doesNotMatch(h.root.innerHTML,/data-customer-role="owner"/);
+  const button={dataset:{customerAction:'choose-role',customerRole:'salon'}};
+  h.root.events.click({target:{closest(){return button;}}});
+  assert.deepEqual(h.navigations,['salon']);
+});
+
+test('different salon owner and groomer records are never merged only by phone', () => {
+  const h=customerHarness();
+  h.setStatus({
+    loaded:true,verified:true,combinedSalon:false,contactVerified:true,
+    accounts:[{role:'partner',name:'Грумер'},{role:'owner',name:'Владелец салона'}],
+    ambiguousRoles:[],phoneMasked:'+7 (***) ***-**-06',error:'',
+  });
+  h.window.HvostMiniAppCustomer.render({first_name:'Юлия'},true);
+  assert.doesNotMatch(h.root.innerHTML,/data-customer-role="salon"/);
+  assert.match(h.root.innerHTML,/data-customer-role="partner"/);
+  assert.match(h.root.innerHTML,/data-customer-role="owner"/);
+  const spoof={dataset:{customerAction:'choose-role',customerRole:'salon'}};
+  h.root.events.click({target:{closest(){return spoof;}}});
+  assert.deepEqual(h.navigations,[],'a forged salon button cannot open an unlinked account');
+});
