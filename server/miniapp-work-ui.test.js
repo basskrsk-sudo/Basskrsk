@@ -281,7 +281,13 @@ test('verified founder sees a secure admin setup path without receiving founder 
     }; },
     onChange() {},
   };
-  const h = createHarness({}, {}, identity);
+  const h = createHarness({
+    '/api/admin/me': {admin:{id:1,full_name:'Администратор',role:'super',active:1}},
+    '/api/points':{points:[]},
+    '/api/orders?limit=100':{orders:[]},
+    '/api/operations-center':{summary:{total:0},issues:[]},
+    '/api/business-founders':{founders:[]},
+  }, { taiga_admin_token: 'valid-admin-token' }, identity);
   await h.window.HvostMiniAppWork.chooseRole('founder');
   assert.match(h.root.innerHTML, /Доступ собственника ещё не подключён/);
   assert.match(h.root.innerHTML, /data-work-action="owner-setup"/);
