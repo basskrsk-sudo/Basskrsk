@@ -33,6 +33,7 @@ const {
 } = require('./expense-bot-create');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
+const { recordVerifiedTelegramContact } = require('./miniapp-phone-identity');
 const { commandsMenuButton, miniAppInlineKeyboard, miniAppDirectLinkMarkup } = require('./miniapp-bot-links');
 const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
 const {
@@ -81,6 +82,7 @@ async function configureBotProfile() {
       { command: 'start', description: 'Открыть помощника ХвостМаркета' },
       { command: 'shop', description: '🛍 Открыть магазин' },
       { command: 'cabinet', description: '👤 Рабочие кабинеты' },
+      { command: 'phone', description: '🔐 Подтвердить свой номер для кабинета' },
       { command: 'tasks', description: 'Мои активные поручения' },
       { command: 'taskpdf', description: 'Свежий PDF моих поручений' },
       { command: 'newtask', description: 'Создать новую задачу' },
@@ -774,7 +776,28 @@ async function processUpdate(update) {
   }
 
   const msg = update.message;
-  if (!msg || !msg.text) return;
+  if (!msg) return;
+  if (msg.contact) {
+    // Bot API delivers a self-contact message even when the consent was
+    // requested by Mini App WebApp.requestContact(), not a bot command.
+    const result = recordVerifiedTelegramContact(msg);
+    if (msg.chat && msg.chat.type === 'private') {
+      if (result.verified) {
+        await replyToChat(msg.chat.id,
+          '✅ Номер Telegram подтверждён: ' + result.phoneMasked +
+          '\nВернитесь в Mini App — ваши кабинеты появятся автоматически.',
+          { remove_keyboard: true }
+        );
+      } else {
+        await replyToChat(msg.chat.id,
+          'Не удалось подтвердить номер. Нужен именно ваш контакт Telegram, отправленный кнопкой «Поделиться своим номером». ' +
+          'Перешлите свой контакт через /phone, а не выбирайте номер из адресной книги.'
+        );
+      }
+    }
+    return;
+  }
+  if (!msg.text) return;
   const text = msg.text.trim();
   if (msg.chat.type === 'private') {
     const create = text.match(/^\/clubpost(?:@\w+)?(?:\s+([\s\S]+))?$/i);
@@ -802,6 +825,17 @@ async function processUpdate(update) {
     if (/^\/chatid(?:@\w+)?$/i.test(text)) {
       await replyToChat(msg.chat.id, '🐾 ID этой группы: ' + String(msg.chat.id) + '\nСкопируйте число для подключения Клуба партнёров.');
     }
+    return;
+  }
+
+  // Alternative for Telegram clients without the native Mini App phone popup.
+  if (msg.chat.type === 'private' && /^\/phone(?:@\w+)?$/i.test(text)) {
+    await replyToChat(msg.chat.id,
+      '🔐 Для входа без пароля нужно подтвердить номер телефона, который указан в ХвостМаркете. ' +
+      'Нажмите кнопку ниже и разрешите Telegram отправить именно ваш номер.',
+      { keyboard: [[{ text: '📱 Поделиться своим номером', request_contact: true }]],
+        one_time_keyboard: true, resize_keyboard: true }
+    );
     return;
   }
 
