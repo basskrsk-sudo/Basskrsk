@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  SHOP_URL, WORK_URL, miniAppInlineKeyboard, miniAppMenuButton,
+  SHOP_URL, WORK_URL, miniAppInlineKeyboard, commandsMenuButton,
   miniAppDirectLinkMarkup,
 } = require('./miniapp-bot-links');
 const { registerMiniAppRoutes } = require('./routes-miniapp');
@@ -46,8 +46,7 @@ function callMiniAppAuth(body) {
 test('same existing bot supplies a single menu and both Mini App destinations', () => {
   assert.equal(SHOP_URL, 'https://хвостмаркет.рф/miniapp.html');
   assert.equal(WORK_URL, SHOP_URL + '?view=work');
-  assert.equal(miniAppMenuButton().type, 'web_app');
-  assert.equal(miniAppMenuButton().web_app.url, SHOP_URL);
+  assert.deepEqual(commandsMenuButton(), { type: 'commands' });
   assert.deepEqual(
     miniAppInlineKeyboard().map((row) => row[0].web_app.url),
     [SHOP_URL, WORK_URL]
@@ -87,7 +86,8 @@ test('only existing long-poller is started and Mini App routes are registered', 
   assert.match(server, /require\('\.\/telegram-login-poller'\)\.startPolling\(\)/);
   assert.doesNotMatch(server, /customer-miniapp-bot/);
   assert.match(server, /registerMiniAppRoutes\(router\)/);
-  assert.match(poller, /\['setChatMenuButton', \{ menu_button: miniAppMenuButton\(\) \}\]/);
+  assert.match(poller, /\['setChatMenuButton', \{ menu_button: commandsMenuButton\(\) \}\]/);
+  assert.doesNotMatch(poller, /\['setChatMenuButton', \{ menu_button: miniAppMenuButton\(\) \}\]/);
   assert.match(poller, /miniAppInlineKeyboard\(\)/);
   assert.match(poller, /\/cabinet/);
   assert.match(poller, /\/shop/);

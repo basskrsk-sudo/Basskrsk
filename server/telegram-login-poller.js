@@ -33,7 +33,7 @@ const {
 } = require('./expense-bot-create');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
-const { miniAppMenuButton, miniAppInlineKeyboard, miniAppDirectLinkMarkup } = require('./miniapp-bot-links');
+const { commandsMenuButton, miniAppInlineKeyboard, miniAppDirectLinkMarkup } = require('./miniapp-bot-links');
 const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
 const {
   currentKrasnoyarskYear, collectBusinessYearReport,
@@ -76,7 +76,7 @@ async function configureBotProfile() {
     ['setMyName', { name: BOT_NAME }],
     ['setMyDescription', { description: BOT_DESCRIPTION }],
     ['setMyShortDescription', { short_description: BOT_SHORT_DESCRIPTION }],
-    ['setChatMenuButton', { menu_button: miniAppMenuButton() }],
+    ['setChatMenuButton', { menu_button: commandsMenuButton() }],
     ['setMyCommands', { commands: [
       { command: 'start', description: 'Открыть помощника ХвостМаркета' },
       { command: 'shop', description: '🛍 Открыть магазин' },
