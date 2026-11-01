@@ -45,6 +45,7 @@ function setupIdentity(initialVerified = false, share = true, supported = true) 
     localStorage: {
       setItem(key, val) { saved[key] = val; },
       getItem(key) { return saved[key] || null; },
+      removeItem(key) { delete saved[key]; },
     },
     setTimeout(fn) { fn(); },
     clearTimeout() {},
@@ -84,6 +85,20 @@ test('old Telegram without native contact popup shows /phone fallback', async ()
   await h.identity.init(h.telegram);
   await h.identity.requestContact();
   assert.match(h.identity.getStatus().error, /\/phone/);
+});
+
+
+test('switching signed Telegram users invalidates prior local staff and customer sessions', async () => {
+  const h = setupIdentity(true);
+  h.saved.hm_miniapp_last_telegram_user = '100';
+  h.saved.taiga_partner_token = 'partner-of-previous-telegram-user';
+  h.saved.taiga_customer_token = 'customer-of-previous-telegram-user';
+  h.saved.taiga_admin_token = 'admin-of-previous-telegram-user';
+  await h.identity.init(h.telegram, { id: 200, first_name: 'Другой аккаунт' });
+  assert.equal(h.saved.taiga_partner_token, undefined);
+  assert.equal(h.saved.taiga_customer_token, undefined);
+  assert.equal(h.saved.taiga_admin_token, undefined);
+  assert.equal(h.saved.hm_miniapp_last_telegram_user, '200');
 });
 
 test('customer tab is connected to phone-gated existing orders and bones APIs', async () => {
