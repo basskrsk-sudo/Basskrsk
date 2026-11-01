@@ -8,9 +8,10 @@
     partner: { title: 'Грумер', icon: '✂️', description: 'Продажи, начисления и остатки', tokenKey: 'taiga_partner_token', me: '/api/partners/me', field: 'partner', full: '/taiga-groomer.html' },
     manager: { title: 'Менеджер', icon: '🗂️', description: 'Мои точки, продажи и пополнения', tokenKey: 'taiga_manager_token', me: '/api/managers/me', field: 'manager', full: '/taiga-manager.html' },
     owner: { title: 'Владелец салона', icon: '🏠', description: 'Выручка салона и вознаграждения', tokenKey: 'taiga_owner_token', me: '/api/owner/me', field: 'owner', full: '/taiga-owner.html' },
+    founder: { title: 'Собственник ХвостМаркета', icon: '👑', description: 'Стратегия, деньги, сеть и решения', tokenKey: 'hm_business_founder_token', me: '/api/business-founder/me', field: 'founder', full: '/miniapp.html?view=work' },
     admin: { title: 'Администратор', icon: '📊', description: 'Сеть, продажи и контроль работы', tokenKey: 'taiga_admin_token', me: '/api/admin/me', field: 'admin', full: '/taiga-admin.html' },
   };
-  var order = ['partner', 'manager', 'owner', 'admin'];
+  var order = ['partner', 'manager', 'owner', 'founder', 'admin'];
   var activeRole = '';
   var currentUser = null;
   var serial = 0;
@@ -38,7 +39,7 @@
         (s.error ? problem(s.error) : '') +
         '<p class="work-quiet">Если Telegram не поддерживает запрос номера, отправьте боту /phone.</p></div>';
     }
-    var roleNames = { customer: 'покупатель', partner: 'грумер', manager: 'менеджер', owner: 'владелец', admin: 'администратор' };
+    var roleNames = { customer: 'покупатель', partner: 'грумер', manager: 'менеджер', owner: 'владелец салона', founder: 'собственник бизнеса', admin: 'администратор' };
     return note('✅ Номер подтверждён: ' + s.phoneMasked + '. ' +
       (s.accounts.length
         ? 'Доступны кабинеты: ' + s.accounts.map(function(a) { return roleNames[a.role] || a.role; }).join(', ') + '.'
@@ -252,9 +253,9 @@
   }
   function dashboardFooter(role) {
     return '<div class="work-action-bar">' +
-      '<button class="work-primary" type="button" data-work-action="full" data-work-role="' + esc(role) + '">Открыть полный кабинет →</button>' +
+      (role === 'founder' ? '' : '<button class="work-primary" type="button" data-work-action="full" data-work-role="' + esc(role) + '">Открыть полный кабинет →</button>') +
       '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
-      '</div><p class="work-quiet">Полный кабинет открывается в том же окне Telegram и использует действующие права учётной записи. В нём доступны остальные функции сайта.</p>';
+      '</div><p class="work-quiet">' + (role === 'founder' ? 'Кабинет собственника работает отдельно от административного доступа и не позволяет изменять заказы или выплаты.' : 'Полный кабинет открывается в том же окне Telegram и использует действующие права учётной записи.') + '</p>';
   }
   function dataOrWarning(settled, fallback) {
     if (settled.status === 'fulfilled') return settled.value;
@@ -266,7 +267,8 @@
       partner: ['/api/partners/me/orders?days=30', '/api/partners/me/payouts?limit=10', '/api/partners/me/stock'],
       manager: ['/api/managers/me/orders?days=30&limit=200', '/api/managers/me/stock'],
       owner: ['/api/owner/dashboard'],
-      admin: ['/api/points', '/api/orders?limit=100', '/api/operations-center'],
+      founder: ['/api/business-founder/dashboard?period=' + (window.HvostBusinessFounder ? window.HvostBusinessFounder.getPeriod() : '30d')],
+      admin: ['/api/points', '/api/orders?limit=100', '/api/operations-center'].concat(currentUser && currentUser.role === 'super' ? ['/api/business-founders'] : []),
     };
     try {
       var results = await Promise.allSettled(endpoints[role].map(function(url) { return fetchJSON(url, token); }));
@@ -280,8 +282,10 @@
       if (role === 'partner') html += partnerDashboard(data);
       if (role === 'manager') html += managerDashboard(data);
       if (role === 'owner') html += ownerDashboard(data);
+      if (role === 'founder' && window.HvostBusinessFounder) html += window.HvostBusinessFounder.render(data[0]);
       if (role === 'admin') html += adminDashboard(data);
       root.innerHTML = html + dashboardFooter(role);
+      if (role === 'admin' && currentUser && currentUser.role === 'super' && window.HvostBusinessFounderAdmin) window.HvostBusinessFounderAdmin.populate();
     } catch (e) {
       if (mySerial !== serial) return;
       root.innerHTML = dashboardHeader(role) + problem(e.message) + dashboardFooter(role);
@@ -386,6 +390,9 @@
     html += surface('Операционный контроль', rows(issues.slice(0, 7).map(function(issue) {
       return line((issue.icon || '⚠️') + ' ' + (issue.title || 'Задача'), issue.summary || '', number(issue.count || 0));
     })));
+    if (currentUser && currentUser.role === 'super' && window.HvostBusinessFounderAdmin) {
+      html += window.HvostBusinessFounderAdmin.render(data[3]);
+    }
     return html;
   }
   async function sendRestock() {
@@ -424,6 +431,11 @@
     window.location.assign(CONFIG[role].full + '?from=miniapp');
   }
   root.addEventListener('click', function(e) {
+    var choosePeriod = e.target.closest('[data-founder-period]');
+    if (choosePeriod && activeRole === 'founder' && window.HvostBusinessFounder) {
+      window.HvostBusinessFounder.setPeriod(choosePeriod.dataset.founderPeriod);
+      return chooseRole(activeRole);
+    }
     var button = e.target.closest('[data-work-action]');
     if (!button) return;
     var action = button.dataset.workAction;
