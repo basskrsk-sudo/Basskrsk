@@ -60,9 +60,10 @@ function paymentReturnUrl(req, orderCode, requestedPath) {
   // Быстрая покупка по товарному QR должна вернуться на тот же товар и ту же
   // точку. Принимаем только внутренний путь строгого формата /p/X/Y — полный
   // URL или произвольный путь отклоняется, поэтому open redirect невозможен.
-  const safePath = /^\/p\/[-A-Za-z0-9._~%]+\/[-A-Za-z0-9._~%]+\/?$/.test(String(requestedPath || ''))
-    ? String(requestedPath)
-    : '/';
+  const candidate = String(requestedPath || '');
+  const safePath = candidate === '/miniapp.html'
+    ? candidate
+    : (/^\/p\/[-A-Za-z0-9._~%]+\/[-A-Za-z0-9._~%]+\/?$/.test(candidate) ? candidate : '/');
   if (configuredBase) return configuredBase + safePath + '?payment_return=' + encodeURIComponent(orderCode);
 
   const forwardedHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
