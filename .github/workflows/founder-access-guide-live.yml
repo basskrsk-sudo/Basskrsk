@@ -1,0 +1,56 @@
+name: Temporary founder access guide live check
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/founder-access-guide-live.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-live:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Amvera serves the founder setup guidance
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import time
+          import urllib.request
+          import urllib.error
+
+          root="https://xn--80adktilqfjfx.xn--p1ai"
+          url=root+"/miniapp-work.js"
+          for attempt in range(1,9):
+              try:
+                  req=urllib.request.Request(
+                      url+"?check=founder-guide-v1-"+str(attempt),
+                      headers={"Cache-Control":"no-cache","User-Agent":"HvostMarket-Founder-Guide-Smoke/1.0"}
+                  )
+                  with urllib.request.urlopen(req,timeout=20) as response:
+                      data=response.read(2000000).decode("utf-8")
+                      required=[
+                          "Доступ собственника ещё не подключён",
+                          "data-work-action=\"owner-setup\"",
+                          "if (action === 'owner-setup') return chooseRole('admin');",
+                      ]
+                      if response.status==200 and all(text in data for text in required):
+                          print("PASS production has the updated founder access guidance and link to admin",flush=True)
+                          break
+                      print("Attempt",attempt,"HTTP",response.status,"missing:",[x for x in required if x not in data],flush=True)
+              except Exception as exc:
+                  print("Attempt",attempt,"network error:",repr(exc),flush=True)
+              if attempt<8: time.sleep(8)
+          else:
+              raise SystemExit("FAIL: founder access guide was not present on live site")
+
+          req=urllib.request.Request(root+"/api/business-founder/dashboard?period=30d")
+          try:
+              with urllib.request.urlopen(req,timeout=20) as response:
+                  raise SystemExit("FAIL: confidential founder dashboard is public: HTTP "+str(response.status))
+          except urllib.error.HTTPError as exc:
+              if exc.code != 401:
+                  raise SystemExit("FAIL: expected HTTP 401, got "+str(exc.code))
+              print("PASS founder financial data remains protected: HTTP 401",flush=True)
+          PY
