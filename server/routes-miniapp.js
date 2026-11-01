@@ -3,7 +3,7 @@
 
 const crypto = require('node:crypto');
 const { sendJson } = require('./http-utils');
-const { availableTelegramAccounts, issueTelegramAccountSession } = require('./miniapp-phone-identity');
+const { availableTelegramAccounts, issueTelegramAccountSession, verifiedPhoneForUser, normalizeRussianPhone } = require('./miniapp-phone-identity');
 
 function verifyTelegramInitData(raw, token, nowSeconds = Math.floor(Date.now() / 1000)) {
   if (!token || typeof token !== 'string') throw new Error('Bot token is not configured');
@@ -85,6 +85,31 @@ function registerMiniAppRoutes(router) {
         role: a.role,
         name: a.name,
       })),
+      ambiguous_roles: ambiguousRoles,
+    });
+  });
+
+  // An entered phone is only a claim. The Telegram bot must ALREADY have
+  // received the user's OWN contact via Bot API before this can unlock roles.
+  // No account names or role information are returned on a mismatch.
+  router.post('/api/miniapp/verify-phone', (req, res, ctx) => {
+    const user = verifiedMiniAppUser(ctx, res);
+    if (!user) return;
+    const entered = normalizeRussianPhone(ctx.body && ctx.body.phone);
+    if (!entered || !/^79\d{9}$/.test(entered)) {
+      return sendJson(res, 400, { error: 'Введите корректный мобильный номер РФ' });
+    }
+    const actual = verifiedPhoneForUser(user.id);
+    if (!actual || !crypto.timingSafeEqual(Buffer.from(entered), Buffer.from(actual))) {
+      return sendJson(res, 403, {
+        error: 'Номер не подтверждён в вашем Telegram. Отправьте боту свой контакт и повторите проверку.',
+      });
+    }
+    const { phoneMasked, accounts, ambiguousRoles } = availableTelegramAccounts(user.id);
+    return sendJson(res, 200, {
+      verified: true,
+      phone_masked: phoneMasked,
+      accounts: accounts.map(a => ({ role: a.role, name: a.name })),
       ambiguous_roles: ambiguousRoles,
     });
   });

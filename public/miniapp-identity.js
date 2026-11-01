@@ -11,6 +11,16 @@
   var busy = false;
   var listeners = [];
   var stamp = 0;
+  // Privacy gate: even a previously linked Telegram number does not reveal
+  // account roles until the user enters and verifies that phone this launch.
+  var gateUnlocked = false;
+  var confirmedPhone = '';
+  function normalizeEnteredPhone(value) {
+    var digits = String(value || '').replace(/\D/g, '');
+    if (digits.length === 10 && digits[0] === '9') digits = '7' + digits;
+    if (digits.length === 11 && digits[0] === '8') digits = '7' + digits.slice(1);
+    return /^79\d{9}$/.test(digits) ? digits : '';
+  }
   var TOKENS = {
     customer: 'taiga_customer_token',
     partner: 'taiga_partner_token',
@@ -23,10 +33,12 @@
   function copy() {
     return {
       loaded: identity.loaded,
-      verified: identity.verified,
-      phoneMasked: identity.phoneMasked,
-      accounts: identity.accounts.map(function(x) { return { role: x.role, name: x.name }; }),
-      ambiguousRoles: identity.ambiguousRoles.slice(),
+      verified: identity.verified && gateUnlocked,
+      contactVerified: identity.verified,
+      unlocked: identity.verified && gateUnlocked,
+      phoneMasked: identity.verified && gateUnlocked ? identity.phoneMasked : '',
+      accounts: gateUnlocked ? identity.accounts.map(function(x) { return { role: x.role, name: x.name }; }) : [],
+      ambiguousRoles: gateUnlocked ? identity.ambiguousRoles.slice() : [],
       error: identity.error,
       busy: busy,
     };
@@ -65,8 +77,27 @@
       identity.accounts = Array.isArray(data.accounts) ? data.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
       identity.ambiguousRoles = Array.isArray(data.ambiguous_roles) ? data.ambiguous_roles : [];
       identity.error = '';
+      if (gateUnlocked && confirmedPhone && identity.verified) {
+        // Recheck whenever Telegram comes back into focus; a changed or
+        // removed contact must invalidate the UI unlock on this device.
+        try {
+          var checked = await post('/api/miniapp/verify-phone', { phone: confirmedPhone });
+          identity.accounts = Array.isArray(checked.accounts) ? checked.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
+          identity.ambiguousRoles = Array.isArray(checked.ambiguous_roles) ? checked.ambiguous_roles : [];
+          identity.phoneMasked = checked.phone_masked || '';
+        } catch (err) {
+          gateUnlocked = false;
+          confirmedPhone = '';
+          identity.error = 'Подтверждение номера устарело. Введите номер и проверьте его повторно.';
+        }
+      } else if (!identity.verified) {
+        gateUnlocked = false;
+        confirmedPhone = '';
+      }
     } catch (err) {
       identity.loaded = true;
+      gateUnlocked = false;
+      confirmedPhone = '';
       identity.error = err.message;
     }
     notify();
@@ -75,8 +106,8 @@
   async function waitForConsent() {
     for (var i = 0; i < 16; i++) {
       await new Promise(function(resolve) { setTimeout(resolve, 1200); });
-      var status = await refresh();
-      if (status.verified) return status;
+      await refresh();
+      if (identity.verified) return copy();
     }
     return copy();
   }
@@ -116,11 +147,49 @@
       notify();
     });
   }
+  async function verifyPhone(value) {
+    var phone = normalizeEnteredPhone(value);
+    if (!phone) {
+      identity.error = 'Введите корректный российский мобильный номер, например +7 913 123-45-67.';
+      notify();
+      return copy();
+    }
+    if (!telegram || !telegram.initData) {
+      identity.error = 'Для проверки номера откройте приложение из действующего Telegram-бота.';
+      notify();
+      return copy();
+    }
+    if (!identity.verified) {
+      // Called immediately from the user's submit handler: Telegram owns
+      // the native consent dialog and supplies the actual phone to the bot.
+      await requestContact();
+      if (!identity.verified) return copy();
+    }
+    busy = true;
+    identity.error = '';
+    notify();
+    try {
+      var result = await post('/api/miniapp/verify-phone', { phone: phone });
+      gateUnlocked = !!result.verified;
+      confirmedPhone = gateUnlocked ? phone : '';
+      identity.phoneMasked = result.phone_masked || '';
+      identity.accounts = Array.isArray(result.accounts) ? result.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
+      identity.ambiguousRoles = Array.isArray(result.ambiguous_roles) ? result.ambiguous_roles : [];
+    } catch (err) {
+      gateUnlocked = false;
+      confirmedPhone = '';
+      identity.error = err.message;
+    } finally {
+      busy = false;
+      notify();
+    }
+    return copy();
+  }
   async function session(role) {
     if (!Object.prototype.hasOwnProperty.call(TOKENS, role)) {
       throw new Error('Неизвестный тип кабинета');
     }
-    if (!identity.verified || !identity.accounts.some(function(a) { return a.role === role; })) {
+    if (!gateUnlocked || !identity.verified || !identity.accounts.some(function(a) { return a.role === role; })) {
       throw new Error('Кабинет не связан с подтверждённым номером Telegram.');
     }
     var result = await post('/api/miniapp/session', { role: role });
@@ -150,6 +219,8 @@
       var key = 'hm_miniapp_last_telegram_user';
       var last = localStorage.getItem(key);
       if (last && last !== id) {
+        gateUnlocked = false;
+        confirmedPhone = '';
         Object.keys(TOKENS).forEach(function(role) {
           localStorage.removeItem(TOKENS[role]);
         });
@@ -176,6 +247,7 @@
     getStatus: copy,
     refresh: refresh,
     requestContact: requestContact,
+    verifyPhone: verifyPhone,
     session: session,
     onChange: onChange,
   };

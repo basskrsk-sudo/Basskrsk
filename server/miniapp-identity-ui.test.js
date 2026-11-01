@@ -34,6 +34,16 @@ function setupIdentity(initialVerified = false, share = true, supported = true) 
         ambiguous_roles: [],
       }),
     };
+    if (url === '/api/miniapp/verify-phone') {
+      if (!verified || body.phone !== '79131234577') {
+        return {ok:false,status:403,json:async()=>({error:'Номер не подтверждён в Telegram'})};
+      }
+      return {ok:true,json:async()=>({
+        verified:true, phone_masked:'+7 (***) ***-**-77',
+        accounts:[{role:'customer',name:'Покупатель'},{role:'partner',name:'Грумер'}],
+        ambiguous_roles:[],
+      })};
+    }
     if (url === '/api/miniapp/session') return {
       ok: true,
       json: async () => ({ token: 'server-signed-' + body.role, role: body.role, account: { name: 'Тест' } }),
@@ -61,14 +71,35 @@ test('Mini App requests native OWN contact and never receives the phone value fr
   await h.identity.init(h.telegram);
   assert.equal(h.identity.getStatus().verified, false);
   const after = await h.identity.requestContact();
-  assert.equal(after.verified, true);
-  assert.equal(after.phoneMasked, '+7 (***) ***-**-77');
+  assert.equal(after.contactVerified, true);
+  assert.equal(after.verified, false, 'sharing contact alone cannot expose roles');
+  await assert.rejects(()=>h.identity.session('partner'), /подтверждённым номером/);
+  const wrong = await h.identity.verifyPhone('79130000000');
+  assert.equal(wrong.verified, false);
+  assert.equal(wrong.accounts.length,0);
+  const unlocked = await h.identity.verifyPhone('+7 (913) 123-45-77');
+  assert.equal(unlocked.verified, true);
+  assert.equal(unlocked.phoneMasked, '+7 (***) ***-**-77');
   const session = await h.identity.session('partner');
   assert.equal(session.token, 'server-signed-partner');
   assert.equal(h.saved.taiga_partner_token, 'server-signed-partner');
   assert.ok(h.sent.every(x => x.body.initData === h.telegram.initData));
-  assert.equal(h.sent.some(x => Object.hasOwn(x.body, 'phone')), false);
+  const claims=h.sent.filter(x=>Object.hasOwn(x.body,'phone'));
+  assert.ok(claims.every(x=>x.url==='/api/miniapp/verify-phone'), 'typed phone is only a server-check claim');
+  assert.ok(h.sent.filter(x=>x.url==='/api/miniapp/session').every(x=>!Object.hasOwn(x.body,'phone')));
   assert.equal(typeof h.events.activated, 'function');
+});
+
+test('confirmed Telegram contact still requires typed phone even for a returning user', async () => {
+  const h=setupIdentity(true);
+  const initial=await h.identity.init(h.telegram);
+  assert.equal(initial.contactVerified,true);
+  assert.equal(initial.verified,false);
+  assert.deepEqual(Array.from(initial.accounts),[]);
+  await assert.rejects(()=>h.identity.session('partner'), /подтверждённым номером/);
+  const verified=await h.identity.verifyPhone('8(913)123-45-77');
+  assert.equal(verified.verified,true);
+  assert.deepEqual(Array.from(verified.accounts, a=>a.role),['customer','partner']);
 });
 
 test('cancelled Telegram phone consent does not give access', async () => {
