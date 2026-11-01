@@ -5,13 +5,14 @@
   'use strict';
 
   var CONFIG = {
+    salon: { title: 'Мой салон и продажи', icon: '✂️🏠', description: 'Личные продажи, выручка салона и общая сумма выплат', tokenKey: '', me: '', field: '', full: '' },
     partner: { title: 'Грумер', icon: '✂️', description: 'Продажи, начисления и остатки', tokenKey: 'taiga_partner_token', me: '/api/partners/me', field: 'partner', full: '/taiga-groomer.html' },
     manager: { title: 'Менеджер', icon: '🗂️', description: 'Мои точки, продажи и пополнения', tokenKey: 'taiga_manager_token', me: '/api/managers/me', field: 'manager', full: '/taiga-manager.html' },
     owner: { title: 'Владелец салона', icon: '🏠', description: 'Выручка салона и вознаграждения', tokenKey: 'taiga_owner_token', me: '/api/owner/me', field: 'owner', full: '/taiga-owner.html' },
     founder: { title: 'Собственник ХвостМаркета', icon: '👑', description: 'Стратегия, деньги, сеть и решения', tokenKey: 'hm_business_founder_token', me: '/api/business-founder/me', field: 'founder', full: '/miniapp.html?view=work' },
     admin: { title: 'Администратор', icon: '📊', description: 'Сеть, продажи и контроль работы', tokenKey: 'taiga_admin_token', me: '/api/admin/me', field: 'admin', full: '/taiga-admin.html' },
   };
-  var order = ['partner', 'manager', 'owner', 'founder', 'admin'];
+  var order = ['salon', 'partner', 'manager', 'owner', 'founder', 'admin'];
   var activeRole = '';
   var currentUser = null;
   var serial = 0;
@@ -24,7 +25,11 @@
     return identity ? identity.getStatus() : { loaded: false, verified: false, accounts: [], ambiguousRoles: [], error: '', busy: false };
   }
   function phoneRoleAvailable(role) {
-    return phoneStatus().accounts.some(function(a) { return a.role === role; });
+    var status = phoneStatus();
+    if (role === 'salon') return !!(status.verified && status.combinedSalon &&
+      status.accounts.some(function(a) { return a.role === 'partner'; }) &&
+      status.accounts.some(function(a) { return a.role === 'owner'; }));
+    return status.accounts.some(function(a) { return a.role === role; });
   }
   function phoneBanner() {
     if (!identity) return '';
@@ -131,14 +136,21 @@
         '<button class="work-primary" type="button" data-work-action="go-profile">Ввести телефон →</button></div>';
       return;
     }
-    var available = order.filter(phoneRoleAvailable);
+    var available = order.filter(function(role) {
+      // The verified active groomer-owner sees one entry, not two duplicate
+      // cabinets. Behind it we continue using two independent role tokens.
+      if (phoneRoleAvailable('salon') && (role === 'partner' || role === 'owner')) return false;
+      return phoneRoleAvailable(role);
+    });
     root.innerHTML = heading('Ваши кабинеты 🐾', 'Доступны только роли, связанные с подтверждённым номером Telegram.') +
       phoneBanner() + (available.length ? '<div class="work-roles">' + available.map(function(role) {
         var config = CONFIG[role];
         return '<button class="work-role" type="button" data-work-action="role" data-work-role="' + role + '">' +
           '<span class="work-role-icon">' + config.icon + '</span><strong>' + esc(config.title) + '</strong>' +
           '<span>' + esc(config.description) + '</span>' +
-          (getToken(role) ? '<small>● Есть сохранённая сессия</small>' : phoneRoleAvailable(role) ? '<small>✓ Вход через Telegram доступен</small>' : '<small>Войти в кабинет →</small>') +
+          (role === 'salon' ? '<small>✓ Две роли в одном кабинете</small>' :
+            getToken(role) ? '<small>● Есть сохранённая сессия</small>' :
+            phoneRoleAvailable(role) ? '<small>✓ Вход через Telegram доступен</small>' : '<small>Войти в кабинет →</small>') +
           '</button>';
       }).join('') + '</div>' : '<div class="work-surface"><h2>Других кабинетов пока нет</h2>' +
         '<p class="work-note">По вашему номеру не найдены дополнительные активные роли. ' +
@@ -181,6 +193,7 @@
   }
   async function chooseRole(role) {
     if (!phoneStatus().verified) { renderAll(); return; }
+    if (role === 'salon') return chooseCombinedSalon();
     if (!Object.prototype.hasOwnProperty.call(CONFIG, role)) return;
     // A stale token or remembered role from another login must not expose
     // an account which is absent from this verified phone's role list.
@@ -269,6 +282,11 @@
         '<button type="button" class="work-logout" data-work-action="logout">Выйти</button></div>';
   }
   function dashboardFooter(role) {
+    if (role === 'salon') return '<div class="work-action-bar">' +
+      '<button class="work-secondary" type="button" data-work-action="full-partner">✂️ Полный кабинет грумера</button>' +
+      '<button class="work-secondary" type="button" data-work-action="full-owner">🏠 Полный кабинет владельца</button>' +
+      '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
+      '</div><p class="work-quiet">Продажи салона включают личные продажи грумера. Комиссии рассчитываются и выплачиваются раздельно.</p>';
     return '<div class="work-action-bar">' +
       (role === 'founder' ? '' : '<button class="work-primary" type="button" data-work-action="full" data-work-role="' + esc(role) + '">Открыть полный кабинет →</button>') +
       '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
@@ -458,7 +476,9 @@
     var action = button.dataset.workAction;
     if (action === 'all') return openAll();
     if (action === 'role') return chooseRole(button.dataset.workRole);
-    if (action === 'logout') { var role = activeRole; clearToken(role); currentUser = null; serial++; return renderLogin(); }
+    if (action === 'logout') { var role = activeRole;
+      if (role === 'salon') { clearToken('partner'); clearToken('owner'); return openAll(); }
+      clearToken(role); currentUser = null; serial++; return renderLogin(); }
     if (action === 'share-phone' && identity) return identity.requestContact().then(function() {
       if (activeRole) chooseRole(activeRole);
       else renderAll();
@@ -471,6 +491,8 @@
     if (action === 'go-profile' && window.HvostMiniAppGoProfile) return window.HvostMiniAppGoProfile();
     if (action === 'owner-setup') return chooseRole('admin');
     if (action === 'reload') return chooseRole(activeRole);
+    if (action === 'full-partner' && activeRole === 'salon') return openFullCabinet('partner');
+    if (action === 'full-owner' && activeRole === 'salon') return openFullCabinet('owner');
     if (action === 'full') return openFullCabinet(activeRole);
   });
   root.addEventListener('submit', function(e) {
