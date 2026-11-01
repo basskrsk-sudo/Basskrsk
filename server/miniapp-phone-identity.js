@@ -99,6 +99,35 @@ function accountMatchesForRole(role, phone, userId) {
     }));
 }
 
+// The combined panel is a PRESENTATION rule, not a new privileged role.
+// Both existing roles must independently match the Telegram-verified phone.
+// Never merge a different salon, an inactive groomer, or a deliberately
+// linked groomer account other than the current Telegram user.
+function hasLinkedGroomerOwner(accounts) {
+  const partnerAccount = accounts.find(a => a.role === 'partner');
+  const ownerAccount = accounts.find(a => a.role === 'owner');
+  if (!partnerAccount || !ownerAccount) return false;
+  const partner = db.prepare(
+    'SELECT id,point_id,phone,active FROM partners WHERE id = ?'
+  ).get(partnerAccount.id);
+  const owner = db.prepare(
+    'SELECT id,point_id,phone,active,groomer_partner_id FROM salon_owners WHERE id = ?'
+  ).get(ownerAccount.id);
+  if (!partner || !owner || partner.active !== 1 || owner.active !== 1 ||
+      !partner.point_id || !owner.point_id ||
+      String(partner.point_id) !== String(owner.point_id) ||
+      !normalizeRussianPhone(partner.phone) ||
+      normalizeRussianPhone(partner.phone) !== normalizeRussianPhone(owner.phone)) {
+    return false;
+  }
+  // An explicit link takes precedence and must not be silently overruled.
+  if (owner.groomer_partner_id != null) {
+    return Number(owner.groomer_partner_id) === Number(partner.id);
+  }
+  // Backward compatibility for salons created before explicit owner links.
+  return true;
+}
+
 function availableTelegramAccounts(userId, now = Math.floor(Date.now() / 1000)) {
   const phone = verifiedPhoneForUser(userId, now);
   if (!phone) return { verified: false, phoneMasked: '', accounts: [], ambiguousRoles: [] };
@@ -114,7 +143,8 @@ function availableTelegramAccounts(userId, now = Math.floor(Date.now() / 1000)) 
       ambiguousRoles.push(role);
     }
   }
-  return { verified: true, phoneMasked: phoneMasked(phone), phone, accounts, ambiguousRoles };
+  return { verified: true, phoneMasked: phoneMasked(phone), phone, accounts, ambiguousRoles,
+    combinedSalon: hasLinkedGroomerOwner(accounts) };
 }
 
 function issueTelegramAccountSession(userId, role, now = Math.floor(Date.now() / 1000)) {
@@ -147,5 +177,6 @@ module.exports = {
   recordVerifiedTelegramContact,
   verifiedPhoneForUser,
   availableTelegramAccounts,
+  hasLinkedGroomerOwner,
   issueTelegramAccountSession,
 };
