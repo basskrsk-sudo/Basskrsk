@@ -95,11 +95,11 @@ test('confirmed Telegram contact still requires typed phone even for a returning
   const initial=await h.identity.init(h.telegram);
   assert.equal(initial.contactVerified,true);
   assert.equal(initial.verified,false);
-  assert.deepEqual(initial.accounts,[]);
+  assert.deepEqual(Array.from(initial.accounts),[]);
   await assert.rejects(()=>h.identity.session('partner'), /подтверждённым номером/);
   const verified=await h.identity.verifyPhone('8(913)123-45-77');
   assert.equal(verified.verified,true);
-  assert.deepEqual(verified.accounts.map(a=>a.role),['customer','partner']);
+  assert.deepEqual(Array.from(verified.accounts, a=>a.role),['customer','partner']);
 });
 
 test('cancelled Telegram phone consent does not give access', async () => {
