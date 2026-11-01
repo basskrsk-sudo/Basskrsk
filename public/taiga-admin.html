@@ -1653,6 +1653,42 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
     </div>
 
+    <!-- ══ ПОДКЛЮЧЕНИЯ TELEGRAM-БОТА ══ -->
+    <div id="sec-telegram-connections" style="display:none;">
+      <div class="card">
+        <div class="card-title">
+          <span>Telegram-бот · подключившиеся пользователи</span>
+          <button class="row-btn" type="button" onclick="loadTelegramConnections()">↻ Обновить</button>
+        </div>
+        <p style="font-size:.8rem;color:var(--muted);line-height:1.6;margin:.6rem 0 1rem;">
+          Отображаются кабинеты, к которым привязан личный Telegram. Если у человека несколько ролей,
+          они собраны в одну строку. Подтверждение номера в Mini App без привязки кабинета не считается подключённой ролью.
+        </p>
+        <div id="tg-connections-summary" aria-live="polite" style="font-size:.84rem;line-height:1.65;white-space:pre-line;margin-bottom:1rem;">Загрузка…</div>
+        <div style="display:flex;gap:.65rem;flex-wrap:wrap;align-items:center;margin-bottom:.85rem;">
+          <input id="tg-connections-search" type="search" placeholder="Поиск по имени, телефону, логину или салону"
+            aria-label="Поиск по подключённым пользователям" oninput="renderTelegramConnections()"
+            style="flex:2;min-width:215px;padding:.6rem;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:.82rem;">
+          <select id="tg-connections-role" class="pm-select" aria-label="Фильтр по роли" onchange="renderTelegramConnections()" style="flex:1;min-width:170px;max-width:260px;">
+            <option value="">Все роли</option>
+            <option value="founder">Собственник</option>
+            <option value="admin">Администратор</option>
+            <option value="manager">Менеджер</option>
+            <option value="owner">Владелец салона</option>
+            <option value="partner">Грумер</option>
+            <option value="task_assignee">Исполнитель поручений</option>
+            <option value="customer">Покупатель</option>
+          </select>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="tbl">
+            <thead><tr><th>Пользователь</th><th>Подключённые роли</th><th>Кабинеты / точки</th><th>Статус</th></tr></thead>
+            <tbody id="tg-connections-rows"><tr><td colspan="4" style="text-align:center;">Выберите раздел для загрузки списка.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ══ ADMINS (только супер-админ) ══ -->
     <div id="sec-audit" style="display:none;">
       <div class="card">
@@ -2484,6 +2520,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 </div>
 
 <script src="salon-photo-gallery.js?v=70"></script>
+<script src="telegram-connections.js?v=1"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 // (Старый демонстрационный список точек убран — нигде не использовался,
@@ -3139,15 +3176,15 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
 }
 
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'qr-analytics', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'point'];
-const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', 'qr-analytics':'Аналитика QR', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', point: '' };
+const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'qr-analytics', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'telegram-connections', 'point'];
+const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', 'qr-analytics':'Аналитика QR', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', 'telegram-connections': 'Telegram — подключения', point: '' };
 const sectionGroups = {
   'payout-reports':'reports',
   dashboard:'home', bsc:'strategy', tasks:'tasks', orders:'sales', customers:'sales',
   products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
   points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', 'qr-analytics':'network', leads:'network',
   news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'business-expenses':'finance', 'weekly-reports':'finance',
-  launch:'system', guides:'system', audit:'system', admins:'system',
+  launch:'system', guides:'system', audit:'system', admins:'system', 'telegram-connections':'system',
 };
 titles['payout-reports'] = 'Отчёты партнёрам';
 const contextTabs = {
@@ -3156,7 +3193,7 @@ const contextTabs = {
   network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды'], ['qr-analytics','Аналитика QR'], ['leads','Прозвон']],
   promotion: [['news','Новости'], ['reviews','Отзывы'], ['winback','Возврат клиентов']],
   finance: [['economics','Экономика'], ['business-expenses','Траты бизнеса'], ['weekly-reports','Отчёт ГД']],
-  system: [['launch','План запуска'], ['guides','Инструкции'], ['audit','Журнал действий',true], ['admins','Администраторы',true]],
+  system: [['launch','План запуска'], ['guides','Инструкции'], ['audit','Журнал действий',true], ['admins','Администраторы',true], ['telegram-connections','Telegram']],
 };
 
 function renderContextTabs(sectionId) {
@@ -3262,6 +3299,7 @@ async function showSection(id) {
   if (id === 'restock')     await Promise.all([renderStockMovements(), renderAdminCustomerRestock()]);
   if (id === 'audit')       await renderAuditLog();
   if (id === 'admins')      await renderAdmins();
+  if (id === 'telegram-connections') await loadTelegramConnections();
 }
 
 let currentPointIdx = 0;

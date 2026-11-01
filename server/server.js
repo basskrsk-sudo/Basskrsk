@@ -15,6 +15,7 @@ const { createStaticCache } = require('./static-cache');
 
 const { Router, readBinaryBody, parseJsonBody, sendJson } = require('./http-utils');
 const { registerAuthRoutes, requireSuperAdmin } = require('./routes-auth');
+const { registerTelegramConnectionRoutes } = require('./routes-telegram-connections');
 const { registerMiniAppRoutes } = require('./routes-miniapp');
 const { registerNotificationPreferenceRoutes } = require('./routes-notification-preferences');
 const { registerBusinessFounderRoutes } = require('./routes-business-founders');
@@ -91,6 +92,7 @@ const MIME = {
 
 const router = new Router();
 registerAuthRoutes(router);
+registerTelegramConnectionRoutes(router);
 registerMiniAppRoutes(router);
 registerNotificationPreferenceRoutes(router);
 registerBusinessFounderRoutes(router);
