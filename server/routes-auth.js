@@ -5,6 +5,7 @@ const db = require('./db');
 const crypto = require('node:crypto');
 const { verifyPassword, signToken, hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
+const { safeFounder } = require('./business-founders');
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // час на использование ссылки
 
@@ -54,6 +55,9 @@ function registerAuthRoutes(router) {
     } else if (role === 'owner') {
       user = db.prepare('SELECT * FROM salon_owners WHERE login = ? AND active = 1').get(login);
       table = 'salon_owners';
+    } else if (role === 'founder') {
+      user = db.prepare('SELECT * FROM business_founders WHERE login = ? AND active = 1').get(login);
+      table = 'business_founders';
     } else if (role === 'customer') {
       const phone = login.replace(/\D/g, '');
       user = db.prepare('SELECT * FROM customers WHERE phone = ?').get(phone);
@@ -78,6 +82,7 @@ function registerAuthRoutes(router) {
 
     const token = signToken({ role, id: user.id, login: user.login, adminRole: role === 'admin' ? user.role : undefined });
     const { password_hash, telegram_chat_id, max_chat_id, ...safeUser } = user;
+    if (role === 'founder') Object.assign(safeUser, safeFounder(user), { phone: undefined });
     safeUser.telegram_connected = !!telegram_chat_id;
     safeUser.max_connected = !!max_chat_id;
     sendJson(res, 200, { token, user: safeUser, table });
@@ -107,6 +112,7 @@ function registerAuthRoutes(router) {
     partner: 'partners',
     manager: 'managers',
     owner: 'salon_owners',
+    founder: 'business_founders',
   };
 
   router.post('/api/telegram/connect/start', (req, res, ctx) => {
