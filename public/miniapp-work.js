@@ -18,6 +18,10 @@
   var serial = 0;
   var transientTokens = {};
   var restockItems = [];
+  var taskPanel = window.HvostMiniAppTasks || null;
+  var taskData = null;
+  var dashboardMarkup = '';
+  var taskView = 'overview';
   var root = document.getElementById('workPage');
   if (!root) return;
   var identity = window.HvostMiniAppIdentity || null;
@@ -128,6 +132,10 @@
     activeRole = '';
     currentUser = null;
     restockItems = [];
+    taskData = null;
+    dashboardMarkup = '';
+    taskView = 'overview';
+    if (taskPanel) taskPanel.reset();
     serial++;
     renderAll();
   }
@@ -284,6 +292,10 @@
       return openAll();
     }
     activeRole = 'salon';
+    taskData = null;
+    dashboardMarkup = '';
+    taskView = 'overview';
+    if (taskPanel) taskPanel.reset();
     currentUser = null;
     restockItems = [];
     saveRole('salon');
@@ -340,6 +352,10 @@
     if (!phoneStatus().verified) { renderAll(); return; }
     if (role === 'salon') return chooseCombinedSalon();
     if (!Object.prototype.hasOwnProperty.call(CONFIG, role)) return;
+    taskView = 'overview';
+    dashboardMarkup = '';
+    taskData = null;
+    if (taskPanel) taskPanel.reset();
     // A stale token or remembered role from another login must not expose
     // an account which is absent from this verified phone's role list.
     if (!phoneRoleAvailable(role)) { openAll(); return; }
@@ -443,6 +459,39 @@
     if (settled.status === 'fulfilled') return settled.value;
     return fallback;
   }
+  function renderMiniTaskView() {
+    if (!taskPanel || !taskData || !['founder','manager'].includes(activeRole)) return;
+    root.innerHTML = dashboardHeader(activeRole) +
+      taskPanel.navigation('tasks',taskData) +
+      taskPanel.render(taskData) +
+      dashboardFooter(activeRole);
+  }
+  async function doMiniTaskAction(button) {
+    if (!taskPanel || !taskData || !['founder','manager'].includes(activeRole) ||
+        taskView !== 'tasks') return;
+    var currentSerial = serial;
+    var role = activeRole;
+    var changed = await taskPanel.handle(button,taskData,async function(id,body){
+      var token=getToken(role);
+      if(!token)throw new Error('Сессия завершена. Зайдите в кабинет снова.');
+      return fetchJSON('/api/miniapp/tasks/'+encodeURIComponent(id),token,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body),
+      });
+    },renderMiniTaskView);
+    if (changed && currentSerial === serial && role === activeRole &&
+        taskView === 'tasks') {
+      try {
+        taskData=await fetchJSON('/api/miniapp/tasks',getToken(role));
+        if (currentSerial === serial && role === activeRole) renderMiniTaskView();
+      } catch(error) {
+        if (error.status===401) {clearToken(role);return renderLogin('Сессия истекла. Войдите ещё раз.');}
+        taskPanel.setMessage('Изменение сохранено. Обновите страницу для просмотра последних данных.');
+        if (currentSerial === serial) renderMiniTaskView();
+      }
+    }
+  }
   async function loadDashboard(role, mySerial, token) {
     renderLoading('Получаем актуальную статистику…');
     var endpoints = {
@@ -453,20 +502,30 @@
       admin: ['/api/points', '/api/orders?limit=100', '/api/operations-center'].concat(currentUser && currentUser.role === 'super' ? ['/api/business-founders'] : []),
     };
     try {
-      var results = await Promise.allSettled(endpoints[role].map(function(url) { return fetchJSON(url, token); }));
+      var normalCalls=endpoints[role].map(function(url) { return fetchJSON(url, token); });
+      var wantsTasks=!!(taskPanel && (role==='founder'||role==='manager'));
+      if (wantsTasks) normalCalls.push(fetchJSON('/api/miniapp/tasks',token));
+      var results = await Promise.allSettled(normalCalls);
       if (mySerial !== serial || role !== activeRole) return;
+      var taskResponse=wantsTasks ? results.pop() : null;
+      taskData=taskResponse && taskResponse.status==='fulfilled' &&
+        taskResponse.value && taskResponse.value.actor ? taskResponse.value : null;
       var authFailure = results.find(function(r) { return r.status === 'rejected' && (r.reason.status === 401 || r.reason.status === 403); });
       if (authFailure) { clearToken(role); currentUser = null; return renderLogin('Сессия истекла. Войдите ещё раз.'); }
       var anyFailed = results.some(function(r) { return r.status === 'rejected'; });
       var data = results.map(function(r) { return dataOrWarning(r, null); });
       var html = dashboardHeader(role);
+      if (taskData && taskPanel) {
+        html += taskPanel.navigation('overview',taskData) + taskPanel.overviewCard(taskData);
+      }
       if (anyFailed) html += problem('Часть данных временно недоступна. Можно обновить страницу или открыть полный кабинет.');
       if (role === 'partner') html += partnerDashboard(data);
       if (role === 'manager') html += managerDashboard(data);
       if (role === 'owner') html += ownerDashboard(data);
       if (role === 'founder' && window.HvostBusinessFounder) html += window.HvostBusinessFounder.render(data[0]);
       if (role === 'admin') html += adminDashboard(data);
-      root.innerHTML = html + dashboardFooter(role);
+      dashboardMarkup = html + dashboardFooter(role);
+      root.innerHTML = dashboardMarkup;
       if (role === 'admin' && currentUser && currentUser.role === 'super' && window.HvostBusinessFounderAdmin) window.HvostBusinessFounderAdmin.populate();
     } catch (e) {
       if (mySerial !== serial) return;
@@ -628,6 +687,8 @@
     });
   }
   root.addEventListener('click', function(e) {
+    var taskButton = e.target.closest('[data-mini-task-action]');
+    if (taskButton && taskButton.dataset.miniTaskAction) return doMiniTaskAction(taskButton);
     var choosePeriod = e.target.closest('[data-founder-period]');
     if (choosePeriod && activeRole === 'founder' && window.HvostBusinessFounder) {
       window.HvostBusinessFounder.setPeriod(choosePeriod.dataset.founderPeriod);
@@ -652,6 +713,15 @@
     if (action === 'phone-login' && activeRole) return chooseRole(activeRole);
     if (action === 'go-profile' && window.HvostMiniAppGoProfile) return window.HvostMiniAppGoProfile();
     if (action === 'owner-setup') return chooseRole('admin');
+    if (action === 'work-tasks' && taskPanel && taskData) {
+      taskView = 'tasks';
+      return renderMiniTaskView();
+    }
+    if (action === 'work-overview' && dashboardMarkup) {
+      taskView = 'overview';
+      root.innerHTML = dashboardMarkup;
+      return;
+    }
     if (action === 'notifications') return openNotificationSettings();
     if (action === 'reload') return chooseRole(activeRole);
     if (action === 'full-partner' && activeRole === 'salon') return openFullCabinet('partner');

@@ -52,6 +52,7 @@ const { registerWeeklyReportRoutes } = require('./routes-weekly-reports');
 const { registerBscRoutes } = require('./routes-bsc');
 const { registerTaskRoutes } = require('./routes-tasks');
 const { registerTaskPageRoutes } = require('./routes-task-page');
+const { registerMiniAppTaskRoutes, ensureTaskAccountBindings } = require('./routes-miniapp-tasks');
 const { registerOperationsRoutes } = require('./routes-operations');
 const { registerPointLaunchRoutes } = require('./routes-point-launch');
 const { registerPartnerClubRoutes } = require('./routes-partner-club');
@@ -59,6 +60,7 @@ const { registerPartnerClubRoutes } = require('./routes-partner-club');
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
 require('./task-seed').seedMeetingTasks();
 require('./task-seed-2026-10-25').seedMeeting20261025();
+ensureTaskAccountBindings();
 // Страницы партнёрских салонов дополнительно сохраняются отдельным снимком
 // в /data и при необходимости восстанавливаются до запуска HTTP-сервера.
 require('./salon-page-storage').initializeSalonPagePersistence();
@@ -129,6 +131,7 @@ registerWeeklyReportRoutes(router);
 registerBscRoutes(router);
 registerTaskRoutes(router);
 registerTaskPageRoutes(router);
+registerMiniAppTaskRoutes(router);
 registerOperationsRoutes(router);
 registerPointLaunchRoutes(router);
 registerPartnerClubRoutes(router);
