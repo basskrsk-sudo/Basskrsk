@@ -16,6 +16,56 @@ const PEOPLE = Object.freeze([
 ]);
 const ALLOWED_STATUSES = new Set(['new','in_progress','blocked','done']);
 
+db.exec("CREATE TABLE IF NOT EXISTS miniapp_task_account_links (" +
+  "account_role TEXT NOT NULL CHECK(account_role IN ('founder','manager'))," +
+  "account_id INTEGER NOT NULL," +
+  "assignee_id INTEGER NOT NULL REFERENCES task_assignees(id) ON DELETE CASCADE," +
+  "linked_at TEXT NOT NULL DEFAULT (datetime('now'))," +
+  "PRIMARY KEY(account_role,account_id)," +
+  "UNIQUE(assignee_id))");
+
+// Initialize trusted, persistent role-to-task mappings at startup. Later
+// profile edits cannot change who owns an assignee's tasks.
+function ensureTaskAccountBindings(database=db) {
+  const founderCodes=PEOPLE.filter(p=>p.role==='founder');
+  for (const person of founderCodes) {
+    const assignee=database.prepare('SELECT id FROM task_assignees WHERE code=? AND active=1').get(person.code);
+    const account=database.prepare('SELECT id FROM business_founders WHERE full_name=?').get(person.name);
+    if (assignee&&account) database.prepare(
+      "INSERT OR IGNORE INTO miniapp_task_account_links(account_role,account_id,assignee_id) " +
+      "VALUES('founder',?,?)").run(account.id,assignee.id);
+  }
+  const angelina=database.prepare(
+    "SELECT id,phone,telegram_chat_id FROM task_assignees WHERE code='angelina' AND active=1"
+  ).get();
+  if (!angelina) return;
+  const existing=database.prepare(
+    "SELECT 1 FROM miniapp_task_account_links WHERE assignee_id=?"
+  ).get(angelina.id);
+  if (existing) return;
+  const managerRows=database.prepare(
+    'SELECT id,full_name,phone,telegram_chat_id,active FROM managers WHERE active=1'
+  ).all();
+  const normalizedPhone=require('./miniapp-phone-identity').normalizeRussianPhone;
+  const candidates=managerRows.filter(row=>{
+    const name=cleanName(row.full_name);
+    if (!['ангелина функ','функ ангелина','ангелина'].includes(name)) return false;
+    // First-name-only records require independently matching contact data.
+    const samePhone=angelina.phone &&
+      normalizedPhone(angelina.phone)===normalizedPhone(row.phone);
+    const sameTelegram=angelina.telegram_chat_id && row.telegram_chat_id &&
+      String(angelina.telegram_chat_id)===String(row.telegram_chat_id);
+    if (angelina.phone && !samePhone) return false;
+    if (angelina.telegram_chat_id && row.telegram_chat_id && !sameTelegram) return false;
+    return name!=='ангелина'||samePhone||sameTelegram;
+  });
+  if (candidates.length===1){
+    database.prepare(
+      "INSERT OR IGNORE INTO miniapp_task_account_links(account_role,account_id,assignee_id) " +
+      "VALUES('manager',?,?)").run(candidates[0].id,angelina.id);
+  }
+}
+
 function cleanName(name) {
   return String(name || '').toLocaleLowerCase('ru-RU').trim()
     .replace(/ё/g,'е').replace(/\s+/g,' ');
@@ -23,36 +73,29 @@ function cleanName(name) {
 function taskMemberFromAccount(session, database=db) {
   if (!session || !['founder','manager'].includes(session.role) ||
       !Number.isSafeInteger(Number(session.id))) return null;
-  const table = session.role === 'founder' ? 'business_founders' : 'managers';
+  const table=session.role==='founder'?'business_founders':'managers';
   const account=database.prepare(
-    'SELECT id,full_name,phone,telegram_chat_id,active FROM '+table+' WHERE id=?'
+    'SELECT id,phone,telegram_chat_id,active FROM '+table+' WHERE id=?'
   ).get(session.id);
   if (!account || Number(account.active)!==1) return null;
-
-  // The manager's registered name may be first-name-only in early accounts.
-  const person=PEOPLE.find(row=>row.role===session.role &&
-    (row.role==='manager'
-      ? ['ангелина функ','функ ангелина','ангелина'].includes(cleanName(account.full_name))
-      : [cleanName(row.name),cleanName(row.name.split(' ').reverse().join(' '))]
-          .includes(cleanName(account.full_name))));
+  // Persistent, uniquely bound account ID, never a mutable name in a request.
+  const link=database.prepare(
+    'SELECT a.id,a.code,a.full_name,a.phone,a.telegram_chat_id FROM miniapp_task_account_links l ' +
+    'JOIN task_assignees a ON a.id=l.assignee_id AND a.active=1 ' +
+    'WHERE l.account_role=? AND l.account_id=?'
+  ).get(session.role,session.id);
+  if (!link) return null;
+  const person=PEOPLE.find(p=>p.code===link.code&&p.role===session.role);
   if (!person) return null;
-  const assignee=database.prepare(
-    'SELECT id,code,full_name,phone,telegram_chat_id,active FROM task_assignees ' +
-    'WHERE code=? AND active=1'
-  ).get(person.code);
-  if (!assignee) return null;
-  // When task recipient has an explicit phone or Telegram binding, the
-  // matching real cabinet account must not override it with another identity.
-  const normalizedPhone=require('./miniapp-phone-identity').normalizeRussianPhone;
-  if (assignee.phone && (!normalizedPhone(account.phone) ||
-      normalizedPhone(assignee.phone)!==normalizedPhone(account.phone))) return null;
-  if (assignee.telegram_chat_id && account.telegram_chat_id &&
-      String(assignee.telegram_chat_id)!==String(account.telegram_chat_id)) return null;
-  return {
-    id: assignee.id, code:person.code, name:person.name,
-    loginRole:session.role, accountId:Number(account.id),
-  };
+  const normalize=require('./miniapp-phone-identity').normalizeRussianPhone;
+  if (link.phone &&
+      (!normalize(account.phone)||normalize(link.phone)!==normalize(account.phone))) return null;
+  if (link.telegram_chat_id && account.telegram_chat_id &&
+      String(link.telegram_chat_id)!==String(account.telegram_chat_id)) return null;
+  return {id:link.id,code:link.code,name:person.name,
+    loginRole:session.role,accountId:Number(account.id)};
 }
+
 const TASK_SELECT=[
   'SELECT t.id,t.title,t.description,t.due_date,t.priority,t.status,',
   't.assignee_id,t.recurrence_rule,t.created_at,t.updated_at,',
@@ -230,6 +273,6 @@ function registerMiniAppTaskRoutes(router){
   });
 }
 module.exports={
-  PEOPLE,taskMemberFromAccount,taskDashboard,changeOwnTask,
+  PEOPLE,ensureTaskAccountBindings,taskMemberFromAccount,taskDashboard,changeOwnTask,
   summaries,validDue,todayKrasnoyarsk,registerMiniAppTaskRoutes,
 };
