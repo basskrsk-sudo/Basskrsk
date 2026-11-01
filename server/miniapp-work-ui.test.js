@@ -46,7 +46,8 @@ function createHarness(fixtures = {}, initialStorage = {}, phoneIdentity = null,
   // Explicit phoneIdentity fixtures exercise locked and role-filtered states.
   const postCheck = phoneIdentity || {
     getStatus() { return { loaded:true, verified:true, contactVerified:true,
-      accounts:[], ambiguousRoles:[], phoneMasked:'', error:'', busy:false }; },
+      accounts:['partner','manager','owner','founder','admin'].map(role=>({role})),
+      ambiguousRoles:[], phoneMasked:'', error:'', busy:false }; },
     onChange() {},
   };
   const window = { location: { assign(url) { navigation.push(url); } },
@@ -245,7 +246,8 @@ test('registered groomer with confirmed Telegram phone opens own cabinet without
   assert.ok(h.calls.every(c => c.opts.headers.Authorization === 'Bearer telegram-groomer-session'));
   assert.equal(h.calls.some(c => c.url === '/api/auth/login'), false);
   await h.window.HvostMiniAppWork.chooseRole('manager');
-  assert.match(h.root.innerHTML, /workLoginForm/, 'unmatched role never auto-signs in');
+  assert.doesNotMatch(h.root.innerHTML, /workLoginForm/, 'unmatched role never opens from verified phone');
+  assert.doesNotMatch(h.root.innerHTML, /data-work-role="manager"/);
 });
 
 
