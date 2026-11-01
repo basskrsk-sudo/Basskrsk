@@ -195,3 +195,42 @@ test('signed Telegram initData gates role discovery and passwordless sessions', 
     else process.env.TG_TOKEN = before;
   }
 });
+
+
+test('phone entry must match Telegram self-contact before revealing user-linked roles', () => {
+  const before = process.env.TG_TOKEN;
+  try {
+    process.env.TG_TOKEN = '777777:test-telegram-identity';
+    const signed = initData(process.env.TG_TOKEN, USER);
+    const wrong = invoke('/api/miniapp/verify-phone', {
+      initData: signed, phone: '+7 913 111-11-11',
+    });
+    assert.equal(wrong.status, 403);
+    assert.equal(wrong.result.accounts, undefined, 'mismatch must never disclose names or roles');
+
+    const matched = invoke('/api/miniapp/verify-phone', {
+      initData: signed, phone: '8 (913) 567-89-01',
+    });
+    assert.equal(matched.status, 200);
+    assert.equal(matched.result.verified, true);
+    assert.equal(matched.result.phone_masked, '+7 (***) ***-**-01');
+    assert.ok(matched.result.accounts.some(a => a.role === 'manager'));
+    assert.equal(JSON.stringify(matched.result).includes(PHONE), false, 'no raw phone is returned');
+
+    const badSig = invoke('/api/miniapp/verify-phone', {
+      initData: signed.replace('auth_date=', 'auth_date=2'), phone: PHONE,
+    });
+    assert.equal(badSig.status, 401);
+    const notShared = invoke('/api/miniapp/verify-phone', {
+      initData: initData(process.env.TG_TOKEN, 999444111), phone: PHONE,
+    });
+    assert.equal(notShared.status, 403);
+    const badPhone = invoke('/api/miniapp/verify-phone', {
+      initData: signed, phone: '12345',
+    });
+    assert.equal(badPhone.status, 400);
+  } finally {
+    if (before === undefined) delete process.env.TG_TOKEN;
+    else process.env.TG_TOKEN = before;
+  }
+});
