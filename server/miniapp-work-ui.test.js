@@ -10,7 +10,7 @@ const vm = require('node:vm');
 // payments are needed: every API response is explicitly mocked per scenario.
 const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'miniapp-work.js'), 'utf8');
 
-function createHarness(fixtures = {}, initialStorage = {}, phoneIdentity = null) {
+function createHarness(fixtures = {}, initialStorage = {}, phoneIdentity = null, extras = {}) {
   const values = { ...initialStorage };
   const elements = {};
   const events = {};
@@ -43,7 +43,7 @@ function createHarness(fixtures = {}, initialStorage = {}, phoneIdentity = null)
     return { ok: status < 400, status, json: async () => item.body || item };
   };
   const window = { location: { assign(url) { navigation.push(url); } },
-    ...(phoneIdentity ? { HvostMiniAppIdentity: phoneIdentity } : {}) };
+    ...(phoneIdentity ? { HvostMiniAppIdentity: phoneIdentity } : {}),...extras };
   const context = vm.createContext({ document, window, localStorage, sessionStorage, fetch });
   vm.runInContext(source, context, { filename: 'miniapp-work.js', timeout: 3000 });
   return {
@@ -63,11 +63,11 @@ async function flush() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
-test('role picker lists all four employees; public Telegram profile cannot open cabinets', async () => {
+test('role picker lists all staff and business founders; public Telegram profile cannot open cabinets', async () => {
   const h = createHarness();
   h.window.HvostMiniAppWork.render();
-  assert.deepEqual(Array.from(h.window.HvostMiniAppWork.roles), ['partner', 'manager', 'owner', 'admin']);
-  ['Грумер', 'Менеджер', 'Владелец салона', 'Администратор'].forEach(
+  assert.deepEqual(Array.from(h.window.HvostMiniAppWork.roles), ['partner', 'manager', 'owner', 'founder', 'admin']);
+  ['Грумер', 'Менеджер', 'Владелец салона', 'Собственник ХвостМаркета', 'Администратор'].forEach(
     (role) => assert.ok(h.root.innerHTML.includes(role))
   );
   await h.window.HvostMiniAppWork.chooseRole('admin');
@@ -222,4 +222,51 @@ test('registered groomer with confirmed Telegram phone opens own cabinet without
   assert.equal(h.calls.some(c => c.url === '/api/auth/login'), false);
   await h.window.HvostMiniAppWork.chooseRole('manager');
   assert.match(h.root.innerHTML, /workLoginForm/, 'unmatched role never auto-signs in');
+});
+
+
+test('founder enters independent read-only business dashboard, without admin credentials', async () => {
+  const mockFounderUI={
+    getPeriod:()=> '30d',
+    render:data => '<div class="founder-banner">Собственник: '+data.founder.full_name+
+      ' · '+data.founder.share_percent+'% · '+data.sales.revenue+' ₽</div>',
+  };
+  const h=createHarness({
+    '/api/business-founder/me':{founder:{id:3,full_name:'Кучкин Николай',active:true,share_percent:20}},
+    '/api/business-founder/dashboard?period=30d':{
+      founder:{id:3,full_name:'Кучкин Николай',share_percent:20},
+      sales:{revenue:900},
+    },
+  },{hm_business_founder_token:'founder-token'},null,{HvostBusinessFounder:mockFounderUI});
+  await h.window.HvostMiniAppWork.chooseRole('founder');
+  assert.match(h.root.innerHTML,/Кучкин Николай/);
+  assert.match(h.root.innerHTML,/20%/);
+  assert.match(h.root.innerHTML,/900 ₽/);
+  assert.doesNotMatch(h.root.innerHTML,/Открыть полный кабинет/);
+  assert.equal(h.calls.some(c=>c.url.startsWith('/api/orders?')),false);
+  assert.ok(h.calls.every(c=>c.opts.headers.Authorization==='Bearer founder-token'));
+});
+
+test('only superadmin sees founder setup form, not regular administrator', async () => {
+  const fixture={
+    '/api/points':{points:[]},
+    '/api/orders?limit=100':{orders:[]},
+    '/api/operations-center':{summary:{total:0},issues:[]},
+    '/api/business-founders':{founders:[{id:1,full_name:'Лакомых Алексей',share_percent:45}]},
+  };
+  const adminUI={render:data=>'<form id="businessFounderSetupForm">'+
+    data.founders.map(f=>f.full_name).join('')+'</form>',populate(){}};
+  const superHarness=createHarness({
+    ...fixture,'/api/admin/me':{admin:{id:1,role:'super',full_name:'Super',active:1}},
+  },{taiga_admin_token:'super'},null,{HvostBusinessFounderAdmin:adminUI});
+  await superHarness.window.HvostMiniAppWork.chooseRole('admin');
+  assert.match(superHarness.root.innerHTML,/businessFounderSetupForm/);
+  assert.equal(superHarness.calls.some(c=>c.url==='/api/business-founders'),true);
+
+  const regularHarness=createHarness({
+    ...fixture,'/api/admin/me':{admin:{id:2,role:'admin',full_name:'Regular',active:1}},
+  },{taiga_admin_token:'regular'},null,{HvostBusinessFounderAdmin:adminUI});
+  await regularHarness.window.HvostMiniAppWork.chooseRole('admin');
+  assert.doesNotMatch(regularHarness.root.innerHTML,/businessFounderSetupForm/);
+  assert.equal(regularHarness.calls.some(c=>c.url==='/api/business-founders'),false);
 });
