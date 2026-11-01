@@ -182,6 +182,9 @@
   async function chooseRole(role) {
     if (!phoneStatus().verified) { renderAll(); return; }
     if (!Object.prototype.hasOwnProperty.call(CONFIG, role)) return;
+    // A stale token or remembered role from another login must not expose
+    // an account which is absent from this verified phone's role list.
+    if (!phoneRoleAvailable(role)) { openAll(); return; }
     activeRole = role;
     currentUser = null;
     restockItems = [];
