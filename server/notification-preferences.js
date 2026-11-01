@@ -19,14 +19,17 @@ const DEFINITIONS = Object.freeze({
   partner: [
     {key:'sales', label:'Мои новые продажи', help:'Чек и начисление за рекомендации', default:true},
     {key:'payouts', label:'Проведённые выплаты', help:'Когда вознаграждение перечислено', default:true},
+    {key:'new_products', label:'Новинки ассортимента', help:'Фото и анонсы новых товаров ХвостМаркета', default:false},
   ],
   manager: [
     {key:'sales', label:'Продажи закреплённых точек', help:'Оповещения о новых заказах', default:true},
     {key:'payouts', label:'Комиссии и выплаты бонусов', help:'Сведения о проведённых выплатах', default:true},
+    {key:'new_products', label:'Новинки ассортимента', help:'Фото и анонсы новых товаров ХвостМаркета', default:false},
   ],
   owner: [
     {key:'sales', label:'Продажи моего салона', help:'Личные уведомления о каждом новом заказе точки', default:false},
     {key:'payouts', label:'Проведённые выплаты салону', help:'Сообщения о перечисленном вознаграждении', default:true},
+    {key:'new_products', label:'Новинки ассортимента', help:'Фото и анонсы новых товаров ХвостМаркета', default:false},
   ],
   founder: [
     {key:'sales', label:'Продажи сети', help:'Личные Telegram-уведомления о новых заказах', default:false},

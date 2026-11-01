@@ -61,7 +61,7 @@ test('settings route belongs to signed active account and cannot alter another r
   const start=invoke('GET',partner);
   assert.equal(start.status,200);
   assert.equal(start.result.role,'partner');
-  assert.deepEqual(start.result.settings.map(x=>x.key),['sales','payouts']);
+  assert.deepEqual(start.result.settings.map(x=>x.key),['sales','payouts','new_products']);
 
   const saved=invoke('PUT',partner,{settings:{sales:false}});
   assert.equal(saved.status,200);
