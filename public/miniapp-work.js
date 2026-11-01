@@ -659,6 +659,11 @@
 
   window.HvostMiniAppWork = {
     render: function() {
+      if (phoneRoleAvailable('salon') &&
+          (!activeRole || activeRole === 'partner' || activeRole === 'owner' || activeRole === 'salon')) {
+        // Returning owners who actively groom land in their SINGLE dashboard.
+        return chooseRole('salon');
+      }
       if (!activeRole) return renderAll();
       // Return from the full cabinet: refresh server data, never trust old markup.
       return chooseRole(activeRole);
