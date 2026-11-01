@@ -10,7 +10,7 @@ const identityCode = fs.readFileSync(path.join(__dirname, '..', 'public/miniapp-
 const customerCode = fs.readFileSync(path.join(__dirname, '..', 'public/miniapp-customer.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'public/miniapp.html'), 'utf8');
 
-function setupIdentity(initialVerified = false, share = true, supported = true) {
+function setupIdentity(initialVerified = false, share = true, supported = true, combined = false) {
   let verified = initialVerified;
   const sent = [];
   const saved = {};
@@ -30,8 +30,9 @@ function setupIdentity(initialVerified = false, share = true, supported = true) 
         verified,
         phone_masked: verified ? '+7 (***) ***-**-77' : '',
         accounts: verified ? [{ role: 'customer', name: 'Покупатель' },
-                              { role: 'partner', name: 'Грумер' }] : [],
+                              { role: 'partner', name: 'Грумер' }].concat(combined ? [{ role: 'owner', name: 'Владелец' }] : []) : [],
         ambiguous_roles: [],
+        combined_salon: combined,
       }),
     };
     if (url === '/api/miniapp/verify-phone') {
@@ -40,8 +41,9 @@ function setupIdentity(initialVerified = false, share = true, supported = true) 
       }
       return {ok:true,json:async()=>({
         verified:true, phone_masked:'+7 (***) ***-**-77',
-        accounts:[{role:'customer',name:'Покупатель'},{role:'partner',name:'Грумер'}],
+        accounts:[{role:'customer',name:'Покупатель'},{role:'partner',name:'Грумер'}].concat(combined ? [{role:'owner',name:'Владелец'}] : []),
         ambiguous_roles:[],
+        combined_salon: combined,
       })};
     }
     if (url === '/api/miniapp/session') return {
@@ -179,4 +181,25 @@ test('main Mini App loads account identity before both customer and role interfa
   assert.ok(a > 0 && a < b && b < c);
   assert.match(html, /HvostMiniAppIdentity\.init\(tg\)/);
   assert.match(html, /HvostMiniAppCustomer\.render\(state\.user,state\.verified\)/);
+});
+
+
+test('combined salon indicator becomes visible only after Telegram phone proof and role matching', async () => {
+  const h=setupIdentity(true,true,true,true);
+  const before=await h.identity.init(h.telegram);
+  assert.equal(before.verified,false);
+  assert.equal(before.combinedSalon,false,'linked owner status is gated behind typed phone');
+  assert.deepEqual(Array.from(before.accounts),[]);
+  const status=await h.identity.verifyPhone('+7 913 123-45-77');
+  assert.equal(status.verified,true);
+  assert.equal(status.combinedSalon,true);
+  assert.deepEqual(Array.from(status.accounts,a=>a.role),['customer','partner','owner']);
+  await assert.rejects(()=>h.identity.session('salon'),/Неизвестный тип кабинета/,
+    'salon is a UI representation, never an independent server-issued role');
+  const partner=await h.identity.session('partner');
+  const owner=await h.identity.session('owner');
+  assert.equal(partner.role,'partner');
+  assert.equal(owner.role,'owner');
+  const ref=await h.identity.refresh();
+  assert.equal(ref.combinedSalon,true);
 });
