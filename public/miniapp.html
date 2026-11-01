@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b4b39">
+<meta name="theme-color" content="#d5eadb">
 <meta name="description" content="ХвостМаркет — лакомства, игрушки и забота о питомцах рядом с вами.">
 <title>ХвостМаркет — магазин в Telegram</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -70,6 +70,16 @@
 (function(){
 'use strict';
 var tg = window.Telegram && window.Telegram.WebApp;
+// These two round buttons are native Telegram controls, not HTML images.
+// A dark native header could give the iOS white circular controls white-on-white
+// glyphs. Keep the Telegram chrome LIGHT so its native X / menu icons contrast.
+// The storefront's own green header (.top) remains unchanged.
+var TELEGRAM_NATIVE_HEADER_COLOR = '#d5eadb';
+function applyTelegramChromeColors(){
+  if(!tg)return;
+  try{tg.setHeaderColor(TELEGRAM_NATIVE_HEADER_COLOR)}catch(_){}
+  try{tg.setBackgroundColor('#f7f7f1')}catch(_){}
+}
 var state = {products:[],points:[],pointId:'',category:'all',search:'',view:'shop',cart:[],partners:[],advisor:'',name:'',phone:'',email:'',promo:'',promoValid:false,promoInfo:null,promoKey:'',verified:false,user:null,selectedProduct:null,selectedVariant:null,pendingCode:''};
 var CATEGORY = {all:'Все',treats:'🦴 Лакомства',toys:'🧸 Игрушки',accessories:'🎀 Аксессуары',care:'🫧 Уход'};
 function el(id){return document.getElementById(id)}
@@ -117,7 +127,7 @@ function showCheckoutError(message){var x=el('checkoutError');if(x){x.textConten
 function showResult(status,code){state.view='result';setView('result');if(status==='paid')state.cart=[];renderCartIndicators();var paid=status==='paid';el('resultPage').innerHTML='<div class="block profile-hero" style="margin-top:30px"><div style="font-size:59px">'+(paid?'✅':'⏳')+'</div><h2>'+(paid?'Оплата прошла!':'Проверяем оплату')+'</h2><p>'+(paid?'Спасибо за покупку! Заберите товар с полки выбранного минимаркета.':'Если вы уже оплатили заказ, подтвердим статус после ответа платёжного сервиса.')+'</p><div class="ok" style="margin:17px 0">Заказ № '+esc(code)+'</div>'+(paid?'<button class="btn btn-gold" type="button" data-action="shop">Продолжить покупки</button>':'<button class="btn btn-gold" id="statusAgain" type="button">Проверить статус</button>')+'</div>'}
 async function checkPaymentReturn(code){setView('result');el('resultPage').innerHTML='<div class="empty" style="margin-top:40px">⏳ Проверяем оплату…</div>';try{var d=await api('/api/order-payment-status/'+encodeURIComponent(code));showResult(d.paid?'paid':'pending',code)}catch(e){showResult('pending',code);toast(e.message)}}
 function renderProfile(){var name=state.user?state.user.first_name+(state.user.last_name?' '+state.user.last_name:''):'Гость';el('profilePage').innerHTML='<h1 class="page-title">Мой профиль</h1><div class="block profile-hero"><div class="avatar">🐾</div><h2>'+esc(name)+'</h2><p>'+(state.verified?'✅ Вход через Telegram подтверждён':'Режим просмотра — откройте через Telegram')+'</p></div><div class="block"><b>📍 Мой минимаркет</b><p class="muted">'+esc(currentPoint()?currentPoint().name:'Не выбран')+'</p><button class="btn btn-light" type="button" data-action="points">Сменить минимаркет</button></div><div class="block"><b>История заказов и косточки</b><p class="muted">Появятся после безопасной привязки аккаунта покупателя по номеру телефона. Telegram-аккаунт сам по себе не даёт доступ к покупкам по номеру.</p></div><p style="font-size:12px;text-align:center"><a href="/privacy-policy.html" target="_blank" rel="noopener">Политика конфиденциальности</a> · <a href="/purchase-guide.html" target="_blank" rel="noopener">Как покупать</a></p>'}
-async function auth(){if(tg){try{tg.ready();tg.expand();tg.setHeaderColor('#0b4b39');tg.setBackgroundColor('#f7f7f1')}catch(_){}}
+async function auth(){if(tg){applyTelegramChromeColors();try{tg.ready();tg.expand();if(typeof tg.onEvent==='function')tg.onEvent('themeChanged',applyTelegramChromeColors)}catch(_){}}
 if(!tg||!tg.initData){el('appMode').textContent='Просмотр';return}
 try{var d=await api('/api/miniapp/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})});state.verified=true;state.user=d.user;state.name=d.user.first_name||'';el('hello').textContent='Привет, '+state.name+'!';el('appMode').textContent='● Telegram'}catch(e){el('appMode').textContent='Нет входа';toast(e.message)}}
 async function init(){if(new URLSearchParams(location.search).get('view')==='work')setView('work');await auth();try{var data=await Promise.all([api('/api/products'),api('/api/points')]);state.products=data[0].products||[];state.points=data[1].points||[];var old=readPoint();var preset=new URLSearchParams(location.search).get('point');var chosen=state.points.find(function(p){return String(p.id)===String(preset||old)});if(chosen)selectPoint(chosen.id);else if(state.points.length===1)selectPoint(state.points[0].id);else{el('pointName').textContent='Выбрать салон';renderProducts()}}catch(e){el('products').innerHTML='<div class="empty"><div class="emoji">⚠️</div><h3>Каталог не загрузился</h3><p>'+esc(e.message)+'</p><button class="btn btn-light" data-action="reload" style="margin-top:16px">Повторить</button></div>';el('stockCount').textContent='Ошибка загрузки'}
