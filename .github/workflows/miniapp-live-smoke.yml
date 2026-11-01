@@ -53,5 +53,20 @@ jobs:
                   failed.append(path)
           if failed:
               raise SystemExit("Live production smoke check failed on " + ", ".join(failed))
-          print("All production Mini App routes are available")
+          # Invalid Telegram identity must be rejected by the running server.
+          # This is read-only validation of auth; no payments/orders are created.
+          invalid = urllib.request.Request(
+              root + "/api/miniapp/auth",
+              data=b'{"initData":"intentionally-invalid"}',
+              headers={"Content-Type": "application/json", "User-Agent": "HvostMarket-miniapp-live-smoke/1.0"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(invalid, timeout=15) as response:
+                  raise SystemExit("FAIL: invalid Telegram login unexpectedly passed, HTTP " + str(response.status))
+          except HTTPError as e:
+              if e.code != 401:
+                  raise SystemExit("FAIL: invalid Telegram login returned HTTP " + str(e.code) + " instead of 401")
+              print("PASS invalid Telegram login rejected: HTTP 401", flush=True)
+          print("All production Mini App routes and auth gate are available")
           PY
