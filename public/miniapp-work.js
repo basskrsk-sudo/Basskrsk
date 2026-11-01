@@ -191,6 +191,147 @@
     }
     return data;
   }
+  function normalizedPhone(value) {
+    var digits = String(value || '').replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : '';
+  }
+  function validCombinedAccounts(partner, owner) {
+    if (!partner || !owner || partner.active === false || partner.active === 0 ||
+        owner.active === false || owner.active === 0 ||
+        !partner.point_id || !owner.point_id ||
+        String(partner.point_id) !== String(owner.point_id)) return false;
+    var partnerPhone = normalizedPhone(partner.phone);
+    var ownerPhone = normalizedPhone(owner.phone);
+    if (!partnerPhone || partnerPhone !== ownerPhone) return false;
+    if (owner.groomer_partner_id != null &&
+        Number(owner.groomer_partner_id) !== Number(partner.id)) return false;
+    return true;
+  }
+  function combinedSalonDashboard(partner, owner, ordersData, payoutData, stockData, salonData) {
+    var orders = ordersData.orders || [];
+    var payout = payoutData || {};
+    var stock = stockData.stock || [];
+    var salon = salonData || {};
+    var totals = salon.totals || {};
+    var ownerEarnings = salon.owner_earnings || {};
+    var personalRevenue = orders.reduce(function(sum, item) { return sum + Number(item.sum || 0); }, 0);
+    var personalEarned = orders.reduce(function(sum, item) { return sum + Number(item.commission || 0); }, 0);
+    var partnerUnpaid = Number(payout.unpaid_amount || 0);
+    var ownerUnpaid = Number(ownerEarnings.unpaid || 0);
+    var salonTitle = (salon.point && salon.point.name) || partner.point_name || 'Ваш салон';
+    restockItems = stock.filter(function(s) { return Number(s.variant_id) > 0; });
+    var lowStock = stock.filter(function(s) { return Number(s.qty) <= 2; });
+    var html = note('📍 ' + salonTitle + (salon.point && salon.point.addr ? ' · ' + salon.point.addr : '')) +
+      '<div class="work-surface combined-overview"><h2>💚 Всего к выплате вам</h2>' +
+      '<div class="combined-total">' + esc(rub(partnerUnpaid + ownerUnpaid)) + '</div>' +
+      '<p class="work-note">Грумер: ' + esc(rub(partnerUnpaid)) + ' · Владелец: ' +
+        esc(rub(ownerUnpaid)) + '</p></div>' +
+      '<div class="work-stats">' +
+        stat('Выручка всего салона', rub(totals.this_month_revenue), 'Текущий календарный месяц') +
+        stat('Мои продажи', rub(personalRevenue), number(orders.length) + ' покупок за 30 дней') +
+        stat('Начислено мне как грумеру', rub(personalEarned), 'За личные продажи · 30 дней') +
+        stat('Начислено владельцу', rub(ownerEarnings.this_month), 'За все продажи салона · месяц') +
+      '</div>' +
+      note('Личные продажи уже входят в выручку салона: не складывайте эти суммы. ' +
+        'Начисления грумера и владельца считаются отдельно, без двойного учёта продаж.');
+    html += surface('💰 Выплаты по двум ролям',
+      line('✂️ За личные рекомендации', 'К выплате грумеру · текущий тариф ' +
+        Math.round(Number(partner.commission_rate || 0) * 100) + '%', rub(partnerUnpaid)) +
+      line('🏠 За размещение в салоне', 'К выплате владельцу · текущий тариф ' +
+        Math.round(Number(owner.commission_rate || 0) * 100) + '%', rub(ownerUnpaid)) +
+      '<p class="work-note">Погашенные выплаты уже исключены из сумм «к выплате».</p>');
+    html += surface('🛍 Мои личные продажи · 30 дней',
+      rows(orders.slice(0, 8).map(function(o) {
+        return line(o.product || 'Покупка', date(o.date) + ' · ' + o.order_code, '+' + rub(o.commission));
+      })));
+    html += surface('🏪 Продажи салона',
+      '<div class="work-stats">' +
+        stat('Заказов за месяц', number(totals.this_month_orders), 'Все грумеры') +
+        stat('Средний чек', rub(totals.avg_order), 'Все продажи салона') +
+      '</div>' +
+      '<h3 class="combined-subtitle">Грумеры салона</h3>' +
+      rows((salon.groomers || []).slice(0, 10).map(function(g) {
+        return line(g.full_name, number(g.orders_count) + ' покупок', rub(g.revenue));
+      })) +
+      '<h3 class="combined-subtitle">Последние покупки в салоне</h3>' +
+      rows((salon.recent_orders || []).slice(0, 5).map(function(o) {
+        return line('Продажа' + (o.is_self_order ? ' · самозаказ' : ''), date(o.created_at), rub(o.total));
+      })));
+    html += surface('📦 Остатки товаров' + (lowStock.length ? ' · ⚠️ ' + lowStock.length : ''),
+      rows(stock.slice(0, 12).map(function(item) {
+        return line(item.product_name + ' · ' + item.weight,
+          Number(item.qty) <= 2 ? 'Мало на полке' : 'Есть в наличии', number(item.qty) + ' шт.');
+      })));
+    if (restockItems.length) html += surface('📦 Запросить пополнение',
+      '<p class="work-note">Заявка уйдёт менеджеру вашей точки через действующий кабинет грумера.</p>' +
+      '<form id="workRestockForm"><label class="work-label" for="workRestockItem">Товар</label>' +
+      '<select class="work-input work-select" id="workRestockItem">' + restockItems.map(function(item) {
+        return '<option value="' + esc(item.variant_id) + '">' +
+          esc(item.product_name + ' · ' + item.weight + ' (остаток ' + item.qty + ')') + '</option>';
+      }).join('') + '</select>' +
+      '<label class="work-label" for="workRestockQty">Сколько привезти, шт.</label>' +
+      '<input id="workRestockQty" class="work-input" type="number" min="1" max="500" step="1" value="5" inputmode="numeric" required>' +
+      '<button class="work-secondary" type="submit" style="margin-top:12px" id="workRestockButton">Отправить заявку менеджеру</button>' +
+      '<div id="workRestockMessage" aria-live="polite"></div></form>');
+    return html;
+  }
+  async function chooseCombinedSalon() {
+    if (!phoneRoleAvailable('salon') || !identity || typeof identity.session !== 'function') {
+      return openAll();
+    }
+    activeRole = 'salon';
+    currentUser = null;
+    restockItems = [];
+    saveRole('salon');
+    var mySerial = ++serial;
+    renderLoading('Проверяем доступ грумера и владельца салона…');
+    try {
+      // Two separately authorized sessions; NEVER synthesize a new composite
+      // JWT or call the salon owner API using a groomer's privileges.
+      var sessions = await Promise.all([identity.session('partner'), identity.session('owner')]);
+      if (mySerial !== serial || activeRole !== 'salon') return;
+      if (!sessions[0].token || !sessions[1].token) throw new Error('Не удалось подтвердить оба кабинета.');
+      var partnerToken = sessions[0].token;
+      var ownerToken = sessions[1].token;
+      var me = await Promise.all([
+        fetchJSON('/api/partners/me', partnerToken),
+        fetchJSON('/api/owner/me', ownerToken),
+      ]);
+      if (mySerial !== serial || activeRole !== 'salon') return;
+      var partner = me[0].partner;
+      var owner = me[1].owner;
+      if (!validCombinedAccounts(partner, owner)) {
+        throw new Error('Владелец и грумер должны быть активны и привязаны к одному салону. Проверьте связь в админке.');
+      }
+      setToken('partner', partnerToken);
+      setToken('owner', ownerToken);
+      currentUser = owner;
+      renderLoading('Собираем общую сводку салона…');
+      var data = await Promise.all([
+        fetchJSON('/api/partners/me/orders?days=30', partnerToken),
+        fetchJSON('/api/partners/me/payouts?limit=10', partnerToken),
+        fetchJSON('/api/partners/me/stock', partnerToken),
+        fetchJSON('/api/owner/dashboard', ownerToken),
+      ]);
+      if (mySerial !== serial || activeRole !== 'salon') return;
+      if (!data[3] || data[3].noPoint ||
+          !data[3].point || String(data[3].point.id) !== String(owner.point_id)) {
+        throw new Error('Не удалось подтвердить показатели вашего салона.');
+      }
+      root.innerHTML = dashboardHeader('salon') +
+        combinedSalonDashboard(partner, owner, data[0], data[1], data[2], data[3]) +
+        dashboardFooter('salon');
+    } catch (error) {
+      if (mySerial !== serial || activeRole !== 'salon') return;
+      // Failed or stale sessions must never leak partial financial data.
+      currentUser = null;
+      restockItems = [];
+      root.innerHTML = back() + heading('✂️🏠 Мой салон и продажи',
+        'Доступ к обеим ролям должен быть подтверждён') +
+        problem(error.message || 'Не удалось загрузить общий кабинет.') +
+        '<button class="work-secondary" data-work-action="reload" type="button">↻ Проверить ещё раз</button>';
+    }
+  }
   async function chooseRole(role) {
     if (!phoneStatus().verified) { renderAll(); return; }
     if (role === 'salon') return chooseCombinedSalon();
