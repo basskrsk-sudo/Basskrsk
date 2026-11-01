@@ -1,0 +1,61 @@
+name: Temporary combined salon live rollout check
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/combined-salon-live-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-production:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Amvera serves linked groomer-owner UI and signed phone APIs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,time,urllib.request,urllib.error
+          host="https://xn--80adktilqfjfx.xn--p1ai"
+          checks=[
+            ("/miniapp.html",["HvostMiniAppOpenRole","miniapp-identity.js","miniapp-work.js"],"Mini App entry"),
+            ("/miniapp-work.js",["chooseCombinedSalon","combinedSalonDashboard","Мой салон и продажи","full-partner","full-owner"],"groomer-owner dashboard"),
+            ("/miniapp-customer.js",["status.combinedSalon","data-customer-role","Мой салон и продажи"],"combined customer role link"),
+            ("/miniapp-identity.js",["combined_salon","combinedSalon","/api/miniapp/verify-phone"],"Telegram verified phone matching"),
+            ("/miniapp-work.css",["combined-overview","combined-total"],"combined salon mobile styling"),
+            ("/p.html",["/api/create-payment","Возьмите товар с полки"],"unmodified quick QR purchase"),
+          ]
+          for attempt in range(1,11):
+            problems=[]
+            for path,words,label in checks:
+              try:
+                req=urllib.request.Request(host+path+"?deploy-smoke=combined-salon-"+str(attempt),
+                  headers={"Cache-Control":"no-cache","User-Agent":"HvostMarket-CombinedSalon-ReadOnly-Smoke/1.0"})
+                with urllib.request.urlopen(req,timeout=15) as response:
+                  raw=response.read(5000000).decode("utf-8")
+                  missing=[w for w in words if w not in raw]
+                  if response.status!=200 or missing:problems.append((path,"HTTP "+str(response.status)+"; missing "+str(missing)))
+              except Exception as exc:problems.append((path,repr(exc)[:160]))
+            for path in ("/api/miniapp/accounts","/api/miniapp/verify-phone","/api/miniapp/session"):
+              try:
+                request=urllib.request.Request(host+path,
+                  data=b'{"initData":"invalid","phone":"79135556677","role":"salon"}',
+                  headers={"Content-Type":"application/json","User-Agent":"HvostMarket-CombinedSalon-ReadOnly-Smoke/1.0"},
+                  method="POST")
+                with urllib.request.urlopen(request,timeout=15) as response:
+                  problems.append((path,"UNSIGNED ACCESS GRANTED: HTTP "+str(response.status)))
+              except urllib.error.HTTPError as error:
+                if error.code!=401:problems.append((path,"expected 401, got "+str(error.code)))
+              except Exception as exc:problems.append((path,repr(exc)[:150]))
+            if not problems:
+              print("PASS: one combined salon dashboard and separately linked roles are LIVE on Amvera",flush=True)
+              print("PASS: customer profile displays merged groomer-owner role",flush=True)
+              print("PASS: quick QR purchase landing remained available (HTTP 200)",flush=True)
+              print("PASS: invalid Telegram initData rejected by three account endpoints (HTTP 401)",flush=True)
+              break
+            print("Attempt",attempt,"deployment not ready:",problems,flush=True)
+            if attempt<10:time.sleep(9)
+          else:
+            raise SystemExit("FAIL combined salon deployment: "+repr(problems))
+          PY
