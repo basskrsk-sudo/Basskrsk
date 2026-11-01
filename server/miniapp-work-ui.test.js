@@ -314,15 +314,16 @@ test('verified founder sees a secure admin setup path without receiving founder 
     '/api/operations-center':{summary:{total:0},issues:[]},
     '/api/business-founders':{founders:[]},
   }, { taiga_admin_token: 'valid-admin-token' }, identity);
+  h.window.HvostMiniAppWork.render();
+  assert.match(h.root.innerHTML, /data-work-role="admin"/);
+  assert.doesNotMatch(h.root.innerHTML, /data-work-role="founder"/,
+    'unconfigured founder must not appear in confirmed user's role choices');
   await h.window.HvostMiniAppWork.chooseRole('founder');
-  assert.match(h.root.innerHTML, /Доступ собственника ещё не подключён/);
-  assert.match(h.root.innerHTML, /data-work-action="owner-setup"/);
-  assert.match(h.root.innerHTML, /workLoginForm/);
+  assert.doesNotMatch(h.root.innerHTML, /workLoginForm/);
+  assert.doesNotMatch(h.root.innerHTML, /data-work-action="owner-setup"/);
   assert.equal(h.calls.some(x => x.url === '/api/miniapp/session'), false);
-  h.click('owner-setup');
-  await new Promise(resolve => setImmediate(resolve));
+  await h.window.HvostMiniAppWork.chooseRole('admin');
   assert.match(h.root.innerHTML, /Администратор/);
-  assert.doesNotMatch(h.root.innerHTML, /Доступ собственника ещё не подключён/);
   assert.equal(h.values.hm_business_founder_token, undefined);
 });
 
@@ -334,5 +335,6 @@ test('without verified contact founder login does not expose the admin setup sho
   const h = createHarness({}, {}, identity);
   await h.window.HvostMiniAppWork.chooseRole('founder');
   assert.doesNotMatch(h.root.innerHTML, /data-work-action="owner-setup"/);
-  assert.match(h.root.innerHTML, /workLoginForm/);
+  assert.doesNotMatch(h.root.innerHTML, /workLoginForm/);
+  assert.match(h.root.innerHTML, /Ввести телефон/);
 });
