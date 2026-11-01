@@ -306,7 +306,13 @@ function registerCustomerRoutes(router) {
     const customer = db.prepare('SELECT phone FROM customers WHERE id = ?').get(payload.id);
     if (!customer) return sendJson(res, 404, { error: 'Клиент не найден' });
     const allOrders = db.prepare('SELECT * FROM orders ORDER BY id DESC LIMIT 500').all();
-    const orders = allOrders.filter((o) => normalizePhone(o.customer_phone) === customer.phone);
+    // Покупатель мог регистрироваться с +7, 8 или без кода страны, а заказы
+    // сохранялись в другом формате. Сопоставляем одну и ту же российскую
+    // мобильную десятку, не сравниваем разное форматирование одной записи.
+    const customerMobile = normalizePhone(customer.phone).slice(-10);
+    const orders = customerMobile.length === 10
+      ? allOrders.filter((o) => normalizePhone(o.customer_phone).slice(-10) === customerMobile)
+      : [];
     const getItems = db.prepare('SELECT name, weight, price, qty, is_custom FROM order_items WHERE order_id = ?');
     sendJson(res, 200, { orders: orders.map((o) => ({ ...o, items: getItems.all(o.id) })) });
   });
