@@ -60,6 +60,7 @@ const { registerPartnerClubRoutes } = require('./routes-partner-club');
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
 require('./task-seed').seedMeetingTasks();
 require('./task-seed-2026-10-25').seedMeeting20261025();
+require('./task-seed-2026-11-01').seedMeeting20261101();
 ensureTaskAccountBindings();
 // Страницы партнёрских салонов дополнительно сохраняются отдельным снимком
 // в /data и при необходимости восстанавливаются до запуска HTTP-сервера.
