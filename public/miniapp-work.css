@@ -85,3 +85,12 @@
 .customer-role-links{display:grid;gap:9px;margin-top:12px}
 .customer-role-link{width:100%;display:flex;align-items:center;justify-content:space-between;border:1px solid #dce9e0;border-radius:13px;padding:14px 13px;background:#f7fbf7;color:#1e5840;font-weight:800;text-align:left;font-size:13px}
 .customer-role-link span{color:#22835b;font-size:18px}
+
+
+/* Single mobile dashboard for active groomer + salon owner. Commissions stay in
+   their independent ledger and are merely summarised together on this screen. */
+.combined-overview{background:linear-gradient(135deg,#e5f3e7,#f4f9ed);border-color:#cde2d1}
+.combined-overview h2{font-size:14px;color:#255d41;margin-bottom:6px}
+.combined-total{font-size:30px;color:#11543a;font-weight:900;letter-spacing:-.5px;line-height:1.2;margin:0 0 8px}
+.combined-overview .work-note{margin-bottom:0;color:#47715a}
+.combined-subtitle{font-size:12px;font-weight:800;margin:14px 0 5px;color:#285941}

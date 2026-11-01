@@ -234,3 +234,74 @@ test('phone entry must match Telegram self-contact before revealing user-linked 
     else process.env.TG_TOKEN = before;
   }
 });
+
+
+test('one active groomer-owner linked to the same salon gets only a presentation-level combined flag', () => {
+  const phone = '79137774455', user = 775533112;
+  const point = 'combined-salon-verified';
+  db.prepare('INSERT INTO points (id,name,addr,icon,active) VALUES (?,?,?,?,?)')
+    .run(point,'Zveryuga','Тестовая улица, 10','🐾',1);
+  const partner = db.prepare(
+    'INSERT INTO partners(partner_code,login,password_hash,full_name,phone,point_name,point_id,active) ' +
+    'VALUES (?,?,?,?,?,?,?,1)'
+  ).run('C-G-01','combined-groomer-01','hash','Грумер-владелец',phone,'Zveryuga',point).lastInsertRowid;
+  const owner = db.prepare(
+    'INSERT INTO salon_owners(login,password_hash,full_name,phone,point_id,groomer_partner_id,active) ' +
+    'VALUES (?,?,?,?,?,?,1)'
+  ).run('combined-owner-01','hash','Грумер-владелец',phone,point,partner).lastInsertRowid;
+  recordVerifiedTelegramContact(msg(user,phone),NOW);
+  let accounts = availableTelegramAccounts(user,NOW);
+  assert.equal(accounts.combinedSalon,true);
+  assert.deepEqual(accounts.accounts.map(a=>a.role),['partner','owner']);
+  assert.equal(issueTelegramAccountSession(user,'salon',NOW),null,
+    'combined salon must not mint a privileged third role token');
+
+  const before = process.env.TG_TOKEN;
+  try {
+    process.env.TG_TOKEN = '777777:test-telegram-identity';
+    const signed = initData(process.env.TG_TOKEN, user);
+    const response = invoke('/api/miniapp/verify-phone',{initData:signed,phone});
+    assert.equal(response.status,200);
+    assert.equal(response.result.combined_salon,true);
+    assert.equal(response.result.accounts.length,2);
+    const signedGroomer = invoke('/api/miniapp/session',{initData:signed,role:'partner'});
+    const signedOwner = invoke('/api/miniapp/session',{initData:signed,role:'owner'});
+    assert.equal(verifyToken(signedGroomer.result.token).role,'partner');
+    assert.equal(verifyToken(signedOwner.result.token).role,'owner');
+  } finally {
+    if(before===undefined)delete process.env.TG_TOKEN;
+    else process.env.TG_TOKEN=before;
+  }
+
+  // An explicit link to ANOTHER groomer must override coincident phone.
+  const someoneElse = db.prepare(
+    'INSERT INTO partners(partner_code,login,password_hash,full_name,phone,point_name,point_id,active) ' +
+    'VALUES (?,?,?,?,?,?,?,1)'
+  ).run('C-G-02','combined-groomer-02','hash','Другой грумер','79139998877','Zveryuga',point).lastInsertRowid;
+  db.prepare('UPDATE salon_owners SET groomer_partner_id=? WHERE id=?').run(someoneElse,owner);
+  accounts=availableTelegramAccounts(user,NOW);
+  assert.equal(accounts.combinedSalon,false,'do not merge an owner with a different explicitly linked groomer');
+  db.prepare('UPDATE salon_owners SET groomer_partner_id=? WHERE id=?').run(partner,owner);
+  assert.equal(availableTelegramAccounts(user,NOW).combinedSalon,true);
+
+  // Different point: even equal phone and explicit link cannot merge.
+  const otherPoint='combined-other-point';
+  db.prepare('INSERT INTO points (id,name,addr,icon,active) VALUES (?,?,?,?,?)')
+    .run(otherPoint,'Другая точка','Тестовая улица, 11','🐾',1);
+  db.prepare('UPDATE salon_owners SET point_id=? WHERE id=?').run(otherPoint,owner);
+  assert.equal(availableTelegramAccounts(user,NOW).combinedSalon,false);
+  db.prepare('UPDATE salon_owners SET point_id=? WHERE id=?').run(point,owner);
+
+  db.prepare('UPDATE partners SET active=0 WHERE id=?').run(partner);
+  assert.equal(availableTelegramAccounts(user,NOW).combinedSalon,false);
+  db.prepare('UPDATE partners SET active=1 WHERE id=?').run(partner);
+
+  db.prepare('UPDATE salon_owners SET active=0 WHERE id=?').run(owner);
+  assert.equal(availableTelegramAccounts(user,NOW).combinedSalon,false);
+  db.prepare('UPDATE salon_owners SET active=1 WHERE id=?').run(owner);
+
+  // Historical salons without an explicit groomer id can merge by unique
+  // verified phone on the SAME active point, not by name.
+  db.prepare('UPDATE salon_owners SET groomer_partner_id=NULL WHERE id=?').run(owner);
+  assert.equal(availableTelegramAccounts(user,NOW).combinedSalon,true);
+});

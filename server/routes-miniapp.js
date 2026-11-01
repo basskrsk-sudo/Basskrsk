@@ -77,7 +77,7 @@ function registerMiniAppRoutes(router) {
   router.post('/api/miniapp/accounts', (req, res, ctx) => {
     const user = verifiedMiniAppUser(ctx, res);
     if (!user) return;
-    const { verified, phoneMasked, accounts, ambiguousRoles } = availableTelegramAccounts(user.id);
+    const { verified, phoneMasked, accounts, ambiguousRoles, combinedSalon } = availableTelegramAccounts(user.id);
     sendJson(res, 200, {
       verified,
       phone_masked: phoneMasked,
@@ -86,6 +86,7 @@ function registerMiniAppRoutes(router) {
         name: a.name,
       })),
       ambiguous_roles: ambiguousRoles,
+      combined_salon: !!combinedSalon,
     });
   });
 
@@ -105,12 +106,13 @@ function registerMiniAppRoutes(router) {
         error: 'Номер не подтверждён в вашем Telegram. Отправьте боту свой контакт и повторите проверку.',
       });
     }
-    const { phoneMasked, accounts, ambiguousRoles } = availableTelegramAccounts(user.id);
+    const { phoneMasked, accounts, ambiguousRoles, combinedSalon } = availableTelegramAccounts(user.id);
     return sendJson(res, 200, {
       verified: true,
       phone_masked: phoneMasked,
       accounts: accounts.map(a => ({ role: a.role, name: a.name })),
       ambiguous_roles: ambiguousRoles,
+      combined_salon: !!combinedSalon,
     });
   });
 

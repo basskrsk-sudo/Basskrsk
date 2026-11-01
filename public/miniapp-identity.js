@@ -6,7 +6,7 @@
   var telegram = null;
   var identity = {
     loaded: false, verified: false, phoneMasked: '',
-    accounts: [], ambiguousRoles: [], error: '',
+    accounts: [], ambiguousRoles: [], combinedSalon: false, error: '',
   };
   var busy = false;
   var listeners = [];
@@ -39,6 +39,7 @@
       phoneMasked: identity.verified && gateUnlocked ? identity.phoneMasked : '',
       accounts: gateUnlocked ? identity.accounts.map(function(x) { return { role: x.role, name: x.name }; }) : [],
       ambiguousRoles: gateUnlocked ? identity.ambiguousRoles.slice() : [],
+      combinedSalon: identity.verified && gateUnlocked && !!identity.combinedSalon,
       error: identity.error,
       busy: busy,
     };
@@ -76,6 +77,7 @@
       identity.phoneMasked = data.phone_masked || '';
       identity.accounts = Array.isArray(data.accounts) ? data.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
       identity.ambiguousRoles = Array.isArray(data.ambiguous_roles) ? data.ambiguous_roles : [];
+      identity.combinedSalon = !!data.combined_salon;
       identity.error = '';
       if (gateUnlocked && confirmedPhone && identity.verified) {
         // Recheck whenever Telegram comes back into focus; a changed or
@@ -84,15 +86,18 @@
           var checked = await post('/api/miniapp/verify-phone', { phone: confirmedPhone });
           identity.accounts = Array.isArray(checked.accounts) ? checked.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
           identity.ambiguousRoles = Array.isArray(checked.ambiguous_roles) ? checked.ambiguous_roles : [];
+          identity.combinedSalon = !!checked.combined_salon;
           identity.phoneMasked = checked.phone_masked || '';
         } catch (err) {
           gateUnlocked = false;
           confirmedPhone = '';
+          identity.combinedSalon = false;
           identity.error = 'Подтверждение номера устарело. Введите номер и проверьте его повторно.';
         }
       } else if (!identity.verified) {
         gateUnlocked = false;
         confirmedPhone = '';
+        identity.combinedSalon = false;
       }
     } catch (err) {
       identity.loaded = true;
@@ -175,6 +180,7 @@
       identity.phoneMasked = result.phone_masked || '';
       identity.accounts = Array.isArray(result.accounts) ? result.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
       identity.ambiguousRoles = Array.isArray(result.ambiguous_roles) ? result.ambiguous_roles : [];
+      identity.combinedSalon = !!result.combined_salon;
     } catch (err) {
       gateUnlocked = false;
       confirmedPhone = '';
@@ -221,6 +227,7 @@
       if (last && last !== id) {
         gateUnlocked = false;
         confirmedPhone = '';
+        identity.combinedSalon = false;
         Object.keys(TOKENS).forEach(function(role) {
           localStorage.removeItem(TOKENS[role]);
         });

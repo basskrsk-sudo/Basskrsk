@@ -77,7 +77,7 @@ test('work role picker is locked until phone confirmation, then shows only linke
     onChange(){},
   });
   locked.window.HvostMiniAppWork.render();
-  assert.deepEqual(Array.from(locked.window.HvostMiniAppWork.roles), ['partner','manager','owner','founder','admin']);
+  assert.deepEqual(Array.from(locked.window.HvostMiniAppWork.roles), ['salon','partner','manager','owner','founder','admin']);
   assert.match(locked.root.innerHTML, /Сначала подтвердите свой номер/);
   assert.doesNotMatch(locked.root.innerHTML, /class="work-role"/);
   await locked.window.HvostMiniAppWork.chooseRole('admin');
@@ -337,4 +337,121 @@ test('without verified contact founder login does not expose the admin setup sho
   assert.doesNotMatch(h.root.innerHTML, /data-work-action="owner-setup"/);
   assert.doesNotMatch(h.root.innerHTML, /workLoginForm/);
   assert.match(h.root.innerHTML, /Ввести телефон/);
+});
+
+
+test('active groomer-owner sees ONE salon cabinet, separately calculated payouts and functional restock', async () => {
+  const issued=[];
+  const verified={
+    getStatus(){return {loaded:true,verified:true,combinedSalon:true,contactVerified:true,
+      phoneMasked:'+7 (***) ***-**-66',error:'',busy:false,ambiguousRoles:[],
+      accounts:[{role:'partner',name:'Грумер-владелец'},{role:'owner',name:'Владелец салона'}]};},
+    onChange(){},
+    async session(role){
+      issued.push(role);
+      assert.ok(role==='partner'||role==='owner','no fabricated combined privilege');
+      return {role,token:'real-'+role+'-session'};
+    },
+  };
+  const h=createHarness({
+    '/api/partners/me':{partner:{id:18,full_name:'Барсукова Юлия',phone:'+7 913 777-88-66',
+      point_id:'salon-a',point_name:'Zveryuga',commission_rate:0.2,active:1}},
+    '/api/owner/me':{owner:{id:9,full_name:'Барсукова Юлия',phone:'89137778866',
+      point_id:'salon-a',groomer_partner_id:18,commission_rate:0.05,active:1}},
+    '/api/partners/me/orders?days=30':{orders:[
+      {product:'Сердце говяжье',sum:300,commission:60,date:'2026-10-30 13:00:00',order_code:'QR-01'},
+    ]},
+    '/api/partners/me/payouts?limit=10':{unpaid_amount:80,payouts:[]},
+    '/api/partners/me/stock':{stock:[
+      {variant_id:54,product_name:'Лёгкое',weight:'50 г',qty:1},
+    ]},
+    '/api/owner/dashboard':{
+      point:{id:'salon-a',name:'Zveryuga',addr:'Тестовая, 10'},
+      totals:{this_month_revenue:1000,this_month_orders:4,avg_order:250,revenue:2900,orders:8},
+      owner_earnings:{unpaid:50,this_month:50},
+      groomers:[{full_name:'Барсукова Юлия',orders_count:1,tier_percent:20,revenue:300}],
+      recent_orders:[{total:300,created_at:'2026-10-30 13:00:00'}],
+    },
+    '/api/partners/me/restock-signal':{ok:true,request_id:302},
+  },{},verified);
+  await h.window.HvostMiniAppWork.render();
+  assert.equal(issued.length,2);
+  assert.deepEqual(issued,['partner','owner']);
+  assert.equal(h.calls.some(c=>c.url==='/api/miniapp/session'&&c.opts.role==='salon'),false);
+  assert.match(h.root.innerHTML,/Мой салон и продажи/);
+  assert.match(h.root.innerHTML,/Барсукова Юлия/);
+  assert.match(h.root.innerHTML,/Zveryuga/);
+  assert.match(h.root.innerHTML,/130\s*₽/,'80 groomer unpaid + 50 owner unpaid');
+  assert.match(h.root.innerHTML,/1[\s\u00a0]*000\s*₽/,'salon revenue excludes double-counting personal sales');
+  assert.match(h.root.innerHTML,/300\s*₽/,'personal sales are shown as subset');
+  assert.match(h.root.innerHTML,/Личные продажи уже входят в выручку салона/);
+  assert.match(h.root.innerHTML,/Запросить пополнение/);
+
+  for (const c of h.calls) {
+    if(c.url.includes('/api/owner'))assert.equal(c.opts.headers.Authorization,'Bearer real-owner-session');
+    if(c.url.includes('/api/partners'))assert.equal(c.opts.headers.Authorization,'Bearer real-partner-session');
+  }
+  assert.equal(h.values.taiga_owner_token,'real-owner-session');
+  assert.equal(h.values.taiga_partner_token,'real-partner-session');
+
+  h.document.getElementById('workRestockItem').value='54';
+  h.document.getElementById('workRestockQty').value='5';
+  h.submit('workRestockForm');
+  await flush();
+  const signal=h.calls.find(c=>c.url==='/api/partners/me/restock-signal');
+  assert.ok(signal);
+  assert.equal(signal.opts.headers.Authorization,'Bearer real-partner-session');
+  assert.deepEqual(JSON.parse(signal.opts.body),{items:[{variant_id:54,qty:5}]});
+
+  h.click('full-partner');
+  h.click('full-owner');
+  assert.deepEqual(h.navigation,[
+    '/taiga-groomer.html?from=miniapp',
+    '/taiga-owner.html?from=miniapp',
+  ]);
+
+  h.click('all');
+  assert.match(h.root.innerHTML,/data-work-role="salon"/);
+  assert.doesNotMatch(h.root.innerHTML,/data-work-role="partner"/);
+  assert.doesNotMatch(h.root.innerHTML,/data-work-role="owner"/);
+});
+
+test('combined salon refuses cross-point or explicitly linked-to-other-groomer profiles', async () => {
+  const verified={
+    getStatus(){return {loaded:true,verified:true,combinedSalon:true,accounts:[
+      {role:'partner'},{role:'owner'}],ambiguousRoles:[],phoneMasked:'',error:''};},
+    onChange(){},
+    async session(role){return {role,token:'session-'+role};},
+  };
+  const fixture={
+    '/api/partners/me':{partner:{id:18,phone:'79135556677',point_id:'point-a',active:1}},
+    '/api/owner/me':{owner:{id:19,phone:'79135556677',point_id:'point-b',active:1}},
+  };
+  const h=createHarness(fixture,{},verified);
+  await h.window.HvostMiniAppWork.chooseRole('salon');
+  assert.match(h.root.innerHTML,/одному салону/);
+  assert.doesNotMatch(h.root.innerHTML,/Всего к выплате/);
+  assert.equal(h.calls.some(c=>c.url==='/api/owner/dashboard'),false);
+  assert.equal(h.values.taiga_owner_token,undefined);
+
+  fixture['/api/owner/me'].owner.point_id='point-a';
+  fixture['/api/owner/me'].owner.groomer_partner_id=100;
+  await h.window.HvostMiniAppWork.chooseRole('salon');
+  assert.match(h.root.innerHTML,/одному салону/);
+  assert.equal(h.calls.some(c=>c.url==='/api/owner/dashboard'),false);
+});
+
+test('unlinked groomer and salon owner retain separate working roles', async () => {
+  const status={
+    loaded:true,verified:true,combinedSalon:false,phoneMasked:'+7 (***) ***-**-66',
+    accounts:[{role:'partner'},{role:'owner'}],ambiguousRoles:[],error:'',
+  };
+  const h=createHarness({}, {},{getStatus(){return status;},onChange(){}});
+  h.window.HvostMiniAppWork.render();
+  assert.match(h.root.innerHTML,/data-work-role="partner"/);
+  assert.match(h.root.innerHTML,/data-work-role="owner"/);
+  assert.doesNotMatch(h.root.innerHTML,/data-work-role="salon"/);
+  await h.window.HvostMiniAppWork.chooseRole('salon');
+  assert.equal(h.calls.length,0);
+  assert.equal(h.values.taiga_owner_token,undefined);
 });
