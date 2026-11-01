@@ -14,6 +14,13 @@
   var cacheKey = '';
   var pending = false;
   var generation = 0;
+  var enteredPhone = '';
+  var confirmingPhone = false;
+  var ROLE_LABELS = {
+    partner: '✂️ Грумер', manager: '🗂️ Менеджер',
+    owner: '🏠 Владелец салона', founder: '👑 Собственник ХвостМаркета',
+    admin: '📊 Администратор',
+  };
 
   function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
@@ -39,31 +46,58 @@
       '" data-customer-action="' + name + '">' + label + '</button>';
   }
   function heading() {
-    return '<h1 class="page-title">Мой ХвостМаркет 🐾</h1>';
+    return '<h1 class="page-title">Кабинет покупателя 🐾</h1>';
+  }
+  function accessibleCabinets(status) {
+    if (!status.verified) return '';
+    var roles = (status.accounts || []).filter(function(a) {
+      return Object.prototype.hasOwnProperty.call(ROLE_LABELS, a.role);
+    });
+    if (!roles.length) return '';
+    return '<div class="block"><h3 style="margin:0 0 8px">Ваши другие кабинеты</h3>' +
+      '<p class="muted" style="font-size:12px">Найдены по подтверждённому номеру Telegram:</p>' +
+      '<div class="customer-role-links">' + roles.map(function(a) {
+        return '<button class="customer-role-link" type="button" data-customer-action="choose-role" ' +
+          'data-customer-role="' + esc(a.role) + '">' + esc(ROLE_LABELS[a.role]) + ' <span>→</span></button>';
+      }).join('') + '</div></div>';
   }
   function error(text) {
     return '<p class="error" role="alert">' + esc(text) + '</p>';
   }
   function renderIdentityPrompt(status) {
-    var userName = currentUser && currentUser.first_name || 'друг';
-    var content = '<div class="block profile-hero">' +
-      avatar(userName) +
-      '<p>' + (isTelegramSigned ? '✅ Ваш Telegram подключён' : 'Войдите через Telegram-бота') +
-      '</p></div><div class="block"><h3 style="margin:0 0 7px">🔐 Мой личный кабинет</h3>' +
-      '<p class="muted" style="font-size:12px;line-height:1.65">Для просмотра своих покупок и косточек подтвердите номер, который указан при покупках на хвостмаркет.рф. Вводить номер вручную не нужно.</p>';
-    if (status.verified) {
-      content += '<p class="ok">Номер подтверждён: ' + esc(status.phoneMasked) + '</p>';
-      content += '<p class="muted" style="font-size:12px">По этому номеру пока нет зарегистрированного кабинета покупателя. Если номер на сайте другой, обратитесь к администратору.</p>';
-      if (status.ambiguousRoles.includes('customer')) {
-        content += error('Найдены несколько клиентских записей на один номер. Вход по номеру временно недоступен до объединения записей.');
-      }
+    var userName = currentUser && currentUser.first_name || 'Покупатель';
+    var content = '<div class="block profile-hero">' + avatar(userName) +
+      '<p>' + (isTelegramSigned ? 'Ваш личный кабинет ХвостМаркета' : 'Откройте приложение через Telegram-бота') +
+      '</p></div>';
+    if (!status.verified) {
+      content += '<div class="block customer-entry"><h3>📱 Введите номер телефона</h3>' +
+        '<p class="muted" style="font-size:12px;line-height:1.6">Введите номер, который указывали при покупках или регистрации на сайте. ' +
+        'Для защиты данных мы проверим, что этот номер действительно принадлежит вашему Telegram.</p>' +
+        '<form id="customerPhoneGateForm">' +
+          '<label for="customerPhoneEntry" class="form-label">Ваш номер телефона</label>' +
+          '<input id="customerPhoneEntry" class="form-field" name="customerPhone" type="tel" inputmode="tel" ' +
+          'autocomplete="tel" placeholder="+7 999 123-45-67" maxlength="25" required value="' + esc(enteredPhone) + '">' +
+          '<button class="btn btn-gold" type="submit" style="margin-top:14px" ' +
+          (confirmingPhone || status.busy || !isTelegramSigned ? 'disabled' : '') + '>' +
+          (confirmingPhone || status.busy ? '⏳ Проверяем номер…' : 'Продолжить и подтвердить номер →') + '</button>' +
+        '</form>' +
+        '<p class="hint">' + (status.contactVerified
+          ? 'Ваш контакт уже передан Telegram. Осталось проверить введённый номер.'
+          : 'Telegram запросит разрешение на передачу вашего собственного номера. Мы не выдаём доступ по чужому контакту.') + '</p>' +
+        (status.error ? error(status.error) : '') +
+        '<p class="hint">Если запрос контакта недоступен, отправьте действующему боту команду /phone, ' +
+        'поделитесь своим контактом, вернитесь и нажмите «Продолжить».</p></div>';
     } else {
-      content += action('share', status.busy ? 'Проверяем номер…' : '📱 Подтвердить номер Telegram') +
-        '<div style="height:9px"></div>' + action('check', '↻ Проверить номер', true);
-      if (status.error) content += error(status.error);
-      content += '<p class="hint">Если Telegram не поддерживает запрос, отправьте действующему боту команду /phone и разрешите передать свой контакт.</p>';
+      content += '<div class="block"><h3>✅ Номер проверен</h3>' +
+        '<p class="ok">Подтверждён: ' + esc(status.phoneMasked) + '</p>' +
+        '<p class="muted" style="font-size:12px">По этому номеру пока не найден кабинет покупателя. ' +
+        'Магазином можно пользоваться без регистрации.</p>' +
+        ((status.ambiguousRoles || []).includes('customer')
+          ? error('На этот номер записаны несколько клиентских профилей. Обратитесь к администратору для объединения.') : '') +
+        '</div>' + accessibleCabinets(status);
     }
-    content += '</div>';
+    content += '<div class="block"><button type="button" class="btn btn-light" data-customer-action="open-shop">' +
+      '🛍 Перейти в магазин без входа</button></div>';
     return content;
   }
   function secureFetch(path, token) {
@@ -112,7 +146,8 @@
           esc(Number(t.amount) > 0 ? '+' + t.amount : String(t.amount)) + '</strong></div>';
       }).join('') || '<p class="muted" style="font-size:12px">Операций пока нет</p>' :
         '<p class="muted" style="font-size:12px">Не удалось загрузить операции</p>') +
-      '</div>' + action('refresh', '↻ Обновить мой кабинет', true) +
+      '</div>' + accessibleCabinets(identity.getStatus()) +
+      action('refresh', '↻ Обновить мой кабинет', true) +
       '<p style="font-size:12px;text-align:center;margin-top:16px"><a href="/privacy-policy.html" target="_blank" rel="noopener">Политика конфиденциальности</a></p>';
     return html;
   }
@@ -164,9 +199,39 @@
     }
     load();
   }
+  root.addEventListener('input', function(e) {
+    if (e.target && e.target.id === 'customerPhoneEntry') enteredPhone = e.target.value;
+  });
+  root.addEventListener('submit', function(e) {
+    if (!e.target || e.target.id !== 'customerPhoneGateForm') return;
+    e.preventDefault();
+    if (confirmingPhone) return;
+    var field = document.getElementById('customerPhoneEntry');
+    enteredPhone = field ? field.value.trim() : enteredPhone;
+    confirmingPhone = true;
+    render(currentUser, isTelegramSigned);
+    identity.verifyPhone(enteredPhone).then(function() {
+      confirmingPhone = false;
+      render(currentUser, isTelegramSigned);
+    }).catch(function(err) {
+      confirmingPhone = false;
+      render(currentUser, isTelegramSigned);
+    });
+  });
   root.addEventListener('click', function(e) {
     var btn = e.target.closest('[data-customer-action]');
     if (!btn) return;
+    if (btn.dataset.customerAction === 'open-shop') {
+      if (window.HvostMiniAppGoShop) window.HvostMiniAppGoShop();
+      return;
+    }
+    if (btn.dataset.customerAction === 'choose-role') {
+      var role = btn.dataset.customerRole;
+      if (identity.getStatus().verified &&
+          identity.getStatus().accounts.some(function(a) { return a.role === role; }) &&
+          window.HvostMiniAppOpenRole) window.HvostMiniAppOpenRole(role);
+      return;
+    }
     if (btn.dataset.customerAction === 'share') {
       identity.requestContact().then(function() { render(currentUser, isTelegramSigned); });
     }
