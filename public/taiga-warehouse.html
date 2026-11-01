@@ -126,6 +126,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 </style>
 <link rel="stylesheet" href="cabinet-navigation.css?v=46">
 <script src="cabinet-navigation.js?v=46"></script>
+<link rel="stylesheet" href="/notification-settings.css">
 </head>
 <body>
 
@@ -558,5 +559,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+<script src="/notification-settings.js"></script>
+<script>window.HvostNotificationSettings.installFull("warehouse",function(){return warehouseToken;});</script>
 </body>
 </html>

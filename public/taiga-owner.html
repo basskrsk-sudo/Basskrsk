@@ -107,6 +107,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <script src="payout-schedule.js"></script>
 <script src="telegram-connect.js?v=38"></script>
 <script src="max-connect.js?v=41"></script>
+<link rel="stylesheet" href="/notification-settings.css">
 </head>
 <body>
 
@@ -581,5 +582,7 @@ async function loadDashboard() {
 if (getToken()) { showApp(); }
 </script>
 <script src="/miniapp-return.js"></script>
+<script src="/notification-settings.js"></script>
+<script>window.HvostNotificationSettings.installFull("owner");</script>
 </body>
 </html>

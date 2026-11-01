@@ -430,10 +430,12 @@
     if (role === 'salon') return '<div class="work-action-bar">' +
       '<button class="work-secondary" type="button" data-work-action="full-partner">✂️ Полный кабинет грумера</button>' +
       '<button class="work-secondary" type="button" data-work-action="full-owner">🏠 Полный кабинет владельца</button>' +
+      '<button class="work-secondary" type="button" data-work-action="notifications">🔔 Настройки уведомлений</button>' +
       '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
       '</div><p class="work-quiet">Продажи салона включают личные продажи грумера. Комиссии рассчитываются и выплачиваются раздельно.</p>';
     return '<div class="work-action-bar">' +
       (role === 'founder' ? '' : '<button class="work-primary" type="button" data-work-action="full" data-work-role="' + esc(role) + '">Открыть полный кабинет →</button>') +
+      '<button class="work-secondary" type="button" data-work-action="notifications">🔔 Настройки уведомлений</button>' +
       '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
       '</div><p class="work-quiet">' + (role === 'founder' ? 'Кабинет собственника работает отдельно от административного доступа и не позволяет изменять заказы или выплаты.' : 'Полный кабинет открывается в том же окне Telegram и использует действующие права учётной записи.') + '</p>';
   }
@@ -614,6 +616,17 @@
     try { sessionStorage.setItem('hm_miniapp_return_to_work', '1'); } catch (_) {}
     window.location.assign(CONFIG[role].full + '?from=miniapp');
   }
+  function openNotificationSettings() {
+    if (!activeRole || !currentUser || !window.HvostNotificationSettings) return;
+    var selectedRole = activeRole;
+    var roles = selectedRole === 'salon' ? ['partner','owner'] : [selectedRole];
+    var tokens = {};
+    roles.forEach(function(role) { tokens[role] = getToken(role); });
+    window.HvostNotificationSettings.open({
+      root:root, roles:roles, tokens:tokens,
+      back:function() { chooseRole(selectedRole); },
+    });
+  }
   root.addEventListener('click', function(e) {
     var choosePeriod = e.target.closest('[data-founder-period]');
     if (choosePeriod && activeRole === 'founder' && window.HvostBusinessFounder) {
@@ -639,6 +652,7 @@
     if (action === 'phone-login' && activeRole) return chooseRole(activeRole);
     if (action === 'go-profile' && window.HvostMiniAppGoProfile) return window.HvostMiniAppGoProfile();
     if (action === 'owner-setup') return chooseRole('admin');
+    if (action === 'notifications') return openNotificationSettings();
     if (action === 'reload') return chooseRole(activeRole);
     if (action === 'full-partner' && activeRole === 'salon') return openFullCabinet('partner');
     if (action === 'full-owner' && activeRole === 'salon') return openFullCabinet('owner');

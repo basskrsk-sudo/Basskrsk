@@ -16,6 +16,7 @@ const { createStaticCache } = require('./static-cache');
 const { Router, readBinaryBody, parseJsonBody, sendJson } = require('./http-utils');
 const { registerAuthRoutes, requireSuperAdmin } = require('./routes-auth');
 const { registerMiniAppRoutes } = require('./routes-miniapp');
+const { registerNotificationPreferenceRoutes } = require('./routes-notification-preferences');
 const { registerBusinessFounderRoutes } = require('./routes-business-founders');
 const { registerProductRoutes } = require('./routes-products');
 const { registerQrAnalyticsRoutes } = require('./routes-qr-analytics');
@@ -91,6 +92,7 @@ const MIME = {
 const router = new Router();
 registerAuthRoutes(router);
 registerMiniAppRoutes(router);
+registerNotificationPreferenceRoutes(router);
 registerBusinessFounderRoutes(router);
 registerProductRoutes(router);
 registerQrAnalyticsRoutes(router);

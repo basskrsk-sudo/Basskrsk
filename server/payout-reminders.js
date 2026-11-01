@@ -4,6 +4,7 @@
 
 const db = require('./db');
 const { sendToChat } = require('./telegram');
+const { preference } = require('./notification-preferences');
 const { sendMaxMessage } = require('./max-bot');
 const { getUnpaidOrders } = require('./partner-payouts');
 const { getOwnerUnpaidOrders } = require('./owner-payouts');
@@ -282,6 +283,10 @@ function telegramPlainText(text) {
 }
 
 async function deliver(role, account, payoutId, channel, message) {
+  const preferenceRole = role.startsWith('manager') ? 'manager' : role;
+  if (!preference(preferenceRole, account.id, 'payouts')) {
+    return { channel, ok:false, skipped:true, disabled:true };
+  }
   const reservation = db.prepare(`
     INSERT OR IGNORE INTO payout_notification_log
       (recipient_role, recipient_id, payout_id, channel, status)
