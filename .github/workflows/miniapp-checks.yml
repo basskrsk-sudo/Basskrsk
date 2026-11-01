@@ -17,6 +17,7 @@ on:
       - server/telegram-login-poller.js
       - server/miniapp-bot-links.js
       - server/miniapp-existing-bot.test.js
+      - server/miniapp-header-contrast.test.js
       - server/routes-payment.js
       - server/server.js
       - .github/workflows/miniapp-checks.yml
@@ -43,4 +44,4 @@ jobs:
         run: |
           node -e "const fs=require('node:fs');const s=fs.readFileSync('public/miniapp.html','utf8');const m=s.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);if(!m)throw new Error('missing Mini App script');new Function(m[1]);console.log('Mini App JavaScript syntax OK');"
       - name: Verify Telegram auth and all four staff dashboards
-        run: node --test server/routes-miniapp.test.js server/miniapp-existing-bot.test.js server/miniapp-work-ui.test.js
+        run: node --test server/routes-miniapp.test.js server/miniapp-existing-bot.test.js server/miniapp-work-ui.test.js server/miniapp-header-contrast.test.js
