@@ -170,3 +170,36 @@ test('poller exposes command and handles photo messages before early no-text ret
     poller.indexOf('if (!msg.text) return;', poller.indexOf('const msg = update.message;')));
   assert.match(poller, /startBroadcastWorker\(\)/);
 });
+
+
+test('catalog image is attached as a local Telegram photo without using external links', async () => {
+  const picture = 'catalog:images/hero-sir-barsik.jpg';
+  assert.equal(marketing.validPhotoRef(picture), true);
+  const savedFetch = global.fetch;
+  const savedToken = process.env.TG_TOKEN;
+  const seen = [];
+  try {
+    process.env.TG_TOKEN = 'test-telegram-secret';
+    global.fetch = async (url, options) => {
+      seen.push({url,options});
+      return {ok:true,status:200,json:async()=>({ok:true})};
+    };
+    const result = await marketing.sendProductPhoto('71001', picture,
+      '<b>Фото товара</b>', {inline_keyboard:[[{text:'Каталог',url:'https://хвостмаркет.рф/'}]]});
+    assert.equal(result.ok, true);
+    assert.equal(seen.length, 1);
+    assert.match(seen[0].url, /\/sendPhoto$/);
+    assert.equal(seen[0].options.method, 'POST');
+    const form = seen[0].options.body;
+    assert.ok(form instanceof FormData);
+    assert.equal(form.get('chat_id'), '71001');
+    assert.equal(form.get('parse_mode'), 'HTML');
+    assert.ok(form.get('photo').size > 0);
+    assert.equal(form.get('photo').type, 'image/jpeg');
+    assert.equal(JSON.parse(form.get('reply_markup')).inline_keyboard[0][0].text, 'Каталог');
+  } finally {
+    global.fetch = savedFetch;
+    if (savedToken === undefined) delete process.env.TG_TOKEN;
+    else process.env.TG_TOKEN = savedToken;
+  }
+});
