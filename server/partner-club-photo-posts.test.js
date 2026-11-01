@@ -182,3 +182,20 @@ test.after(()=>{
  try{db.close();}catch(_){}
  fs.rmSync(temp,{recursive:true,force:true});
 });
+
+
+test('manual photo post can be edited while keeping its gallery and review buttons',async()=>{
+ const id=latest();
+ // The most recent draft had its photos cleared in a previous test.
+ await club.handleClubPhotoCallback(ADMIN,'club:addphoto:'+id);
+ await club.handleClubPhotoMessage({chat:{id:ADMIN,type:'private'},photo:[{file_id:fid(21)}]});
+ assert.equal((await club.handleClubPhotoCallback(ADMIN,'club:photosdone')).ok,true);
+ const before=photos.getEventPhotos(id);
+ assert.equal((await club.handleClubCallback(ADMIN,'club:edit:'+id)).ok,true);
+ const edited=await club.handleClubPostInput(ADMIN,'**Изменённый текст с фотографией**');
+ assert.equal(edited.ok,true);
+ assert.deepEqual(photos.getEventPhotos(id),before);
+ assert.match(sent.filter(x=>x.kind==='photos'&&x.chat===ADMIN).at(-1).caption,
+   /<b>Изменённый текст с фотографией<\/b>/);
+ assert.ok(buttons().includes('club:send:'+id));
+});

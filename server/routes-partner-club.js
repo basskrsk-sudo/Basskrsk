@@ -441,7 +441,13 @@ async function handleClubEdit(chatId,text,entities=[]){
  db.prepare("UPDATE partner_club_reviews SET edited_message=?,state='pending' WHERE event_id=?").run(body,id);
  saveClubFormat(id,formatted.html,true);
  cancelClubInput(chatId);
- return {ok:true,message:'📝 Обновлённый черновик:\n\n'+formatted.html,reply_markup:reviewButtons(id),parse_mode:'HTML'};
+ if(clubPhotos.getEventPhotos(id).length){
+   const refreshed=await sendClubReviewPreview(chatId,id,'Исправленный черновик для Клуба партнёров');
+   return {ok:!!refreshed.ok,message:refreshed.ok
+     ? '📝 Текст обновлён, фотографии сохранены. Проверьте предпросмотр выше.'
+     : 'Текст обновлён, но предпросмотр не доставлен. Фото и текст сохранены.'};
+ }
+ return {ok:true,message:'📝 Обновлённый черновик:\n\n'+formatted.html,reply_markup:reviewButtons(id,false,true),parse_mode:'HTML'};
 }
 function setClubInput(chatId,mode,eventId=null){
  db.prepare("INSERT INTO partner_club_bot_inputs(chat_id,mode,event_id,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(chat_id) DO UPDATE SET mode=excluded.mode,event_id=excluded.event_id,updated_at=CURRENT_TIMESTAMP")
@@ -485,7 +491,13 @@ async function handleClubPostInput(chatId,text,entities=[]){
    cancelClubInput(chatId);
    if(!changed.changes)return {ok:false,message:'Редактирование этого черновика уже завершено.'};
    saveClubFormat(id,formatted.html,true);
-   return {ok:true,message:'📝 Исправленный текст черновика #'+id+':\n\n'+formatted.html,reply_markup:reviewButtons(id),parse_mode:'HTML'};
+   if(clubPhotos.getEventPhotos(id).length){
+     const refreshed=await sendClubReviewPreview(chatId,id,'Исправленный черновик для Клуба партнёров');
+     return {ok:!!refreshed.ok,message:refreshed.ok
+       ? '📝 Текст черновика #'+id+' обновлён, фото сохранены. Проверьте предпросмотр выше.'
+       : 'Текст обновлён, но предпросмотр не доставлен. Фото и текст сохранены.'};
+   }
+   return {ok:true,message:'📝 Исправленный текст черновика #'+id+':\n\n'+formatted.html,reply_markup:reviewButtons(id,false,true),parse_mode:'HTML'};
  }
  if(!settings().chat_id){cancelClubInput(chatId);return {ok:false,message:'Telegram-группа не подключена.'};}
  const key='manual:bot:'+require('node:crypto').randomUUID();
