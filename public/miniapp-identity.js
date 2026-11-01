@@ -1,0 +1,181 @@
+// ХвостМаркет Mini App: log in to EXISTING accounts using the owner's
+// Telegram contact, delivered directly to the existing bot (not user input).
+(function(){
+  'use strict';
+
+  var telegram = null;
+  var identity = {
+    loaded: false, verified: false, phoneMasked: '',
+    accounts: [], ambiguousRoles: [], error: '',
+  };
+  var busy = false;
+  var listeners = [];
+  var stamp = 0;
+  var TOKENS = {
+    customer: 'taiga_customer_token',
+    partner: 'taiga_partner_token',
+    manager: 'taiga_manager_token',
+    owner: 'taiga_owner_token',
+    admin: 'taiga_admin_token',
+  };
+
+  function copy() {
+    return {
+      loaded: identity.loaded,
+      verified: identity.verified,
+      phoneMasked: identity.phoneMasked,
+      accounts: identity.accounts.map(function(x) { return { role: x.role, name: x.name }; }),
+      ambiguousRoles: identity.ambiguousRoles.slice(),
+      error: identity.error,
+      busy: busy,
+    };
+  }
+  function notify() {
+    var snapshot = copy();
+    listeners.slice().forEach(function(fn) {
+      try { fn(snapshot); } catch (err) { console.warn('Mini App phone UI listener:', err); }
+    });
+  }
+  async function post(path, body) {
+    if (!telegram || !telegram.initData) throw new Error('Откройте Mini App через Telegram-бота.');
+    var response = await fetch(path, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ initData: telegram.initData }, body || {})),
+    });
+    var data = await response.json().catch(function() { return {}; });
+    if (!response.ok) throw new Error(data.error || ('Ошибка сервера (' + response.status + ')'));
+    return data;
+  }
+  async function refresh() {
+    if (!telegram || !telegram.initData) {
+      identity.loaded = true;
+      identity.error = 'Откройте через Telegram-бота.';
+      notify();
+      return copy();
+    }
+    var data;
+    try {
+      data = await post('/api/miniapp/accounts');
+      identity.loaded = true;
+      identity.verified = !!data.verified;
+      identity.phoneMasked = data.phone_masked || '';
+      identity.accounts = Array.isArray(data.accounts) ? data.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
+      identity.ambiguousRoles = Array.isArray(data.ambiguous_roles) ? data.ambiguous_roles : [];
+      identity.error = '';
+    } catch (err) {
+      identity.loaded = true;
+      identity.error = err.message;
+    }
+    notify();
+    return copy();
+  }
+  async function waitForConsent() {
+    for (var i = 0; i < 16; i++) {
+      await new Promise(function(resolve) { setTimeout(resolve, 1200); });
+      var status = await refresh();
+      if (status.verified) return status;
+    }
+    return copy();
+  }
+  function requestContact() {
+    if (busy) return Promise.resolve(copy());
+    if (!telegram || !telegram.initData) {
+      identity.error = 'Откройте магазин через кнопку действующего бота в Telegram.';
+      notify();
+      return Promise.resolve(copy());
+    }
+    if (typeof telegram.requestContact !== 'function') {
+      identity.error = 'В этой версии Telegram подтвердить номер можно в чате бота: отправьте /phone, нажмите кнопку передачи своего контакта и вернитесь в Mini App.';
+      notify();
+      return Promise.resolve(copy());
+    }
+    busy = true;
+    identity.error = '';
+    notify();
+    // Telegram displays a native consent dialog; callback only reports whether
+    // the user allowed sharing. The phone itself arrives in the bot's updates.
+    return new Promise(function(resolve) {
+      try {
+        telegram.requestContact(function(sent) { resolve(!!sent); });
+      } catch (_) { resolve(false); }
+    }).then(async function(sent) {
+      if (!sent) {
+        identity.error = 'Доступ без пароля не подключён. Вы можете войти с логином и паролем.';
+        return copy();
+      }
+      var state = await waitForConsent();
+      if (!state.verified) {
+        identity.error = 'Telegram принял разрешение, но контакт пока не получен сервером. Вернитесь из чата бота и нажмите «Проверить номер».';
+      }
+      return copy();
+    }).finally(function() {
+      busy = false;
+      notify();
+    });
+  }
+  async function session(role) {
+    if (!Object.prototype.hasOwnProperty.call(TOKENS, role)) {
+      throw new Error('Неизвестный тип кабинета');
+    }
+    if (!identity.verified || !identity.accounts.some(function(a) { return a.role === role; })) {
+      throw new Error('Кабинет не связан с подтверждённым номером Telegram.');
+    }
+    var result = await post('/api/miniapp/session', { role: role });
+    if (!result.token || result.role !== role) {
+      throw new Error('Не удалось открыть кабинет');
+    }
+    try {
+      localStorage.setItem(TOKENS[role], result.token);
+      if (role === 'admin') {
+        localStorage.setItem('taiga_admin_role', result.account && result.account.adminRole === 'super' ? 'super' : 'admin');
+      }
+    } catch (_) {}
+    return result;
+  }
+  function onChange(fn) {
+    if (typeof fn !== 'function') return function() {};
+    listeners.push(fn);
+    return function() { listeners = listeners.filter(function(x) { return x !== fn; }); };
+  }
+  function bindVerifiedTelegramUser(user) {
+    // The Telegram ID comes from the SERVER-VERIFIED initData response, not
+    // untrusted initDataUnsafe. Avoid reusing sessions from another Telegram
+    // account when multiple accounts are switched on one iPhone.
+    if (!user || !Number.isSafeInteger(user.id) || user.id <= 0) return;
+    try {
+      var id = String(user.id);
+      var key = 'hm_miniapp_last_telegram_user';
+      var last = localStorage.getItem(key);
+      if (last && last !== id) {
+        Object.keys(TOKENS).forEach(function(role) {
+          localStorage.removeItem(TOKENS[role]);
+        });
+        localStorage.removeItem('taiga_admin_role');
+      }
+      localStorage.setItem(key, id);
+    } catch (_) {}
+  }
+  function init(webApp, serverVerifiedUser) {
+    telegram = webApp || null;
+    bindVerifiedTelegramUser(serverVerifiedUser);
+    if (telegram && typeof telegram.onEvent === 'function') {
+      try { telegram.onEvent('activated', function() { refresh(); }); } catch (_) {}
+    }
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) refresh();
+      });
+    }
+    return refresh();
+  }
+  window.HvostMiniAppIdentity = {
+    init: init,
+    getStatus: copy,
+    refresh: refresh,
+    requestContact: requestContact,
+    session: session,
+    onChange: onChange,
+  };
+})();

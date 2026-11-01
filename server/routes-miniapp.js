@@ -3,6 +3,7 @@
 
 const crypto = require('node:crypto');
 const { sendJson } = require('./http-utils');
+const { availableTelegramAccounts, issueTelegramAccountSession } = require('./miniapp-phone-identity');
 
 function verifyTelegramInitData(raw, token, nowSeconds = Math.floor(Date.now() / 1000)) {
   if (!token || typeof token !== 'string') throw new Error('Bot token is not configured');
@@ -45,6 +46,19 @@ function verifyTelegramInitData(raw, token, nowSeconds = Math.floor(Date.now() /
   };
 }
 
+function verifiedMiniAppUser(ctx, res) {
+  if (!process.env.TG_TOKEN) {
+    sendJson(res, 503, { error: 'Telegram-бот ещё не настроен' });
+    return null;
+  }
+  try {
+    return verifyTelegramInitData(ctx.body && ctx.body.initData, process.env.TG_TOKEN);
+  } catch (_) {
+    sendJson(res, 401, { error: 'Откройте Mini App заново через действующего Telegram-бота' });
+    return null;
+  }
+}
+
 function registerMiniAppRoutes(router) {
   router.post('/api/miniapp/auth', (req, res, ctx) => {
     const token = process.env.TG_TOKEN;
@@ -57,6 +71,42 @@ function registerMiniAppRoutes(router) {
     } catch (_) {
       return sendJson(res, 401, { error: 'Не удалось проверить авторизацию Telegram. Откройте приложение заново.' });
     }
+  });
+  // The number cannot be submitted from the browser. It must be sent
+  // by Telegram directly to our bot with matching contact.user_id/from.id.
+  router.post('/api/miniapp/accounts', (req, res, ctx) => {
+    const user = verifiedMiniAppUser(ctx, res);
+    if (!user) return;
+    const { verified, phoneMasked, accounts, ambiguousRoles } = availableTelegramAccounts(user.id);
+    sendJson(res, 200, {
+      verified,
+      phone_masked: phoneMasked,
+      accounts: accounts.map(a => ({
+        role: a.role,
+        name: a.name,
+      })),
+      ambiguous_roles: ambiguousRoles,
+    });
+  });
+
+  router.post('/api/miniapp/session', (req, res, ctx) => {
+    const user = verifiedMiniAppUser(ctx, res);
+    if (!user) return;
+    const role = String(ctx.body && ctx.body.role || '');
+    if (!['customer', 'partner', 'manager', 'owner', 'admin'].includes(role)) {
+      return sendJson(res, 400, { error: 'Некорректная роль' });
+    }
+    const result = issueTelegramAccountSession(user.id, role);
+    if (!result) {
+      return sendJson(res, 403, {
+        error: 'Не найден подтверждённый кабинет для этого номера Telegram. Проверьте номер на сайте или войдите с паролем.',
+      });
+    }
+    sendJson(res, 200, {
+      token: result.token,
+      role: result.role,
+      account: result.account,
+    });
   });
 }
 

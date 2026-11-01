@@ -5,6 +5,8 @@ on:
     paths:
       - public/miniapp.html
       - public/miniapp-work.js
+      - public/miniapp-identity.js
+      - public/miniapp-customer.js
       - public/miniapp-work.css
       - public/miniapp-return.js
       - server/miniapp-work-ui.test.js
@@ -17,6 +19,10 @@ on:
       - server/telegram-login-poller.js
       - server/miniapp-bot-links.js
       - server/miniapp-existing-bot.test.js
+      - server/miniapp-phone-identity.js
+      - server/routes-customers.js
+      - server/miniapp-phone-identity.test.js
+      - server/miniapp-identity-ui.test.js
       - server/miniapp-header-contrast.test.js
       - server/routes-payment.js
       - server/server.js
@@ -38,10 +44,14 @@ jobs:
           node --check server/routes-miniapp.js
           node --check server/telegram-login-poller.js
           node --check server/miniapp-bot-links.js
+          node --check server/miniapp-phone-identity.js
+          node --check server/routes-customers.js
+          node --check public/miniapp-identity.js
+          node --check public/miniapp-customer.js
           node --check public/miniapp-work.js
           node --check public/miniapp-return.js
       - name: Check Mini App inline JavaScript syntax
         run: |
           node -e "const fs=require('node:fs');const s=fs.readFileSync('public/miniapp.html','utf8');const m=s.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);if(!m)throw new Error('missing Mini App script');new Function(m[1]);console.log('Mini App JavaScript syntax OK');"
       - name: Verify Telegram auth and all four staff dashboards
-        run: node --test server/routes-miniapp.test.js server/miniapp-existing-bot.test.js server/miniapp-work-ui.test.js server/miniapp-header-contrast.test.js
+        run: node --test --test-concurrency=1 server/routes-miniapp.test.js server/miniapp-existing-bot.test.js server/miniapp-work-ui.test.js server/miniapp-header-contrast.test.js server/miniapp-phone-identity.test.js server/miniapp-identity-ui.test.js

@@ -33,6 +33,7 @@ const {
 } = require('./expense-bot-create');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
+const { recordVerifiedTelegramContact } = require('./miniapp-phone-identity');
 const { commandsMenuButton, miniAppInlineKeyboard, miniAppDirectLinkMarkup } = require('./miniapp-bot-links');
 const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
 const {
@@ -81,6 +82,7 @@ async function configureBotProfile() {
       { command: 'start', description: 'Открыть помощника ХвостМаркета' },
       { command: 'shop', description: '🛍 Открыть магазин' },
       { command: 'cabinet', description: '👤 Рабочие кабинеты' },
+      { command: 'phone', description: '🔐 Подтвердить свой номер для кабинета' },
       { command: 'tasks', description: 'Мои активные поручения' },
       { command: 'taskpdf', description: 'Свежий PDF моих поручений' },
       { command: 'newtask', description: 'Создать новую задачу' },
@@ -139,7 +141,7 @@ function buildWelcomeMessage() {
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /stock — остатки центрального склада; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
     '',
-    'Чтобы подключить кабинет, откройте на сайте вход через Telegram и перейдите по созданной ссылке.',
+    'Для быстрого входа в Mini App подтвердите свой номер Telegram — увидите зарегистрированные кабинеты без ввода пароля. Для админки нужна предварительная привязка Telegram из аккаунта сайта.',
   ].join('\n');
 }
 
@@ -774,7 +776,28 @@ async function processUpdate(update) {
   }
 
   const msg = update.message;
-  if (!msg || !msg.text) return;
+  if (!msg) return;
+  if (msg.contact) {
+    // Bot API delivers a self-contact message even when the consent was
+    // requested by Mini App WebApp.requestContact(), not a bot command.
+    const result = recordVerifiedTelegramContact(msg);
+    if (msg.chat && msg.chat.type === 'private') {
+      if (result.verified) {
+        await replyToChat(msg.chat.id,
+          '✅ Номер Telegram подтверждён: ' + result.phoneMasked +
+          '\nВернитесь в Mini App — ваши кабинеты появятся автоматически.',
+          { remove_keyboard: true }
+        );
+      } else {
+        await replyToChat(msg.chat.id,
+          'Не удалось подтвердить номер. Нужен именно ваш контакт Telegram, отправленный кнопкой «Поделиться своим номером». ' +
+          'Перешлите свой контакт через /phone, а не выбирайте номер из адресной книги.'
+        );
+      }
+    }
+    return;
+  }
+  if (!msg.text) return;
   const text = msg.text.trim();
   if (msg.chat.type === 'private') {
     const create = text.match(/^\/clubpost(?:@\w+)?(?:\s+([\s\S]+))?$/i);
@@ -805,6 +828,17 @@ async function processUpdate(update) {
     return;
   }
 
+  // Alternative for Telegram clients without the native Mini App phone popup.
+  if (msg.chat.type === 'private' && /^\/phone(?:@\w+)?$/i.test(text)) {
+    await replyToChat(msg.chat.id,
+      '🔐 Для входа без пароля нужно подтвердить номер телефона, который указан в ХвостМаркете. ' +
+      'Нажмите кнопку ниже и разрешите Telegram отправить именно ваш номер.',
+      { keyboard: [[{ text: '📱 Поделиться своим номером', request_contact: true }]],
+        one_time_keyboard: true, resize_keyboard: true }
+    );
+    return;
+  }
+
   // Mini App links work in this EXISTING bot. Handle commands before free-text
   // club drafts and task creation so they cannot consume /shop or /cabinet.
   if (msg.chat.type === 'private' && /^\/(?:shop|cabinet)(?:@\w+)?$/i.test(text)) {
@@ -812,7 +846,7 @@ async function processUpdate(update) {
     await replyToChat(
       msg.chat.id,
       work
-        ? '👤 Рабочие кабинеты ХвостМаркета. Выберите роль и войдите с учётными данными сайта.'
+        ? '👤 Рабочие кабинеты ХвостМаркета. Подтвердите номер Telegram для входа без пароля или используйте логин и пароль сайта.'
         : '🛍 Магазин ХвостМаркета. Выберите салон, товары и оплачивайте покупки через ЮKassa.',
       miniAppDirectLinkMarkup(work ? 'work' : 'shop')
     );

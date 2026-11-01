@@ -18,6 +18,35 @@
   var restockItems = [];
   var root = document.getElementById('workPage');
   if (!root) return;
+  var identity = window.HvostMiniAppIdentity || null;
+  function phoneStatus() {
+    return identity ? identity.getStatus() : { loaded: false, verified: false, accounts: [], ambiguousRoles: [], error: '', busy: false };
+  }
+  function phoneRoleAvailable(role) {
+    return phoneStatus().accounts.some(function(a) { return a.role === role; });
+  }
+  function phoneBanner() {
+    if (!identity) return '';
+    var s = phoneStatus();
+    if (!s.loaded) return note('Проверяем аккаунты, подключённые к Telegram…');
+    if (!s.verified) {
+      return '<div class="work-surface"><h2>🔐 Вход без пароля</h2>' +
+        '<p class="work-note">Подтвердите номер телефона вашего Telegram. Мы найдём ваши зарегистрированные кабинеты ХвостМаркета. Вводить телефон вручную не нужно.</p>' +
+        '<button type="button" class="work-primary" data-work-action="share-phone" ' + (s.busy ? 'disabled' : '') + '>' +
+        (s.busy ? 'Проверяем номер…' : '📱 Подтвердить мой номер Telegram') + '</button>' +
+        '<button type="button" class="work-secondary" data-work-action="check-phone" style="margin-top:9px">↻ Проверить номер</button>' +
+        (s.error ? problem(s.error) : '') +
+        '<p class="work-quiet">Если Telegram не поддерживает запрос номера, отправьте боту /phone.</p></div>';
+    }
+    var roleNames = { customer: 'покупатель', partner: 'грумер', manager: 'менеджер', owner: 'владелец', admin: 'администратор' };
+    return note('✅ Номер подтверждён: ' + s.phoneMasked + '. ' +
+      (s.accounts.length
+        ? 'Доступны кабинеты: ' + s.accounts.map(function(a) { return roleNames[a.role] || a.role; }).join(', ') + '.'
+        : 'Зарегистрированные кабинеты на этот номер пока не найдены.')) +
+      (s.ambiguousRoles.length
+        ? problem('На один номер записаны несколько кабинетов одной роли. Для безопасного выбора войдите по логину и паролю.')
+        : '');
+  }
 
   function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
@@ -93,13 +122,13 @@
     renderAll();
   }
   function renderAll() {
-    root.innerHTML = heading('Рабочие кабинеты 🐾', 'Выберите вашу роль. Для доступа потребуются учётные данные действующего кабинета ХвостМаркета.') +
-      '<div class="work-roles">' + order.map(function(role) {
+    root.innerHTML = heading('Рабочие кабинеты 🐾', 'Выберите роль. Доступ по подтверждённому номеру Telegram или по действующему логину и паролю.') +
+      phoneBanner() + '<div class="work-roles">' + order.map(function(role) {
         var config = CONFIG[role];
         return '<button class="work-role" type="button" data-work-action="role" data-work-role="' + role + '">' +
           '<span class="work-role-icon">' + config.icon + '</span><strong>' + esc(config.title) + '</strong>' +
           '<span>' + esc(config.description) + '</span>' +
-          (getToken(role) ? '<small>● Есть сохранённая сессия</small>' : '<small>Войти в кабинет →</small>') +
+          (getToken(role) ? '<small>● Есть сохранённая сессия</small>' : phoneRoleAvailable(role) ? '<small>✓ Вход через Telegram доступен</small>' : '<small>Войти в кабинет →</small>') +
           '</button>';
       }).join('') + '</div>' +
       '<p class="work-quiet">Доступ к рабочим данным проверяется сервером. Имя и ID пользователя Telegram не назначают ему роль автоматически.</p>';
@@ -107,14 +136,16 @@
   function renderLogin(error) {
     if (!activeRole) return renderAll();
     var c = CONFIG[activeRole];
-    root.innerHTML = back() + heading(c.icon + ' Кабинет: ' + c.title, 'Войдите с теми же логином и паролем, что используются на сайте ХвостМаркета.') +
+    root.innerHTML = back() + heading(c.icon + ' Кабинет: ' + c.title, 'Вход по подтверждённому Telegram или по логину и паролю сайта.') +
+      (identity ? phoneBanner() : '') +
+      (phoneRoleAvailable(activeRole) ? '<button type="button" class="work-primary" data-work-action="phone-login" style="margin-bottom:12px">Войти через Telegram без пароля →</button>' : '') +
       '<form id="workLoginForm" class="work-auth-card" autocomplete="on">' +
         '<h2>Вход для сотрудника</h2><p class="work-sub">Только для зарегистрированных пользователей этой роли.</p>' +
         '<label class="work-label" for="workLogin">Логин</label><input class="work-input" id="workLogin" name="username" type="text" autocomplete="username" maxlength="150" required>' +
         '<label class="work-label" for="workPassword">Пароль</label><input class="work-input" id="workPassword" name="password" type="password" autocomplete="current-password" maxlength="300" required>' +
         (error ? problem(error) : '') +
         '<button class="work-primary" type="submit" id="workLoginButton" style="margin-top:18px">Войти в кабинет →</button>' +
-      '</form>' + note('Telegram не предоставляет права грумера, менеджера, владельца или администратора автоматически. Первичный вход выполняется по существующей учётной записи.');
+      '</form>' + note('Номер подтверждается непосредственно Telegram. Администратору также требуется предварительная привязка Telegram в действующем кабинете сайта.');
   }
   function renderLoading(text) {
     root.innerHTML = back() + heading(CONFIG[activeRole].icon + ' ' + CONFIG[activeRole].title, text || 'Загружаем данные…') +
@@ -142,7 +173,24 @@
     saveRole(role);
     var mySerial = ++serial;
     var token = getToken(role);
-    if (!token) { renderLogin(); return; }
+    if (!token) {
+      if (identity && phoneRoleAvailable(role)) {
+        renderLoading('Подтверждаем кабинет по номеру Telegram…');
+        try {
+          var loginResult = await identity.session(role);
+          if (mySerial !== serial || activeRole !== role) return;
+          if (loginResult && loginResult.token) {
+            setToken(role, loginResult.token);
+            return chooseRole(role);
+          }
+        } catch (err) {
+          if (mySerial !== serial || activeRole !== role) return;
+          renderLogin('Вход по Telegram не удался: ' + err.message);
+          return;
+        }
+      }
+      return renderLogin();
+    }
     renderLoading('Проверяем сохранённый вход…');
     try {
       var data = await fetchJSON(CONFIG[role].me, token);
@@ -382,6 +430,15 @@
     if (action === 'all') return openAll();
     if (action === 'role') return chooseRole(button.dataset.workRole);
     if (action === 'logout') { var role = activeRole; clearToken(role); currentUser = null; serial++; return renderLogin(); }
+    if (action === 'share-phone' && identity) return identity.requestContact().then(function() {
+      if (activeRole) chooseRole(activeRole);
+      else renderAll();
+    });
+    if (action === 'check-phone' && identity) return identity.refresh().then(function() {
+      if (activeRole) chooseRole(activeRole);
+      else renderAll();
+    });
+    if (action === 'phone-login' && activeRole) return chooseRole(activeRole);
     if (action === 'reload') return chooseRole(activeRole);
     if (action === 'full') return openFullCabinet(activeRole);
   });
@@ -389,6 +446,14 @@
     if (e.target.id === 'workLoginForm') { e.preventDefault(); login(); }
     if (e.target.id === 'workRestockForm') { e.preventDefault(); sendRestock(); }
   });
+  if (identity) identity.onChange(function(state) {
+    if (!activeRole) return renderAll();
+    if (root.innerHTML.includes('workLoginForm') && state.verified &&
+        state.accounts.some(function(a) { return a.role === activeRole; })) {
+      chooseRole(activeRole);
+    }
+  });
+
   window.HvostMiniAppWork = {
     render: function() {
       if (!activeRole) return renderAll();
