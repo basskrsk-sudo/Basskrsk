@@ -1,0 +1,33 @@
+name: Telegram Mini App checks
+
+on:
+  pull_request:
+    paths:
+      - public/miniapp.html
+      - server/routes-miniapp.js
+      - server/routes-miniapp.test.js
+      - server/customer-miniapp-bot.js
+      - server/routes-payment.js
+      - server/server.js
+      - .github/workflows/miniapp-checks.yml
+  workflow_dispatch:
+
+jobs:
+  miniapp-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check server and bot JavaScript syntax
+        run: |
+          node --check server/server.js
+          node --check server/routes-payment.js
+          node --check server/routes-miniapp.js
+          node --check server/customer-miniapp-bot.js
+      - name: Check Mini App inline JavaScript syntax
+        run: |
+          node -e "const fs=require('node:fs');const s=fs.readFileSync('public/miniapp.html','utf8');const m=s.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);if(!m)throw new Error('missing Mini App script');new Function(m[1]);console.log('Mini App JavaScript syntax OK');"
+      - name: Verify signed Telegram authorization
+        run: node --test server/routes-miniapp.test.js
