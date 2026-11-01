@@ -35,7 +35,7 @@ test('business founder dashboard contains financial growth, plan, risks, persona
   tasks:{my_active:3,my_overdue:1,items:[{title:'Договор',status:'new',due_date:'2026-11-05'}],initiatives:[]},
  };
  const page=view.render(data);
- for(const text of ['Лакомых Алексей','45%','Кабинет собственника',
+ for(const text of ['Лакомых Алексей','45%','КАБИНЕТ СОБСТВЕННИКА',
   'Выручка','Средний чек','Расчётный результат','Точка без продаж',
   'Стратегия: 1000 точек','Капитал и доли','Мои поручения','Расходы',
   'Оценка, не прибыль','100 000 ₽','1 000']){
