@@ -556,6 +556,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="config.js"></script>
 <script src="payout-schedule.js"></script>
 <script src="telegram-connect.js?v=38"></script>
+<link rel="stylesheet" href="/notification-settings.css">
 </head>
 <body>
 <!-- ADMIN LOGIN SCREEN -->
@@ -8341,5 +8342,7 @@ if ('serviceWorker' in navigator) {
 </script>
 <script src="/payout-reports.js"></script>
 <script src="/miniapp-return.js"></script>
+<script src="/notification-settings.js"></script>
+<script>window.HvostNotificationSettings.installFull("admin");</script>
 </body>
 </html>
