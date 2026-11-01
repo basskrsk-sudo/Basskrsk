@@ -28,6 +28,7 @@ function runTelegramUi() {
   const document = {
     getElementById: createElement,
     querySelectorAll: () => [],
+    querySelector: () => null,
     addEventListener() {},
     body: { style: {} },
   };
