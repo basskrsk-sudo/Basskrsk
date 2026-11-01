@@ -26,7 +26,7 @@ jobs:
             ('/notification-settings.js',['Настройки уведомлений','/api/me/notifications','installFull']),
             ('/notification-settings.css',['hm-notify-row','hm-notify-overlay']),
             ('/miniapp-work.js',['data-work-action="notifications"','openNotificationSettings','selectedRole === \'salon\'']),
-            ('/miniapp-customer.js',["action('notifications'","data.customerAction === 'notifications'"]),
+            ('/miniapp-customer.js',["action('notifications'","dataset.customerAction === 'notifications'"]),
             ('/taiga-groomer.html',['installFull("partner")']),
             ('/taiga-owner.html',['installFull("owner")']),
             ('/taiga-manager.html',['installFull("manager")']),
@@ -34,7 +34,7 @@ jobs:
             ('/taiga-warehouse.html',['installFull("warehouse"']),
             ('/p.html',['/api/create-payment','Возьмите товар с полки']),
           ]
-          for attempt in range(1,13):
+          for attempt in range(1,11):
             issues=[]
             for path,expected in checks:
               try:
@@ -67,6 +67,6 @@ jobs:
               print('READ ONLY: no account changes, no orders, no messages sent',flush=True)
               break
             print('Attempt',attempt,'not ready:',issues,flush=True)
-            if attempt<12:time.sleep(9)
+            if attempt<10:time.sleep(8)
           else:raise SystemExit('FAIL: Amvera has not delivered new notification preferences release')
           PY
