@@ -17,6 +17,7 @@
   var enteredPhone = '';
   var confirmingPhone = false;
   var ROLE_LABELS = {
+    salon: '✂️🏠 Мой салон и продажи',
     partner: '✂️ Грумер', manager: '🗂️ Менеджер',
     owner: '🏠 Владелец салона', founder: '👑 Собственник ХвостМаркета',
     admin: '📊 Администратор',
@@ -53,6 +54,14 @@
     var roles = (status.accounts || []).filter(function(a) {
       return Object.prototype.hasOwnProperty.call(ROLE_LABELS, a.role);
     });
+    if (status.combinedSalon && roles.some(function(a) { return a.role === 'partner'; }) &&
+        roles.some(function(a) { return a.role === 'owner'; })) {
+      // One navigation tile for the same person doing both jobs. Existing
+      // salary/owner payouts stay separate in their respective backend roles.
+      roles = [{ role: 'salon', name: 'Грумер и владелец салона' }].concat(
+        roles.filter(function(a) { return a.role !== 'partner' && a.role !== 'owner'; })
+      );
+    }
     if (!roles.length) return '';
     return '<div class="block"><h3 style="margin:0 0 8px">Ваши другие кабинеты</h3>' +
       '<p class="muted" style="font-size:12px">Найдены по подтверждённому номеру Telegram:</p>' +
@@ -227,8 +236,12 @@
     }
     if (btn.dataset.customerAction === 'choose-role') {
       var role = btn.dataset.customerRole;
-      if (identity.getStatus().verified &&
-          identity.getStatus().accounts.some(function(a) { return a.role === role; }) &&
+      var status = identity.getStatus();
+      if (status.verified &&
+          (status.accounts.some(function(a) { return a.role === role; }) ||
+            (role === 'salon' && status.combinedSalon &&
+              status.accounts.some(function(a) { return a.role === 'partner'; }) &&
+              status.accounts.some(function(a) { return a.role === 'owner'; }))) &&
           window.HvostMiniAppOpenRole) window.HvostMiniAppOpenRole(role);
       return;
     }
