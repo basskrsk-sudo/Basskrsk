@@ -158,3 +158,38 @@ test('customer winback messages and gift candidates honor explicit customer cons
   savePreferences('customer',c,{offers:false});
   assert.equal(findWinbackCandidates().some(x=>x.id===c),false);
 });
+
+
+test('recorded payout notices obey independent partner/owner/manager toggles without reserving suppressed deliveries',async()=>{
+  const telegram=require('./telegram');
+  const old=telegram.sendToChat;
+  const chats=[];
+  telegram.sendToChat=async(chat,message)=>{chats.push({chat:String(chat),message});return {ok:true};};
+  const file=require.resolve('./payout-reminders');
+  delete require.cache[file];
+  try {
+    const payouts=require('./payout-reminders');
+    savePreferences('partner',p,{payouts:false});
+    savePreferences('owner',o,{payouts:false});
+    savePreferences('manager',m,{payouts:false});
+    const partnerPayout={id:90001,paid_at:'2026-11-01 11:00:00'};
+    const ownerPayout={id:90002,paid_at:'2026-11-01 11:00:00'};
+    assert.equal((await payouts.sendPartnerPayoutNotification(p,partnerPayout,'Оплачено'))[0].disabled,true);
+    assert.equal((await payouts.sendOwnerPayoutNotification(o,ownerPayout,'Оплачено'))[0].disabled,true);
+    assert.equal((await payouts.sendManagerPayoutNotification(m,{id:90003},'Оплачено','launch_bonus'))[0].disabled,true);
+    assert.deepEqual(chats,[]);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM payout_notification_log').get().n,0,
+      'suppressed payouts should not occupy a delivery reservation');
+    savePreferences('partner',p,{payouts:true});
+    savePreferences('owner',o,{payouts:true});
+    savePreferences('manager',m,{payouts:true});
+    assert.equal((await payouts.sendPartnerPayoutNotification(p,partnerPayout,'Оплачено'))[0].ok,true);
+    assert.equal((await payouts.sendOwnerPayoutNotification(o,ownerPayout,'Оплачено'))[0].ok,true);
+    assert.equal((await payouts.sendManagerPayoutNotification(m,{id:90003},'Оплачено','launch_bonus'))[0].ok,true);
+    assert.deepEqual(chats.map(x=>x.chat),['11002','11002','11003']);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM payout_notification_log WHERE status='sent'").get().n,3);
+  } finally {
+    telegram.sendToChat=old;
+    delete require.cache[file];
+  }
+});
