@@ -17,10 +17,10 @@ function fixture() {
     'CREATE TABLE meeting_tasks (id INTEGER PRIMARY KEY, source_key TEXT UNIQUE, meeting_date TEXT, title TEXT NOT NULL,',
     'description TEXT, assignee_id INTEGER REFERENCES task_assignees(id), due_date TEXT, priority TEXT DEFAULT "normal",',
     'status TEXT DEFAULT "new", reminder_enabled INTEGER DEFAULT 1, recurrence_rule TEXT, created_by TEXT, completed_at TEXT,',
-    'created_at TEXT DEFAULT (datetime("now")), updated_at TEXT DEFAULT (datetime("now")));',
+    'created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);',
     'CREATE TABLE meeting_task_history (id INTEGER PRIMARY KEY, task_id INTEGER, action TEXT, old_value TEXT,',
-    'new_value TEXT, actor TEXT, created_at TEXT DEFAULT (datetime("now")));',
-    'CREATE TABLE task_seed_versions (version TEXT PRIMARY KEY, applied_at TEXT DEFAULT (datetime("now")));',
+    'new_value TEXT, actor TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);',
+    'CREATE TABLE task_seed_versions (version TEXT PRIMARY KEY, applied_at TEXT DEFAULT CURRENT_TIMESTAMP);',
   ].join(' '));
   for (const code of ['alexey', 'vitaly', 'nikolay', 'angelina']) {
     database.prepare('INSERT INTO task_assignees(code,full_name) VALUES (?,?)').run(code, code);
