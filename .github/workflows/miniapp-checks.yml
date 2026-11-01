@@ -8,7 +8,7 @@ on:
       - public/miniapp-tasks.js
       - server/routes-miniapp-tasks.js
       - server/miniapp-staff-tasks.test.js
-      - server/miniapp-staff-tasks-ui.test.js
+      - server/miniapp-staff-tasks-ui.test.js server/task-seed-2026-11-01.test.js
       - public/miniapp-founder.js
       - public/miniapp-founder-admin.js
       - public/miniapp-identity.js
@@ -62,6 +62,8 @@ on:
       - server/miniapp-header-contrast.test.js
       - server/routes-payment.js
       - server/server.js
+      - server/task-seed-2026-11-01.js
+      - server/task-seed-2026-11-01.test.js
       - .github/workflows/miniapp-checks.yml
   workflow_dispatch:
 
@@ -76,6 +78,8 @@ jobs:
       - name: Check server and bot JavaScript syntax
         run: |
           node --check server/server.js
+          node --check server/task-seed-2026-11-01.js
+          node --check server/task-seed-2026-11-01.test.js
           node --check server/routes-payment.js
           node --check server/routes-miniapp.js
           node --check server/routes-miniapp-tasks.js
