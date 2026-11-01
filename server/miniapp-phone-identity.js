@@ -8,7 +8,7 @@ const { signToken } = require('./auth');
 const PHONE_PROOF_TTL_SECONDS = 30 * 24 * 60 * 60;
 const ACCOUNT_TABLES = Object.freeze({
   customer: 'customers', partner: 'partners',
-  manager: 'managers', owner: 'salon_owners',
+  manager: 'managers', owner: 'salon_owners', founder: 'business_founders',
 });
 
 db.exec([
@@ -81,7 +81,8 @@ function accountMatchesForRole(role, phone, userId) {
   if (!table || !phone) return [];
   const select = role === 'customer'
     ? 'SELECT id, name, lname, phone, telegram_chat_id FROM customers'
-    : 'SELECT id, login, full_name, phone, telegram_chat_id FROM ' + table + ' WHERE active = 1';
+    : 'SELECT id, login, full_name, phone, telegram_chat_id FROM ' + table +
+      (role === 'founder' ? ' WHERE active = 1 AND login IS NOT NULL AND password_hash IS NOT NULL' : ' WHERE active = 1');
   return db.prepare(select).all()
     .filter(row =>
       registeredPhoneMatch(row.phone, phone) &&
@@ -102,7 +103,7 @@ function availableTelegramAccounts(userId, now = Math.floor(Date.now() / 1000)) 
   if (!phone) return { verified: false, phoneMasked: '', accounts: [], ambiguousRoles: [] };
   const accounts = [];
   const ambiguousRoles = [];
-  for (const role of ['customer', 'partner', 'manager', 'owner', 'admin']) {
+  for (const role of ['customer', 'partner', 'manager', 'owner', 'founder', 'admin']) {
     const matches = accountMatchesForRole(role, phone, userId);
     if (matches.length === 1) {
       accounts.push(matches[0]);
@@ -116,7 +117,7 @@ function availableTelegramAccounts(userId, now = Math.floor(Date.now() / 1000)) 
 }
 
 function issueTelegramAccountSession(userId, role, now = Math.floor(Date.now() / 1000)) {
-  if (!['customer', 'partner', 'manager', 'owner', 'admin'].includes(role)) return null;
+  if (!['customer', 'partner', 'manager', 'owner', 'founder', 'admin'].includes(role)) return null;
   const matched = availableTelegramAccounts(userId, now);
   if (!matched.verified) return null;
   const account = matched.accounts.find(a => a.role === role);
