@@ -47,7 +47,7 @@ function accountAvailable(role,id) {
   const table=TABLES[role];
   const numeric=Number(id);
   if(!table || !Number.isSafeInteger(numeric) || numeric<=0)return false;
-  const active=role==='customer'||role==='warehouse' ? '' : ' AND active = 1';
+  const active=role==='customer' ? '' : ' AND active = 1';
   return !!db.prepare('SELECT id FROM '+table+' WHERE id = ?'+active).get(numeric);
 }
 
