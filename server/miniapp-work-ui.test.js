@@ -42,8 +42,15 @@ function createHarness(fixtures = {}, initialStorage = {}, phoneIdentity = null,
     const status = item.status || 200;
     return { ok: status < 400, status, json: async () => item.body || item };
   };
+  // Most legacy staff dashboard tests start AFTER successful phone entry.
+  // Explicit phoneIdentity fixtures exercise locked and role-filtered states.
+  const postCheck = phoneIdentity || {
+    getStatus() { return { loaded:true, verified:true, contactVerified:true,
+      accounts:[], ambiguousRoles:[], phoneMasked:'', error:'', busy:false }; },
+    onChange() {},
+  };
   const window = { location: { assign(url) { navigation.push(url); } },
-    ...(phoneIdentity ? { HvostMiniAppIdentity: phoneIdentity } : {}),...extras };
+    HvostMiniAppIdentity: postCheck, ...extras };
   const context = vm.createContext({ document, window, localStorage, sessionStorage, fetch });
   vm.runInContext(source, context, { filename: 'miniapp-work.js', timeout: 3000 });
   return {
@@ -63,16 +70,33 @@ async function flush() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
-test('role picker lists all staff and business founders; public Telegram profile cannot open cabinets', async () => {
-  const h = createHarness();
-  h.window.HvostMiniAppWork.render();
-  assert.deepEqual(Array.from(h.window.HvostMiniAppWork.roles), ['partner', 'manager', 'owner', 'founder', 'admin']);
-  ['Грумер', 'Менеджер', 'Владелец салона', 'Собственник ХвостМаркета', 'Администратор'].forEach(
-    (role) => assert.ok(h.root.innerHTML.includes(role))
-  );
-  await h.window.HvostMiniAppWork.chooseRole('admin');
-  assert.match(h.root.innerHTML, /workLoginForm/);
-  assert.equal(h.calls.length, 0, 'no private network request before work login');
+test('work role picker is locked until phone confirmation, then shows only linked roles', async () => {
+  const locked = createHarness({}, {}, {
+    getStatus(){return {loaded:true,verified:false,contactVerified:true,accounts:[],ambiguousRoles:[],error:''};},
+    onChange(){},
+  });
+  locked.window.HvostMiniAppWork.render();
+  assert.deepEqual(Array.from(locked.window.HvostMiniAppWork.roles), ['partner','manager','owner','founder','admin']);
+  assert.match(locked.root.innerHTML, /Сначала подтвердите свой номер/);
+  assert.doesNotMatch(locked.root.innerHTML, /class="work-role"/);
+  await locked.window.HvostMiniAppWork.chooseRole('admin');
+  assert.doesNotMatch(locked.root.innerHTML, /workLoginForm/);
+  assert.equal(locked.calls.length, 0);
+
+  const verified = createHarness({}, {}, {
+    getStatus(){return {loaded:true,verified:true,contactVerified:true,phoneMasked:'+7 (***) ***-**-06',
+      accounts:[{role:'customer',name:'Покупатель'},{role:'admin',name:'Администратор'}],ambiguousRoles:[],error:''};},
+    onChange(){},
+    async session(){ return {}; },
+  });
+  verified.window.HvostMiniAppWork.render();
+  assert.match(verified.root.innerHTML, /data-work-role="admin"/);
+  for (const role of ['partner','manager','owner','founder']) {
+    assert.doesNotMatch(verified.root.innerHTML, new RegExp('data-work-role="'+role+'"'));
+  }
+  await verified.window.HvostMiniAppWork.chooseRole('admin');
+  assert.match(verified.root.innerHTML, /workLoginForm/);
+  assert.equal(verified.calls.length,0);
 });
 
 test('groomer signs in through existing auth and only reads own partner data', async () => {
