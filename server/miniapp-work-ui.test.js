@@ -46,7 +46,7 @@ function createHarness(fixtures = {}, initialStorage = {}) {
   const context = vm.createContext({ document, window, localStorage, sessionStorage, fetch });
   vm.runInContext(source, context, { filename: 'miniapp-work.js', timeout: 3000 });
   return {
-    root, elements, events, values, calls, navigation, window,
+    root, document, elements, events, values, calls, navigation, window,
     submit(id) { events.submit({ target: { id }, preventDefault() {} }); },
     click(action, role) {
       events.click({
@@ -85,8 +85,8 @@ test('groomer signs in through existing auth and only reads own partner data', a
     '/api/partners/me/stock': { stock: [{ variant_id: 10, product_name: 'Сердце говяжье', weight: '50 г', qty: 1 }] },
   });
   await h.window.HvostMiniAppWork.chooseRole('partner');
-  h.elements.workLogin.value = 'groomer-login';
-  h.elements.workPassword.value = 'secure-password';
+  h.document.getElementById('workLogin').value = 'groomer-login';
+  h.document.getElementById('workPassword').value = 'secure-password';
   h.submit('workLoginForm');
   await flush();
   const loginCall = h.calls.find((c) => c.url === '/api/auth/login');
@@ -110,15 +110,15 @@ test('groomer can send precisely one restock item with authorized token', async 
     '/api/partners/me/restock-signal': { ok: true, request_id: 202 },
   }, { taiga_partner_token: 'existing-partner-token' });
   await h.window.HvostMiniAppWork.chooseRole('partner');
-  h.elements.workRestockItem.value = '42';
-  h.elements.workRestockQty.value = '7';
+  h.document.getElementById('workRestockItem').value = '42';
+  h.document.getElementById('workRestockQty').value = '7';
   h.submit('workRestockForm');
   await flush();
   const sent = h.calls.find((c) => c.url === '/api/partners/me/restock-signal');
   assert.ok(sent);
   assert.equal(sent.opts.headers.Authorization, 'Bearer existing-partner-token');
   assert.deepEqual(JSON.parse(sent.opts.body), { items: [{ variant_id: 42, qty: 7 }] });
-  assert.match(h.elements.workRestockMessage.innerHTML, /202/);
+  assert.match(h.document.getElementById('workRestockMessage').innerHTML, /202/);
 });
 
 test('manager sees only manager-scoped points and 30-day orders', async () => {
