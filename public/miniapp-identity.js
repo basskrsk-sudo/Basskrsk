@@ -139,8 +139,27 @@
     listeners.push(fn);
     return function() { listeners = listeners.filter(function(x) { return x !== fn; }); };
   }
-  function init(webApp) {
+  function bindVerifiedTelegramUser(user) {
+    // The Telegram ID comes from the SERVER-VERIFIED initData response, not
+    // untrusted initDataUnsafe. Avoid reusing sessions from another Telegram
+    // account when multiple accounts are switched on one iPhone.
+    if (!user || !Number.isSafeInteger(user.id) || user.id <= 0) return;
+    try {
+      var id = String(user.id);
+      var key = 'hm_miniapp_last_telegram_user';
+      var last = localStorage.getItem(key);
+      if (last && last !== id) {
+        Object.keys(TOKENS).forEach(function(role) {
+          localStorage.removeItem(TOKENS[role]);
+        });
+        localStorage.removeItem('taiga_admin_role');
+      }
+      localStorage.setItem(key, id);
+    } catch (_) {}
+  }
+  function init(webApp, serverVerifiedUser) {
     telegram = webApp || null;
+    bindVerifiedTelegramUser(serverVerifiedUser);
     if (telegram && typeof telegram.onEvent === 'function') {
       try { telegram.onEvent('activated', function() { refresh(); }); } catch (_) {}
     }
