@@ -30,8 +30,7 @@ function callMiniAppAuth(body) {
   let handler;
   registerMiniAppRoutes({
     post(route, fn) {
-      assert.equal(route, '/api/miniapp/auth');
-      handler = fn;
+      if (route === '/api/miniapp/auth') handler = fn;
     },
   });
   const response = {
