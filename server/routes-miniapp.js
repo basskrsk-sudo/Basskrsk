@@ -93,7 +93,7 @@ function registerMiniAppRoutes(router) {
     const user = verifiedMiniAppUser(ctx, res);
     if (!user) return;
     const role = String(ctx.body && ctx.body.role || '');
-    if (!['customer', 'partner', 'manager', 'owner', 'admin'].includes(role)) {
+    if (!['customer', 'partner', 'manager', 'owner', 'founder', 'admin'].includes(role)) {
       return sendJson(res, 400, { error: 'Некорректная роль' });
     }
     const result = issueTelegramAccountSession(user.id, role);
