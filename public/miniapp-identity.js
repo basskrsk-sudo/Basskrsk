@@ -16,6 +16,7 @@
     partner: 'taiga_partner_token',
     manager: 'taiga_manager_token',
     owner: 'taiga_owner_token',
+    founder: 'hm_business_founder_token',
     admin: 'taiga_admin_token',
   };
 
