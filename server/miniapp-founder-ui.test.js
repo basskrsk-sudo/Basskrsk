@@ -39,9 +39,9 @@ test('business founder dashboard contains financial growth, plan, risks, persona
   'Выручка','Средний чек','Расчётный результат','Точка без продаж',
   'Стратегия: 1000 точек','Капитал и доли','Мои поручения','Расходы',
   'Оценка, не прибыль','100 000 ₽','1 000']){
-  assert.ok(page.includes(text),text+' should render');
+  assert.ok(page.replace(/\u00a0/g, ' ').includes(text),text+' should render');
  }
- assert.ok(page.includes('-1 200 ₽'));
+ assert.ok(page.replace(/\u00a0/g, ' ').includes('-1 200 ₽'));
  assert.ok(!page.includes('password_hash'));
  assert.equal(view.getPeriod(),'30d');
  view.setPeriod('month');
