@@ -10,7 +10,7 @@ const vm = require('node:vm');
 // payments are needed: every API response is explicitly mocked per scenario.
 const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'miniapp-work.js'), 'utf8');
 
-function createHarness(fixtures = {}, initialStorage = {}) {
+function createHarness(fixtures = {}, initialStorage = {}, phoneIdentity = null) {
   const values = { ...initialStorage };
   const elements = {};
   const events = {};
@@ -42,7 +42,8 @@ function createHarness(fixtures = {}, initialStorage = {}) {
     const status = item.status || 200;
     return { ok: status < 400, status, json: async () => item.body || item };
   };
-  const window = { location: { assign(url) { navigation.push(url); } } };
+  const window = { location: { assign(url) { navigation.push(url); } },
+    ...(phoneIdentity ? { HvostMiniAppIdentity: phoneIdentity } : {}) };
   const context = vm.createContext({ document, window, localStorage, sessionStorage, fetch });
   vm.runInContext(source, context, { filename: 'miniapp-work.js', timeout: 3000 });
   return {
@@ -190,4 +191,35 @@ test('invalid or inactive account does not reveal a dashboard', async () => {
   await h.window.HvostMiniAppWork.chooseRole('partner');
   assert.match(h.root.innerHTML, /workLoginForm/);
   assert.equal(h.values.taiga_partner_token, undefined);
+});
+
+
+test('registered groomer with confirmed Telegram phone opens own cabinet without password', async () => {
+  const identity = {
+    getStatus() { return {
+      loaded: true, verified: true, phoneMasked: '+7 (***) ***-**-01',
+      accounts: [{ role: 'partner', name: 'Грумер' }],
+      ambiguousRoles: [], error: '', busy: false,
+    }; },
+    onChange() {},
+    async session(role) {
+      assert.equal(role, 'partner');
+      return { role, token: 'telegram-groomer-session' };
+    },
+  };
+  const h = createHarness({
+    '/api/partners/me': { partner: { id: 1, full_name: 'Грумер', active: 1 } },
+    '/api/partners/me/orders?days=30': { orders: [] },
+    '/api/partners/me/payouts?limit=10': { unpaid_amount: 0 },
+    '/api/partners/me/stock': { stock: [] },
+  }, {}, identity);
+  h.window.HvostMiniAppWork.render();
+  assert.match(h.root.innerHTML, /Вход через Telegram доступен/);
+  await h.window.HvostMiniAppWork.chooseRole('partner');
+  assert.equal(h.values.taiga_partner_token, 'telegram-groomer-session');
+  assert.match(h.root.innerHTML, /Грумер/);
+  assert.ok(h.calls.every(c => c.opts.headers.Authorization === 'Bearer telegram-groomer-session'));
+  assert.equal(h.calls.some(c => c.url === '/api/auth/login'), false);
+  await h.window.HvostMiniAppWork.chooseRole('manager');
+  assert.match(h.root.innerHTML, /workLoginForm/, 'unmatched role never auto-signs in');
 });
