@@ -45,9 +45,13 @@
         '<p class="work-quiet">Если Telegram не поддерживает запрос номера, отправьте боту /phone.</p></div>';
     }
     var roleNames = { customer: 'покупатель', partner: 'грумер', manager: 'менеджер', owner: 'владелец салона', founder: 'собственник бизнеса', admin: 'администратор' };
+    var namedRoles = s.combinedSalon ? ['грумер — владелец салона'].concat(
+      s.accounts.filter(function(a) { return a.role !== 'partner' && a.role !== 'owner'; })
+        .map(function(a) { return roleNames[a.role] || a.role; })
+    ) : s.accounts.map(function(a) { return roleNames[a.role] || a.role; });
     return note('✅ Номер подтверждён: ' + s.phoneMasked + '. ' +
       (s.accounts.length
-        ? 'Доступны кабинеты: ' + s.accounts.map(function(a) { return roleNames[a.role] || a.role; }).join(', ') + '.'
+        ? 'Доступны кабинеты: ' + namedRoles.join(', ') + '.'
         : 'Зарегистрированные кабинеты на этот номер пока не найдены.')) +
       (s.ambiguousRoles.length
         ? problem('На один номер записаны несколько кабинетов одной роли. Для безопасного выбора войдите по логину и паролю.')
@@ -572,7 +576,7 @@
     return html;
   }
   async function sendRestock() {
-    if (activeRole !== 'partner' || !currentUser) return;
+    if ((activeRole !== 'partner' && activeRole !== 'salon') || !currentUser) return;
     var select = document.getElementById('workRestockItem');
     var quantity = document.getElementById('workRestockQty');
     var button = document.getElementById('workRestockButton');
@@ -586,7 +590,7 @@
       return;
     }
     var token = getToken('partner');
-    if (!token) return renderLogin('Сессия завершена. Повторите вход.');
+    if (!token) { status.innerHTML = problem('Сессия грумера завершена. Обновите кабинет.'); return; }
     button.disabled = true;
     status.innerHTML = '';
     try {
@@ -597,7 +601,11 @@
       });
       status.innerHTML = note('✅ Заявка №' + result.request_id + ' на пополнение передана менеджеру.');
     } catch (e) {
-      if (e.status === 401 || e.status === 403) { clearToken('partner'); return renderLogin('Сессия истекла.'); }
+      if (e.status === 401 || e.status === 403) {
+        clearToken('partner');
+        if (activeRole === 'salon') return chooseCombinedSalon();
+        return renderLogin('Сессия истекла.');
+      }
       status.innerHTML = problem(e.message);
     } finally { button.disabled = false; }
   }
@@ -641,6 +649,7 @@
     if (e.target.id === 'workRestockForm') { e.preventDefault(); sendRestock(); }
   });
   if (identity) identity.onChange(function(state) {
+    if (!state.verified || (activeRole === 'salon' && !state.combinedSalon)) return openAll();
     if (!activeRole) return renderAll();
     if (root.innerHTML.includes('workLoginForm') && state.verified &&
         state.accounts.some(function(a) { return a.role === activeRole; })) {
