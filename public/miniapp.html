@@ -112,7 +112,11 @@ window.HvostMiniAppGoProfile=function(){setView('profile')};
 window.HvostMiniAppGoShop=function(){setView('shop')};
 window.HvostMiniAppOpenRole=function(role){
   if(!isPhoneAccessUnlocked())return setView('profile');
-  if(!window.HvostMiniAppIdentity.getStatus().accounts.some(function(a){return a.role===role}))return;
+  var status=window.HvostMiniAppIdentity.getStatus();
+  if(!(status.accounts.some(function(a){return a.role===role})||
+      (role==='salon'&&status.combinedSalon&&
+       status.accounts.some(function(a){return a.role==='partner'})&&
+       status.accounts.some(function(a){return a.role==='owner'}))))return;
   setView('work');
   if(window.HvostMiniAppWork)window.HvostMiniAppWork.chooseRole(role);
 };
