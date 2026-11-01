@@ -47,6 +47,7 @@ const {
 } = require('./warehouse-telegram-report');
 const { collectNoGroomerReport, formatNoGroomerReport, buildNoGroomerCsv } = require('./no-groomer-report');
 const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
+const newProductBroadcast = require('./new-product-broadcast');
 let lastUpdateId = 0;
 let polling = false;
 
@@ -94,6 +95,7 @@ async function configureBotProfile() {
       { command: 'nogroomer', description: 'Оплаченные заказы без грумера' },
       { command: 'payouts', description: 'Справка для выплат партнёрам' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
+      { command: 'newproduct', description: '📷 Рассылка о новом товаре' },
       { command: 'cancel', description: 'Отменить текущее действие' },
       { command: 'help', description: 'Как пользоваться ботом' },
       { command: 'chatid', description: 'Показать ID текущей группы' },
@@ -140,6 +142,7 @@ function buildWelcomeMessage() {
     '',
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /stock — остатки центрального склада; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
+    'Супер-администратору: /newproduct — рассылка новинки с фотографией и предпросмотром.',
     '',
     'Для быстрого входа в Mini App подтвердите свой номер Telegram — увидите зарегистрированные кабинеты без ввода пароля. Для админки нужна предварительная привязка Telegram из аккаунта сайта.',
   ].join('\n');
@@ -157,11 +160,36 @@ function botActionButtons(chatId) {
     keyboard.push([{ text: '📦 Остатки центрального склада', callback_data: 'warehouse:stock' }]);
     keyboard.push([{ text: '🔎 Заказы без грумера', callback_data: 'sales:nogroomer' }]);
     keyboard.push([{ text: '💸 Справки к выплатам', callback_data: 'payouts:prepare' }]);
+    if (newProductBroadcast.isBroadcaster(chatId)) {
+      keyboard.push([{ text: '📷 Рассылка о новинке', callback_data: 'newprod:new' }]);
+    }
   }
   if (chatId && require('./routes-partner-club').isClubModerator(chatId)) {
     keyboard.push([{ text: '🐾 Сообщение партнёрам', callback_data: 'club:new' }]);
   }
   return { inline_keyboard: keyboard };
+}
+
+async function replyNewProduct(chatId, result) {
+  if (!result) return;
+  if (result.preview) {
+    const photo = await newProductBroadcast.sendProductPhoto(
+      chatId, result.preview.ref, result.preview.caption,
+      result.preview.reply_markup
+    );
+    if (!photo.ok) {
+      await replyToChat(chatId,
+        '⚠️ Не удалось показать фото: ' + (photo.error || 'Ошибка Telegram') +
+        '\nПришлите другое фото через кнопку «📷 Заменить фото».',
+        { inline_keyboard: [
+          [{ text: '📷 Заменить фото', callback_data: 'newprod:photo' }],
+          [{ text: '❌ Отмена', callback_data: 'newprod:cancel' }],
+        ] }
+      );
+      return;
+    }
+  }
+  if (result.message) await replyToChat(chatId, result.message, result.reply_markup);
 }
 
 async function sendTaskInbox(chatId) {
@@ -584,6 +612,25 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (/^newprod:/.test(callback.data || '')) {
+      const chat = callback.message?.chat;
+      const permitted = chat?.type === 'private' &&
+        String(chat.id) === String(callback.from?.id);
+      const result = permitted
+        ? newProductBroadcast.handleCallback(chat.id, callback.data)
+        : { ok: false, message: '🔒 Доступно только в личном чате администратора.' };
+      try {
+        await callBotApi('answerCallbackQuery', {
+          callback_query_id: callback.id,
+          text: result.ok ? 'Готово' : String(result.message).slice(0, 180),
+          show_alert: !result.ok,
+        });
+      } catch (error) {
+        console.warn('[new-product] Не удалось подтвердить нажатие:', error.message);
+      }
+      if (permitted) await replyNewProduct(chat.id, result);
+      return;
+    }
     if (/^tsk:due:/.test(callback.data || '')) {
       const chat = callback.message?.chat;
       const allowed = chat?.type === 'private' &&
@@ -799,8 +846,19 @@ async function processUpdate(update) {
     }
     return;
   }
+  if (msg.chat?.type === 'private') {
+    const pendingNewProduct = newProductBroadcast.messageInput(msg);
+    if (pendingNewProduct) {
+      await replyNewProduct(msg.chat.id, pendingNewProduct);
+      return;
+    }
+  }
   if (!msg.text) return;
   const text = msg.text.trim();
+  if (msg.chat.type === 'private' && /^\/newproduct(?:@\w+)?$/i.test(text)) {
+    await replyNewProduct(msg.chat.id, newProductBroadcast.startBroadcast(msg.chat.id));
+    return;
+  }
   if (msg.chat.type === 'private') {
     const create = text.match(/^\/clubpost(?:@\w+)?(?:\s+([\s\S]+))?$/i);
     if (create) {
@@ -934,9 +992,10 @@ async function processUpdate(update) {
     const statusCancelled = db.prepare('DELETE FROM task_bot_pending_inputs WHERE channel = ? AND chat_id = ?')
       .run('telegram', String(msg.chat.id)).changes > 0;
     const dateCancelled = cancelTaskDueInput('telegram', msg.chat.id);
+    const newProductCancelled = newProductBroadcast.cancelDraft(msg.chat.id);
     await replyToChat(
       msg.chat.id,
-      createCancelled || expenseCancelled || statusCancelled || dateCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
+      createCancelled || expenseCancelled || statusCancelled || dateCancelled || newProductCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
       botActionButtons(msg.chat.id)
     );
     return;
@@ -1038,6 +1097,7 @@ async function startPolling() {
   }
   if (polling) return;
   polling = true;
+  newProductBroadcast.startBroadcastWorker();
   await configureBotProfile();
   console.log('Опрос Telegram для входа в личный кабинет запущен');
   while (polling) {
