@@ -4,6 +4,7 @@
 
 const BOT_TOKEN = String(process.env.TG_SHOP_BOT_TOKEN || '').trim();
 const SHOP_URL = 'https://хвостмаркет.рф/miniapp.html';
+const WORK_URL = SHOP_URL + '?view=work';
 let started = false;
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
@@ -38,6 +39,7 @@ async function configureBot() {
     commands: [
       { command: 'start', description: 'Открыть ХвостМаркет' },
       { command: 'shop', description: 'Перейти в магазин' },
+      { command: 'cabinet', description: 'Рабочие кабинеты партнёров и команды' },
       { command: 'help', description: 'Как покупать' },
     ],
   });
@@ -47,19 +49,21 @@ async function handleMessage(message) {
   if (!message || !message.chat || message.chat.type !== 'private') return;
   const raw = String(message.text || '');
   const command = raw.split(/\s+/)[0].split('@')[0].toLowerCase();
-  if (!['/start', '/shop', '/help'].includes(command)) return;
+  if (!['/start', '/shop', '/cabinet', '/help'].includes(command)) return;
   const help = command === '/help';
-  const text = help
-    ? '🐾 Как покупать в ХвостМаркете:\n\n1. Откройте магазин кнопкой ниже.\n2. Выберите грумерский салон.\n3. Добавьте лакомства и другие товары в корзину.\n4. Оплатите через ЮKassa и заберите покупку с полки салона.'
-    : '🐾 Добро пожаловать в ХвостМаркет!\n\nЛакомства, игрушки и забота о питомцах — прямо в Telegram.\n\nВыберите свой салон, проверьте наличие и порадуйте хвостика! 💚';
+  const text = command === '/cabinet'
+    ? '👤 Рабочие кабинеты ХвостМаркета\n\nГрумерам, владельцам, менеджерам и администраторам доступны свои данные, продажи и начисления. Нажмите кнопку ниже и войдите с учётной записью сайта.'
+    : help
+      ? '🐾 Как покупать в ХвостМаркете:\n\n1. Откройте магазин кнопкой ниже.\n2. Выберите грумерский салон.\n3. Добавьте лакомства и другие товары в корзину.\n4. Оплатите через ЮKassa и заберите покупку с полки салона.'
+      : '🐾 Добро пожаловать в ХвостМаркет!\n\nЛакомства, игрушки и забота о питомцах — прямо в Telegram.\n\nВыберите свой салон, проверьте наличие и порадуйте хвостика! 💚';
   await botMethod('sendMessage', {
     chat_id: message.chat.id,
     text,
     reply_markup: {
-      inline_keyboard: [[{
-        text: '🛍 Открыть ХвостМаркет',
-        web_app: { url: SHOP_URL },
-      }]],
+      inline_keyboard: [
+        [{ text: '🛍 Открыть магазин', web_app: { url: SHOP_URL } }],
+        [{ text: '👤 Рабочие кабинеты', web_app: { url: WORK_URL } }],
+      ],
     },
   });
 }
