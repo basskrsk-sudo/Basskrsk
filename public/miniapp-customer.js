@@ -16,6 +16,7 @@
   var generation = 0;
   var enteredPhone = '';
   var confirmingPhone = false;
+  var notificationSettingsOpen = false;
   var ROLE_LABELS = {
     salon: '✂️🏠 Мой салон и продажи',
     partner: '✂️ Грумер', manager: '🗂️ Менеджер',
@@ -156,6 +157,7 @@
       }).join('') || '<p class="muted" style="font-size:12px">Операций пока нет</p>' :
         '<p class="muted" style="font-size:12px">Не удалось загрузить операции</p>') +
       '</div>' + accessibleCabinets(identity.getStatus()) +
+      action('notifications', '🔔 Настройки уведомлений', true) +
       action('refresh', '↻ Обновить мой кабинет', true) +
       '<p style="font-size:12px;text-align:center;margin-top:16px"><a href="/privacy-policy.html" target="_blank" rel="noopener">Политика конфиденциальности</a></p>';
     return html;
@@ -251,13 +253,30 @@
     if (btn.dataset.customerAction === 'check') {
       identity.refresh().then(function() { render(currentUser, isTelegramSigned); });
     }
+    if (btn.dataset.customerAction === 'notifications' && window.HvostNotificationSettings) {
+      var status=identity.getStatus();
+      if(!status.verified || !status.accounts.some(function(a){return a.role==='customer';}))return;
+      notificationSettingsOpen=true;
+      root.innerHTML=heading()+'<div class="block">⏳ Загружаем настройки…</div>';
+      identity.session('customer').then(function(session){
+        if(!notificationSettingsOpen)return;
+        window.HvostNotificationSettings.open({
+          root:root,roles:['customer'],tokens:{customer:session.token},
+          back:function(){notificationSettingsOpen=false;render(currentUser,isTelegramSigned);}
+        });
+      }).catch(function(e){
+        notificationSettingsOpen=false;
+        root.innerHTML=heading()+'<div class="block">'+error(e.message)+action('refresh','Вернуться в профиль',true)+'</div>';
+      });
+      return;
+    }
     if (btn.dataset.customerAction === 'refresh') {
       cached = null;
       load();
     }
   });
   identity.onChange(function() {
-    if (!root.classList.contains('hide')) render(currentUser, isTelegramSigned);
+    if (!notificationSettingsOpen && !root.classList.contains('hide')) render(currentUser, isTelegramSigned);
   });
   window.HvostMiniAppCustomer = { render: render };
 })();
