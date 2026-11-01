@@ -935,10 +935,17 @@ async function renderTierProgress() {
     const wrap = document.getElementById('tier-progress-wrap');
     const warnEl = document.getElementById('tier-grace-warning');
 
-    if (data.graceWarning) {
+    if (data.pendingDowngradeApproval) {
       warnEl.style.display = 'block';
-      warnEl.textContent = '⚠️ Показатели этого месяца пока не дотягивают до уровня «' + data.graceWarning.currentTierName +
-        '» — если не подтвердите до конца месяца, со следующего понизитесь до «' + data.graceWarning.willDropTo + '» (' + Math.round(data.graceWarning.willDropToRate * 100) + '%).';
+      warnEl.textContent = '📋 Показатели ниже текущего тарифа. Предложение изменить процент до ' +
+        Math.round(data.pendingDowngradeApproval.proposedRate * 100) +
+        '% ожидает решения супер-администратора. До согласования текущий процент сохраняется.';
+    } else if (data.graceWarning) {
+      warnEl.style.display = 'block';
+      warnEl.textContent = '⚠️ Показатели пока ниже уровня «' + data.graceWarning.currentTierName +
+        '». Если план не выполнится к окончанию льготного периода, изменение процента до «' +
+        data.graceWarning.willDropTo + '» (' + Math.round(data.graceWarning.willDropToRate * 100) +
+        '%) будет предложено супер-администратору на согласование. Без одобрения процент не изменится.';
     } else {
       warnEl.style.display = 'none';
     }

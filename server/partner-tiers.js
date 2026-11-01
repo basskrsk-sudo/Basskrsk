@@ -11,6 +11,7 @@
 'use strict';
 
 const db = require('./db');
+const approvals = require('./partner-tier-approvals');
 
 // Пороги — совпадают с тем, что показывается на странице регистрации
 // (taiga-register.html). Если меняете пороги там — не забудьте поменять и тут.
@@ -95,6 +96,8 @@ async function checkAndUpgradePartnerTier(partnerId) {
   const earnedTier = getEligibleTier(revenue, referralsCount);
 
   if (earnedTier.rate >= partner.commission_rate) {
+    // No pending approval can be used after the level is reconfirmed or raised.
+    approvals.markPendingStale(partner.id, 'План подтверждён или уровень повышен');
     // Показатели ЭТОГО месяца дотягивают до текущего уровня (или выше) —
     // подтверждаем (обновляем месяц подтверждения), и повышаем, если заработал больше.
     const isUpgrade = earnedTier.rate > partner.commission_rate;
@@ -111,17 +114,25 @@ async function checkAndUpgradePartnerTier(partnerId) {
   // льготный период: сколько месяцев прошло с последнего подтверждения.
   const monthsSinceConfirmed = monthDiff(partner.tier_confirmed_month, month);
   if (monthsSinceConfirmed <= 1) {
-    // Месяц заработка (0) или следующий льготный месяц (1) — держим уровень,
-    // ничего не трогаем.
+    // Льготный период действует: ставку не меняем и старые заявки инвалидируем.
+    approvals.markPendingStale(partner.id, 'Снова действует льготный период');
     return null;
   }
 
-  // Льготный месяц истёк без подтверждения — понижаем до того, что реально
-  // заработано сейчас (средний уровень или сразу базовый — по факту).
-  db.prepare('UPDATE partners SET commission_rate = ?, tier_confirmed_month = ? WHERE id = ?')
-    .run(earnedTier.rate, month, partnerId);
-  await notifyTierChange(partner, earnedTier, revenue, referralsCount, 'down');
-  return { tierName: earnedTier.name, newRate: earnedTier.rate, direction: 'down' };
+  // Never downgrade automatically. Instead, propose a supervised change.
+  // Until the super-admin approves via Telegram the previous commission_rate
+  // remains unchanged and is used by all subsequent orders and payouts.
+  const request = approvals.requestTierDowngrade(stats, earnedTier);
+  if (request?.status === 'pending') {
+    if (request.created) {
+      // Do not delay paid-order completion while Telegram is unavailable.
+      approvals.notifyPendingTierApprovals().catch(error =>
+        console.warn('[tiers] Could not send approval proposal:', error.message));
+    }
+    return { tierName: earnedTier.name, oldRate: partner.commission_rate,
+      newRate: earnedTier.rate, direction: 'pending_down', requestId: request.request_id };
+  }
+  return null;
 }
 
 async function notifyTierChange(partner, tier, revenue, referralsCount, direction) {
@@ -176,12 +187,19 @@ function getTierProgress(partnerId) {
   const monthsSinceConfirmed = monthDiff(partner.tier_confirmed_month, month);
   const inGracePeriod = monthsSinceConfirmed === 1; // сейчас — тот самый льготный месяц
 
+  const pending = db.prepare(
+    "SELECT id,new_rate,month_key FROM partner_tier_approval_requests " +
+    "WHERE partner_id=? AND status='pending' ORDER BY id DESC LIMIT 1"
+  ).get(partnerId);
   const result = {
     currentRate: partner.commission_rate,
     revenueThisMonth: revenue,
     referralsCount,
     inGracePeriod,
     nextTier: null,
+    pendingDowngradeApproval: pending
+      ? { proposedRate: pending.new_rate, requestId: pending.id, month: pending.month_key }
+      : null,
   };
 
   if (nextTier) {
@@ -216,4 +234,4 @@ function getTierProgress(partnerId) {
   return result;
 }
 
-module.exports = { checkAndUpgradePartnerTier, checkAllPartnerTiers, getTierProgress, getPartnerStats, currentMonthKey, TIERS, notifyTierChange };
+module.exports = { checkAndUpgradePartnerTier, checkAllPartnerTiers, getTierProgress, getPartnerStats, currentMonthKey, monthDiff, getEligibleTier, TIERS, notifyTierChange };
