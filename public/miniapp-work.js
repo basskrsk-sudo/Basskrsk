@@ -139,6 +139,7 @@
     var c = CONFIG[activeRole];
     root.innerHTML = back() + heading(c.icon + ' Кабинет: ' + c.title, 'Вход по подтверждённому Telegram или по логину и паролю сайта.') +
       (identity ? phoneBanner() : '') +
+      (activeRole === 'founder' && phoneStatus().verified && !phoneRoleAvailable('founder') ? '<div class="work-surface"><h2>👑 Доступ собственника ещё не подключён</h2><p class="work-note">Номер Telegram подтверждён, но учётная запись собственника пока не активирована. Активировать её может только супер-администратор.</p><button type="button" class="work-secondary" data-work-action="owner-setup">Перейти к настройкам через администратора →</button></div>' : '') +
       (phoneRoleAvailable(activeRole) ? '<button type="button" class="work-primary" data-work-action="phone-login" style="margin-bottom:12px">Войти через Telegram без пароля →</button>' : '') +
       '<form id="workLoginForm" class="work-auth-card" autocomplete="on">' +
         '<h2>Вход для сотрудника</h2><p class="work-sub">Только для зарегистрированных пользователей этой роли.</p>' +
@@ -451,6 +452,7 @@
       else renderAll();
     });
     if (action === 'phone-login' && activeRole) return chooseRole(activeRole);
+    if (action === 'owner-setup') return chooseRole('admin');
     if (action === 'reload') return chooseRole(activeRole);
     if (action === 'full') return openFullCabinet(activeRole);
   });

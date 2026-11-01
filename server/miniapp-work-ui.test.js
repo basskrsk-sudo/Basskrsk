@@ -270,3 +270,43 @@ test('only superadmin sees founder setup form, not regular administrator', async
   assert.doesNotMatch(regularHarness.root.innerHTML,/businessFounderSetupForm/);
   assert.equal(regularHarness.calls.some(c=>c.url==='/api/business-founders'),false);
 });
+
+test('verified founder sees a secure admin setup path without receiving founder rights', async () => {
+  const identity = {
+    getStatus() { return {
+      loaded: true, verified: true, phoneMasked: '+7 (***) ***-**-06',
+      accounts: [{ role: 'customer', name: 'Покупатель' },
+                 { role: 'admin', name: 'Администратор' }],
+      ambiguousRoles: [], error: '', busy: false,
+    }; },
+    onChange() {},
+  };
+  const h = createHarness({
+    '/api/admin/me': {admin:{id:1,full_name:'Администратор',role:'super',active:1}},
+    '/api/points':{points:[]},
+    '/api/orders?limit=100':{orders:[]},
+    '/api/operations-center':{summary:{total:0},issues:[]},
+    '/api/business-founders':{founders:[]},
+  }, { taiga_admin_token: 'valid-admin-token' }, identity);
+  await h.window.HvostMiniAppWork.chooseRole('founder');
+  assert.match(h.root.innerHTML, /Доступ собственника ещё не подключён/);
+  assert.match(h.root.innerHTML, /data-work-action="owner-setup"/);
+  assert.match(h.root.innerHTML, /workLoginForm/);
+  assert.equal(h.calls.some(x => x.url === '/api/miniapp/session'), false);
+  h.click('owner-setup');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(h.root.innerHTML, /Администратор/);
+  assert.doesNotMatch(h.root.innerHTML, /Доступ собственника ещё не подключён/);
+  assert.equal(h.values.hm_business_founder_token, undefined);
+});
+
+test('without verified contact founder login does not expose the admin setup shortcut', async () => {
+  const identity = {
+    getStatus() { return {loaded:true,verified:false,accounts:[],ambiguousRoles:[],error:'',busy:false}; },
+    onChange() {},
+  };
+  const h = createHarness({}, {}, identity);
+  await h.window.HvostMiniAppWork.chooseRole('founder');
+  assert.doesNotMatch(h.root.innerHTML, /data-work-action="owner-setup"/);
+  assert.match(h.root.innerHTML, /workLoginForm/);
+});
