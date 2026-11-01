@@ -317,7 +317,7 @@ test('verified founder sees a secure admin setup path without receiving founder 
   h.window.HvostMiniAppWork.render();
   assert.match(h.root.innerHTML, /data-work-role="admin"/);
   assert.doesNotMatch(h.root.innerHTML, /data-work-role="founder"/,
-    'unconfigured founder must not appear in confirmed user's role choices');
+    "unconfigured founder must not appear in confirmed users role choices");
   await h.window.HvostMiniAppWork.chooseRole('founder');
   assert.doesNotMatch(h.root.innerHTML, /workLoginForm/);
   assert.doesNotMatch(h.root.innerHTML, /data-work-action="owner-setup"/);
