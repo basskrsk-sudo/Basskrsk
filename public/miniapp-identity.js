@@ -219,6 +219,8 @@
       var key = 'hm_miniapp_last_telegram_user';
       var last = localStorage.getItem(key);
       if (last && last !== id) {
+        gateUnlocked = false;
+        confirmedPhone = '';
         Object.keys(TOKENS).forEach(function(role) {
           localStorage.removeItem(TOKENS[role]);
         });
