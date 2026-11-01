@@ -8,6 +8,7 @@ const { requireAuth, requireSuperAdmin } = require('./routes-auth');
 const { safeFounder, activeFounder, getFounder, configureFounder, FOUNDER_SLOTS } = require('./business-founders');
 const { buildGrowthPlanDashboard } = require('./growth-plan');
 const { buildOperationsCenter } = require('./routes-operations');
+const { collectWeeklyReport } = require('./weekly-report');
 
 const CAPITAL_PLAN_RUB = 1000000;
 const TAX_ESTIMATE_RATE = 0.06;
@@ -213,6 +214,24 @@ function strategicReadiness(now) {
     note:'Стратегический прогноз строится по текущей утверждённой модели. Нулевые центральные расходы и другие допущения не должны приниматься за фактические.',
   };
 }
+function founderScorecard() {
+  try {
+    const report=collectWeeklyReport();
+    const bsc=report.bsc || {};
+    return {
+      period:report.period ? report.period.start_local + ' — ' + report.period.end_local : null,
+      overall_score:bsc.overall_score,
+      readiness:bsc.readiness ? bsc.readiness.title : null,
+      perspectives:(bsc.perspectives||[]).map(p=>({
+        name:p.name,score:p.score,status:p.status,
+        weakest_kpis:(p.kpis||[]).filter(k=>k.status==='red').slice(0,3).map(k=>k.name),
+      })),
+    };
+  } catch(err) {
+    console.warn('Founder BSC summary unavailable:',err.message);
+    return null;
+  }
+}
 function collectFounderDashboard(founder, period='30d', now=new Date()) {
   const date=nowDate(now);
   const bounds=periodBounds(period,date);
@@ -240,6 +259,7 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
       silent_points:pointRanking(bounds.from).filter(p=>p.orders===0).slice(0,7),
     },
     strategy:strategicReadiness(date),
+    bsc:founderScorecard(),
     capital:investmentSummary(founder),
     operations:{
       summary:operations.summary,
