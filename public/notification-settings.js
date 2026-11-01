@@ -140,8 +140,9 @@
     refresh(ctx);
   }
 
-  function installFull(role) {
+  function installFull(role,tokenGetter) {
     if(!ROLE_LABEL[role]||!document.body)return;
+    var activeToken=typeof tokenGetter==='function'?tokenGetter:function(){return getToken(role);};
     var dock=document.createElement('div');
     dock.className='hm-notify-full-trigger';
     dock.innerHTML='<button type="button" class="hm-notify-floating">🔔 Настройки уведомлений</button>';
@@ -154,19 +155,19 @@
     overlay.appendChild(page);
     document.body.appendChild(overlay);
     function update() {
-      var active=!!getToken(role);
+      var active=!!activeToken();
       var app=document.getElementById('app');
       if(app && app.style.display==='none')active=false;
       dock.hidden=!active;
     }
     function close(){overlay.hidden=true;page.innerHTML='';update();}
     dock.addEventListener('click',function(){
-      if(!getToken(role))return update();
+      if(!activeToken())return update();
       overlay.hidden=false;
-      open({root:page,roles:[role],tokens:{[role]:getToken(role)},back:close});
+      open({root:page,roles:[role],tokens:{[role]:activeToken()},back:close});
     });
     overlay.addEventListener('click',function(e){if(e.target===overlay)close();});
-    document.addEventListener('click',function(){setTimeout(update,120);});
+    document.addEventListener('click',function(){setTimeout(update,120);setTimeout(update,1100);});
     document.addEventListener('visibilitychange',update);
     update();
   }
