@@ -75,3 +75,13 @@
 .founder-setup .founder-checkbox{display:flex;align-items:center;gap:8px;margin:12px 0}
 .founder-setup .founder-checkbox input{width:18px;height:18px}
 .founder-setup button{margin-top:10px}
+
+/* Customer-first Telegram number entry and matched role shortcuts */
+.customer-entry{border:1px solid #e1eae0;box-shadow:0 6px 24px rgba(6,61,41,.055)}
+.customer-entry h3{font-size:19px;line-height:1.25;color:#184f3b;margin:1px 0 10px;font-weight:850}
+.customer-entry .form-field{font-size:17px;letter-spacing:.3px;height:54px;background:#fdfefb}
+.customer-entry .form-label{font-size:13px}
+.customer-entry .btn:disabled{opacity:.6}
+.customer-role-links{display:grid;gap:9px;margin-top:12px}
+.customer-role-link{width:100%;display:flex;align-items:center;justify-content:space-between;border:1px solid #dce9e0;border-radius:13px;padding:14px 13px;background:#f7fbf7;color:#1e5840;font-weight:800;text-align:left;font-size:13px}
+.customer-role-link span{color:#22835b;font-size:18px}
