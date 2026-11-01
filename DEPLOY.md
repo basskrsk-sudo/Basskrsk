@@ -721,8 +721,8 @@ YOOKASSA_SECRET_KEY=ваш_секретный_ключ
 # RESERVATION_TTL_MINUTES=15
 TG_TOKEN=токен_бота_из_BotFather
 TG_CHAT_ID=ваш_chat_id
-# Текущий адрес бота без @. Меняйте только после смены username в BotFather:
-TG_BOT_USERNAME=taiga_dog_bot
+# Действующий Telegram-бот: https://t.me/HvostMarketRusBot
+# TG_BOT_USERNAME больше не используется для генерации ссылок-приглашений.
 TOKEN_SECRET=любая_длинная_случайная_строка_для_подписи_токенов_входа
 # MAX: токен и username одобренного бота, username без символа @
 MAX_BOT_TOKEN=токен_бота_MAX
@@ -764,11 +764,18 @@ curl -X POST "https://platform-api2.max.ru/subscriptions" \
 токен бота и замените значение `TG_TOKEN` в переменных Amvera. Старый токен
 после перевыпуска перестанет работать.
 
-Username бота не меняется кодом, потому что это его фактический адрес. Если
-вы выберете новый свободный username в BotFather, после этого укажите его без
-символа `@` в переменной `TG_BOT_USERNAME`, иначе ссылки входа будут вести по
-старому адресу. Квадратную пиктограмму «лапка на геоточке» для аватара можно
-взять из `public/images/icons/icon-512.png` и установить через BotFather.
+Единственный адрес личного Telegram-бота, используемый сайтом для входа и
+подключения кабинетов, — `https://t.me/HvostMarketRusBot`. Он закреплён в
+`server/telegram-bot-identity.js` и не зависит от `TG_BOT_USERNAME`, даже если
+устаревшая переменная осталась на Amvera. Её можно удалить.
+
+**Важно:** `TG_TOKEN` на Amvera должен принадлежать именно `@HvostMarketRusBot`.
+Замена адреса в коде не меняет токен Telegram-бота. Проверяйте соответствие
+через BotFather, не публикуя сам токен. Токены и настройки отдельных служебных
+ботов не затрагиваются. Если username когда-нибудь изменится, обновите
+`server/telegram-bot-identity.js` и публичные ссылки в `public/index.html`.
+Квадратную пиктограмму «лапка на геоточке» для аватара можно взять из
+`public/images/icons/icon-512.png` и установить через BotFather.
 
 **Как получить ключи ЮKassa:**
 1. Зарегистрируйтесь на yookassa.ru как ИП

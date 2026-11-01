@@ -145,7 +145,7 @@
 
 ## Развёртывание
 
-1. **Не создавайте нового бота в BotFather** и **не добавляйте TG_SHOP_BOT_TOKEN**. Оставьте в Amvera действующие TG_TOKEN и TG_BOT_USERNAME; TG_CHAT_ID и настройки других ботов не менять.
+1. Для личных кабинетов и Mini App используйте `@HvostMarketRusBot` (`https://t.me/HvostMarketRusBot`). Не создавайте дополнительного бота и не добавляйте `TG_SHOP_BOT_TOKEN`. Убедитесь, что `TG_TOKEN` на Amvera выдан именно для этого бота. `TG_BOT_USERNAME` больше не влияет на ссылки-приглашения и может быть удалён; `TG_CHAT_ID` и настройки отдельных служебных ботов не менять.
 2. Проверьте, что у действующего Telegram-бота нет другого параллельного обработчика getUpdates и не подключён webhook. Продолжает работать единственный long-polling в server/telegram-login-poller.js.
 3. После проверки изменений и согласования объедините PR с main, чтобы штатный GitHub webhook Amvera развернул обновлённую версию. На старте server.js выполняется configureBotProfile: выставляет **setChatMenuButton с type: commands** и сохраняет весь существующий список setMyCommands. Это возвращает привычную кнопку «Меню» в Telegram.
 4. Откройте в Telegram текущего бота и отправьте /start, /shop, /cabinet; проверьте кнопки и открытие Mini App, а также старые /tasks, /payouts, /help, обработку /start <одноразовый_токен> и уведомления о продажах.
