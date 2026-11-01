@@ -85,6 +85,53 @@ async function sendToChat(chatId, text, options = {}) {
   return sendToChatWithRetry(chatId, text, options);
 }
 
+// Send one or multiple Telegram-uploaded photos by file_id. Unlike a product
+// image, there is no need to download or store the original on our server.
+// Single images support buttons; Telegram media groups do not.
+async function sendPhotosToChat(chatId, photoIds, captionHtml, options = {}) {
+  if (!TG_TOKEN || !chatId) return { ok: false, skipped: true, error: 'Telegram не настроен' };
+  if (!Array.isArray(photoIds) || !photoIds.length || photoIds.length > 10 ||
+      !photoIds.every(id => typeof id === 'string' &&
+        /^[A-Za-z0-9_-]{12,300}$/.test(id))) {
+    return { ok: false, error: 'Некорректные фотографии (не больше 10)' };
+  }
+  const caption = String(captionHtml || '');
+  if (!caption.trim() || caption.length > 1024)
+    return { ok: false, error: 'Подпись к фото должна быть не длиннее 1024 символов' };
+  const album = photoIds.length > 1;
+  const method = album ? 'sendMediaGroup' : 'sendPhoto';
+  const body = album
+    ? {
+      chat_id: chatId,
+      media: photoIds.map((id, index) => ({
+        type: 'photo', media: id,
+        ...(index === 0 ? { caption, parse_mode: 'HTML' } : {}),
+      })),
+    }
+    : {
+      chat_id: chatId,
+      photo: photoIds[0],
+      caption,
+      parse_mode: 'HTML',
+      ...(options.reply_markup ? { reply_markup: options.reply_markup } : {}),
+    };
+  try {
+    const response = await fetch('https://api.telegram.org/bot' + TG_TOKEN + '/' + method, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+    });
+    const result = await response.json().catch(() => ({}));
+    return { ok: response.ok && result.ok === true, status: response.status, data: result,
+      error: result.description || (!response.ok ? 'HTTP ' + response.status : undefined) };
+  } catch (error) {
+    // A timeout may occur after Telegram already delivered the album.
+    // Never blindly retry this request.
+    return { ok: false, uncertain: true, error: error.message };
+  }
+}
+
 // Отправка файла в служебный Telegram-чат. Используется для управленческих
 // отчётов; повтор при сетевом тайм-ауте намеренно не делаем, чтобы не
 // задвоить тяжёлое вложение, если Telegram его принял, но ответ потерялся.
@@ -164,4 +211,4 @@ function buildOrderMessage(order, items) {
   ].join('\n');
 }
 
-module.exports = { sendTelegram, sendToChat, sendTelegramDocument, buildOrderMessage };
+module.exports = { sendTelegram, sendToChat, sendPhotosToChat, sendTelegramDocument, buildOrderMessage };

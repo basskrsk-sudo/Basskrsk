@@ -7,6 +7,7 @@ const { requireSuperAdmin } = require('./routes-auth');
 const { safeMarkdownHtml, htmlFromTelegramEntities } = require('./telegram-formatting');
 const { SALE_ENDINGS, saleEndingAt } = require('./partner-club-sale-endings');
 const { saleMessage, saleMessageHtml, withSaleEnding } = require('./partner-club-sale-format');
+const clubPhotos = require('./partner-club-photo-posts');
 
 const FLAGS=['sales','record_check','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
 const DEFAULTS=Object.freeze({sales:true,record_check:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
@@ -253,7 +254,7 @@ function registerPartnerClubRoutes(router){
    const formatted=safeMarkdownHtml(body);
    saveClubFormat(id,formatted);
    const preview='🐾 <b>Ручная публикация в Клуб партнёров #'+id+'</b>\n\n'+formatted;
-   const sent=await require('./telegram').sendToChat(reviewer,preview,{reply_markup:reviewButtons(id)});
+   const sent=await require('./telegram').sendToChat(reviewer,preview,{reply_markup:reviewButtons(id,false,true,false)});
    if(!sent.ok){
      db.prepare('DELETE FROM partner_club_events WHERE id=?').run(id);
      return sendJson(res,502,{error:'Черновик не доставлен модератору. Проверьте личный Telegram и повторите попытку.'});
@@ -316,14 +317,41 @@ function reviewerForClub(){
  return r&&r.role==='super'&&r.active&&r.telegram_chat_id?String(r.telegram_chat_id):null;
 }
 function isClubModerator(chatId){return !!chatId&&String(chatId)===reviewerForClub();}
-function reviewButtons(id, canChangeGreeting=false){
+function reviewButtons(id, canChangeGreeting=false, manual=false, hasPhotos=false){
  return {inline_keyboard:[
    ...(canChangeGreeting ? [[{text:'🔄 Другое поздравление',callback_data:'club:reroll:'+id}]] : []),
+   ...(manual ? [[{text:'📷 Добавить фотографии',callback_data:'club:addphoto:'+id},
+     ...(hasPhotos ? [{text:'🗑 Убрать фотографии',callback_data:'club:clearphotos:'+id}] : [])]] : []),
    [{text:'✅ Отправить в группу',callback_data:'club:send:'+id},
     {text:'✏️ Скорректировать',callback_data:'club:edit:'+id}],
    [{text:'🚫 Отклонить',callback_data:'club:reject:'+id}]
  ]};
 }
+
+// The same preview is used after creating a post and after updating its photos.
+async function sendClubReviewPreview(chatId, id, title='Черновик для Клуба партнёров'){
+ const event=db.prepare('SELECT e.*,r.edited_message FROM partner_club_events e LEFT JOIN partner_club_reviews r ON r.event_id=e.id WHERE e.id=?').get(Number(id));
+ if(!event)return {ok:false,error:'Черновик не найден'};
+ const photos=clubPhotos.getEventPhotos(id);
+ const manual=event.event_type==='manual';
+ const markup=reviewButtons(id, false, manual, photos.length>0);
+ const caption='🐾 <b>'+title+' #'+id+'</b>\n\n'+clubMessageHtml(event);
+ const sender=require('./telegram');
+ if(!photos.length)return sender.sendToChat(chatId,caption,{reply_markup:markup});
+ const result=await sender.sendPhotosToChat(chatId,photos,caption,{
+   ...(photos.length===1?{reply_markup:markup}:{})
+ });
+ if(!result.ok)return result;
+ if(photos.length===1)return result;
+ const buttons=await sender.sendToChat(chatId,
+   '📷 Альбом из '+photos.length+' фото для черновика #'+id+
+   '. Посмотрите альбом выше и подтвердите публикацию кнопками ниже.',
+   {reply_markup:markup});
+ // Avoid creating a second image post if the button message fails; caller can
+ // ask the moderator to restart preview rather than silently publishing it.
+ return buttons;
+}
+
 async function handleClubCallback(chatId,data){
  if(!/^club:(send|edit|reject|reroll):[0-9]+$/.test(data))return null;
  if(String(chatId)!==reviewerForClub())return {message:'Недостаточно прав',ok:false};
@@ -331,6 +359,8 @@ async function handleClubCallback(chatId,data){
  const row=db.prepare("SELECT e.*,r.state,r.edited_message FROM partner_club_events e JOIN partner_club_reviews r ON r.event_id=e.id WHERE e.id=?").get(id);
  if(!row||row.state==='sent'||row.state==='rejected')return {message:'Этот черновик уже обработан',ok:false};
  if(row.state==='sending')return {message:'Публикация уже обрабатывается. Проверьте сообщения группы.',ok:false};
+ if(clubPhotos.currentPhotoDraft(chatId)?.event_id===id)
+   return {ok:false,message:'Сначала завершите прикрепление фотографий кнопкой «📷 Готово» либо отмените добавление.'};
  if(action==='reroll'){
    if(row.event_type!=='sales' || row.state!=='pending' || row.edited_message)
      return {ok:false,message:'Поздравление можно менять только в неотредактированном черновике обычной продажи.'};
@@ -373,10 +403,21 @@ async function handleClubCallback(chatId,data){
  const claimed=db.prepare("UPDATE partner_club_reviews SET state='sending',claimed_at=CURRENT_TIMESTAMP WHERE event_id=? AND state='pending'").run(id);
  if(!claimed.changes)return {ok:false,message:'Черновик сейчас недоступен для отправки.'};
  const message=clubMessageHtml(row);
+ const photos=clubPhotos.getEventPhotos(id);
  let result;
- try{result=await require('./telegram').sendToChat(c.chat_id,message);}
- catch(error){db.prepare("UPDATE partner_club_reviews SET state='pending' WHERE event_id=? AND state='sending'").run(id);return {ok:false,message:'Ошибка отправки: '+error.message};}
+ try{
+   result=photos.length
+     ? await require('./telegram').sendPhotosToChat(c.chat_id,photos,message)
+     : await require('./telegram').sendToChat(c.chat_id,message);
+ }catch(error){
+   // After an exception on a photo request, Telegram might have accepted the
+   // album already. Do not allow a blind retry that could duplicate photos.
+   result={ok:false,uncertain:photos.length>0,error:error.message};
+ }
  if(!result.ok||result.data?.ok===false){
+   if(result.uncertain){
+     return {ok:false,message:'⚠️ Telegram не подтвердил результат отправки фото. Повторная отправка заблокирована во избежание дублирования. Проверьте группу.'};
+   }
    db.prepare("UPDATE partner_club_reviews SET state='pending' WHERE event_id=? AND state='sending'").run(id);
    return {ok:false,message:'Telegram не подтвердил публикацию. Попробуйте ещё раз.'};
  }
@@ -393,19 +434,30 @@ async function handleClubEdit(chatId,text,entities=[]){
  const formatted=richPost(text,entities,String(text).length-match[2].length);
  const body=formatted.plain;
  if(!body||body.length>3000)return {ok:false,message:'Длина текста должна быть от 1 до 3000 символов'};
+ if(clubPhotos.getEventPhotos(id).length && !clubPhotos.formattedOk(formatted))
+   return {ok:false,message:'Для сообщения с фото текст должен быть не длиннее 850 символов (с учётом форматирования).'};
  const entry=db.prepare("SELECT state FROM partner_club_reviews WHERE event_id=?").get(id);
  if(!entry||entry.state!=='editing')return {ok:false,message:'Черновик не находится на редактировании'};
  db.prepare("UPDATE partner_club_reviews SET edited_message=?,state='pending' WHERE event_id=?").run(body,id);
  saveClubFormat(id,formatted.html,true);
  cancelClubInput(chatId);
- return {ok:true,message:'📝 Обновлённый черновик:\n\n'+formatted.html,reply_markup:reviewButtons(id),parse_mode:'HTML'};
+ if(clubPhotos.getEventPhotos(id).length){
+   const refreshed=await sendClubReviewPreview(chatId,id,'Исправленный черновик для Клуба партнёров');
+   return {ok:!!refreshed.ok,message:refreshed.ok
+     ? '📝 Текст обновлён, фотографии сохранены. Проверьте предпросмотр выше.'
+     : 'Текст обновлён, но предпросмотр не доставлен. Фото и текст сохранены.'};
+ }
+ return {ok:true,message:'📝 Обновлённый черновик:\n\n'+formatted.html,reply_markup:reviewButtons(id,false,true),parse_mode:'HTML'};
 }
 function setClubInput(chatId,mode,eventId=null){
  db.prepare("INSERT INTO partner_club_bot_inputs(chat_id,mode,event_id,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(chat_id) DO UPDATE SET mode=excluded.mode,event_id=excluded.event_id,updated_at=CURRENT_TIMESTAMP")
    .run(String(chatId),mode,eventId);
 }
 function cancelClubInput(chatId){
- return db.prepare('DELETE FROM partner_club_bot_inputs WHERE chat_id=?').run(String(chatId)).changes>0;
+ const images=clubPhotos.clearPhotoDraft(chatId);
+ const input=db.prepare('DELETE FROM partner_club_bot_inputs WHERE chat_id=?')
+   .run(String(chatId)).changes>0;
+ return images||input;
 }
 function startClubPost(chatId){
  if(!isClubModerator(chatId))return {ok:false,message:'Эта команда доступна только назначенному модератору Клуба партнёров.'};
@@ -413,7 +465,8 @@ function startClubPost(chatId){
  const prev=db.prepare('SELECT mode,event_id FROM partner_club_bot_inputs WHERE chat_id=?').get(String(chatId));
  if(prev?.mode==='edit')db.prepare("UPDATE partner_club_reviews SET state='pending' WHERE event_id=? AND state='editing'").run(prev.event_id);
  setClubInput(chatId,'new');
- return {ok:true,message:'✍️ Новое сообщение для Клуба партнёров.\n\nОтправьте следующим сообщением текст публикации (до 3000 символов).\nЖирный шрифт и курсив, заданные в Telegram, сохраняются. Можно также использовать **две звёздочки** для жирного текста.\n\nБот покажет черновик и кнопки «Отправить», «Скорректировать» и «Отклонить».\n\n/cancel — отмена.'};
+ clubPhotos.beginPhotoDraft(chatId);
+ return {ok:true,message:'✍️ Новое сообщение для Клуба партнёров.\n\nПришлите текст, одну фотографию или альбом (до 10 фото). Фото можно загрузить прямо из галереи Telegram — их не нужно добавлять в каталог.\n\nТекст без фотографий — до 3000 символов; с фото — до 850 символов. Можно прислать подпись вместе с первым фото.\n\nПосле фото нажмите «Готово» или отправьте текст сообщением. Бот покажет предпросмотр и кнопки согласования.\n\n/cancel — отмена.'};
 }
 async function handleClubPostInput(chatId,text,entities=[]){
  const pending=db.prepare('SELECT mode,event_id FROM partner_club_bot_inputs WHERE chat_id=?').get(String(chatId));
@@ -427,30 +480,161 @@ async function handleClubPostInput(chatId,text,entities=[]){
  const formatted=richPost(text,entities);
  const body=formatted.plain;
  if(body.length<1||body.length>3000)return {ok:false,message:'Отправьте текст длиной от 1 до 3000 символов.'};
+ const staged=clubPhotos.currentPhotoDraft(chatId);
+ if(pending.mode==='new'&&staged?.photos.length&&!clubPhotos.formattedOk(formatted))
+   return {ok:false,message:'К фотографиям можно прикрепить текст до 850 символов с учётом жирного шрифта и других выделений.'};
  if(pending.mode==='edit'){
    const id=pending.event_id;
+   if(clubPhotos.getEventPhotos(id).length&&!clubPhotos.formattedOk(formatted))
+     return {ok:false,message:'Для поста с фотографиями сократите текст до 850 символов.'};
    const changed=db.prepare("UPDATE partner_club_reviews SET edited_message=?,state='pending' WHERE event_id=? AND state='editing'").run(body,id);
    cancelClubInput(chatId);
    if(!changed.changes)return {ok:false,message:'Редактирование этого черновика уже завершено.'};
    saveClubFormat(id,formatted.html,true);
-   return {ok:true,message:'📝 Исправленный текст черновика #'+id+':\n\n'+formatted.html,reply_markup:reviewButtons(id),parse_mode:'HTML'};
+   if(clubPhotos.getEventPhotos(id).length){
+     const refreshed=await sendClubReviewPreview(chatId,id,'Исправленный черновик для Клуба партнёров');
+     return {ok:!!refreshed.ok,message:refreshed.ok
+       ? '📝 Текст черновика #'+id+' обновлён, фото сохранены. Проверьте предпросмотр выше.'
+       : 'Текст обновлён, но предпросмотр не доставлен. Фото и текст сохранены.'};
+   }
+   return {ok:true,message:'📝 Исправленный текст черновика #'+id+':\n\n'+formatted.html,reply_markup:reviewButtons(id,false,true),parse_mode:'HTML'};
  }
  if(!settings().chat_id){cancelClubInput(chatId);return {ok:false,message:'Telegram-группа не подключена.'};}
  const key='manual:bot:'+require('node:crypto').randomUUID();
  const created=db.prepare("INSERT INTO partner_club_events(event_key,event_type,message,status) VALUES(?,'manual',?,'draft')").run(key,body);
  const id=Number(created.lastInsertRowid);
  saveClubFormat(id,formatted.html);
- const markup=reviewButtons(id);
- const preview='🐾 <b>Черновик для Клуба партнёров #'+id+'</b>\n\n'+formatted.html;
- const sent=await require('./telegram').sendToChat(chatId,preview,{reply_markup:markup});
+ const photos=staged?.photos||[];
+ if(photos.length)clubPhotos.attachEventPhotos(id,photos);
+ const sent=await sendClubReviewPreview(chatId,id);
  if(!sent.ok||sent.data?.ok===false){
+   db.prepare('DELETE FROM partner_club_event_photos WHERE event_id=?').run(id);
+   db.prepare('DELETE FROM partner_club_message_formats WHERE event_id=?').run(id);
    db.prepare('DELETE FROM partner_club_events WHERE id=?').run(id);
-   return {ok:false,message:'Не удалось доставить предпросмотр. Текст не опубликован; отправьте его ещё раз.'};
+   return {ok:false,message:'Не удалось доставить предпросмотр. В группу ничего не отправлено. Повторите публикацию.'};
  }
  db.prepare("INSERT INTO partner_club_reviews(event_id,state,reviewer_chat_id,requested_at) VALUES(?,'pending',?,CURRENT_TIMESTAMP)").run(id,String(chatId));
  cancelClubInput(chatId);
- return {ok:true,message:'✅ Черновик #'+id+' готов. Для публикации нажмите «Отправить в группу» под сообщением выше.'};
+ return {ok:true,message:'✅ Черновик #'+id+' готов. Для публикации нажмите «Отправить в группу» под предпросмотром.'};
 }
+// Photos can arrive in a standalone Telegram message or as a media group.
+// During a group album, only the first photo gets a response to avoid floods.
+async function handleClubPhotoMessage(message){
+ if(message?.chat?.type!=='private'||!Array.isArray(message.photo)||!message.photo.length)return null;
+ const chatId=message.chat.id;
+ if(!isClubModerator(chatId))return null;
+ const pending=db.prepare('SELECT mode FROM partner_club_bot_inputs WHERE chat_id=?').get(String(chatId));
+ const staging=clubPhotos.currentPhotoDraft(chatId);
+ if(!staging && pending?.mode!=='new')return null;
+ if(staging?.event_id == null&&pending?.mode!=='new')return null;
+ const ids=clubPhotos.photoIdsFromMessage(message);
+ if(!ids.length)return {ok:false,message:'Не удалось прочитать фотографию. Попробуйте отправить её как фото, а не документ.'};
+ const formatted=message.caption&&staging?.event_id==null
+   ? richPost(message.caption,message.caption_entities||[]) : null;
+ const added=clubPhotos.stagePhoto(chatId,ids[0],formatted);
+ if(!added.ok)return {ok:false,message:added.error};
+ if(message.media_group_id && !added.first)return {ok:true,silent:true};
+ const controls=staging?.event_id!=null
+   ? {inline_keyboard:[
+       [{text:'✅ Готово — сохранить фото',callback_data:'club:photosdone'}],
+       [{text:'↩️ Отменить добавление',callback_data:'club:cancelphotos'}],
+     ]}
+   : {inline_keyboard:[
+       [{text:'✅ Готово — показать черновик',callback_data:'club:done'}],
+       [{text:'🚫 Отменить публикацию',callback_data:'club:cancelphotos'}],
+     ]};
+ return {ok:true,message:'📷 Фото добавлено ('+added.total+'/10). Можно прислать ещё фотографии.'+
+   (staging?.event_id!=null?' После загрузки нажмите «Готово».':' Можно прислать текст отдельным сообщением или нажать «Готово».'),
+   reply_markup:controls};
+}
+
+// Separate photo callbacks cannot collide with ordinary sale approvals.
+async function handleClubPhotoCallback(chatId,action){
+ if(!isClubModerator(chatId))return {ok:false,message:'Нет доступа к публикациям Клуба партнёров.'};
+ const value=String(action||'');
+ if(value==='club:cancelphotos'){
+   const stage=clubPhotos.currentPhotoDraft(chatId);
+   if(!stage)return {ok:false,message:'Фото не добавлялись.'};
+   if(stage.event_id==null){
+     cancelClubInput(chatId);
+     return {ok:true,message:'🚫 Черновик отменён. Ничего не опубликовано.'};
+   }
+   clubPhotos.clearPhotoDraft(chatId);
+   return {ok:true,message:'Добавление фотографий отменено; прежний черновик сохранён.'};
+ }
+ if(value==='club:done'){
+   const input=db.prepare('SELECT mode FROM partner_club_bot_inputs WHERE chat_id=?').get(String(chatId));
+   const draft=clubPhotos.currentPhotoDraft(chatId);
+   if(input?.mode!=='new'||!draft||draft.event_id!=null)return {ok:false,message:'Нет активной подготовки публикации.'};
+   if(!draft.photos.length)return {ok:false,message:'Сначала прикрепите фотографии.'};
+   if(!draft.post_text)return {ok:false,message:'Пришлите текст сообщения (до 850 символов) и затем подтвердите черновик.'};
+   // Preserve Telegram formatting stored from a photo's caption.
+   return createClubPhotoDraft(chatId,draft);
+ }
+ const add=value.match(/^club:addphoto:(\d+)$/);
+ const clear=value.match(/^club:clearphotos:(\d+)$/);
+ if(add||clear){
+   const id=Number((add||clear)[1]);
+   const row=db.prepare("SELECT e.id,e.event_type,r.state FROM partner_club_events e JOIN partner_club_reviews r ON r.event_id=e.id WHERE e.id=?").get(id);
+   if(!row||row.event_type!=='manual'||row.state!=='pending')
+     return {ok:false,message:'Фотографии можно изменить только в неотправленном ручном сообщении.'};
+   if(add){
+     const event=db.prepare("SELECT e.*,r.edited_message FROM partner_club_events e JOIN partner_club_reviews r ON r.event_id=e.id WHERE e.id=?").get(id);
+     if(clubMessageHtml(event).length>clubPhotos.MAX_PHOTO_CAPTION_HTML)
+       return {ok:false,message:'Сначала сократите текст до 850 символов через «Скорректировать», затем добавьте фото.'};
+     if(clubPhotos.getEventPhotos(id).length>=clubPhotos.MAX_PHOTOS)
+       return {ok:false,message:'У черновика уже 10 фотографий. Сначала удалите вложения.'};
+     clubPhotos.beginPhotoDraft(chatId,id);
+     return {ok:true,message:'📷 Пришлите в этот чат новые фотографии (до 10 всего, альбомом или по одной). По окончании нажмите «Готово».',
+       reply_markup:{inline_keyboard:[
+         [{text:'✅ Готово — сохранить фото',callback_data:'club:photosdone'}],
+         [{text:'↩️ Отменить добавление',callback_data:'club:cancelphotos'}]
+       ]}};
+   }
+   clubPhotos.clearEventPhotos(id);
+   const result=await sendClubReviewPreview(chatId,id);
+   return {ok:result.ok,message:result.ok?'🗑 Фотографии удалены. Обновлённый черновик показан выше.':
+     'Не удалось обновить предпросмотр. Текст не потерян.'};
+ }
+ if(value==='club:photosdone'){
+   const draft=clubPhotos.currentPhotoDraft(chatId);
+   if(!draft||draft.event_id==null)return {ok:false,message:'Нет прикрепляемых фотографий.'};
+   const id=Number(draft.event_id);
+   const row=db.prepare("SELECT e.event_type,r.state FROM partner_club_events e JOIN partner_club_reviews r ON r.event_id=e.id WHERE e.id=?").get(id);
+   if(!row||row.event_type!=='manual'||row.state!=='pending')
+     return {ok:false,message:'Этот черновик нельзя изменять.'};
+   if(!draft.photos.length)return {ok:false,message:'Сначала пришлите хотя бы одну фотографию.'};
+   const added=clubPhotos.attachEventPhotos(id,draft.photos);
+   if(!added.ok)return {ok:false,message:added.error};
+   clubPhotos.clearPhotoDraft(chatId);
+   const result=await sendClubReviewPreview(chatId,id);
+   return {ok:result.ok,message:result.ok?'✅ Добавлено фото: '+added.total+'. Черновик готов к согласованию.':
+     'Фотографии сохранены, но предпросмотр не доставлен. Попробуйте открыть черновик снова.'};
+ }
+ return {ok:false,message:'Неизвестное действие.'};
+}
+
+async function createClubPhotoDraft(chatId,draft){
+ if(!draft?.post_text||!clubPhotos.formattedOk({plain:draft.post_text,html:draft.post_html||''}))
+   return {ok:false,message:'Добавьте короткий текст с подписью (до 850 символов).'};
+ if(!settings().chat_id)return {ok:false,message:'Сначала подключите Клуб партнёров.'};
+ const id=Number(db.prepare("INSERT INTO partner_club_events(event_key,event_type,message,status) VALUES(?,'manual',?,'draft')")
+   .run('manual:bot:'+require('node:crypto').randomUUID(),draft.post_text).lastInsertRowid);
+ saveClubFormat(id,draft.post_html);
+ clubPhotos.attachEventPhotos(id,draft.photos);
+ const sent=await sendClubReviewPreview(chatId,id);
+ if(!sent.ok){
+   db.prepare('DELETE FROM partner_club_event_photos WHERE event_id=?').run(id);
+   db.prepare('DELETE FROM partner_club_message_formats WHERE event_id=?').run(id);
+   db.prepare('DELETE FROM partner_club_events WHERE id=?').run(id);
+   return {ok:false,message:'Не удалось показать предпросмотр. В группу ничего не отправлено.'};
+ }
+ db.prepare("INSERT INTO partner_club_reviews(event_id,state,reviewer_chat_id,requested_at) VALUES(?,'pending',?,CURRENT_TIMESTAMP)")
+   .run(id,String(chatId));
+ cancelClubInput(chatId);
+ return {ok:true,message:'✅ Черновик #'+id+' готов. Для отправки нажмите кнопку под фотографией или альбомом выше.'};
+}
+
 let workerBusy=false;
 async function sendClubUpdates(){
  if(workerBusy)return;
@@ -470,4 +654,4 @@ async function sendClubUpdates(){
  }catch(e){console.warn('Partner club moderation:',e.message)}finally{workerBusy=false}
 }
 function startPartnerClubWorker(){const timer=setInterval(()=>sendClubUpdates().catch(e=>console.warn('Partner club:',e.message)),30000);timer.unref?.()}
-module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,handleClubCallback,handleClubEdit,isClubModerator,startClubPost,handleClubPostInput,cancelClubInput};
+module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,handleClubCallback,handleClubEdit,isClubModerator,startClubPost,handleClubPostInput,cancelClubInput,handleClubPhotoMessage,handleClubPhotoCallback,sendClubReviewPreview};
