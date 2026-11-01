@@ -13,12 +13,10 @@ function miniAppInlineKeyboard() {
   ];
 }
 
-function miniAppMenuButton() {
-  return {
-    type: 'web_app',
-    text: '🐾 ХвостМаркет',
-    web_app: { url: SHOP_URL },
-  };
+// Restore Telegram's native command list in the chat menu.
+// Store/workspaces stay available from /start and the /shop /cabinet commands.
+function commandsMenuButton() {
+  return { type: 'commands' };
 }
 
 function miniAppDirectLinkMarkup(view) {
@@ -34,5 +32,5 @@ function miniAppDirectLinkMarkup(view) {
 
 module.exports = {
   SHOP_URL, WORK_URL, miniAppInlineKeyboard,
-  miniAppMenuButton, miniAppDirectLinkMarkup,
+  commandsMenuButton, miniAppDirectLinkMarkup,
 };
