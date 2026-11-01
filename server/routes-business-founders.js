@@ -239,6 +239,7 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
   const current=ordersInRange(bounds.from,bounds.to);
   const previous=ordersInRange(bounds.previous_from,bounds.previous_to);
   const cur=summarizeOrders(current), prev=summarizeOrders(previous);
+  const pointRows=pointRanking(bounds.from);
   const operations=buildOperationsCenter();
   return {
     updated_at:date.toISOString(),
