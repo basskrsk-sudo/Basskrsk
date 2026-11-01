@@ -47,8 +47,8 @@ function verifyTelegramInitData(raw, token, nowSeconds = Math.floor(Date.now() /
 
 function registerMiniAppRoutes(router) {
   router.post('/api/miniapp/auth', (req, res, ctx) => {
-    const token = process.env.TG_SHOP_BOT_TOKEN;
-    if (!token) return sendJson(res, 503, { error: 'Клиентский Telegram-бот ещё не подключён' });
+    const token = process.env.TG_TOKEN;
+    if (!token) return sendJson(res, 503, { error: 'Telegram-бот ещё не настроен' });
     try {
       const user = verifyTelegramInitData(ctx.body && ctx.body.initData, token);
       // This does not authorize a customer account or grant access to bones/orders.
