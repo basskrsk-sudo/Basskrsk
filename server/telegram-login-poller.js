@@ -542,6 +542,7 @@ function accountRoleText(role) {
   if (role === 'partner') return 'грумера';
   if (role === 'manager') return 'менеджера';
   if (role === 'owner') return 'владельца салона';
+  if (role === 'founder') return 'собственника ХвостМаркета';
   if (role === 'admin') return 'администратора';
   if (role === 'task_assignee') return 'ответственного за поручения';
   return 'покупателя';
@@ -553,6 +554,7 @@ function rememberChatForAccount(record, chatId) {
     partner: 'partners',
     manager: 'managers',
     owner: 'salon_owners',
+    founder: 'business_founders',
     admin: 'admins',
     task_assignee: 'task_assignees',
   };
