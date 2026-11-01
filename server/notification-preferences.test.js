@@ -101,6 +101,9 @@ test('transactional purchase receipt cannot be switched off, while offers requir
 });
 
 test('private paid sale notices actually respect settings; owner/admin/founder only opt-in',async()=>{
+  // Reset explicitly so this regression never depends on earlier test order.
+  assert.equal(savePreferences('partner',p,{sales:false}).ok,true);
+  assert.equal(savePreferences('owner',o,{sales:false}).ok,true);
   const telegram=require('./telegram');
   const real=telegram.sendToChat;
   const deliveries=[];
