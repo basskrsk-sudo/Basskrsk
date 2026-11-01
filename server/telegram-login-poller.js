@@ -48,6 +48,7 @@ const {
 const { collectNoGroomerReport, formatNoGroomerReport, buildNoGroomerCsv } = require('./no-groomer-report');
 const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
 const newProductBroadcast = require('./new-product-broadcast');
+const tierApprovals = require('./partner-tier-approvals');
 let lastUpdateId = 0;
 let polling = false;
 
@@ -94,6 +95,7 @@ async function configureBotProfile() {
       { command: 'stock', description: 'Актуальные остатки центрального склада' },
       { command: 'nogroomer', description: 'Оплаченные заказы без грумера' },
       { command: 'payouts', description: 'Справка для выплат партнёрам' },
+      { command: 'tierapprovals', description: 'Согласовать изменение процента грумера' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
       { command: 'newproduct', description: '📷 Рассылка о новом товаре' },
       { command: 'cancel', description: 'Отменить текущее действие' },
@@ -142,7 +144,7 @@ function buildWelcomeMessage() {
     '',
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /stock — остатки центрального склада; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
-    'Супер-администратору: /newproduct — рассылка новинки с фотографией и предпросмотром.',
+    'Супер-администратору: /newproduct — рассылка новинки с фотографией и предпросмотром; /tierapprovals — заявки на снижение процента грумеров.',
     '',
     'Для быстрого входа в Mini App подтвердите свой номер Telegram — увидите зарегистрированные кабинеты без ввода пароля. Для админки нужна предварительная привязка Telegram из аккаунта сайта.',
   ].join('\n');
@@ -163,6 +165,9 @@ function botActionButtons(chatId) {
     if (newProductBroadcast.isBroadcaster(chatId)) {
       keyboard.push([{ text: '📷 Рассылка о новинке', callback_data: 'newprod:new' }]);
     }
+  }
+  if (chatId && tierApprovals.activeSuperAdmin(chatId)) {
+    keyboard.push([{ text: '📉 Согласования комиссий', callback_data: 'tier:list' }]);
   }
   if (chatId && require('./routes-partner-club').isClubModerator(chatId)) {
     keyboard.push([{ text: '🐾 Сообщение партнёрам', callback_data: 'club:new' }]);
@@ -612,6 +617,37 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (/^tier:(?:list|(?:approve|reject):\d+)$/.test(callback.data || '')) {
+      const chat = callback.message?.chat;
+      const allowed = chat?.type === 'private' &&
+        String(chat.id) === String(callback.from?.id);
+      let result;
+      try {
+        if (!allowed) result = { ok:false, message:'Подтвердить изменение ставки можно только в личном чате.' };
+        else if (callback.data === 'tier:list') result = tierApprovals.requestCardList(chat.id);
+        else {
+          const match = callback.data.match(/^tier:(approve|reject):(\d+)$/);
+          result = await tierApprovals.decideTierDowngrade(chat.id, match[1], match[2]);
+        }
+      } catch (error) {
+        console.warn('[tier-approval] Callback failed:',error.message);
+        result = {ok:false,message:'Не удалось обработать решение. Ставка не изменена. Повторите позднее.'};
+      }
+      try {
+        await callBotApi('answerCallbackQuery', {
+          callback_query_id:callback.id,
+          text:String(result.message || 'Готово').slice(0,180),
+          show_alert:!result.ok,
+        });
+      } catch (error) { console.warn('[tier-approval] callback acknowledgement:',error.message); }
+      if (allowed) {
+        if (result.message) await replyToChat(chat.id,result.message);
+        for (const card of result.cards || []) {
+          await replyToChat(chat.id,card.message,card.reply_markup,'HTML');
+        }
+      }
+      return;
+    }
     if (/^newprod:/.test(callback.data || '')) {
       const chat = callback.message?.chat;
       const permitted = chat?.type === 'private' &&
@@ -917,6 +953,15 @@ async function processUpdate(update) {
     return;
   }
 
+  if (msg.chat.type === 'private' && /^\/tierapprovals(?:@\w+)?$/i.test(text)) {
+    const result = tierApprovals.requestCardList(msg.chat.id);
+    await replyToChat(msg.chat.id,result.message);
+    for (const card of result.cards || []) {
+      await replyToChat(msg.chat.id,card.message,card.reply_markup,'HTML');
+    }
+    return;
+  }
+
   // Alternative for Telegram clients without the native Mini App phone popup.
   if (msg.chat.type === 'private' && /^\/phone(?:@\w+)?$/i.test(text)) {
     await replyToChat(msg.chat.id,
@@ -1128,6 +1173,7 @@ async function startPolling() {
   if (polling) return;
   polling = true;
   newProductBroadcast.startBroadcastWorker();
+  tierApprovals.startTierApprovalNotifications();
   await configureBotProfile();
   console.log('Опрос Telegram для входа в личный кабинет запущен');
   while (polling) {
