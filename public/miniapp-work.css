@@ -94,3 +94,77 @@
 .combined-total{font-size:30px;color:#11543a;font-weight:900;letter-spacing:-.5px;line-height:1.2;margin:0 0 8px}
 .combined-overview .work-note{margin-bottom:0;color:#47715a}
 .combined-subtitle{font-size:12px;font-weight:800;margin:14px 0 5px;color:#285941}
+
+
+/* Meeting assignments: lightweight in-cabinet task workspace. */
+.mt-nav{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:5px;border:1px solid #d8e9df;border-radius:15px;background:#eef6ee;margin:0 0 13px}
+.mt-nav button{border:0;border-radius:11px;background:transparent;color:#3e7059;padding:11px 9px;font-size:13px;font-weight:850}
+.mt-nav button.active{background:#fff;color:#12523b;box-shadow:0 2px 7px #05473315}
+.mt-nav span{display:inline-block;border-radius:13px;background:#dbefe2;padding:2px 7px;font-size:10px}
+.mt-overview{border-color:#d2e6d6;background:linear-gradient(125deg,#fff,#f1f8ef)}
+.mt-section-head{display:flex;align-items:flex-start;gap:7px;justify-content:space-between}
+.mt-section-head h2{margin:0 0 5px;font-size:16px}
+.mt-section-head p{font-size:11px;color:var(--muted);line-height:1.45;margin:0}
+.mt-section-head button{flex-shrink:0;border:0;background:#daf0e0;color:#136045;font-size:11px;font-weight:800;border-radius:10px;padding:9px}
+.mt-overview-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:15px 0 10px}
+.mt-overview-metrics span{border:1px solid #deebe1;background:#fff;border-radius:12px;padding:10px 5px;text-align:center;font-size:10px;color:#587760}
+.mt-overview-metrics b{display:block;font-size:19px;color:#165b41;margin-top:3px}
+.mt-overview-metrics .mt-danger{color:#ae4738}
+.mt-preview-tasks{font-size:11px;color:#607c69;line-height:1.5;margin:9px 0 0}
+.mt-banner{border-radius:17px;background:linear-gradient(115deg,#0e4936,#237457);color:white;padding:17px 16px;margin-bottom:13px}
+.mt-banner h2{margin:0 0 4px;font-size:20px;color:white}
+.mt-banner p{font-size:11px;line-height:1.4;color:#ccebd5;margin:0}
+.mt-scopes{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;background:#f0f5ee;border-radius:13px;margin:0 0 12px}
+.mt-scopes button{border:0;border-radius:10px;padding:10px 6px;font-size:12px;font-weight:800;color:#4a7660;background:transparent}
+.mt-scopes button.active{background:white;color:#12603f;box-shadow:0 2px 8px #0e493612}
+.mt-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:13px}
+.mt-stat{background:#fff;border:1px solid #e3ede2;border-radius:12px;text-align:center;padding:11px 5px}
+.mt-stat small{display:block;color:#788d80;font-size:9px;min-height:22px}
+.mt-stat b{display:block;font-size:20px;font-weight:900;color:#14523b;margin-top:3px}
+.mt-stat-danger b{color:#b43f2d}
+.mt-team{margin-bottom:15px}
+.mt-team-list{display:grid;gap:0}
+.mt-team-line{display:flex;align-items:center;gap:8px;border-bottom:1px solid #eaf0e9;padding:8px 0}
+.mt-team-line:last-child{border:0}
+.mt-team-line span{flex:1;min-width:0}
+.mt-team-line span b{display:block;color:#2a4939;font-size:12px}
+.mt-team-line small{display:block;font-size:10px;color:#89a092;margin-top:3px}
+.mt-team-line strong{font-size:18px;color:#175d43}
+.mt-team-line em{font-style:normal;color:#b34537;font-weight:750;font-size:10px;max-width:70px;text-align:right}
+.mt-filters{display:flex;overflow-x:auto;gap:7px;margin:12px 0;padding-bottom:5px}
+.mt-filters button{border:1px solid #deeadf;color:#426b54;background:#fff;padding:9px 11px;border-radius:15px;white-space:nowrap;font-size:11px;font-weight:750}
+.mt-filters button.active{background:#115640;border-color:#115640;color:#fff}
+.mt-task-list{display:grid;gap:10px}
+.mt-task{background:#fff;border:1px solid #e0e9df;border-radius:15px;overflow:hidden}
+.mt-task.is-overdue{border-color:#e7c9bc}
+.mt-task-head{display:flex;justify-content:space-between;width:100%;padding:13px;text-align:left;gap:8px;background:transparent;border:0}
+.mt-task-main{flex:1;min-width:0}
+.mt-task-main strong{display:block;color:#213f32;font-size:13px;line-height:1.45;margin-bottom:8px}
+.mt-task-main>span{display:flex;flex-wrap:wrap;gap:5px}
+.mt-flag{display:inline-flex;align-items:center;border:1px solid #d9ebdf;background:#edf7ef;color:#396c50;border-radius:6px;padding:3px 6px;font-size:10px;font-weight:750}
+.mt-flag.mt-overdue{border-color:#f3cbc5;background:#fff0eb;color:#ae4236}
+.mt-flag.mt-muted{border-color:#e7e9e7;background:#f5f6f5;color:#85958a}
+.mt-flag.mt-status{border-color:#deeadf;background:#f8faf7;color:#667b6b}
+.mt-flag.mt-important{border-color:#f9e5c2;background:#fff5e4;color:#9c631b}
+.mt-chevron{font-weight:900;font-size:20px;color:#567b65}
+.mt-task-detail{border-top:1px solid #e4ece4;padding:12px 13px}
+.mt-description{font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.mt-task-meta{font-size:11px;color:#617f6b;margin:10px 0}
+.mt-latest{border-left:3px solid #73ae7d;padding:9px 10px;margin:10px 0;background:#f4faf2;border-radius:0 8px 8px 0;font-size:11px}
+.mt-latest p{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.mt-task-controls{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.mt-action{border:1px solid #d8e7de;background:#edf5ef;border-radius:9px;color:#185840;padding:9px 10px;font-size:11px;font-weight:800}
+.mt-action.mt-success{background:#1d7752;border-color:#1d7752;color:white}
+.mt-confirm{background:#f2f8ef;border-radius:11px;padding:11px;margin:12px 0}
+.mt-confirm strong{display:block;font-size:12px}
+.mt-confirm p{font-size:11px;margin:8px 0}
+.mt-confirm>div{display:flex;gap:8px;margin-top:9px}
+.mt-update-fields{margin-top:14px;display:grid;gap:7px}
+.mt-update-fields label{font-size:11px;color:#365844;font-weight:800;margin-top:5px}
+.mt-update-fields textarea,.mt-date-row input{border:1px solid #d8e8dc;border-radius:10px;padding:10px;font:inherit;color:#264433;background:#fafdfa;width:100%;min-width:0}
+.mt-update-fields textarea{resize:vertical;line-height:1.5;font-size:12px}
+.mt-date-row{display:flex;gap:7px}
+.mt-date-row .mt-action{flex-shrink:0}
+.mt-readonly{font-size:11px;color:#799181;margin:9px 0}
+.mt-empty{padding:24px 10px;background:#f8fbf7;border:1px dashed #dceadf;border-radius:13px;color:#64866f;font-size:12px;text-align:center}
+@media(max-width:360px){.mt-nav button{font-size:11px}.mt-stat b{font-size:17px}.mt-stat small{font-size:8px}.mt-action{padding:8px 7px}}
