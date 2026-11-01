@@ -4,6 +4,7 @@
 
 const db = require('./db');
 const { signToken } = require('./auth');
+require('./business-founders'); // ensure independently registered founders exist before phone matching
 
 const PHONE_PROOF_TTL_SECONDS = 30 * 24 * 60 * 60;
 const ACCOUNT_TABLES = Object.freeze({
