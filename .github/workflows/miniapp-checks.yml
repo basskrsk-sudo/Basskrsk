@@ -30,6 +30,7 @@ on:
       - server/routes-customers.js
       - server/miniapp-phone-identity.test.js
       - server/miniapp-identity-ui.test.js
+      - server/miniapp-customer-first.test.js
       - server/miniapp-header-contrast.test.js
       - server/routes-payment.js
       - server/server.js
