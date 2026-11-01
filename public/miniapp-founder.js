@@ -106,6 +106,21 @@
           g.actual==null?'—':String(g.actual)+(g.unit||''),'Целевое значение: '+g.target+(g.unit||''));
       }).join(''):'') +
       callout(strategy.note||'Прогноз зависит от принятых допущений.'));
+    var bsc=data.bsc||null;
+    if (bsc) {
+      html += section('🧭 Система показателей BSC',
+        '<div class="work-stats">'+card('Общий индекс BSC',
+          bsc.overall_score==null?'—':n(bsc.overall_score)+'/100',
+          bsc.period||'Предыдущая завершённая неделя')+
+          card('Готовность к расширению',bsc.readiness||'Не оценена','По BSC')+
+        '</div>'+
+        (bsc.perspectives||[]).map(function(p) {
+          return row((p.status==='red'?'🔴 ':p.status==='yellow'?'🟠 ':'🟢 ')+p.name,
+            p.score==null?'—':n(p.score)+'/100',
+            (p.weakest_kpis||[]).length?'В зоне внимания: '+p.weakest_kpis.join(', '):'');
+        }).join(''),
+        'Оценка четырёх направлений: финансы, клиенты, процессы и команда');
+    }
     html += section('💰 Финансы и расходы',
       '<div class="work-stats">' +
         card('Учтённые расходы',rub(finance.manual_expenses),'Внесены в журнал') +
