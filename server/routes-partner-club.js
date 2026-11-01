@@ -254,7 +254,7 @@ function registerPartnerClubRoutes(router){
    const formatted=safeMarkdownHtml(body);
    saveClubFormat(id,formatted);
    const preview='🐾 <b>Ручная публикация в Клуб партнёров #'+id+'</b>\n\n'+formatted;
-   const sent=await require('./telegram').sendToChat(reviewer,preview,{reply_markup:reviewButtons(id)});
+   const sent=await require('./telegram').sendToChat(reviewer,preview,{reply_markup:reviewButtons(id,false,true,false)});
    if(!sent.ok){
      db.prepare('DELETE FROM partner_club_events WHERE id=?').run(id);
      return sendJson(res,502,{error:'Черновик не доставлен модератору. Проверьте личный Telegram и повторите попытку.'});
@@ -330,7 +330,7 @@ function reviewButtons(id, canChangeGreeting=false, manual=false, hasPhotos=fals
 
 // The same preview is used after creating a post and after updating its photos.
 async function sendClubReviewPreview(chatId, id, title='Черновик для Клуба партнёров'){
- const event=db.prepare('SELECT * FROM partner_club_events WHERE id=?').get(Number(id));
+ const event=db.prepare('SELECT e.*,r.edited_message FROM partner_club_events e LEFT JOIN partner_club_reviews r ON r.event_id=e.id WHERE e.id=?').get(Number(id));
  if(!event)return {ok:false,error:'Черновик не найден'};
  const photos=clubPhotos.getEventPhotos(id);
  const manual=event.event_type==='manual';

@@ -746,6 +746,27 @@ async function processUpdate(update) {
       if (chatId) await replyToChat(chatId, result.message);
       return;
     }
+    if (/^club:(?:done|photosdone|cancelphotos|addphoto:\d+|clearphotos:\d+)$/.test(callback.data||'')) {
+      const chat=callback.message?.chat;
+      const allowed=chat?.type==='private' &&
+        String(chat.id)===String(callback.from?.id);
+      const club=require('./routes-partner-club');
+      const result=allowed
+        ? await club.handleClubPhotoCallback(chat.id,callback.data)
+        : {ok:false,message:'Эти действия доступны только модератору в личном чате.'};
+      try{
+        await callBotApi('answerCallbackQuery',{
+          callback_query_id:callback.id,
+          text:String(result.message||'Готово').slice(0,180),
+          show_alert:!result.ok,
+        });
+      }catch(error){
+        console.warn('[partner-club] Не удалось подтвердить фото:',error.message);
+      }
+      if(allowed&&result.message)
+        await replyToChat(chat.id,result.message,result.reply_markup,result.parse_mode);
+      return;
+    }
     if (/^club:(send|edit|reject|reroll):\d+$/.test(callback.data||'')) {
       const club=require('./routes-partner-club');
       const result=await club.handleClubCallback(callback.message?.chat?.id,callback.data);
@@ -850,6 +871,14 @@ async function processUpdate(update) {
     const pendingNewProduct = newProductBroadcast.messageInput(msg);
     if (pendingNewProduct) {
       await replyNewProduct(msg.chat.id, pendingNewProduct);
+      return;
+    }
+  }
+  if(msg.chat?.type==='private'&&Array.isArray(msg.photo)&&msg.photo.length){
+    const received=await require('./routes-partner-club').handleClubPhotoMessage(msg);
+    if(received){
+      if(!received.silent&&received.message)
+        await replyToChat(msg.chat.id,received.message,received.reply_markup,received.parse_mode);
       return;
     }
   }
@@ -993,9 +1022,10 @@ async function processUpdate(update) {
       .run('telegram', String(msg.chat.id)).changes > 0;
     const dateCancelled = cancelTaskDueInput('telegram', msg.chat.id);
     const newProductCancelled = newProductBroadcast.cancelDraft(msg.chat.id);
+    const clubPhotoCancelled = require('./routes-partner-club').cancelClubInput(msg.chat.id);
     await replyToChat(
       msg.chat.id,
-      createCancelled || expenseCancelled || statusCancelled || dateCancelled || newProductCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
+      createCancelled || expenseCancelled || statusCancelled || dateCancelled || newProductCancelled || clubPhotoCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
       botActionButtons(msg.chat.id)
     );
     return;
