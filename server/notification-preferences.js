@@ -83,11 +83,16 @@ function savePreferences(role,id,changes) {
     if(!def||def.locked)return {ok:false,status:400,error:'Этот вид уведомления нельзя отключить'};
     if(typeof changes[key]!=='boolean')return {ok:false,status:400,error:'Значение должно быть включено или выключено'};
   }
-  db.transaction(()=>{
+  db.exec('BEGIN IMMEDIATE');
+  try {
     const statement=db.prepare('INSERT INTO notification_preferences(recipient_role,recipient_id,notification_key,enabled) VALUES (?,?,?,?)' +
       " ON CONFLICT(recipient_role,recipient_id,notification_key) DO UPDATE SET enabled=excluded.enabled,updated_at=datetime('now')");
     for(const key of keys) statement.run(role,id,key,changes[key]?1:0);
-  })();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
   return {ok:true,settings:describe(role,id)};
 }
 
