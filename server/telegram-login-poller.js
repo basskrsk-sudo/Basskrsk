@@ -33,6 +33,7 @@ const {
 } = require('./expense-bot-create');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
+const { miniAppMenuButton, miniAppInlineKeyboard, miniAppDirectLinkMarkup } = require('./miniapp-bot-links');
 const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
 const {
   currentKrasnoyarskYear, collectBusinessYearReport,
@@ -49,8 +50,8 @@ let lastUpdateId = 0;
 let polling = false;
 
 const BOT_NAME = 'ХвостМаркет';
-const BOT_DESCRIPTION = 'Помогаю входить в кабинет, работать с поручениями и получать уведомления ХвостМаркета.';
-const BOT_SHORT_DESCRIPTION = 'Кабинет, поручения и уведомления ХвостМаркета.';
+const BOT_DESCRIPTION = 'Покупайте товары для питомцев, открывайте свои кабинеты, получайте уведомления и управляйте поручениями ХвостМаркета.';
+const BOT_SHORT_DESCRIPTION = 'Магазин, кабинеты и уведомления ХвостМаркета.';
 
 async function callBotApi(method, body) {
   const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, {
@@ -75,8 +76,11 @@ async function configureBotProfile() {
     ['setMyName', { name: BOT_NAME }],
     ['setMyDescription', { description: BOT_DESCRIPTION }],
     ['setMyShortDescription', { short_description: BOT_SHORT_DESCRIPTION }],
+    ['setChatMenuButton', { menu_button: miniAppMenuButton() }],
     ['setMyCommands', { commands: [
       { command: 'start', description: 'Открыть помощника ХвостМаркета' },
+      { command: 'shop', description: '🛍 Открыть магазин' },
+      { command: 'cabinet', description: '👤 Рабочие кабинеты' },
       { command: 'tasks', description: 'Мои активные поручения' },
       { command: 'taskpdf', description: 'Свежий PDF моих поручений' },
       { command: 'newtask', description: 'Создать новую задачу' },
@@ -128,7 +132,9 @@ function buildWelcomeMessage() {
   return [
     '🐾 ХвостМаркет',
     '',
-    'Я помогу войти в личный кабинет и буду присылать важные уведомления о заказах, продажах и вознаграждениях.',
+    'Откройте магазин или свой рабочий кабинет прямо в Telegram. Я также помогу войти на сайт и буду присылать уведомления о продажах, заказах и вознаграждениях.',
+    '',
+    'Магазин: /shop · Кабинеты грумеров, менеджеров, владельцев и администраторов: /cabinet.',
     '',
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /stock — остатки центрального склада; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
@@ -138,7 +144,7 @@ function buildWelcomeMessage() {
 }
 
 function botActionButtons(chatId) {
-  const keyboard = [[
+  const keyboard = [...miniAppInlineKeyboard(), [
     { text: '➕ Новая задача', callback_data: 'newtsk:start' },
     { text: '💳 Добавить трату', callback_data: 'expense:start' },
   ]];
@@ -796,6 +802,20 @@ async function processUpdate(update) {
     if (/^\/chatid(?:@\w+)?$/i.test(text)) {
       await replyToChat(msg.chat.id, '🐾 ID этой группы: ' + String(msg.chat.id) + '\nСкопируйте число для подключения Клуба партнёров.');
     }
+    return;
+  }
+
+  // Mini App links work in this EXISTING bot. Handle commands before free-text
+  // club drafts and task creation so they cannot consume /shop or /cabinet.
+  if (msg.chat.type === 'private' && /^\/(?:shop|cabinet)(?:@\w+)?$/i.test(text)) {
+    const work = /^\/cabinet(?:@\w+)?$/i.test(text);
+    await replyToChat(
+      msg.chat.id,
+      work
+        ? '👤 Рабочие кабинеты ХвостМаркета. Выберите роль и войдите с учётными данными сайта.'
+        : '🛍 Магазин ХвостМаркета. Выберите салон, товары и оплачивайте покупки через ЮKassa.',
+      miniAppDirectLinkMarkup(work ? 'work' : 'shop')
+    );
     return;
   }
 
