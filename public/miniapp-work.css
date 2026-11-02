@@ -168,3 +168,27 @@
 .mt-readonly{font-size:11px;color:#799181;margin:9px 0}
 .mt-empty{padding:24px 10px;background:#f8fbf7;border:1px dashed #dceadf;border-radius:13px;color:#64866f;font-size:12px;text-align:center}
 @media(max-width:360px){.mt-nav button{font-size:11px}.mt-stat b{font-size:17px}.mt-stat small{font-size:8px}.mt-action{padding:8px 7px}}
+
+
+/* Private conversations between salon staff and assigned manager in Mini App */
+.work-chat-intro{background:linear-gradient(125deg,#f4fbf5,#fff);border-color:#d2e7d7}
+.work-chat-intro h2{margin:0 0 8px;color:#145d40}
+.work-chat-thread{width:100%;display:grid;gap:5px;text-align:left;border:1px solid #dfebdf;background:#fafdfa;border-radius:13px;padding:13px 12px;margin:8px 0;cursor:pointer;color:#264b34;font:inherit;position:relative}
+.work-chat-thread-name{font-size:13px;font-weight:850;line-height:1.4}
+.work-chat-thread small{font-size:10px;color:#74927b}
+.work-chat-snippet{font-size:11px;color:#637b68;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.work-chat-unread{font-size:10px;background:#d8eee0;color:#11603f;padding:4px 8px;border-radius:9px;justify-self:start}
+.work-chat-history{background:#f2f7ef;border:1px solid #e0ebe0;border-radius:17px;padding:14px 10px;min-height:125px;max-height:375px;overflow-y:auto;display:grid;align-content:start;gap:8px;margin:12px 0}
+.work-chat-line{display:flex;justify-content:flex-start}
+.work-chat-line.mine{justify-content:flex-end}
+.work-chat-bubble{max-width:87%;padding:11px 12px;background:#fff;border:1px solid #e1ebe0;border-radius:14px 14px 14px 4px;box-shadow:0 2px 8px #153b1607}
+.work-chat-line.mine .work-chat-bubble{background:#dff2e5;border-color:#cfebd5;border-radius:14px 14px 4px 14px}
+.work-chat-author{font-size:10px;font-weight:850;color:#1e6548}
+.work-chat-bubble p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6;color:#214431;margin:6px 0}
+.work-chat-bubble small{font-size:9px;color:#73947e}
+.work-chat-empty{padding:22px 10px;text-align:center;color:#74917a;font-size:12px}
+.work-chat-form .work-chat-input{width:100%;border:1px solid #d6e8da;border-radius:11px;outline:none;background:#fcfefb;color:#234835;padding:12px;resize:vertical;font:inherit;font-size:13px;min-height:94px}
+.work-chat-form .work-chat-input:focus{border-color:#2a8c62;box-shadow:0 0 0 3px #2a8c6216}
+.work-chat-form .work-primary{margin-top:10px}
+.work-chat-form .work-quiet{display:block;margin-top:7px}
+.work-chat-reload{margin:10px 0 17px}

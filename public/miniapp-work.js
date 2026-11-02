@@ -22,6 +22,9 @@
   var taskData = null;
   var dashboardMarkup = '';
   var taskView = 'overview';
+  var chatView = '';
+  var chatThreadId = null;
+  var chatNotice = '';
   var root = document.getElementById('workPage');
   if (!root) return;
   var identity = window.HvostMiniAppIdentity || null;
@@ -135,6 +138,9 @@
     taskData = null;
     dashboardMarkup = '';
     taskView = 'overview';
+    chatView = '';
+    chatThreadId = null;
+    chatNotice = '';
     if (taskPanel) taskPanel.reset();
     serial++;
     renderAll();
@@ -353,6 +359,9 @@
     if (role === 'salon') return chooseCombinedSalon();
     if (!Object.prototype.hasOwnProperty.call(CONFIG, role)) return;
     taskView = 'overview';
+    chatView = '';
+    chatThreadId = null;
+    chatNotice = '';
     dashboardMarkup = '';
     taskData = null;
     if (taskPanel) taskPanel.reset();
@@ -444,17 +453,140 @@
   }
   function dashboardFooter(role) {
     if (role === 'salon') return '<div class="work-action-bar">' +
+      '<button class="work-primary" type="button" data-work-action="chat">💬 Написать менеджеру</button>' +
       '<button class="work-secondary" type="button" data-work-action="full-partner">✂️ Полный кабинет грумера</button>' +
       '<button class="work-secondary" type="button" data-work-action="full-owner">🏠 Полный кабинет владельца</button>' +
       '<button class="work-secondary" type="button" data-work-action="notifications">🔔 Настройки уведомлений</button>' +
       '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
       '</div><p class="work-quiet">Продажи салона включают личные продажи грумера. Комиссии рассчитываются и выплачиваются раздельно.</p>';
     return '<div class="work-action-bar">' +
+      (['partner','owner','manager'].includes(role)
+        ? '<button class="work-primary" type="button" data-work-action="chat">' +
+          (role === 'manager' ? '💬 Сообщения от салонов' : '💬 Написать менеджеру') +
+          '</button>' : '') +
       (role === 'founder' ? '' : '<button class="work-primary" type="button" data-work-action="full" data-work-role="' + esc(role) + '">Открыть полный кабинет →</button>') +
       '<button class="work-secondary" type="button" data-work-action="notifications">🔔 Настройки уведомлений</button>' +
       '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
       '</div><p class="work-quiet">' + (role === 'founder' ? 'Кабинет собственника работает отдельно от административного доступа и не позволяет изменять заказы или выплаты.' : 'Полный кабинет открывается в том же окне Telegram и использует действующие права учётной записи.') + '</p>';
   }
+
+  function canChat(role) {
+    return ['partner','owner','salon','manager'].includes(role);
+  }
+  function chatAccountRole() {
+    // Combined groomer-owner remains two actual independently authorized
+    // accounts. Use the owner's token for exactly one salon conversation.
+    return activeRole === 'salon' ? 'owner' : activeRole;
+  }
+  function chatMessageCard(item) {
+    var mine = item.author_role === chatAccountRole();
+    return '<div class="work-chat-line ' + (mine ? 'mine' : 'theirs') + '">' +
+      '<div class="work-chat-bubble">' +
+      '<span class="work-chat-author">' + esc(mine ? 'Вы' : item.author_name) + '</span>' +
+      '<p>' + esc(item.text) + '</p>' +
+      '<small>' + esc(date(item.created_at)) + '</small></div></div>';
+  }
+  function chatConversation(data) {
+    var isManager=chatAccountRole()==='manager';
+    var name=isManager ? data.sender && data.sender.name : data.manager && data.manager.name;
+    var salon=data.point && data.point.name || 'Салон';
+    var header='<section class="work-surface work-chat-intro">' +
+      '<h2>💬 ' + esc(isManager ? 'Переписка с партнёром' : 'Написать менеджеру') + '</h2>' +
+      '<p class="work-note"><b>' + esc(name || 'Менеджер') + '</b> · ' + esc(salon) + '</p>' +
+      '<p class="work-note">Сообщения сохраняются в ХвостМаркете. ' +
+      'Telegram-уведомление отправляется при подключённом боте и разрешённых уведомлениях.</p></section>';
+    var entries=Array.isArray(data.messages)?data.messages:[];
+    var history='<div class="work-chat-history" aria-label="История переписки">' +
+      (entries.length?entries.map(chatMessageCard).join(''):
+        '<div class="work-chat-empty">Пока нет сообщений. Напишите первым 🐾</div>')+
+      '</div>';
+    var form='<form id="workChatForm" class="work-surface work-chat-form">' +
+      '<label class="work-label" for="workChatText">Ваше сообщение</label>' +
+      '<textarea class="work-chat-input" id="workChatText" rows="3" ' +
+      'maxlength="1200" placeholder="Например: нужно пополнить стойку, вопрос по товару или продаже…"' +
+      ' required></textarea>' +
+      '<small class="work-quiet">Максимум 1200 символов. Новое сообщение можно отправить через 12 секунд.</small>' +
+      '<button class="work-primary" id="workChatSubmit" type="submit">Отправить сообщение →</button>' +
+      '<div id="workChatStatus" role="status"></div></form>';
+    return (isManager?'<button type="button" class="work-back" data-work-action="chat-inbox">← К сообщениям салонов</button>':'') +
+      header + history + form;
+  }
+  function chatInbox(data) {
+    var threads=Array.isArray(data.threads)?data.threads:[];
+    return '<section class="work-surface"><h2>💬 Сообщения от салонов</h2>' +
+      '<p class="work-note">Здесь сообщения грумеров и владельцев ваших действующих точек. ' +
+      'Выберите диалог, чтобы ответить.</p>' +
+      (threads.length?threads.map(function(t) {
+        return '<button type="button" class="work-chat-thread" data-work-action="chat-thread" '+
+          'data-chat-thread-id="'+esc(t.id)+'">' +
+          '<span class="work-chat-thread-name">'+esc(t.sender_name)+'</span>' +
+          '<small>'+esc(t.point_name)+' · '+esc(t.sender_role==='owner'?'Владелец':'Грумер')+'</small>' +
+          '<span class="work-chat-snippet">'+esc(t.last_text)+'</span>' +
+          (t.unread?'<b class="work-chat-unread">'+esc(t.unread)+' новых</b>':'') +
+          '</button>';
+      }).join(''):'<p class="work-chat-empty">От партнёров пока нет сообщений 🐾</p>')+
+      '</section>';
+  }
+  async function openChat(threadId) {
+    if (!canChat(activeRole) || !getToken(chatAccountRole())) return;
+    var mySerial=serial,role=activeRole;
+    chatView='loading';
+    chatThreadId=(role==='manager'&&threadId!=null)?Number(threadId):null;
+    root.innerHTML=dashboardHeader(role) +
+      '<button type="button" class="work-back" data-work-action="chat-back">← В кабинет</button>' +
+      '<div class="work-surface">Загружаем переписку…</div>';
+    try {
+      var url='/api/miniapp/manager-messages' +
+        (chatThreadId!=null?'?thread_id='+encodeURIComponent(chatThreadId):'');
+      var data=await fetchJSON(url,getToken(chatAccountRole()));
+      if (mySerial!==serial||role!==activeRole||!chatView) return;
+      chatView=data.kind==='manager'?'inbox':'thread';
+      root.innerHTML=dashboardHeader(role) +
+        '<button type="button" class="work-back" data-work-action="chat-back">← В кабинет</button>' +
+        (chatNotice?note(chatNotice):'') +
+        (data.kind==='manager'?chatInbox(data):chatConversation(data)) +
+        '<button class="work-secondary work-chat-reload" type="button" data-work-action="chat-refresh">↻ Обновить переписку</button>';
+    } catch(error) {
+      if (mySerial!==serial||role!==activeRole||!chatView)return;
+      chatView='error';
+      root.innerHTML=dashboardHeader(role) +
+        '<button type="button" class="work-back" data-work-action="chat-back">← В кабинет</button>' +
+        problem(error.message) +
+        '<button class="work-secondary" type="button" data-work-action="chat-refresh">Повторить загрузку</button>';
+    }
+  }
+  async function sendChat() {
+    if (!canChat(activeRole) || chatView!=='thread') return;
+    var role=activeRole, mySerial=serial, threadId=chatThreadId;
+    var field=document.getElementById('workChatText');
+    var submit=document.getElementById('workChatSubmit');
+    var status=document.getElementById('workChatStatus');
+    if (!field||!submit||!status) return;
+    var text=String(field.value||'').trim();
+    if(!text||text.length>1200) {
+      status.innerHTML=problem('Введите сообщение длиной от 1 до 1200 символов.');
+      return;
+    }
+    submit.disabled=true;
+    status.innerHTML='';
+    try {
+      var body={text:text};
+      if(chatAccountRole()==='manager')body.thread_id=threadId;
+      var result=await fetchJSON('/api/miniapp/manager-messages',getToken(chatAccountRole()),{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),
+      });
+      if (mySerial!==serial||role!==activeRole||chatView!=='thread') return;
+      chatNotice=result.notified ?
+        'Сообщение сохранено и уведомление в Telegram отправлено.' :
+        'Сообщение сохранено. Адресат увидит его в кабинете; Telegram-уведомление не доставлено.';
+      await openChat(threadId);
+    } catch(error) {
+      if (mySerial!==serial||role!==activeRole||chatView!=='thread')return;
+      submit.disabled=false;
+      status.innerHTML=problem(error.message);
+    }
+  }
+
   function dataOrWarning(settled, fallback) {
     if (settled.status === 'fulfilled') return settled.value;
     return fallback;
@@ -722,6 +854,24 @@
       root.innerHTML = dashboardMarkup;
       return;
     }
+    if (action === 'chat' && canChat(activeRole)) {
+      chatNotice='';
+      return openChat(null);
+    }
+    if (action === 'chat-thread' && activeRole === 'manager') {
+      chatNotice='';
+      return openChat(button.dataset.chatThreadId);
+    }
+    if (action === 'chat-inbox' && activeRole === 'manager') {
+      chatNotice='';
+      return openChat(null);
+    }
+    if (action === 'chat-back' && canChat(activeRole)) {
+      chatView='';
+      chatNotice='';
+      return chooseRole(activeRole);
+    }
+    if (action === 'chat-refresh' && canChat(activeRole)) return openChat(chatThreadId);
     if (action === 'notifications') return openNotificationSettings();
     if (action === 'reload') return chooseRole(activeRole);
     if (action === 'full-partner' && activeRole === 'salon') return openFullCabinet('partner');
@@ -731,6 +881,7 @@
   root.addEventListener('submit', function(e) {
     if (e.target.id === 'workLoginForm') { e.preventDefault(); login(); }
     if (e.target.id === 'workRestockForm') { e.preventDefault(); sendRestock(); }
+    if (e.target.id === 'workChatForm') { e.preventDefault(); sendChat(); }
   });
   if (identity) identity.onChange(function(state) {
     if (!state.verified || (activeRole === 'salon' && !state.combinedSalon)) return openAll();
