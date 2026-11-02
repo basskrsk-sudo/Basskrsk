@@ -121,8 +121,11 @@ function buildManagerMessage(order, items, manager, point, partner, managerRate)
 function findCustomer(phone) {
   const normalized = phoneLast10(phone);
   if (normalized.length !== 10) return null;
-  return db.prepare('SELECT id, phone, telegram_chat_id FROM customers').all()
-    .find((row) => phoneLast10(row.phone) === normalized) || null;
+  const matches=db.prepare('SELECT id,phone,telegram_chat_id FROM customers').all()
+    .filter(row=>phoneLast10(row.phone)===normalized);
+  // An ambiguous legacy phone must not cause an order receipt to reach
+  // a randomly selected customer's linked Telegram account.
+  return matches.length===1?matches[0]:null;
 }
 
 function findPartner(order) {
@@ -214,6 +217,11 @@ async function sendPaidOrderNotifications(order, items) {
   if(managerChatId && preference('manager',manager.id,'sales'))
     add('manager',managerChatId,buildManagerMessage(order,items,manager,point,partner,rate));
   for(const {role,account} of optedInSaleSubscribers(order)){
+    // The service chat already receives its own full paid-order notification.
+    // An admin/founder who opted into personal sales should not get a duplicate
+    // copy in that same Telegram chat.
+    if((role==='admin'||role==='founder') &&
+       String(account.telegram_chat_id)===String(process.env.TG_CHAT_ID||''))continue;
     add(role,account.telegram_chat_id,buildMinimalSaleNotice(order,items,
       role==='owner'?'Новая продажа вашего салона':'Новая продажа ХвостМаркета'));
   }
