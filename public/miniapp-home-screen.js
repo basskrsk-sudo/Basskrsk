@@ -135,7 +135,7 @@
       var target = event.target;
       var button = target && typeof target.closest === 'function' ?
         target.closest('[data-hm-home-add]') : null;
-      if (!button) return;
+      if (!button || !showButton()) return;
       event.preventDefault();
       requestInstall();
     });
