@@ -100,6 +100,11 @@
   }
   function saveRole(role) {
     try { localStorage.setItem('hm_miniapp_work_role', role); } catch (_) {}
+    // A home-screen shortcut can have separate localStorage from the chat.
+    // Persist only this authorized role on the server, not any access token.
+    if (identity && typeof identity.rememberRole === 'function') {
+      identity.rememberRole(role).catch(function() {});
+    }
   }
   function savedRole() {
     try { return localStorage.getItem('hm_miniapp_work_role') || ''; } catch (_) { return ''; }
@@ -903,13 +908,23 @@
 
   window.HvostMiniAppWork = {
     render: function() {
+      if (!phoneStatus().verified) return renderAll();
+      var preferred = phoneStatus().preferredRole;
+      // The signed server preference wins over stale localStorage, which
+      // may belong to an older chat WebView or even an earlier login.
+      if (preferred && preferred !== 'shop' && preferred !== 'customer' &&
+          phoneRoleAvailable(preferred)) return chooseRole(preferred);
+      // The caller may request the work area even if shop was the last
+      // destination. Never automatically open an unrelated privileged role.
+      if (preferred === 'shop' || preferred === 'customer') {
+        activeRole = '';
+        return renderAll();
+      }
       if (phoneRoleAvailable('salon') &&
           (!activeRole || activeRole === 'partner' || activeRole === 'owner' || activeRole === 'salon')) {
-        // Returning owners who actively groom land in their SINGLE dashboard.
         return chooseRole('salon');
       }
-      if (!activeRole) return renderAll();
-      // Return from the full cabinet: refresh server data, never trust old markup.
+      if (!activeRole || !phoneRoleAvailable(activeRole)) return renderAll();
       return chooseRole(activeRole);
     },
     chooseRole: chooseRole,
