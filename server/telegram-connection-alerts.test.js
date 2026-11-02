@@ -23,6 +23,7 @@ function fixture(){
     'CREATE TABLE business_founders (id INTEGER PRIMARY KEY,full_name TEXT,phone TEXT,telegram_chat_id TEXT,active INTEGER DEFAULT 1);',
     'CREATE TABLE task_assignees (id INTEGER PRIMARY KEY,full_name TEXT,phone TEXT,telegram_chat_id TEXT,active INTEGER DEFAULT 1);',
     'CREATE TABLE points (id TEXT PRIMARY KEY,name TEXT);',
+    'CREATE TABLE notification_preferences (recipient_role TEXT,recipient_id INTEGER,notification_key TEXT,enabled INTEGER,PRIMARY KEY(recipient_role,recipient_id,notification_key));',
     "INSERT INTO points VALUES ('zveryuga','Zveryuga');",
     "INSERT INTO admins(id,login,full_name,telegram_chat_id,active) VALUES (1,'admin','Админ Один','77001',1),(2,'second','Админ Два','77002',1),(3,'closed','Админ Отключён','77003',0);",
     "INSERT INTO partners VALUES (10,'<Ирина & Мария>','Zveryuga','79135550014',NULL,1);",
@@ -157,6 +158,63 @@ test('source paths use the binder rather than unlogged direct chat updates',()=>
   assert.match(routes,/bindTelegramAccount\('customer',customer\.id,record\.chat_id\)/);
   assert.match(routes,/bindTelegramAccount\(payload\.role,payload\.id,record\.chat_id\)/);
   assert.match(tasks,/bindTelegramAccount\('task_assignee'/);
+});
+
+
+test('connection alerts respect each administrator opt-out at event creation and delivery',async()=>{
+  const database=fixture();
+  database.prepare(
+    "INSERT INTO notification_preferences(recipient_role,recipient_id,notification_key,enabled) "+
+    "VALUES ('admin',1,'bot_connections',0)"
+  ).run();
+  const first=bindTelegramAccount('partner',10,'10010',settings(database));
+  assert.equal(first.changed,true);
+  assert.equal(first.recipients,1);
+  const delivered=[];
+  assert.deepEqual(await flushBotConnectionAlerts({
+    database,businessChatId:'-100999999999',sendToChat:async(chat)=>{delivered.push(String(chat));return {ok:true};},
+  }),{sent:1,failed:0,cancelled:0});
+  assert.deepEqual(delivered,['77002']);
+
+  // A pending message must be cancelled if its recipient opts out AFTER
+  // it was queued, including while Telegram was unavailable.
+  const second=bindTelegramAccount('partner',10,'20010',settings(database));
+  assert.equal(second.recipients,1);
+  database.prepare(
+    "INSERT INTO notification_preferences(recipient_role,recipient_id,notification_key,enabled) "+
+    "VALUES ('admin',2,'bot_connections',0)"
+  ).run();
+  delivered.length=0;
+  const cancelled=await flushBotConnectionAlerts({
+    database,sendToChat:async(chat)=>{delivered.push(chat);return {ok:true};},
+  });
+  assert.deepEqual(cancelled,{sent:0,failed:0,cancelled:1});
+  assert.deepEqual(delivered,[]);
+  database.close();
+});
+
+test('service group never receives private connection alert without explicit opt-in',async()=>{
+  const database=fixture();
+  const noGroup=bindTelegramAccount('customer',11,'10011',settings(database,{
+    businessChatId:'-100123456789',
+  }));
+  assert.equal(noGroup.recipients,2,'two active administrators only');
+  assert.deepEqual(database.prepare(
+    'SELECT target_chat_id FROM bot_connection_deliveries WHERE event_id=?'
+  ).all(noGroup.eventId).map(r=>r.target_chat_id).sort(),['77001','77002']);
+
+  const opted=bindTelegramAccount('customer',11,'10012',settings(database,{
+    businessChatId:'-100123456789',allowServiceChat:true,
+  }));
+  assert.equal(opted.recipients,3);
+  const sent=[];
+  await flushBotConnectionAlerts({
+    database,businessChatId:'-100123456789',allowServiceChat:true,
+    sendToChat:async(chat)=>{sent.push(String(chat));return {ok:true};},
+  });
+  assert.ok(sent.includes('-100123456789'));
+  assert.equal(sent.filter(x=>x==='-100123456789').length,1);
+  database.close();
 });
 
 test.after(()=>{

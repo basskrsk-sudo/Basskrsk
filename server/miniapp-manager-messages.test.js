@@ -191,6 +191,21 @@ test('recipient without Telegram or opted-out of messages still has persistent i
   db.close();
 });
 
+
+test('combined roles sharing the same Telegram account do not notify themselves',async()=>{
+  const {db,call,deliveries}=fixture();
+  // A person may combine salon manager and groomer roles; the message still
+  // persists in the correct room, but no redundant Telegram alert is sent.
+  db.prepare('UPDATE managers SET telegram_chat_id=? WHERE id=1').run('tg-partner-10');
+  const saved=await call('POST','partner',10,{text:'Проверка внутри собственного кабинета'});
+  assert.equal(saved.status,201);
+  assert.equal(saved.json.saved,true);
+  assert.equal(saved.json.notified,false);
+  assert.equal(deliveries.length,0);
+  assert.equal((await call('GET','partner',10)).json.messages.length,1);
+  db.close();
+});
+
 test.after(()=>{
   const db=require('./db');
   try{db.close();}catch(_){}

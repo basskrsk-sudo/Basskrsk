@@ -76,6 +76,11 @@ test('at 10AM one PDF per assignee, one MAX summary, no duplicate after rerun',a
   const early=await runDailyTaskDigest(new Date('2026-10-27T02:05:00Z'),deps);
   assert.deepEqual(early,[]);
   const first=await runDailyTaskDigest(now,deps);
+  for(const delivered of deliveries.filter(item=>item.step==='send')){
+    assert.ok(!delivered.report.sections.later.some(item=>item.id===disabled),
+      'disabled reminders must NOT appear in automatically delivered PDFs');
+    assert.ok(!Object.values(delivered.report.sections).flat().some(item=>item.id===disabled));
+  }
   assert.equal(first.filter(x=>x.ok).length,3); // 2 Telegram, 1 MAX
   assert.equal(deliveries.filter(x=>x.step==='send').length,2);
   assert.equal(max.length,1);
@@ -98,7 +103,12 @@ test('manual PDF can be requested without changing daily delivery status',async(
   const sent=[];
   const deps={
     renderPdf:async()=>Buffer.from('%PDF-FAKE'),
-    sendTelegram:async(chatId,report)=>{sent.push(chatId);return {ok:true};},
+    sendTelegram:async(chatId,report)=>{
+      sent.push(chatId);
+      assert.ok(report.sections.later.some(item=>item.id===disabled),
+        'manually requested PDF must still show tasks without automatic reminders');
+      return {ok:true};
+    },
   };
   assert.equal(assigneeByTelegram('101').id,aId);
   const first=await sendManualTaskPdf('101',now,deps);

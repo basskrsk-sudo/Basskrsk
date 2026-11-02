@@ -54,7 +54,10 @@ test('per-role defaults retain existing personal notices, restrict new broadcast
   assert.equal(preference('owner',o,'messages'),true);
   assert.equal(preference('partner',p,'messages'),true);
   assert.equal(preference('admin',a,'sales'),false);
+  assert.equal(preference('admin',a,'bot_connections'),true);
+  assert.equal(preference('partner',p,'bot_connections'),false);
   assert.equal(preference('founder',f,'sales'),false);
+  assert.equal(preference('founder',f,'bot_connections'),false);
   assert.equal(preference('owner',o,'unrecognized-topic'),false);
 });
 
@@ -146,9 +149,83 @@ test('private paid sale notices actually respect settings; owner/admin/founder o
     sent=await sendPaidOrderNotifications(order,items);
     assert.deepEqual(sent.attempted,['customer','partner','admin','founder']);
     assert.deepEqual(deliveries.map(x=>x.chatId),['11001','11002','11004','11005']);
+    assert.doesNotMatch(deliveries.find(x=>x.chatId==='11002').body,/79135550001|Покупатель/);
+    // Same Telegram user is groomer + owner. Opting into both roles never
+    // generates two copies of a single sale; personal groomer card wins.
+    deliveries.length=0;
+    savePreferences('owner',o,{sales:true});
+    sent=await sendPaidOrderNotifications(order,items);
+    assert.deepEqual(sent.attempted,['customer','partner','admin','founder']);
+    assert.equal(deliveries.filter(x=>x.chatId==='11002').length,1);
+    assert.match(deliveries.find(x=>x.chatId==='11002').body,/Новая продажа у вас/);
   } finally {
     telegram.sendToChat=real;
     delete require.cache[require.resolve('./order-notifications')];
+  }
+});
+
+
+test('legacy Telegram tokens cannot send staff sale notice to a chat bound only by phone',()=>{
+  const {connectedChatId}=require('./order-notifications');
+  const original=db.prepare('SELECT telegram_chat_id FROM partners WHERE id=?').get(p).telegram_chat_id;
+  db.prepare('UPDATE partners SET telegram_chat_id=NULL WHERE id=?').run(p);
+  try {
+    db.prepare(
+      "INSERT INTO telegram_login_tokens(token,phone,role,account_id,verified,chat_id,expires_at) "+
+      "VALUES (?,?,?,?,1,?,datetime('now','+1 hour'))"
+    ).run('legacy-phone-only','79135550002','partner',null,'99111');
+    assert.equal(connectedChatId('partner',{id:p,phone:'79135550002',telegram_chat_id:null}),null);
+    db.prepare(
+      "INSERT INTO telegram_login_tokens(token,phone,role,account_id,verified,chat_id,expires_at) "+
+      "VALUES (?,?,?,?,1,?,datetime('now','+1 hour'))"
+    ).run('verified-account-bound','79135550002','partner',p,'99112');
+    assert.equal(connectedChatId('partner',{id:p,phone:'79135550002',telegram_chat_id:null}),'99112');
+    assert.equal(connectedChatId('owner',{id:o,phone:'79135550002',telegram_chat_id:null}),null);
+  } finally {
+    db.prepare('UPDATE partners SET telegram_chat_id=? WHERE id=?').run(original,p);
+  }
+});
+
+test('a sale is not sent to a guessed manager if multiple or inactive assignments exist',async()=>{
+  const telegram=require('./telegram');
+  const old=telegram.sendToChat;
+  const chats=[];
+  telegram.sendToChat=async(chatId,body)=>{chats.push({chatId:String(chatId),body});return {ok:true};};
+  const modulePath=require.resolve('./order-notifications');
+  delete require.cache[modulePath];
+  const {sendPaidOrderNotifications}=require('./order-notifications');
+  const another=Number(db.prepare(
+    'INSERT INTO managers(mgr_code,login,password_hash,full_name,phone,telegram_chat_id,active) '+
+    'VALUES (?,?,?,?,?,?,1)'
+  ).run('M-notify-2','manager-notify-2','hash','Другой менеджер','79135550123','11006').lastInsertRowid);
+  const link=db.prepare(
+    'INSERT INTO manager_points(manager_id,point_id,point_name,point_type) VALUES (?,?,?,?)'
+  );
+  link.run(m,'test-salon','Тестовый салон','Грумминг');
+  link.run(another,'test-salon','Тестовый салон','Грумминг');
+  const order={customer_phone:'79135550001',customer_name:'Покупатель',
+    customer_lname:'',point_id:'test-salon',partner_id:p,
+    pickup_point:'Тестовый салон',order_code:'QR-test-no-manager',commission_rate:.15,total:200};
+  const items=[{name:'Сердце говяжье',weight:'50 г',qty:1,price:200}];
+  try {
+    db.prepare('UPDATE points SET manager_id=NULL WHERE id=?').run('test-salon');
+    await sendPaidOrderNotifications(order,items);
+    assert.equal(chats.some(x=>x.chatId==='11003'||x.chatId==='11006'),false);
+    chats.length=0;
+    db.prepare('UPDATE points SET manager_id=? WHERE id=?').run(m,'test-salon');
+    await sendPaidOrderNotifications(order,items);
+    assert.equal(chats.filter(x=>x.chatId==='11003').length,1);
+    assert.equal(chats.filter(x=>x.chatId==='11006').length,0);
+    assert.doesNotMatch(chats.find(x=>x.chatId==='11003').body,/79135550001|Покупатель/);
+    chats.length=0;
+    db.prepare('UPDATE managers SET active=0 WHERE id=?').run(m);
+    await sendPaidOrderNotifications(order,items);
+    assert.equal(chats.some(x=>x.chatId==='11003'||x.chatId==='11006'),false);
+  } finally {
+    db.prepare('UPDATE managers SET active=1 WHERE id=?').run(m);
+    db.prepare('UPDATE points SET manager_id=NULL WHERE id=?').run('test-salon');
+    telegram.sendToChat=old;
+    delete require.cache[modulePath];
   }
 });
 
@@ -195,4 +272,16 @@ test('recorded payout notices obey independent partner/owner/manager toggles wit
     telegram.sendToChat=old;
     delete require.cache[file];
   }
+});
+
+
+test('admin alone may disable bot-connection alerts, independently from sales',()=>{
+  const admin=signToken({role:'admin',id:a});
+  assert.ok(describe('admin',a).some(x=>x.key==='bot_connections'&&x.enabled));
+  assert.equal(invoke('PUT',admin,{settings:{bot_connections:false}}).status,200);
+  assert.equal(preference('admin',a,'bot_connections'),false);
+  assert.equal(preference('admin',a,'sales'),true);
+  const partner=signToken({role:'partner',id:p});
+  assert.equal(invoke('PUT',partner,{settings:{bot_connections:true}}).status,400);
+  assert.equal(invoke('PUT',admin,{settings:{bot_connections:true}}).status,200);
 });

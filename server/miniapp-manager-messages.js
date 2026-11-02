@@ -209,7 +209,11 @@ async function postManagerMessage(database,role,id,body,send=telegram.sendToChat
     throw e;
   }
   let notified=false;
-  if(ctx.recipient.telegram_chat_id&&notifications(ctx.recipientRole,ctx.recipient.id,'messages')){
+  // A combined groomer-owner account may share the sender's Telegram ID.
+  // Save the message but do not notify the author about their own message.
+  if(ctx.recipient.telegram_chat_id &&
+     String(ctx.recipient.telegram_chat_id)!==String(ctx.actor.telegram_chat_id||'') &&
+     notifications(ctx.recipientRole,ctx.recipient.id,'messages')){
     const caption=role==='manager'?'💬 <b>Ответ менеджера ХвостМаркет</b>':
       '💬 <b>Новое сообщение менеджеру ХвостМаркет</b>';
     const text=[caption,'🏪 Точка: '+html(ctx.pointName),

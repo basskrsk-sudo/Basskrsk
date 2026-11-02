@@ -39,6 +39,7 @@ const DEFINITIONS = Object.freeze({
   ],
   admin: [
     {key:'sales', label:'Продажи сети', help:'Личные Telegram-уведомления о новых заказах', default:false},
+    {key:'bot_connections', label:'Подключения Telegram-бота', help:'Подключение пользователей к рабочим кабинетам', default:true},
   ],
   warehouse: [],
 });

@@ -45,12 +45,15 @@ function buildTaskDigest(assignee,tasks,now=new Date()){
     },
   };
 }
-function tasksForAssignee(assigneeId){
+function tasksForAssignee(assigneeId,manual=false){
   return db.prepare([
     "SELECT id,title,description,status,due_date,priority,recurrence_rule,reminder_enabled",
     "FROM meeting_tasks WHERE assignee_id=? AND status NOT IN ('done','cancelled')",
+    // Respect each task's reminder flag in the AUTOMATIC daily PDF.
+    // A manually requested personal PDF still shows all active assignments.
+    manual ? '' : 'AND reminder_enabled=1',
     "ORDER BY due_date,id",
-  ].join(' ')).all(assigneeId);
+  ].filter(Boolean).join(' ')).all(assigneeId);
 }
 function assigneeByTelegram(chatId){
   if(!chatId)return null;
@@ -147,7 +150,7 @@ async function deliverAssigneeDigest(assignee,channel,now=new Date(),manual=fals
   }
   let delivery;
   try{
-    const report=buildTaskDigest(assignee,tasksForAssignee(assignee.id),now);
+    const report=buildTaskDigest(assignee,tasksForAssignee(assignee.id,manual),now);
     if(channel==='telegram'){
       const render=deps.renderPdf||renderTaskDailyDigestPdf;
       const send=deps.sendTelegram||sendTelegramTaskPdf;

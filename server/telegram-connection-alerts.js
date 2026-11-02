@@ -67,6 +67,26 @@ function escapeHtml(raw){
   })[c]);
 }
 
+// A verified admin can independently disable optional connection notices.
+// All other account roles have no access to these notices. The preference
+// is rechecked before delivery so an opt-out cancels pending messages.
+function adminSubscribed(database,id){
+  const exists=database.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_preferences'"
+  ).get();
+  if(!exists)return true; // Legacy installations before notification settings.
+  const row=database.prepare(
+    "SELECT enabled FROM notification_preferences WHERE recipient_role='admin' "+
+    "AND recipient_id=? AND notification_key='bot_connections'"
+  ).get(id);
+  return !row || Number(row.enabled)===1;
+}
+function enabledServiceChat(options){
+  return options.allowServiceChat===undefined
+    ? process.env.TG_BOT_CONNECTION_ALERTS_GROUP==='1'
+    : options.allowServiceChat===true;
+}
+
 // Store exactly one event per actual change in a role/account -> chat binding.
 // All DB writes and outbox recipients are one transaction; no fake alerts for
 // unverified /phone attempts, old /start links or routine login requests.
@@ -101,19 +121,20 @@ function bindTelegramAccount(role,accountId,chatId,options={}){
       String(user.account_name||'').trim()||'Не указано',
       meta.label,String(user.salon_name||'').trim()||null,maskPhone(user.phone)||null);
     const eventId=Number(event.lastInsertRowid);
-    // Both private admin chats and the configured service/admin chat may
-    // receive the alert. Duplicate chat IDs are deliberately collapsed.
+    // Admin alerts are PRIVATE by default. A service/group chat is only
+    // included via explicit TG_BOT_CONNECTION_ALERTS_GROUP=1.
     const recipients=new Map();
     const businessChat=String(options.businessChatId===undefined?
       (process.env.TG_CHAT_ID||''):options.businessChatId||'').trim();
-    if(businessChat)recipients.set(businessChat,'business');
+    if(enabledServiceChat(options)&&businessChat)recipients.set(businessChat,'business');
     const admins=database.prepare(
-      "SELECT telegram_chat_id FROM admins WHERE active=1 AND "+
+      "SELECT id,telegram_chat_id FROM admins WHERE active=1 AND "+
       "TRIM(COALESCE(telegram_chat_id,''))<>''"
     ).all();
     for(const admin of admins){
       const id=String(admin.telegram_chat_id||'').trim();
-      if(id&&!recipients.has(id))recipients.set(id,'admin');
+      if(/^[1-9][0-9]{0,19}$/.test(id)&&adminSubscribed(database,admin.id)
+          &&!recipients.has(id))recipients.set(id,'admin');
     }
     const insert=database.prepare(
       'INSERT INTO bot_connection_deliveries '+
@@ -172,11 +193,11 @@ async function flushBotConnectionAlerts(options={}){
     for(const row of rows){
       const target=String(row.target_chat_id);
       const allowed=row.target_kind==='business'
-        ?target===String(options.businessChatId===undefined?
+        ?enabledServiceChat(options)&&target===String(options.businessChatId===undefined?
           process.env.TG_CHAT_ID||'':options.businessChatId||'').trim()
-        :!!database.prepare(
-          'SELECT 1 FROM admins WHERE active=1 AND telegram_chat_id=? LIMIT 1'
-        ).get(target);
+        :database.prepare(
+          'SELECT id FROM admins WHERE active=1 AND telegram_chat_id=?'
+        ).all(target).some(admin=>adminSubscribed(database,admin.id));
       if(!allowed){
         database.prepare(
           "UPDATE bot_connection_deliveries SET state='cancelled' WHERE id=?"
