@@ -6,13 +6,14 @@
   var telegram = null;
   var identity = {
     loaded: false, verified: false, phoneMasked: '',
-    accounts: [], ambiguousRoles: [], combinedSalon: false, error: '',
+    accounts: [], ambiguousRoles: [], combinedSalon: false, preferredRole: null, error: '',
   };
   var busy = false;
   var listeners = [];
   var stamp = 0;
-  // Privacy gate: even a previously linked Telegram number does not reveal
-  // account roles until the user enters and verifies that phone this launch.
+  // A recent self-shared Telegram contact is already proof of phone
+  // ownership. We can restore it using SIGNED fresh Telegram initData,
+  // without forcing an extra typed phone on every home-screen launch.
   var gateUnlocked = false;
   var confirmedPhone = '';
   function normalizeEnteredPhone(value) {
@@ -40,6 +41,7 @@
       accounts: gateUnlocked ? identity.accounts.map(function(x) { return { role: x.role, name: x.name }; }) : [],
       ambiguousRoles: gateUnlocked ? identity.ambiguousRoles.slice() : [],
       combinedSalon: identity.verified && gateUnlocked && !!identity.combinedSalon,
+      preferredRole: identity.verified && gateUnlocked ? identity.preferredRole : null,
       error: identity.error,
       busy: busy,
     };
@@ -65,44 +67,45 @@
   async function refresh() {
     if (!telegram || !telegram.initData) {
       identity.loaded = true;
+      identity.verified = false;
+      gateUnlocked = false;
+      identity.accounts = [];
+      identity.ambiguousRoles = [];
+      identity.combinedSalon = false;
+      identity.preferredRole = null;
+      confirmedPhone = '';
       identity.error = 'Откройте через Telegram-бота.';
       notify();
       return copy();
     }
-    var data;
     try {
-      data = await post('/api/miniapp/accounts');
+      // Every reopen/activation is independently revalidated by the server
+      // against a fresh Telegram signature and the OWN previously consented
+      // contact (verifiedPhoneForUser). No browser-stored phone or old token
+      // can unlock another Telegram account.
+      var data = await post('/api/miniapp/accounts');
       identity.loaded = true;
       identity.verified = !!data.verified;
-      identity.phoneMasked = data.phone_masked || '';
-      identity.accounts = Array.isArray(data.accounts) ? data.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
-      identity.ambiguousRoles = Array.isArray(data.ambiguous_roles) ? data.ambiguous_roles : [];
-      identity.combinedSalon = !!data.combined_salon;
+      gateUnlocked = identity.verified;
+      identity.phoneMasked = identity.verified ? data.phone_masked || '' : '';
+      identity.accounts = identity.verified && Array.isArray(data.accounts) ?
+        data.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
+      identity.ambiguousRoles = identity.verified && Array.isArray(data.ambiguous_roles) ?
+        data.ambiguous_roles : [];
+      identity.combinedSalon = identity.verified && !!data.combined_salon;
+      identity.preferredRole = identity.verified && typeof data.preferred_role === 'string'
+        ? data.preferred_role : null;
+      if (!identity.verified) confirmedPhone = '';
       identity.error = '';
-      if (gateUnlocked && confirmedPhone && identity.verified) {
-        // Recheck whenever Telegram comes back into focus; a changed or
-        // removed contact must invalidate the UI unlock on this device.
-        try {
-          var checked = await post('/api/miniapp/verify-phone', { phone: confirmedPhone });
-          identity.accounts = Array.isArray(checked.accounts) ? checked.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
-          identity.ambiguousRoles = Array.isArray(checked.ambiguous_roles) ? checked.ambiguous_roles : [];
-          identity.combinedSalon = !!checked.combined_salon;
-          identity.phoneMasked = checked.phone_masked || '';
-        } catch (err) {
-          gateUnlocked = false;
-          confirmedPhone = '';
-          identity.combinedSalon = false;
-          identity.error = 'Подтверждение номера устарело. Введите номер и проверьте его повторно.';
-        }
-      } else if (!identity.verified) {
-        gateUnlocked = false;
-        confirmedPhone = '';
-        identity.combinedSalon = false;
-      }
-    } catch (err) {
+    } catch(err) {
       identity.loaded = true;
+      identity.verified = false;
       gateUnlocked = false;
       confirmedPhone = '';
+      identity.accounts = [];
+      identity.ambiguousRoles = [];
+      identity.combinedSalon = false;
+      identity.preferredRole = null;
       identity.error = err.message;
     }
     notify();
@@ -181,6 +184,7 @@
       identity.accounts = Array.isArray(result.accounts) ? result.accounts.filter(function(a) { return !!TOKENS[a.role]; }) : [];
       identity.ambiguousRoles = Array.isArray(result.ambiguous_roles) ? result.ambiguous_roles : [];
       identity.combinedSalon = !!result.combined_salon;
+      identity.preferredRole = result.preferred_role || null;
     } catch (err) {
       gateUnlocked = false;
       confirmedPhone = '';
@@ -190,6 +194,22 @@
       notify();
     }
     return copy();
+  }
+  async function rememberRole(role) {
+    if (!identity.verified || !gateUnlocked) return false;
+    if (role !== 'shop' && role !== 'salon' &&
+        !identity.accounts.some(function(a) { return a.role === role; })) return false;
+    if (role === 'salon' && !identity.combinedSalon) return false;
+    try {
+      var response = await post('/api/miniapp/preferred-role', { role: role });
+      if (!response.ok || response.preferred_role !== role) return false;
+      identity.preferredRole = role;
+      return true;
+    } catch(err) {
+      // Remembering a preference must never block opening a valid cabinet.
+      console.warn('Mini App could not remember preferred cabinet:',err.message);
+      return false;
+    }
   }
   async function session(role) {
     if (!Object.prototype.hasOwnProperty.call(TOKENS, role)) {
@@ -228,6 +248,7 @@
         gateUnlocked = false;
         confirmedPhone = '';
         identity.combinedSalon = false;
+        identity.preferredRole = null;
         Object.keys(TOKENS).forEach(function(role) {
           localStorage.removeItem(TOKENS[role]);
         });
@@ -256,6 +277,7 @@
     requestContact: requestContact,
     verifyPhone: verifyPhone,
     session: session,
+    rememberRole: rememberRole,
     onChange: onChange,
   };
 })();
