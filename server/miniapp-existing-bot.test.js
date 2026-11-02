@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  SHOP_URL, WORK_URL, miniAppInlineKeyboard, commandsMenuButton,
+  SHOP_URL, SHOP_LAUNCH_URL, WORK_URL, miniAppInlineKeyboard, commandsMenuButton,
   miniAppDirectLinkMarkup,
 } = require('./miniapp-bot-links');
 const { registerMiniAppRoutes } = require('./routes-miniapp');
@@ -45,12 +45,13 @@ function callMiniAppAuth(body) {
 test('same existing bot supplies a single menu and both Mini App destinations', () => {
   assert.equal(SHOP_URL, 'https://хвостмаркет.рф/miniapp.html');
   assert.equal(WORK_URL, SHOP_URL + '?view=work');
+  assert.equal(SHOP_LAUNCH_URL, SHOP_URL + '?view=shop');
   assert.deepEqual(commandsMenuButton(), { type: 'commands' });
   assert.deepEqual(
     miniAppInlineKeyboard().map((row) => row[0].web_app.url),
-    [SHOP_URL, WORK_URL]
+    [SHOP_LAUNCH_URL, WORK_URL]
   );
-  assert.equal(miniAppDirectLinkMarkup('shop').inline_keyboard[0][0].web_app.url, SHOP_URL);
+  assert.equal(miniAppDirectLinkMarkup('shop').inline_keyboard[0][0].web_app.url, SHOP_LAUNCH_URL);
   assert.equal(miniAppDirectLinkMarkup('work').inline_keyboard[0][0].web_app.url, WORK_URL);
 });
 

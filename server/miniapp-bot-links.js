@@ -5,10 +5,11 @@
 const PUBLIC_SITE = 'https://хвостмаркет.рф';
 const SHOP_URL = PUBLIC_SITE + '/miniapp.html';
 const WORK_URL = SHOP_URL + '?view=work';
+const SHOP_LAUNCH_URL = SHOP_URL + '?view=shop';
 
 function miniAppInlineKeyboard() {
   return [
-    [{ text: '🛍 Открыть магазин', web_app: { url: SHOP_URL } }],
+    [{ text: '🛍 Открыть магазин', web_app: { url: SHOP_LAUNCH_URL } }],
     [{ text: '👤 Рабочие кабинеты', web_app: { url: WORK_URL } }],
   ];
 }
@@ -22,7 +23,7 @@ function commandsMenuButton() {
 function miniAppDirectLinkMarkup(view) {
   const target = view === 'work'
     ? { text: '👤 Открыть рабочие кабинеты', web_app: { url: WORK_URL } }
-    : { text: '🛍 Открыть магазин', web_app: { url: SHOP_URL } };
+    : { text: '🛍 Открыть магазин', web_app: { url: SHOP_LAUNCH_URL } };
   return { inline_keyboard: [
     [target],
     // The second entry is a different destination to make switching easy.
@@ -31,6 +32,6 @@ function miniAppDirectLinkMarkup(view) {
 }
 
 module.exports = {
-  SHOP_URL, WORK_URL, miniAppInlineKeyboard,
+  SHOP_URL, SHOP_LAUNCH_URL, WORK_URL, miniAppInlineKeyboard,
   commandsMenuButton, miniAppDirectLinkMarkup,
 };

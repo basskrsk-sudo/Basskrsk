@@ -12,6 +12,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'public/miniapp.html'), 
 
 function setupIdentity(initialVerified = false, share = true, supported = true, combined = false) {
   let verified = initialVerified;
+  let preferred = 'partner';
   const sent = [];
   const saved = {};
   const events = {};
@@ -33,6 +34,7 @@ function setupIdentity(initialVerified = false, share = true, supported = true, 
                               { role: 'partner', name: 'Грумер' }].concat(combined ? [{ role: 'owner', name: 'Владелец' }] : []) : [],
         ambiguous_roles: [],
         combined_salon: combined,
+        preferred_role: verified ? preferred : null,
       }),
     };
     if (url === '/api/miniapp/verify-phone') {
@@ -44,7 +46,15 @@ function setupIdentity(initialVerified = false, share = true, supported = true, 
         accounts:[{role:'customer',name:'Покупатель'},{role:'partner',name:'Грумер'}].concat(combined ? [{role:'owner',name:'Владелец'}] : []),
         ambiguous_roles:[],
         combined_salon: combined,
+        preferred_role: preferred,
       })};
+    }
+    if (url === '/api/miniapp/preferred-role') {
+      if (!verified || !['shop','customer','partner','owner','salon'].includes(body.role)) {
+        return {ok:false,status:403,json:async()=>({error:'Нет доступа'})};
+      }
+      preferred=body.role;
+      return {ok:true,json:async()=>({ok:true,preferred_role:preferred})};
     }
     if (url === '/api/miniapp/session') return {
       ok: true,
@@ -68,40 +78,40 @@ function setupIdentity(initialVerified = false, share = true, supported = true, 
   return { identity: fakeWindow.HvostMiniAppIdentity, telegram, sent, saved, events };
 }
 
-test('Mini App requests native OWN contact and never receives the phone value from JS', async () => {
+test('sharing the OWN Telegram contact enables passwordless account access without typing', async () => {
   const h = setupIdentity();
   await h.identity.init(h.telegram);
   assert.equal(h.identity.getStatus().verified, false);
+  await assert.rejects(()=>h.identity.session('partner'), /подтверждённым номером/);
   const after = await h.identity.requestContact();
   assert.equal(after.contactVerified, true);
-  assert.equal(after.verified, false, 'sharing contact alone cannot expose roles');
-  await assert.rejects(()=>h.identity.session('partner'), /подтверждённым номером/);
-  const wrong = await h.identity.verifyPhone('79130000000');
-  assert.equal(wrong.verified, false);
-  assert.equal(wrong.accounts.length,0);
-  const unlocked = await h.identity.verifyPhone('+7 (913) 123-45-77');
-  assert.equal(unlocked.verified, true);
-  assert.equal(unlocked.phoneMasked, '+7 (***) ***-**-77');
+  assert.equal(after.verified, true, 'signed Telegram + own shared contact is sufficient proof');
+  assert.equal(after.phoneMasked,'+7 (***) ***-**-77');
+  assert.deepEqual(Array.from(after.accounts,a=>a.role),['customer','partner']);
   const session = await h.identity.session('partner');
-  assert.equal(session.token, 'server-signed-partner');
-  assert.equal(h.saved.taiga_partner_token, 'server-signed-partner');
-  assert.ok(h.sent.every(x => x.body.initData === h.telegram.initData));
-  const claims=h.sent.filter(x=>Object.hasOwn(x.body,'phone'));
-  assert.ok(claims.every(x=>x.url==='/api/miniapp/verify-phone'), 'typed phone is only a server-check claim');
-  assert.ok(h.sent.filter(x=>x.url==='/api/miniapp/session').every(x=>!Object.hasOwn(x.body,'phone')));
-  assert.equal(typeof h.events.activated, 'function');
+  assert.equal(session.token,'server-signed-partner');
+  assert.equal(h.saved.taiga_partner_token,'server-signed-partner');
+  assert.ok(h.sent.every(x=>x.body.initData===h.telegram.initData));
+  assert.equal(h.sent.filter(x=>x.url==='/api/miniapp/verify-phone').length,0,
+    'no redundant manual phone check');
+  assert.equal(typeof h.events.activated,'function');
 });
 
-test('confirmed Telegram contact still requires typed phone even for a returning user', async () => {
+test('returning user with a server-verified own contact enters immediately', async () => {
   const h=setupIdentity(true);
   const initial=await h.identity.init(h.telegram);
   assert.equal(initial.contactVerified,true);
-  assert.equal(initial.verified,false);
-  assert.deepEqual(Array.from(initial.accounts),[]);
-  await assert.rejects(()=>h.identity.session('partner'), /подтверждённым номером/);
-  const verified=await h.identity.verifyPhone('8(913)123-45-77');
-  assert.equal(verified.verified,true);
-  assert.deepEqual(Array.from(verified.accounts, a=>a.role),['customer','partner']);
+  assert.equal(initial.verified,true);
+  assert.equal(initial.preferredRole,'partner');
+  assert.deepEqual(Array.from(initial.accounts,a=>a.role),['customer','partner']);
+  const token=await h.identity.session('partner');
+  assert.equal(token.role,'partner');
+  assert.equal(h.sent.filter(x=>x.url==='/api/miniapp/verify-phone').length,0);
+  assert.equal(await h.identity.rememberRole('customer'),true);
+  assert.equal(h.identity.getStatus().preferredRole,'customer');
+  assert.equal(await h.identity.rememberRole('admin'),false);
+  const revived=await h.identity.refresh();
+  assert.equal(revived.preferredRole,'customer');
 });
 
 test('cancelled Telegram phone consent does not give access', async () => {
@@ -184,16 +194,14 @@ test('main Mini App loads account identity before both customer and role interfa
 });
 
 
-test('combined salon indicator becomes visible only after Telegram phone proof and role matching', async () => {
+test('combined salon remains an authorized presentation role on a returning launch', async () => {
   const h=setupIdentity(true,true,true,true);
-  const before=await h.identity.init(h.telegram);
-  assert.equal(before.verified,false);
-  assert.equal(before.combinedSalon,false,'linked owner status is gated behind typed phone');
-  assert.deepEqual(Array.from(before.accounts),[]);
-  const status=await h.identity.verifyPhone('+7 913 123-45-77');
+  const status=await h.identity.init(h.telegram);
   assert.equal(status.verified,true);
   assert.equal(status.combinedSalon,true);
   assert.deepEqual(Array.from(status.accounts,a=>a.role),['customer','partner','owner']);
+  assert.equal(await h.identity.rememberRole('salon'),true);
+  assert.equal(h.identity.getStatus().preferredRole,'salon');
   await assert.rejects(()=>h.identity.session('salon'),/Неизвестный тип кабинета/,
     'salon is a UI representation, never an independent server-issued role');
   const partner=await h.identity.session('partner');

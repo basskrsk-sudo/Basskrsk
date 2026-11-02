@@ -3,7 +3,7 @@
 
 const crypto = require('node:crypto');
 const { sendJson } = require('./http-utils');
-const { availableTelegramAccounts, issueTelegramAccountSession, verifiedPhoneForUser, normalizeRussianPhone } = require('./miniapp-phone-identity');
+const { availableTelegramAccounts, issueTelegramAccountSession, verifiedPhoneForUser, normalizeRussianPhone, rememberTelegramRole } = require('./miniapp-phone-identity');
 
 function verifyTelegramInitData(raw, token, nowSeconds = Math.floor(Date.now() / 1000)) {
   if (!token || typeof token !== 'string') throw new Error('Bot token is not configured');
@@ -77,7 +77,7 @@ function registerMiniAppRoutes(router) {
   router.post('/api/miniapp/accounts', (req, res, ctx) => {
     const user = verifiedMiniAppUser(ctx, res);
     if (!user) return;
-    const { verified, phoneMasked, accounts, ambiguousRoles, combinedSalon } = availableTelegramAccounts(user.id);
+    const { verified, phoneMasked, accounts, ambiguousRoles, combinedSalon, preferredRole } = availableTelegramAccounts(user.id);
     sendJson(res, 200, {
       verified,
       phone_masked: phoneMasked,
@@ -87,6 +87,7 @@ function registerMiniAppRoutes(router) {
       })),
       ambiguous_roles: ambiguousRoles,
       combined_salon: !!combinedSalon,
+      preferred_role: verified ? preferredRole : null,
     });
   });
 
@@ -106,14 +107,28 @@ function registerMiniAppRoutes(router) {
         error: 'Номер не подтверждён в вашем Telegram. Отправьте боту свой контакт и повторите проверку.',
       });
     }
-    const { phoneMasked, accounts, ambiguousRoles, combinedSalon } = availableTelegramAccounts(user.id);
+    const { phoneMasked, accounts, ambiguousRoles, combinedSalon, preferredRole } = availableTelegramAccounts(user.id);
     return sendJson(res, 200, {
       verified: true,
       phone_masked: phoneMasked,
       accounts: accounts.map(a => ({ role: a.role, name: a.name })),
       ambiguous_roles: ambiguousRoles,
       combined_salon: !!combinedSalon,
+      preferred_role: preferredRole,
     });
+  });
+
+  router.post('/api/miniapp/preferred-role', (req,res,ctx) => {
+    const user=verifiedMiniAppUser(ctx,res);
+    if(!user)return;
+    const role=ctx.body && ctx.body.role;
+    if(typeof role!=='string' || !['shop','customer','partner','manager','owner','founder','admin','salon'].includes(role)){
+      return sendJson(res,400,{error:'Некорректный кабинет'});
+    }
+    if(!rememberTelegramRole(user.id,role)){
+      return sendJson(res,403,{error:'У Telegram-аккаунта нет доступа к этому кабинету'});
+    }
+    return sendJson(res,200,{ok:true,preferred_role:role});
   });
 
   router.post('/api/miniapp/session', (req, res, ctx) => {

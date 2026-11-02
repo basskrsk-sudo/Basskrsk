@@ -21,6 +21,11 @@ db.exec([
   ');',
   'CREATE INDEX IF NOT EXISTS idx_telegram_verified_phones_time',
   'ON telegram_verified_phones(verified_at);',
+  'CREATE TABLE IF NOT EXISTS telegram_miniapp_last_role (',
+  'telegram_user_id TEXT PRIMARY KEY,',
+  "role TEXT NOT NULL CHECK(role IN ('customer','partner','manager','owner','founder','admin','salon','shop')),",
+  'updated_at INTEGER NOT NULL',
+  ');',
 ].join('\n'));
 
 function normalizeRussianPhone(value) {
@@ -129,6 +134,42 @@ function hasLinkedGroomerOwner(accounts) {
   return true;
 }
 
+// The home-screen shortcut can use a different WebView storage container
+// from the chat. Save only the chosen role, not a token or a raw phone.
+const PREFERRED_ROLE_ORDER = Object.freeze(['founder','salon','manager','admin','owner','partner','customer']);
+function allowedPreferredRole(role, accounts, combinedSalon) {
+  if (role === 'shop') return true;
+  if (role === 'salon') return combinedSalon === true;
+  return accounts.some(a => a.role === role);
+}
+function preferredRoleForUser(userId,accounts,combinedSalon) {
+  const id = telegramId(userId);
+  if (!id) return null;
+  const row = db.prepare(
+    'SELECT role FROM telegram_miniapp_last_role WHERE telegram_user_id=?'
+  ).get(id);
+  if (row && allowedPreferredRole(row.role,accounts,combinedSalon)) return row.role;
+  const eligible = PREFERRED_ROLE_ORDER.filter(role =>
+    allowedPreferredRole(role,accounts,combinedSalon));
+  return eligible[0] || 'shop';
+}
+// Accept only a CURRENT, server-verified, unique role for this Telegram user.
+// A different Telegram profile cannot overwrite this user's preference.
+function rememberTelegramRole(userId, role, now = Math.floor(Date.now() / 1000)) {
+  const id=telegramId(userId);
+  if (!id || typeof role !== 'string' ||
+      !['shop',...PREFERRED_ROLE_ORDER].includes(role)) return false;
+  const state=availableTelegramAccounts(id,now);
+  if (!state.verified || !allowedPreferredRole(role,state.accounts,state.combinedSalon))
+    return false;
+  db.prepare(
+    'INSERT INTO telegram_miniapp_last_role(telegram_user_id,role,updated_at) '+
+    'VALUES(?,?,?) ON CONFLICT(telegram_user_id) DO UPDATE SET '+
+    'role=excluded.role,updated_at=excluded.updated_at'
+  ).run(id,role,now);
+  return true;
+}
+
 function availableTelegramAccounts(userId, now = Math.floor(Date.now() / 1000)) {
   const phone = verifiedPhoneForUser(userId, now);
   if (!phone) return { verified: false, phoneMasked: '', accounts: [], ambiguousRoles: [] };
@@ -144,8 +185,9 @@ function availableTelegramAccounts(userId, now = Math.floor(Date.now() / 1000)) 
       ambiguousRoles.push(role);
     }
   }
+  const combinedSalon=hasLinkedGroomerOwner(accounts);
   return { verified: true, phoneMasked: phoneMasked(phone), phone, accounts, ambiguousRoles,
-    combinedSalon: hasLinkedGroomerOwner(accounts) };
+    combinedSalon, preferredRole: preferredRoleForUser(userId,accounts,combinedSalon) };
 }
 
 function issueTelegramAccountSession(userId, role, now = Math.floor(Date.now() / 1000)) {
@@ -177,6 +219,7 @@ module.exports = {
   recordVerifiedTelegramContact,
   verifiedPhoneForUser,
   availableTelegramAccounts,
+  preferredRoleForUser, rememberTelegramRole,
   hasLinkedGroomerOwner,
   issueTelegramAccountSession,
 };

@@ -121,7 +121,7 @@ function subtotal(){return state.cart.reduce(function(a,i){return a+i.price*i.qt
 function persistPoint(){try{localStorage.setItem('hm_miniapp_point',String(state.pointId))}catch(_){}}
 function readPoint(){try{return localStorage.getItem('hm_miniapp_point')||''}catch(_){return ''}}
 async function api(url,options){var r=await fetch(url,Object.assign({cache:'no-store'},options||{}));var data=await r.json().catch(function(){return {}});if(!r.ok)throw new Error(data.error||'Ошибка сервера ('+r.status+')');return data}
-function setView(view){if(view==='work'&&!isPhoneAccessUnlocked())view='profile';state.view=view;['shop','cart','checkout','profile','work','result'].forEach(function(v){el(v+'Page').classList.toggle('hide',v!==view)});el('navigation').classList.toggle('hide',view==='result');el('header').classList.toggle('hide',view==='result'||view==='work'||view==='profile');Array.from(document.querySelectorAll('.tab')).forEach(function(btn){btn.classList.toggle('on',btn.dataset.view===view)});renderCartIndicators();if(view==='shop')renderProducts();if(view==='cart')renderCart();if(view==='checkout')renderCheckout();if(view==='profile')renderProfile();if(view==='work'&&window.HvostMiniAppWork)window.HvostMiniAppWork.render();window.scrollTo(0,0)}
+function setView(view,skipWorkRender){if(view==='work'&&!isPhoneAccessUnlocked())view='profile';state.view=view;['shop','cart','checkout','profile','work','result'].forEach(function(v){el(v+'Page').classList.toggle('hide',v!==view)});el('navigation').classList.toggle('hide',view==='result');el('header').classList.toggle('hide',view==='result'||view==='work'||view==='profile');Array.from(document.querySelectorAll('.tab')).forEach(function(btn){btn.classList.toggle('on',btn.dataset.view===view)});renderCartIndicators();if(view==='shop')renderProducts();if(view==='cart')renderCart();if(view==='checkout')renderCheckout();if(view==='profile')renderProfile();if(view==='work'&&!skipWorkRender&&window.HvostMiniAppWork)window.HvostMiniAppWork.render();window.scrollTo(0,0)}
 function isPhoneAccessUnlocked(){return !!(window.HvostMiniAppIdentity&&window.HvostMiniAppIdentity.getStatus().verified)}
 function syncPhoneAccess(){
   var tab=document.querySelector('[data-view="work"]');
@@ -129,7 +129,10 @@ function syncPhoneAccess(){
   if(!isPhoneAccessUnlocked()&&state.view==='work')setView('profile');
 }
 window.HvostMiniAppGoProfile=function(){setView('profile')};
-window.HvostMiniAppGoShop=function(){setView('shop')};
+window.HvostMiniAppGoShop=function(){
+  if(window.HvostMiniAppIdentity)window.HvostMiniAppIdentity.rememberRole('shop');
+  setView('shop');
+};
 window.HvostMiniAppOpenRole=function(role){
   if(!isPhoneAccessUnlocked())return setView('profile');
   var status=window.HvostMiniAppIdentity.getStatus();
@@ -137,7 +140,7 @@ window.HvostMiniAppOpenRole=function(role){
       (role==='salon'&&status.combinedSalon&&
        status.accounts.some(function(a){return a.role==='partner'})&&
        status.accounts.some(function(a){return a.role==='owner'}))))return;
-  setView('work');
+  setView('work',true);
   if(window.HvostMiniAppWork)window.HvostMiniAppWork.chooseRole(role);
 };
 function renderCartIndicators(){var q=totalQty();el('navQty').textContent=q;el('navQty').classList.toggle('hide',q===0);el('cartFloat').classList.toggle('hide',!(q>0&&state.view==='shop'));el('floatQty').textContent=q;el('floatSum').textContent=money(subtotal())+' →'}
@@ -173,18 +176,60 @@ async function auth(){if(tg){applyTelegramChromeColors();try{tg.ready();tg.expan
 if(!tg||!tg.initData){el('appMode').textContent='Просмотр';if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.init(tg);return}
 try{var d=await api('/api/miniapp/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})});state.verified=true;state.user=d.user;state.name=d.user.first_name||'';el('hello').textContent='Привет, '+state.name+'!';el('appMode').textContent='● Telegram'}catch(e){el('appMode').textContent='Нет входа';toast(e.message)}if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.init(tg,state.verified?state.user:null)}
 async function init(){
-  // Customer-first: do not restore a staff role or show it from ?view=work.
-  // A payment return still takes precedence later in this function.
+  // Keep the profile as a safe loading view before signed Telegram checks.
   setView('profile');
   if(window.HvostMiniAppIdentity){
     window.HvostMiniAppIdentity.onChange(function(){syncPhoneAccess()});
   }
   await auth();
   syncPhoneAccess();
-  if(state.view==='profile')renderProfile();try{var data=await Promise.all([api('/api/products'),api('/api/points')]);state.products=data[0].products||[];state.points=data[1].points||[];var old=readPoint();var preset=new URLSearchParams(location.search).get('point');var chosen=state.points.find(function(p){return String(p.id)===String(preset||old)});if(chosen)selectPoint(chosen.id);else if(state.points.length===1)selectPoint(state.points[0].id);else{el('pointName').textContent='Выбрать салон';renderProducts()}}catch(e){el('products').innerHTML='<div class="empty"><div class="emoji">⚠️</div><h3>Каталог не загрузился</h3><p>'+esc(e.message)+'</p><button class="btn btn-light" data-action="reload" style="margin-top:16px">Повторить</button></div>';el('stockCount').textContent='Ошибка загрузки'}
-var resultCode=new URLSearchParams(location.search).get('payment_return');if(resultCode&&/^[a-zA-Z0-9_-]{5,80}$/.test(resultCode))await checkPaymentReturn(resultCode);renderCartIndicators()}
+  if(state.view==='profile')renderProfile();
+  var query=new URLSearchParams(location.search);
+  var resultCode=query.get('payment_return');
+  var validPayment=!!(resultCode&&/^[a-zA-Z0-9_-]{5,80}$/.test(resultCode));
+  // Explicit shop, QR location, and payment-return links MUST NOT be
+  // redirected to a previously remembered privileged cabinet.
+  if(!validPayment){
+    var view=query.get('view');
+    var directShop=view==='shop'||!!query.get('point');
+    var identityState=window.HvostMiniAppIdentity&&window.HvostMiniAppIdentity.getStatus();
+    var role=identityState&&identityState.verified?identityState.preferredRole:null;
+    if(directShop||(view!=='work'&&role==='shop')){
+      setView('shop');
+    }else if(view==='work'){
+      if(role&&role!=='customer'&&role!=='shop'&&window.HvostMiniAppOpenRole)window.HvostMiniAppOpenRole(role);
+      else setView('work');
+    }else if(role&&role!=='customer'&&window.HvostMiniAppOpenRole){
+      window.HvostMiniAppOpenRole(role);
+    }
+    // No phone proof or buyer-only role: stay on the safe customer profile.
+  }
+  try{
+    var data=await Promise.all([api('/api/products'),api('/api/points')]);
+    state.products=data[0].products||[];
+    state.points=data[1].points||[];
+    var old=readPoint();
+    var preset=query.get('point');
+    var chosen=state.points.find(function(p){return String(p.id)===String(preset||old)});
+    if(chosen)selectPoint(chosen.id);
+    else if(state.points.length===1)selectPoint(state.points[0].id);
+    else{el('pointName').textContent='Выбрать салон';renderProducts()}
+  }catch(e){
+    el('products').innerHTML='<div class="empty"><div class="emoji">⚠️</div><h3>Каталог не загрузился</h3><p>'+esc(e.message)+'</p><button class="btn btn-light" data-action="reload" style="margin-top:16px">Повторить</button></div>';
+    el('stockCount').textContent='Ошибка загрузки';
+  }
+  if(validPayment)await checkPaymentReturn(resultCode);
+  renderCartIndicators();
+}
 el('pointButton').addEventListener('click',showPointSheet);el('cartFloat').addEventListener('click',function(){setView('cart')});el('searchBox').addEventListener('input',function(e){state.search=e.target.value;renderProducts()});el('sheetCover').addEventListener('click',function(e){if(e.target===el('sheetCover'))hideSheet()});
-document.addEventListener('click',function(e){var t=e.target.closest('button');if(!t)return;if(t.hasAttribute('data-close')){hideSheet();return}if(t.hasAttribute('data-view')){setView(t.dataset.view);return}if(t.hasAttribute('data-category')){state.category=t.dataset.category;renderProducts();return}if(t.hasAttribute('data-point')){selectPoint(t.dataset.point);return}if(t.hasAttribute('data-product')){showProduct(t.dataset.product);return}if(t.hasAttribute('data-variant')){state.selectedVariant=t.dataset.variant;var pp=state.selectedProduct;var vv=pp.variants.find(function(v){return String(v.id)===state.selectedVariant});Array.from(el('sheet').querySelectorAll('[data-variant]')).forEach(function(b){b.classList.toggle('on',b.dataset.variant===state.selectedVariant)});var add=el('addSelected');if(add&&vv)add.textContent='Добавить в корзину · '+money(vv.price);return}if(t.id==='addSelected'){addSelected();return}if(t.hasAttribute('data-qty')){changeQty(t.dataset.qty,Number(t.dataset.delta));return}if(t.id==='choosePointEmpty'){showPointSheet();return}if(t.id==='promoApply'){applyPromo();return}if(t.id==='payButton'){pay();return}if(t.id==='statusAgain'){checkPaymentReturn(state.pendingCode||new URLSearchParams(location.search).get('payment_return'));return}if(t.hasAttribute('data-action')){if(t.dataset.action==='shop')setView('shop');if(t.dataset.action==='checkout'){loadPartners().then(function(){setView('checkout')})}if(t.dataset.action==='points')showPointSheet();if(t.dataset.action==='reload')location.reload()}});
+document.addEventListener('click',function(e){var t=e.target.closest('button');if(!t)return;if(t.hasAttribute('data-close')){hideSheet();return}if(t.hasAttribute('data-view')){
+  setView(t.dataset.view);
+  if(window.HvostMiniAppIdentity&&window.HvostMiniAppIdentity.getStatus().verified){
+    if(t.dataset.view==='profile')window.HvostMiniAppIdentity.rememberRole('customer');
+    if(t.dataset.view==='shop')window.HvostMiniAppIdentity.rememberRole('shop');
+  }
+  return;
+}if(t.hasAttribute('data-category')){state.category=t.dataset.category;renderProducts();return}if(t.hasAttribute('data-point')){selectPoint(t.dataset.point);return}if(t.hasAttribute('data-product')){showProduct(t.dataset.product);return}if(t.hasAttribute('data-variant')){state.selectedVariant=t.dataset.variant;var pp=state.selectedProduct;var vv=pp.variants.find(function(v){return String(v.id)===state.selectedVariant});Array.from(el('sheet').querySelectorAll('[data-variant]')).forEach(function(b){b.classList.toggle('on',b.dataset.variant===state.selectedVariant)});var add=el('addSelected');if(add&&vv)add.textContent='Добавить в корзину · '+money(vv.price);return}if(t.id==='addSelected'){addSelected();return}if(t.hasAttribute('data-qty')){changeQty(t.dataset.qty,Number(t.dataset.delta));return}if(t.id==='choosePointEmpty'){showPointSheet();return}if(t.id==='promoApply'){applyPromo();return}if(t.id==='payButton'){pay();return}if(t.id==='statusAgain'){checkPaymentReturn(state.pendingCode||new URLSearchParams(location.search).get('payment_return'));return}if(t.hasAttribute('data-action')){if(t.dataset.action==='shop')setView('shop');if(t.dataset.action==='checkout'){loadPartners().then(function(){setView('checkout')})}if(t.dataset.action==='points')showPointSheet();if(t.dataset.action==='reload')location.reload()}});
 document.addEventListener('input',function(e){if(e.target.id==='buyerName')state.name=e.target.value;if(e.target.id==='buyerPhone'){state.phone=e.target.value;state.promoValid=false;state.promoKey=''}if(e.target.id==='promoInput'){state.promo=e.target.value;state.promoValid=false;state.promoKey=''}});
 document.addEventListener('change',function(e){if(e.target.id==='advisorSelect')state.advisor=e.target.value});
 document.addEventListener('keydown',function(e){if(e.key==='Escape')hideSheet()});

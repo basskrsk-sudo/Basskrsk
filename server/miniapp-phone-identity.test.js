@@ -14,6 +14,7 @@ const {
   normalizeRussianPhone, recordVerifiedTelegramContact,
   verifiedPhoneForUser, availableTelegramAccounts, issueTelegramAccountSession,
   PHONE_PROOF_TTL_SECONDS,
+  rememberTelegramRole, preferredRoleForUser,
 } = require('./miniapp-phone-identity');
 const { registerMiniAppRoutes } = require('./routes-miniapp');
 
@@ -304,4 +305,56 @@ test('one active groomer-owner linked to the same salon gets only a presentation
   // verified phone on the SAME active point, not by name.
   db.prepare('UPDATE salon_owners SET groomer_partner_id=NULL WHERE id=?').run(owner);
   assert.equal(availableTelegramAccounts(user,NOW).combinedSalon,true);
+});
+
+test('home-screen shortcut remembers last authorized role on server, not via browser storage', () => {
+  const user=667788990, phone='79137776655';
+  addPartner(phone);
+  recordVerifiedTelegramContact(msg(user,phone),NOW);
+  let info=availableTelegramAccounts(user,NOW);
+  assert.equal(info.verified,true);
+  assert.equal(info.preferredRole,'partner');
+  assert.equal(rememberTelegramRole(user,'partner',NOW),true);
+  assert.equal(preferredRoleForUser(user,info.accounts,false),'partner');
+  assert.equal(rememberTelegramRole(user,'shop',NOW),true);
+  assert.equal(availableTelegramAccounts(user,NOW).preferredRole,'shop');
+  assert.equal(rememberTelegramRole(user,'founder',NOW),false);
+  assert.equal(rememberTelegramRole(user,'admin',NOW),false);
+  assert.equal(rememberTelegramRole(user,'salon',NOW),false);
+  assert.equal(availableTelegramAccounts(user,NOW).preferredRole,'shop');
+  assert.equal(rememberTelegramRole(99889911,'shop',NOW),false);
+  // Role disappears when the account is disabled; preference cannot grant it.
+  assert.equal(rememberTelegramRole(user,'partner',NOW),true);
+  db.prepare('UPDATE partners SET active=0 WHERE phone=?').run(phone);
+  assert.equal(availableTelegramAccounts(user,NOW).preferredRole,'shop');
+  assert.equal(issueTelegramAccountSession(user,'partner',NOW),null);
+  assert.equal(availableTelegramAccounts(user,NOW+PHONE_PROOF_TTL_SECONDS+1).verified,false);
+});
+
+test('preferred-role endpoint requires signed Telegram identity and an eligible existing account', () => {
+  const savedToken=process.env.TG_TOKEN;
+  const user=779921344,phone='79137771122';
+  addPartner(phone);
+  recordVerifiedTelegramContact(msg(user,phone),NOW);
+  try {
+    process.env.TG_TOKEN='777777:test-telegram-identity';
+    const signed=initData(process.env.TG_TOKEN,user);
+    const listed=invoke('/api/miniapp/accounts',{initData:signed});
+    assert.equal(listed.status,200);
+    assert.equal(listed.result.preferred_role,'partner');
+    assert.equal(listed.result.verified,true);
+    const chosen=invoke('/api/miniapp/preferred-role',{initData:signed,role:'shop'});
+    assert.equal(chosen.status,200);
+    assert.equal(chosen.result.preferred_role,'shop');
+    assert.equal(invoke('/api/miniapp/accounts',{initData:signed}).result.preferred_role,'shop');
+    assert.equal(invoke('/api/miniapp/preferred-role',{initData:signed,role:'admin'}).status,403);
+    assert.equal(invoke('/api/miniapp/preferred-role',{initData:signed,role:'salon'}).status,403);
+    assert.equal(invoke('/api/miniapp/preferred-role',{initData:signed,role:'unknown'}).status,400);
+    assert.equal(invoke('/api/miniapp/preferred-role',{initData:signed.replace('auth_date=','auth_date=2'),role:'shop'}).status,401);
+    assert.equal(invoke('/api/miniapp/preferred-role',{initData:initData(process.env.TG_TOKEN,123123123),role:'shop'}).status,403);
+    assert.equal(invoke('/api/miniapp/accounts',{initData:signed}).result.preferred_role,'shop');
+  } finally {
+    if(savedToken===undefined)delete process.env.TG_TOKEN;
+    else process.env.TG_TOKEN=savedToken;
+  }
 });
