@@ -104,6 +104,11 @@
   function savedRole() {
     try { return localStorage.getItem('hm_miniapp_work_role') || ''; } catch (_) { return ''; }
   }
+  function shortcutAction() {
+    var shortcut = window.HvostMiniAppHomeScreen;
+    return shortcut && typeof shortcut.actionMarkup === 'function'
+      ? shortcut.actionMarkup() : '';
+  }
   function heading(title, subtitle) {
     return '<div class="work-head"><h1>' + esc(title) + '</h1><p>' + esc(subtitle || '') + '</p></div>';
   }
@@ -151,7 +156,8 @@
         '<div class="work-surface"><h2>🔐 Доступ после проверки номера</h2>' +
         '<p class="work-note">Грумер, менеджер, владелец салона, собственник бизнеса и администратор ' +
         'увидят только свои кабинеты после подтверждения номера через Telegram.</p>' +
-        '<button class="work-primary" type="button" data-work-action="go-profile">Ввести телефон →</button></div>';
+        '<button class="work-primary" type="button" data-work-action="go-profile">Ввести телефон →</button></div>' +
+        shortcutAction();
       return;
     }
     var available = order.filter(function(role) {
@@ -173,6 +179,7 @@
       }).join('') + '</div>' : '<div class="work-surface"><h2>Других кабинетов пока нет</h2>' +
         '<p class="work-note">По вашему номеру не найдены дополнительные активные роли. ' +
         'Если вы сотрудник или собственник бизнеса, попросите администратора подключить доступ.</p></div>') +
+      shortcutAction() +
       '<p class="work-quiet">Права к данным проверяются сервером. Номер Telegram сам по себе не назначает роль.</p>';
   }
   function renderLogin(error) {
@@ -457,6 +464,7 @@
       '<button class="work-secondary" type="button" data-work-action="full-partner">✂️ Полный кабинет грумера</button>' +
       '<button class="work-secondary" type="button" data-work-action="full-owner">🏠 Полный кабинет владельца</button>' +
       '<button class="work-secondary" type="button" data-work-action="notifications">🔔 Настройки уведомлений</button>' +
+      shortcutAction() +
       '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
       '</div><p class="work-quiet">Продажи салона включают личные продажи грумера. Комиссии рассчитываются и выплачиваются раздельно.</p>';
     return '<div class="work-action-bar">' +
@@ -466,6 +474,7 @@
           '</button>' : '') +
       (role === 'founder' ? '' : '<button class="work-primary" type="button" data-work-action="full" data-work-role="' + esc(role) + '">Открыть полный кабинет →</button>') +
       '<button class="work-secondary" type="button" data-work-action="notifications">🔔 Настройки уведомлений</button>' +
+      shortcutAction() +
       '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
       '</div><p class="work-quiet">' + (role === 'founder' ? 'Кабинет собственника работает отдельно от административного доступа и не позволяет изменять заказы или выплаты.' : 'Полный кабинет открывается в том же окне Telegram и использует действующие права учётной записи.') + '</p>';
   }
