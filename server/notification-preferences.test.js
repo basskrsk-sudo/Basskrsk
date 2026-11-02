@@ -50,6 +50,9 @@ test('per-role defaults retain existing personal notices, restrict new broadcast
   assert.equal(preference('owner',o,'sales'),false);
   assert.equal(preference('owner',o,'payouts'),true);
   assert.equal(preference('manager',m,'sales'),true);
+  assert.equal(preference('manager',m,'messages'),true);
+  assert.equal(preference('owner',o,'messages'),true);
+  assert.equal(preference('partner',p,'messages'),true);
   assert.equal(preference('admin',a,'sales'),false);
   assert.equal(preference('founder',f,'sales'),false);
   assert.equal(preference('owner',o,'unrecognized-topic'),false);
@@ -61,7 +64,7 @@ test('settings route belongs to signed active account and cannot alter another r
   const start=invoke('GET',partner);
   assert.equal(start.status,200);
   assert.equal(start.result.role,'partner');
-  assert.deepEqual(start.result.settings.map(x=>x.key),['sales','payouts','new_products']);
+  assert.deepEqual(start.result.settings.map(x=>x.key),['sales','payouts','new_products','messages']);
 
   const saved=invoke('PUT',partner,{settings:{sales:false}});
   assert.equal(saved.status,200);
