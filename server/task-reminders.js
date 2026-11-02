@@ -112,7 +112,11 @@ async function sendTaskReminder(taskId, options = {}) {
   const task = getTask(taskId);
   if (!task) return { ok: false, error: 'Поручение не найдено', deliveries: [] };
   if (!task.assignee_id || !task.assignee_name) return { ok: false, error: 'Ответственный не назначен', deliveries: [] };
-  if (!options.manual && (!task.reminder_enabled || ['done', 'cancelled'].includes(task.status))) {
+  // Even an explicit manual ping cannot revive a completed/cancelled task.
+  if (['done','cancelled'].includes(task.status)) {
+    return { ok: false, skipped: true, deliveries: [] };
+  }
+  if (!options.manual && !task.reminder_enabled) {
     return { ok: false, skipped: true, deliveries: [] };
   }
   const key = reminderKey(task, now, !!options.manual);
