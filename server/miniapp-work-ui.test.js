@@ -455,3 +455,129 @@ test('unlinked groomer and salon owner retain separate working roles', async () 
   assert.equal(h.calls.length,0);
   assert.equal(h.values.taiga_owner_token,undefined);
 });
+
+
+test('groomer can write assigned manager from miniapp using only their partner token',async()=>{
+  const h=createHarness({
+    '/api/partners/me':{partner:{id:10,full_name:'Грумер',active:1,point_id:'zveryuga'}},
+    '/api/partners/me/orders?days=30':{orders:[]},
+    '/api/partners/me/payouts?limit=10':{unpaid_amount:0},
+    '/api/partners/me/stock':{stock:[]},
+    '/api/miniapp/manager-messages':{
+      kind:'sender',manager:{name:'Ангелина Функ'},point:{name:'Zveryuga'},
+      thread_id:null,messages:[],
+    },
+  },{taiga_partner_token:'groomer-session'});
+  await h.window.HvostMiniAppWork.chooseRole('partner');
+  assert.match(h.root.innerHTML,/Написать менеджеру/);
+  h.click('chat');
+  await flush();
+  assert.match(h.root.innerHTML,/Ангелина Функ/);
+  assert.match(h.root.innerHTML,/workChatForm/);
+  assert.ok(h.calls.some(c=>c.url==='/api/miniapp/manager-messages'&&
+    c.opts.headers.Authorization==='Bearer groomer-session'));
+  h.document.getElementById('workChatText').value='Можно пополнить стойку в четверг?';
+  h.submit('workChatForm');
+  await flush();
+  const post=h.calls.find(c=>c.url==='/api/miniapp/manager-messages'&&c.opts.method==='POST');
+  assert.ok(post);
+  assert.equal(post.opts.headers.Authorization,'Bearer groomer-session');
+  assert.deepEqual(JSON.parse(post.opts.body),{text:'Можно пополнить стойку в четверг?'});
+  // Mock only the read endpoint: a failed send must remain visible and editable.
+  assert.match(h.document.getElementById('workChatStatus').innerHTML,/Not mocked/);
+});
+
+test('owner writes via owner session and combined groomer-owner writes only once via owner role',async()=>{
+  const ownerData={
+    '/api/owner/me':{owner:{id:20,full_name:'Владелец',point_id:'salon-a',active:1}},
+    '/api/owner/dashboard':{
+      point:{id:'salon-a',name:'Zveryuga'},totals:{},owner_earnings:{},
+      groomers:[],recent_orders:[],
+    },
+    '/api/miniapp/manager-messages':{
+      kind:'sender',manager:{name:'Ангелина Функ'},point:{name:'Zveryuga'},
+      thread_id:null,messages:[],
+    },
+    '/api/partners/me':{partner:{id:18,full_name:'Владелец',phone:'79135550022',
+      point_id:'salon-a',active:1}},
+    '/api/partners/me/orders?days=30':{orders:[]},
+    '/api/partners/me/payouts?limit=10':{unpaid_amount:0},
+    '/api/partners/me/stock':{stock:[]},
+  };
+  const owner=createHarness(ownerData,{taiga_owner_token:'owner-session'});
+  await owner.window.HvostMiniAppWork.chooseRole('owner');
+  assert.match(owner.root.innerHTML,/Написать менеджеру/);
+  owner.click('chat');
+  await flush();
+  assert.match(owner.root.innerHTML,/Ангелина Функ/);
+  assert.equal(owner.calls.at(-1).opts.headers.Authorization,'Bearer owner-session');
+
+  const verified={
+    getStatus(){return {loaded:true,verified:true,combinedSalon:true,contactVerified:true,
+      accounts:[{role:'partner'},{role:'owner'}],ambiguousRoles:[],error:''};},
+    onChange(){},async session(role){return {role,token:'verified-'+role};},
+  };
+  ownerData['/api/owner/me'].owner.phone='79135550022';
+  const combined=createHarness(ownerData,{},verified);
+  await combined.window.HvostMiniAppWork.chooseRole('salon');
+  assert.match(combined.root.innerHTML,/Написать менеджеру/);
+  combined.click('chat');
+  await flush();
+  const request=combined.calls.find(x=>x.url==='/api/miniapp/manager-messages');
+  assert.equal(request.opts.headers.Authorization,'Bearer verified-owner');
+  assert.equal(combined.calls.filter(x=>x.url==='/api/miniapp/manager-messages').length,1);
+});
+
+test('manager has inbox, can open partner thread and reply, with user text escaped in HTML',async()=>{
+  const h=createHarness({
+    '/api/managers/me':{manager:{id:1,full_name:'Ангелина Функ',active:1,points:[]}},
+    '/api/managers/me/orders?days=30&limit=200':{orders:[]},
+    '/api/managers/me/stock':{points:[]},
+    '/api/miniapp/manager-messages':{
+      kind:'manager',threads:[{id:55,sender_name:'Барсукова Юлия',point_name:'Zveryuga',
+        sender_role:'partner',last_text:'Привет, нужна доставка!',unread:1}],
+    },
+    '/api/miniapp/manager-messages?thread_id=55':{
+      kind:'manager_thread',thread_id:55,
+      point:{name:'Zveryuga'},sender:{name:'Барсукова Юлия',role:'partner'},
+      messages:[{id:1,author_role:'partner',author_name:'Барсукова Юлия',
+        text:'<script>alert("bad")</script>',created_at:'2026-11-02 07:00:00'}],
+    },
+    '/api/miniapp/manager-messages/INVALID':{status:400,error:'invalid'},
+  },{taiga_manager_token:'manager-session'});
+  await h.window.HvostMiniAppWork.chooseRole('manager');
+  assert.match(h.root.innerHTML,/Сообщения от салонов/);
+  h.click('chat');
+  await flush();
+  assert.match(h.root.innerHTML,/Барсукова Юлия/);
+  assert.match(h.root.innerHTML,/1 новых/);
+  h.events.click({target:{closest(){return {dataset:{
+    workAction:'chat-thread',chatThreadId:'55',
+  }};}}});
+  await flush();
+  assert.match(h.root.innerHTML,/workChatForm/);
+  assert.match(h.root.innerHTML,/&lt;script&gt;alert/);
+  assert.doesNotMatch(h.root.innerHTML,/<script>alert/);
+  h.document.getElementById('workChatText').value='Доставим в пятницу.';
+  h.submit('workChatForm');
+  await flush();
+  const sent=h.calls.find(x=>x.url==='/api/miniapp/manager-messages'&&x.opts.method==='POST');
+  assert.ok(sent);
+  assert.equal(sent.opts.headers.Authorization,'Bearer manager-session');
+  assert.deepEqual(JSON.parse(sent.opts.body),{text:'Доставим в пятницу.',thread_id:55});
+});
+
+test('founder and admin have no manager messaging action on their dashboards',async()=>{
+  const f=createHarness({
+    '/api/business-founder/me':{founder:{id:3,full_name:'Кучкин Николай',active:1}},
+    '/api/business-founder/dashboard?period=30d':{
+      founder:{full_name:'Кучкин Николай'},sales:{revenue:1},
+    },
+  },{hm_business_founder_token:'founder-token'},null,{
+    HvostBusinessFounder:{getPeriod(){return '30d';},render(){return '<p>Показатели</p>';}},
+  });
+  await f.window.HvostMiniAppWork.chooseRole('founder');
+  assert.doesNotMatch(f.root.innerHTML,/data-work-action="chat"/);
+  f.click('chat');
+  assert.equal(f.calls.some(c=>c.url.includes('manager-messages')),false);
+});
