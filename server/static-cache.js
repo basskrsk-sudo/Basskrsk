@@ -58,7 +58,10 @@ function createStaticCache(publicDir) {
     const html = path.extname(filePath) === '.html';
     const css = path.extname(filePath) === '.css';
     const privatePage = html && name.startsWith('taiga-');
-    const noStore = privatePage || name === 'config.js' || name === 'sw.js';
+    // Do not let Telegram WebViews retain an old signed-login shell after a deploy.
+    // Other HTML continues to use validating ETags, as before.
+    const noStore = privatePage || name === 'miniapp.html' ||
+      name === 'config.js' || name === 'sw.js';
     const body = html || css ? Buffer.from(versionHtml(entry.body.toString('utf8'))) : entry.body;
     const representationVersion = html || css ? digest(body) : entry.version;
     const etag = '"' + representationVersion + '"';
