@@ -194,10 +194,10 @@ async function init(){
     var directShop=view==='shop'||!!query.get('point');
     var identityState=window.HvostMiniAppIdentity&&window.HvostMiniAppIdentity.getStatus();
     var role=identityState&&identityState.verified?identityState.preferredRole:null;
-    if(directShop||role==='shop'){
+    if(directShop||(view!=='work'&&role==='shop')){
       setView('shop');
     }else if(view==='work'){
-      if(role&&role!=='customer'&&window.HvostMiniAppOpenRole)window.HvostMiniAppOpenRole(role);
+      if(role&&role!=='customer'&&role!=='shop'&&window.HvostMiniAppOpenRole)window.HvostMiniAppOpenRole(role);
       else setView('work');
     }else if(role&&role!=='customer'&&window.HvostMiniAppOpenRole){
       window.HvostMiniAppOpenRole(role);
