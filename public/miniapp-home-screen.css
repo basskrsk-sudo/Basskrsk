@@ -1,0 +1,44 @@
+/* Native Telegram shortcut: shared across buyer, groomer, owner, manager,
+   administrator, founder and combined salon accounts. */
+[data-hm-home-card][hidden],
+[data-hm-home-feedback][hidden] { display:none !important; }
+.hm-home-card {
+  margin: 0 0 15px;
+  padding: 15px;
+  background: linear-gradient(115deg,#eff7ed,#ffffff);
+  color: #193b30;
+  border:1px solid #d8e9dc;
+  border-radius:17px;
+  box-shadow:0 3px 12px rgba(12,66,44,.045);
+}
+.hm-home-card-head { display:flex;gap:12px;align-items:center;margin-bottom:12px; }
+.hm-home-icon {
+  flex-shrink:0;
+  object-fit:contain;
+  padding:5px;
+  background:#fff;
+  border:1px solid #e5eee6;
+  border-radius:14px;
+}
+.hm-home-card-head strong { display:block;font-size:13px;line-height:1.4;font-weight:850; }
+.hm-home-card-head p { margin:3px 0 0;color:#668372;font-size:11px;line-height:1.5; }
+.hm-home-install {
+  display:block;width:100%;
+  background:#0b4b39;color:#fff;
+  border:0;border-radius:11px;padding:12px 11px;
+  font:inherit;font-size:12px;font-weight:800;
+  cursor:pointer;
+}
+.hm-home-install:focus-visible,
+.hm-home-action button:focus-visible,
+.hm-home-header button:focus-visible { outline:3px solid #f6c44f;outline-offset:2px; }
+.hm-home-action { margin-bottom:8px; }
+.hm-home-action button { width:100%; }
+.hm-home-feedback { margin:8px 0 0;font-size:11px;line-height:1.5;color:#397355; }
+.hm-home-header { margin-top:11px;position:relative;z-index:1; }
+.hm-home-header button {
+  width:100%;background:rgba(255,255,255,.13);
+  border:1px solid rgba(255,255,255,.27);
+  color:#fff;border-radius:11px;padding:9px 12px;
+  text-align:center;font-size:12px;font-weight:750;cursor:pointer;
+}

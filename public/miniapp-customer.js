@@ -74,6 +74,11 @@
   function error(text) {
     return '<p class="error" role="alert">' + esc(text) + '</p>';
   }
+  function shortcutAction() {
+    var shortcut = window.HvostMiniAppHomeScreen;
+    return shortcut && typeof shortcut.actionMarkup === 'function'
+      ? shortcut.actionMarkup() : '';
+  }
   function renderIdentityPrompt(status) {
     var userName = currentUser && currentUser.first_name || 'Покупатель';
     var content = '<div class="block profile-hero">' + avatar(userName) +
@@ -108,7 +113,7 @@
     }
     content += '<div class="block"><button type="button" class="btn btn-light" data-customer-action="open-shop">' +
       '🛍 Перейти в магазин без входа</button></div>';
-    return content;
+    return content + shortcutAction();
   }
   function secureFetch(path, token) {
     return fetch(path, {
@@ -158,6 +163,7 @@
         '<p class="muted" style="font-size:12px">Не удалось загрузить операции</p>') +
       '</div>' + accessibleCabinets(identity.getStatus()) +
       action('notifications', '🔔 Настройки уведомлений', true) +
+      shortcutAction() +
       action('refresh', '↻ Обновить мой кабинет', true) +
       '<p style="font-size:12px;text-align:center;margin-top:16px"><a href="/privacy-policy.html" target="_blank" rel="noopener">Политика конфиденциальности</a></p>';
     return html;
