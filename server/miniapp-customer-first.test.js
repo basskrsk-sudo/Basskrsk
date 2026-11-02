@@ -49,12 +49,14 @@ function customerHarness() {
 }
 
 test('opening Mini App starts in customer profile with an entered-phone form', async () => {
-  assert.match(html, /async function init\(\)\{\s*\/\/ Customer-first/);
+  assert.match(html, /async function init\(\)\{\s*\/\/ Keep the profile/);
   assert.match(html, /setView\('profile'\);\s*if\(window\.HvostMiniAppIdentity\)/);
   assert.match(html, /data-view="work"/);
   assert.match(html, /class="tab hide" type="button" data-view="work"/);
   assert.match(html, /if\(view==='work'&&!isPhoneAccessUnlocked\(\)\)view='profile'/);
-  assert.match(html, /if\(resultCode&&\/\^\[a-zA-Z0-9_-\]/, 'payment returns still take priority');
+  assert.match(html, /if\(validPayment\)await checkPaymentReturn\(resultCode\)/, 'payment returns still take priority');
+  assert.match(html, /query\.get\('view'\)/);
+  assert.match(html, /identityState\.preferredRole/);
   const h = customerHarness();
   h.window.HvostMiniAppCustomer.render({ first_name: 'Тестовый покупатель' }, true);
   assert.match(h.root.innerHTML, /Кабинет покупателя/);
