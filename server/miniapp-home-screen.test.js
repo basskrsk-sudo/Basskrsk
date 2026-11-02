@@ -68,7 +68,7 @@ test('Telegram Bot API 8.0+ offers one shared home-screen shortcut only on user 
   assert.equal(h.api.getStatus(),'added');
   assert.ok(h.cards.every(x=>x.hidden===true));
   assert.ok(h.buttons.every(x=>x.disabled===true));
-  assert.equal(h.click(),true);
+  assert.equal(h.click(),false,'installed button is inactive');
   assert.equal(h.clicks.added,1,'already-installed icon never requests another shortcut');
 });
 
