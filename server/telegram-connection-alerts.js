@@ -124,7 +124,7 @@ function bindTelegramAccount(role,accountId,chatId,options={}){
     if(!options.deferDelivery&&process.env.TG_TOKEN){
       // Never delay or fail the user's successful Telegram login because an
       // administrator blocked the bot, Telegram was down, or a chat was moved.
-      Promise.resolve().then(()=>flushBotConnectionAlerts())
+      Promise.resolve().then(()=>flushBotConnectionAlerts({database}))
         .catch(e=>console.error('Telegram connection alert:',e.message));
     }
     return {changed:true,eventId,recipients:recipients.size};

@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
+const { bindTelegramAccount } = require('./telegram-connection-alerts');
 const { localDate, sendTaskReminder } = require('./task-reminders');
 const { nextRecurringDue } = require('./task-utils');
 
@@ -197,8 +198,8 @@ function registerTaskRoutes(router) {
       if (!process.env.TG_TOKEN) return sendJson(res, 503, { error: 'Telegram-бот не настроен' });
       db.prepare("INSERT INTO telegram_login_tokens (token, phone, role, account_id, expires_at) VALUES (?, ?, 'task_assignee', ?, ?)")
         .run(token, phone, member.id, expiresAt);
-      const username = String(process.env.TG_BOT_USERNAME || 'taiga_dog_bot').replace(/^@/, '');
-      return sendJson(res, 200, { token, deep_link: 'https://t.me/' + username + '?start=' + token });
+      const { telegramStartLink } = require('./telegram-bot-identity');
+      return sendJson(res, 200, { token, deep_link: telegramStartLink(token) });
     }
     if (channel === 'max') {
       const { isConfigured } = require('./max-bot');
@@ -220,8 +221,12 @@ function registerTaskRoutes(router) {
     const record = db.prepare(`SELECT * FROM ${table} WHERE token = ? AND role = 'task_assignee' AND account_id = ?`).get(String(ctx.query.token || ''), ctx.params.id);
     if (!record) return sendJson(res, 404, { error: 'Подключение не найдено' });
     if (!record.verified || !record.chat_id) return sendJson(res, 200, { verified: false });
-    const column = channel === 'telegram' ? 'telegram_chat_id' : 'max_chat_id';
-    db.prepare(`UPDATE task_assignees SET ${column} = ?, updated_at = datetime('now') WHERE id = ?`).run(String(record.chat_id), ctx.params.id);
+    if(channel==='telegram'){
+      bindTelegramAccount('task_assignee',Number(ctx.params.id),record.chat_id);
+    } else {
+      db.prepare("UPDATE task_assignees SET max_chat_id=?,updated_at=datetime('now') WHERE id=?")
+        .run(String(record.chat_id),ctx.params.id);
+    }
     sendJson(res, 200, { verified: true });
   });
 }
