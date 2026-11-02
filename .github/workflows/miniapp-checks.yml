@@ -6,6 +6,8 @@ on:
       - public/miniapp.html
       - public/miniapp-telegram-context.js
       - server/miniapp-telegram-context.test.js
+      - server/static-cache.js
+      - server/static-cache.test.js
       - public/miniapp-home-screen.js
       - public/miniapp-home-screen.css
       - public/manifest-miniapp.json
