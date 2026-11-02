@@ -54,7 +54,10 @@ test('per-role defaults retain existing personal notices, restrict new broadcast
   assert.equal(preference('owner',o,'messages'),true);
   assert.equal(preference('partner',p,'messages'),true);
   assert.equal(preference('admin',a,'sales'),false);
+  assert.equal(preference('admin',a,'bot_connections'),true);
+  assert.equal(preference('partner',p,'bot_connections'),false);
   assert.equal(preference('founder',f,'sales'),false);
+  assert.equal(preference('founder',f,'bot_connections'),false);
   assert.equal(preference('owner',o,'unrecognized-topic'),false);
 });
 
@@ -146,6 +149,15 @@ test('private paid sale notices actually respect settings; owner/admin/founder o
     sent=await sendPaidOrderNotifications(order,items);
     assert.deepEqual(sent.attempted,['customer','partner','admin','founder']);
     assert.deepEqual(deliveries.map(x=>x.chatId),['11001','11002','11004','11005']);
+    assert.doesNotMatch(deliveries.find(x=>x.chatId==='11002').body,/79135550001|Покупатель/);
+    // Same Telegram user is groomer + owner. Opting into both roles never
+    // generates two copies of a single sale; personal groomer card wins.
+    deliveries.length=0;
+    savePreferences('owner',o,{sales:true});
+    sent=await sendPaidOrderNotifications(order,items);
+    assert.deepEqual(sent.attempted,['customer','partner','admin','founder']);
+    assert.equal(deliveries.filter(x=>x.chatId==='11002').length,1);
+    assert.match(deliveries.find(x=>x.chatId==='11002').body,/Новая продажа у вас/);
   } finally {
     telegram.sendToChat=real;
     delete require.cache[require.resolve('./order-notifications')];
@@ -195,4 +207,16 @@ test('recorded payout notices obey independent partner/owner/manager toggles wit
     telegram.sendToChat=old;
     delete require.cache[file];
   }
+});
+
+
+test('admin alone may disable bot-connection alerts, independently from sales',()=>{
+  const admin=signToken({role:'admin',id:a});
+  assert.ok(describe('admin',a).some(x=>x.key==='bot_connections'&&x.enabled));
+  assert.equal(invoke('PUT',admin,{settings:{bot_connections:false}}).status,200);
+  assert.equal(preference('admin',a,'bot_connections'),false);
+  assert.equal(preference('admin',a,'sales'),true);
+  const partner=signToken({role:'partner',id:p});
+  assert.equal(invoke('PUT',partner,{settings:{bot_connections:true}}).status,400);
+  assert.equal(invoke('PUT',admin,{settings:{bot_connections:true}}).status,200);
 });
