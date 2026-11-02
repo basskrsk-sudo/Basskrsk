@@ -64,6 +64,8 @@ on:
       - server/server.js
       - server/task-seed-2026-11-01.js
       - server/task-seed-2026-11-01.test.js
+      - server/task-seed-2026-11-02.js
+      - server/task-seed-2026-11-02.test.js
       - .github/workflows/miniapp-checks.yml
   workflow_dispatch:
 
@@ -80,6 +82,8 @@ jobs:
           node --check server/server.js
           node --check server/task-seed-2026-11-01.js
           node --check server/task-seed-2026-11-01.test.js
+          node --check server/task-seed-2026-11-02.js
+          node --check server/task-seed-2026-11-02.test.js
           node --check server/routes-payment.js
           node --check server/routes-miniapp.js
           node --check server/routes-miniapp-tasks.js
@@ -116,4 +120,4 @@ jobs:
         run: |
           node -e "const fs=require('node:fs');const s=fs.readFileSync('public/miniapp.html','utf8');const m=s.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);if(!m)throw new Error('missing Mini App script');new Function(m[1]);console.log('Mini App JavaScript syntax OK');"
       - name: Verify Telegram auth and all four staff dashboards
-        run: node --test --test-concurrency=1 server/routes-miniapp.test.js server/miniapp-existing-bot.test.js server/miniapp-work-ui.test.js server/miniapp-header-contrast.test.js server/miniapp-phone-identity.test.js server/miniapp-identity-ui.test.js server/miniapp-customer-first.test.js server/business-founders.test.js server/miniapp-founder-ui.test.js server/notification-preferences.test.js server/notification-settings-ui.test.js server/telegram-connections.test.js server/telegram-bot-identity.test.js server/new-product-broadcast.test.js server/partner-club-photo-posts.test.js server/partner-club-reroll.test.js server/partner-tier-approvals.test.js server/miniapp-staff-tasks.test.js server/miniapp-staff-tasks-ui.test.js server/task-seed-2026-11-01.test.js
+        run: node --test --test-concurrency=1 server/routes-miniapp.test.js server/miniapp-existing-bot.test.js server/miniapp-work-ui.test.js server/miniapp-header-contrast.test.js server/miniapp-phone-identity.test.js server/miniapp-identity-ui.test.js server/miniapp-customer-first.test.js server/business-founders.test.js server/miniapp-founder-ui.test.js server/notification-preferences.test.js server/notification-settings-ui.test.js server/telegram-connections.test.js server/telegram-bot-identity.test.js server/new-product-broadcast.test.js server/partner-club-photo-posts.test.js server/partner-club-reroll.test.js server/partner-tier-approvals.test.js server/miniapp-staff-tasks.test.js server/miniapp-staff-tasks-ui.test.js server/task-seed-2026-11-01.test.js server/task-seed-2026-11-02.test.js
