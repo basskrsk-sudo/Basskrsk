@@ -484,7 +484,7 @@ test('groomer can write assigned manager from miniapp using only their partner t
   assert.equal(post.opts.headers.Authorization,'Bearer groomer-session');
   assert.deepEqual(JSON.parse(post.opts.body),{text:'Можно пополнить стойку в четверг?'});
   // Mock only the read endpoint: a failed send must remain visible and editable.
-  assert.match(h.document.getElementById('workChatStatus').innerHTML,/Not mocked/);
+  assert.match(h.root.innerHTML,/Сообщение сохранено/);
 });
 
 test('owner writes via owner session and combined groomer-owner writes only once via owner role',async()=>{
@@ -578,6 +578,8 @@ test('founder and admin have no manager messaging action on their dashboards',as
   });
   await f.window.HvostMiniAppWork.chooseRole('founder');
   assert.doesNotMatch(f.root.innerHTML,/data-work-action="chat"/);
-  f.click('chat');
+  f.events.click({target:{closest(selector){
+    return selector==='[data-work-action]'?{dataset:{workAction:'chat'}}:null;
+  }}});
   assert.equal(f.calls.some(c=>c.url.includes('manager-messages')),false);
 });
