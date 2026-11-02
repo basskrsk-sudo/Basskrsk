@@ -35,14 +35,15 @@ function itemsText(items) {
 function connectedChatId(role, account) {
   if (!account) return null;
   if (account.telegram_chat_id) return String(account.telegram_chat_id);
-  const phone = phoneLast10(account.phone);
-  if (!phone) return null;
-  const tokens = db.prepare(`
-    SELECT phone, chat_id FROM telegram_login_tokens
-    WHERE role = ? AND verified = 1 AND chat_id IS NOT NULL
-    ORDER BY id DESC
-  `).all(role);
-  const token = tokens.find((row) => phoneLast10(row.phone) === phone);
+  // Only accept historical tokens that were explicitly verified for this
+  // role AND account. Phone-only matches can route private notices incorrectly.
+  if (!Number.isSafeInteger(Number(account.id)) || Number(account.id)<1) return null;
+  const token = db.prepare(`
+    SELECT chat_id FROM telegram_login_tokens
+    WHERE role=? AND account_id=? AND verified=1
+      AND TRIM(COALESCE(chat_id,''))<>''
+    ORDER BY id DESC LIMIT 1
+  `).get(role,account.id);
   return token ? String(token.chat_id) : null;
 }
 
@@ -85,8 +86,7 @@ function buildPartnerMessage(order, items, partner) {
     '',
     '📋 Заказ: ' + escapeHtml(order.order_code),
     '📍 Точка: ' + escapeHtml(order.pickup_point || partner.point_name || ''),
-    '👤 Клиент: ' + escapeHtml((order.customer_name + ' ' + (order.customer_lname || '')).trim()),
-    '📞 ' + escapeHtml(order.customer_phone),
+    // Staff receives order details, not the customer's personal contacts.
     '',
     itemsText(items),
     '',
@@ -106,7 +106,7 @@ function buildManagerMessage(order, items, manager, point, partner, managerRate)
     '📋 Заказ: ' + escapeHtml(order.order_code),
     '📍 Точка: ' + escapeHtml((point && point.name) || order.pickup_point || ''),
     '✂️ Грумер: ' + escapeHtml(groomerName),
-    '👤 Клиент: ' + escapeHtml((order.customer_name + ' ' + (order.customer_lname || '')).trim()),
+    // No personal customer data in a manager's optional sales notice.
     '',
     itemsText(items),
     '',
@@ -120,6 +120,7 @@ function buildManagerMessage(order, items, manager, point, partner, managerRate)
 
 function findCustomer(phone) {
   const normalized = phoneLast10(phone);
+  if (normalized.length !== 10) return null;
   return db.prepare('SELECT id, phone, telegram_chat_id FROM customers').all()
     .find((row) => phoneLast10(row.phone) === normalized) || null;
 }
@@ -137,25 +138,26 @@ function findManagerAndPoint(order) {
   if (!order.point_id) return { manager: null, point: null, rate: null };
   const point = db.prepare('SELECT * FROM points WHERE id = ?').get(order.point_id) || null;
   if (!point) return { manager: null, point: null, rate: null };
-  let manager = point.manager_id
-    ? db.prepare('SELECT * FROM managers WHERE id = ? AND active = 1').get(point.manager_id)
-    : null;
-  let link = manager
-    ? db.prepare('SELECT commission_rate FROM manager_points WHERE manager_id = ? AND point_id = ? AND active = 1').get(manager.id, point.id)
-    : null;
-  if (!manager) {
-    const fallback = db.prepare(`
-      SELECT m.*, mp.commission_rate AS point_commission_rate
-      FROM manager_points mp JOIN managers m ON m.id = mp.manager_id
-      WHERE mp.point_id = ? AND mp.active = 1 AND m.active = 1
-      ORDER BY mp.id DESC LIMIT 1
-    `).get(point.id);
-    if (fallback) {
-      manager = fallback;
-      link = { commission_rate: fallback.point_commission_rate };
-    }
+  // Assigned point.manager_id wins. If the assigned manager is inactive,
+  // do not route a sale to a different historical manager.
+  if (point.manager_id != null) {
+    const manager=db.prepare('SELECT * FROM managers WHERE id=? AND active=1')
+      .get(point.manager_id)||null;
+    const link=manager ? db.prepare(
+      'SELECT commission_rate FROM manager_points WHERE manager_id=? AND point_id=? AND active=1'
+    ).get(manager.id,point.id) : null;
+    return {manager,point,rate:link?link.commission_rate:null};
   }
-  return { manager, point, rate: link ? link.commission_rate : null };
+  // On older points, fall back only to ONE distinct, active manager.
+  const candidates=db.prepare(`
+    SELECT m.*,mp.commission_rate AS point_commission_rate
+    FROM manager_points mp JOIN managers m ON m.id=mp.manager_id
+    WHERE mp.point_id=? AND mp.active=1 AND m.active=1
+  `).all(point.id);
+  const unique=new Map(candidates.map(row=>[row.id,row]));
+  if(unique.size!==1)return {manager:null,point,rate:null};
+  const manager=[...unique.values()][0];
+  return {manager,point,rate:manager.point_commission_rate};
 }
 
 function buildMinimalSaleNotice(order, items, kind) {
@@ -193,22 +195,30 @@ async function sendPaidOrderNotifications(order, items) {
   const customer = findCustomer(order.customer_phone);
   const partner = findPartner(order);
   const { manager, point, rate } = findManagerAndPoint(order);
-  const deliveries = [];
-
-  const customerChatId = connectedChatId('customer', customer);
-  if (customerChatId && preference('customer', customer.id, 'purchase')) deliveries.push({ role: 'customer', promise: sendToChat(customerChatId, buildCustomerMessage(order, items)) });
-
-  const partnerChatId = connectedChatId('partner', partner);
-  if (partnerChatId && preference('partner', partner.id, 'sales')) deliveries.push({ role: 'partner', promise: sendToChat(partnerChatId, buildPartnerMessage(order, items, partner)) });
-
-  const managerChatId = connectedChatId('manager', manager);
-  if (managerChatId && preference('manager', manager.id, 'sales')) deliveries.push({ role: 'manager', promise: sendToChat(managerChatId, buildManagerMessage(order, items, manager, point, partner, rate)) });
-  for (const {role,account} of optedInSaleSubscribers(order)) {
-    deliveries.push({role, promise:sendToChat(String(account.telegram_chat_id),
-      buildMinimalSaleNotice(order,items,role==='owner'?'Новая продажа вашего салона':'Новая продажа ХвостМаркета'))});
+  // One PRIVATE notice per Telegram chat and order, even when the person
+  // holds several roles. Prefer payment receipt, then groomer, manager,
+  // salon owner and explicitly subscribed network roles.
+  const byChat=new Map();
+  function add(role,chat,text){
+    const id=String(chat||'').trim();
+    if(!/^[0-9]{1,20}$/.test(id))return;
+    if(!byChat.has(id))byChat.set(id,{role,chat:id,text});
   }
-
-  const settled = await Promise.allSettled(deliveries.map((item) => item.promise));
+  const customerChatId=connectedChatId('customer',customer);
+  if(customerChatId && preference('customer',customer.id,'purchase'))
+    add('customer',customerChatId,buildCustomerMessage(order,items));
+  const partnerChatId=connectedChatId('partner',partner);
+  if(partnerChatId && preference('partner',partner.id,'sales'))
+    add('partner',partnerChatId,buildPartnerMessage(order,items,partner));
+  const managerChatId=connectedChatId('manager',manager);
+  if(managerChatId && preference('manager',manager.id,'sales'))
+    add('manager',managerChatId,buildManagerMessage(order,items,manager,point,partner,rate));
+  for(const {role,account} of optedInSaleSubscribers(order)){
+    add(role,account.telegram_chat_id,buildMinimalSaleNotice(order,items,
+      role==='owner'?'Новая продажа вашего салона':'Новая продажа ХвостМаркета'));
+  }
+  const deliveries=[...byChat.values()];
+  const settled=await Promise.allSettled(deliveries.map(item=>sendToChat(item.chat,item.text)));
   settled.forEach((result, index) => {
     if (result.status === 'rejected') {
       console.error('[paid-order] Telegram-уведомление роли ' + deliveries[index].role + ' не отправлено:', result.reason && result.reason.message);
