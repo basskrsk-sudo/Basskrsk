@@ -19,7 +19,7 @@ function ensureManagerMessageTables(database=defaultDb){
     'point_id TEXT NOT NULL REFERENCES points(id) ON DELETE CASCADE,'+
     'manager_id INTEGER NOT NULL REFERENCES managers(id) ON DELETE CASCADE,'+
     "sender_role TEXT NOT NULL CHECK(sender_role IN ('partner','owner')),"+
-    'sender_id INTEGER NOT NULL,sender_name TEXT NOT NULL,manager_read_at TEXT,'+
+    'sender_id INTEGER NOT NULL,sender_name TEXT NOT NULL,manager_last_read_id INTEGER NOT NULL DEFAULT 0,'+
     "created_at TEXT NOT NULL DEFAULT (datetime('now')),"+
     "updated_at TEXT NOT NULL DEFAULT (datetime('now')),"+
     'UNIQUE(point_id,manager_id,sender_role,sender_id));'+
@@ -120,7 +120,10 @@ function getManagerMessages(database,role,id,threadId){
   if(threadId!==undefined&&threadId!==null){
     const thread=getManagerThread(database,manager.id,threadId);
     if(!thread||!threadSender(database,thread))return {status:404,error:'Переписка недоступна'};
-    database.prepare("UPDATE miniapp_manager_threads SET manager_read_at=datetime('now') WHERE id=?").run(thread.id);
+    database.prepare(
+      'UPDATE miniapp_manager_threads SET manager_last_read_id=('+
+      'SELECT COALESCE(MAX(id),0) FROM miniapp_manager_messages WHERE thread_id=?) WHERE id=?'
+    ).run(thread.id,thread.id);
     return {kind:'manager_thread',thread_id:thread.id,
       point:{name:thread.point_name},sender:{name:thread.sender_name,role:thread.sender_role},
       messages:messages(database,thread.id)};
@@ -130,7 +133,7 @@ function getManagerMessages(database,role,id,threadId){
     '(SELECT m.body FROM miniapp_manager_messages m WHERE m.thread_id=t.id ORDER BY m.id DESC LIMIT 1) AS last_text,'+
     '(SELECT m.created_at FROM miniapp_manager_messages m WHERE m.thread_id=t.id ORDER BY m.id DESC LIMIT 1) AS last_at,'+
     "(SELECT COUNT(*) FROM miniapp_manager_messages m WHERE m.thread_id=t.id AND m.author_role!='manager' "+
-    'AND (t.manager_read_at IS NULL OR m.created_at>t.manager_read_at)) AS unread '+
+    'AND m.id>t.manager_last_read_id) AS unread '+
     'FROM miniapp_manager_threads t JOIN points p ON p.id=t.point_id '+
     'WHERE t.manager_id=? ORDER BY t.updated_at DESC,t.id DESC LIMIT 100'
   ).all(manager.id);
