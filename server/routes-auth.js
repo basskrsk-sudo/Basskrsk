@@ -7,6 +7,7 @@ const { verifyPassword, signToken, hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
 const { safeFounder } = require('./business-founders');
 const { telegramStartLink } = require('./telegram-bot-identity');
+const { bindTelegramAccount } = require('./telegram-connection-alerts');
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // час на использование ссылки
 
@@ -155,7 +156,7 @@ function registerAuthRoutes(router) {
     if (!record.verified || !record.chat_id) return sendJson(res, 200, { verified: false });
 
     const tableName = telegramAccountTables[payload.role];
-    db.prepare(`UPDATE ${tableName} SET telegram_chat_id = ? WHERE id = ?`).run(String(record.chat_id), payload.id);
+    bindTelegramAccount(payload.role,payload.id,record.chat_id);
     sendJson(res, 200, { verified: true, telegram_connected: true });
   });
 
@@ -407,7 +408,7 @@ function registerAuthRoutes(router) {
     // Запоминаем chat_id — пригодится, чтобы написать клиенту самим (win-back и т.п.),
     // без этого шага у нас нет способа связаться с клиентом через Telegram напрямую.
     if (record.chat_id && record.chat_id !== customer.telegram_chat_id) {
-      db.prepare('UPDATE customers SET telegram_chat_id = ? WHERE id = ?').run(record.chat_id, customer.id);
+      bindTelegramAccount('customer',customer.id,record.chat_id);
       customer.telegram_chat_id = record.chat_id;
     }
     const authToken = signToken({ role: 'customer', id: customer.id });
@@ -438,7 +439,7 @@ function registerAuthRoutes(router) {
       customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(info.lastInsertRowid);
     }
     if (record.chat_id && record.chat_id !== customer.telegram_chat_id) {
-      db.prepare('UPDATE customers SET telegram_chat_id = ? WHERE id = ?').run(record.chat_id, customer.id);
+      bindTelegramAccount('customer',customer.id,record.chat_id);
       customer.telegram_chat_id = record.chat_id;
     }
     const authToken = signToken({ role: 'customer', id: customer.id });
@@ -478,7 +479,7 @@ function registerAuthRoutes(router) {
       .find((p) => phonesMatch(p.phone, record.phone));
     if (!partner) return sendJson(res, 404, { error: 'Партнёр не найден или отключён' });
     if (record.chat_id && record.chat_id !== partner.telegram_chat_id) {
-      db.prepare('UPDATE partners SET telegram_chat_id = ? WHERE id = ?').run(String(record.chat_id), partner.id);
+      bindTelegramAccount('partner',partner.id,record.chat_id);
       partner.telegram_chat_id = String(record.chat_id);
     }
     const authToken = signToken({ role: 'partner', id: partner.id, login: partner.login });
@@ -507,7 +508,7 @@ function registerAuthRoutes(router) {
       .find((p) => phonesMatch(p.phone, record.phone));
     if (!partner) return sendJson(res, 404, { error: 'Партнёр не найден или отключён' });
     if (record.chat_id && record.chat_id !== partner.telegram_chat_id) {
-      db.prepare('UPDATE partners SET telegram_chat_id = ? WHERE id = ?').run(String(record.chat_id), partner.id);
+      bindTelegramAccount('partner',partner.id,record.chat_id);
       partner.telegram_chat_id = String(record.chat_id);
     }
     const authToken = signToken({ role: 'partner', id: partner.id, login: partner.login });
@@ -547,7 +548,7 @@ function registerAuthRoutes(router) {
       .find((a) => phonesMatch(a.phone, record.phone));
     if (!mgr) return sendJson(res, 404, { error: 'Менеджер не найден или отключён' });
     if (record.chat_id && record.chat_id !== mgr.telegram_chat_id) {
-      db.prepare('UPDATE managers SET telegram_chat_id = ? WHERE id = ?').run(String(record.chat_id), mgr.id);
+      bindTelegramAccount('manager',mgr.id,record.chat_id);
       mgr.telegram_chat_id = String(record.chat_id);
     }
     const authToken = signToken({ role: 'manager', id: mgr.id, login: mgr.login });
@@ -575,7 +576,7 @@ function registerAuthRoutes(router) {
       .find((a) => phonesMatch(a.phone, record.phone));
     if (!mgr) return sendJson(res, 404, { error: 'Менеджер не найден или отключён' });
     if (record.chat_id && record.chat_id !== mgr.telegram_chat_id) {
-      db.prepare('UPDATE managers SET telegram_chat_id = ? WHERE id = ?').run(String(record.chat_id), mgr.id);
+      bindTelegramAccount('manager',mgr.id,record.chat_id);
       mgr.telegram_chat_id = String(record.chat_id);
     }
     const authToken = signToken({ role: 'manager', id: mgr.id, login: mgr.login });

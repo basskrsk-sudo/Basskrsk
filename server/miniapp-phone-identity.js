@@ -5,6 +5,7 @@
 const db = require('./db');
 const { signToken } = require('./auth');
 require('./business-founders'); // ensure independently registered founders exist before phone matching
+const { bindTelegramAccount } = require('./telegram-connection-alerts');
 
 const PHONE_PROOF_TTL_SECONDS = 30 * 24 * 60 * 60;
 const ACCOUNT_TABLES = Object.freeze({
@@ -162,8 +163,7 @@ function issueTelegramAccountSession(userId, role, now = Math.floor(Date.now() /
   // Keep service notifications directed to the verified registered phone's
   // Telegram owner. Admin links remain password-authenticated and unchanged.
   if (role !== 'admin') {
-    db.prepare('UPDATE ' + ACCOUNT_TABLES[role] + ' SET telegram_chat_id = ? WHERE id = ?')
-      .run(String(userId), account.id);
+    bindTelegramAccount(role,account.id,userId);
   }
   return {
     token, role,

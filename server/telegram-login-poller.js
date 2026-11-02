@@ -34,6 +34,7 @@ const {
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
 const { recordVerifiedTelegramContact } = require('./miniapp-phone-identity');
+const { bindTelegramAccount } = require('./telegram-connection-alerts');
 const { commandsMenuButton, miniAppInlineKeyboard, miniAppDirectLinkMarkup } = require('./miniapp-bot-links');
 const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
 const {
@@ -594,7 +595,7 @@ function rememberChatForAccount(record, chatId) {
   const table = tableByRole[record.role || 'customer'];
   if (!table) return;
   if (record.account_id) {
-    db.prepare(`UPDATE ${table} SET telegram_chat_id = ? WHERE id = ?`).run(String(chatId), record.account_id);
+    bindTelegramAccount(record.role || 'customer',record.account_id,chatId);
     return;
   }
   const wantedPhone = String(record.phone || '').replace(/\D/g, '').slice(-10);
@@ -610,7 +611,7 @@ function rememberChatForAccount(record, chatId) {
     account = { id: info.lastInsertRowid, phone: record.phone };
   }
   if (account) {
-    db.prepare(`UPDATE ${table} SET telegram_chat_id = ? WHERE id = ?`).run(String(chatId), account.id);
+    bindTelegramAccount(record.role || 'customer',account.id,chatId);
   }
 }
 
@@ -1174,6 +1175,7 @@ async function startPolling() {
   polling = true;
   newProductBroadcast.startBroadcastWorker();
   tierApprovals.startTierApprovalNotifications();
+  require('./telegram-connection-alerts').startBotConnectionAlertWorker();
   await configureBotProfile();
   console.log('Опрос Telegram для входа в личный кабинет запущен');
   while (polling) {
