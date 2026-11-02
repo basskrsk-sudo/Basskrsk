@@ -39,7 +39,7 @@ test('configuration and cabinet pages remain no-store even with a matching valid
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'static-private-'));
   try {
     const cache = createStaticCache(dir);
-    for (const name of ['config.js', 'sw.js', 'taiga-admin.html']) {
+    for (const name of ['config.js', 'sw.js', 'taiga-admin.html', 'miniapp.html']) {
       fs.writeFileSync(path.join(dir, name), 'private settings');
       const response = cache.response(path.join(dir, name), { method: 'GET', url: '/' + name, headers: { 'if-none-match': '*' } }, 'text/plain');
       assert.equal(response.headers['Cache-Control'], 'no-store');
