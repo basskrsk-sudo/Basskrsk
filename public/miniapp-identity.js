@@ -52,8 +52,13 @@
       try { fn(snapshot); } catch (err) { console.warn('Mini App phone UI listener:', err); }
     });
   }
+  function telegramUnavailable() {
+    var context=window.HvostTelegramContext;
+    return context && typeof context.unavailableMessage==='function'
+      ? context.unavailableMessage() : 'Откройте Mini App через Telegram-бота.';
+  }
   async function post(path, body) {
-    if (!telegram || !telegram.initData) throw new Error('Откройте Mini App через Telegram-бота.');
+    if (!telegram || !telegram.initData) throw new Error(telegramUnavailable());
     var response = await fetch(path, {
       method: 'POST',
       cache: 'no-store',
@@ -74,7 +79,7 @@
       identity.combinedSalon = false;
       identity.preferredRole = null;
       confirmedPhone = '';
-      identity.error = 'Откройте через Telegram-бота.';
+      identity.error = telegramUnavailable();
       notify();
       return copy();
     }
@@ -122,7 +127,7 @@
   function requestContact() {
     if (busy) return Promise.resolve(copy());
     if (!telegram || !telegram.initData) {
-      identity.error = 'Откройте магазин через кнопку действующего бота в Telegram.';
+      identity.error = telegramUnavailable();
       notify();
       return Promise.resolve(copy());
     }
@@ -163,7 +168,7 @@
       return copy();
     }
     if (!telegram || !telegram.initData) {
-      identity.error = 'Для проверки номера откройте приложение из действующего Telegram-бота.';
+      identity.error = telegramUnavailable();
       notify();
       return copy();
     }

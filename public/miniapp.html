@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="/miniapp-home-screen.css">
 <link rel="stylesheet" href="/notification-settings.css">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="/miniapp-telegram-context.js"></script>
 <style>
 :root{--green:#0b4b39;--green2:#14674b;--leaf:#2a8c62;--text:#193b30;--muted:#718378;--bg:#f7f7f1;--cream:#fffdf8;--gold:#f6c44f;--line:#e7eae1;--shadow:0 5px 22px rgba(12,66,44,.07)}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Manrope,system-ui,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent}button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.5}a{color:var(--green2)}.app{margin:auto;max-width:540px;min-height:100vh;padding-bottom:calc(83px + env(safe-area-inset-bottom,0px))}.hide{display:none!important}
@@ -93,7 +94,8 @@
 <script>
 (function(){
 'use strict';
-var tg = window.Telegram && window.Telegram.WebApp;
+var tg = window.HvostTelegramContext ?
+  window.HvostTelegramContext.resolve() : (window.Telegram && window.Telegram.WebApp);
 // These two round buttons are native Telegram controls, not HTML images.
 // A dark native header could give the iOS white circular controls white-on-white
 // glyphs. Keep the Telegram chrome LIGHT so its native X / menu icons contrast.
@@ -173,7 +175,13 @@ function showResult(status,code){state.view='result';setView('result');if(status
 async function checkPaymentReturn(code){setView('result');el('resultPage').innerHTML='<div class="empty" style="margin-top:40px">⏳ Проверяем оплату…</div>';try{var d=await api('/api/order-payment-status/'+encodeURIComponent(code));showResult(d.paid?'paid':'pending',code)}catch(e){showResult('pending',code);toast(e.message)}}
 function renderProfile(){if(window.HvostMiniAppCustomer)return window.HvostMiniAppCustomer.render(state.user,state.verified);var name=state.user?state.user.first_name+(state.user.last_name?' '+state.user.last_name:''):'Гость';el('profilePage').innerHTML='<h1 class="page-title">Мой профиль</h1><div class="block profile-hero"><div class="avatar">🐾</div><h2>'+esc(name)+'</h2><p>'+(state.verified?'✅ Вход через Telegram подтверждён':'Режим просмотра — откройте через Telegram')+'</p></div><div class="block"><b>📍 Мой минимаркет</b><p class="muted">'+esc(currentPoint()?currentPoint().name:'Не выбран')+'</p><button class="btn btn-light" type="button" data-action="points">Сменить минимаркет</button></div><div class="block"><b>История заказов и косточки</b><p class="muted">Появятся после безопасной привязки аккаунта покупателя по номеру телефона. Telegram-аккаунт сам по себе не даёт доступ к покупкам по номеру.</p></div><p style="font-size:12px;text-align:center"><a href="/privacy-policy.html" target="_blank" rel="noopener">Политика конфиденциальности</a> · <a href="/purchase-guide.html" target="_blank" rel="noopener">Как покупать</a></p>'}
 async function auth(){if(tg){applyTelegramChromeColors();try{tg.ready();tg.expand();if(typeof tg.onEvent==='function')tg.onEvent('themeChanged',applyTelegramChromeColors)}catch(_){}}
-if(!tg||!tg.initData){el('appMode').textContent='Просмотр';if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.init(tg);return}
+if(!tg||!tg.initData){
+  var context=window.HvostTelegramContext;
+  var diagnostic=context&&context.diagnostic();
+  el('appMode').textContent=diagnostic?diagnostic.code:'Просмотр';
+  if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.init(tg);
+  return;
+}
 try{var d=await api('/api/miniapp/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})});state.verified=true;state.user=d.user;state.name=d.user.first_name||'';el('hello').textContent='Привет, '+state.name+'!';el('appMode').textContent='● Telegram'}catch(e){el('appMode').textContent='Нет входа';toast(e.message)}if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.init(tg,state.verified?state.user:null)}
 async function init(){
   // Keep the profile as a safe loading view before signed Telegram checks.

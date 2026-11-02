@@ -84,7 +84,18 @@
     var content = '<div class="block profile-hero">' + avatar(userName) +
       '<p>' + (isTelegramSigned ? 'Ваш личный кабинет ХвостМаркета' : 'Откройте приложение через Telegram-бота') +
       '</p></div>';
-    if (!status.verified) {
+    if (!isTelegramSigned && window.HvostTelegramContext) {
+      // A broken or missing Telegram launch session cannot be repaired by
+      // typing any phone number. Explain the real problem instead of showing
+      // an unusable form that wrongly appears to reject the user's phone.
+      var reason = status.error || window.HvostTelegramContext.unavailableMessage();
+      content += '<div class="block customer-entry"><h3>⚠️ Не удалось проверить вход через Telegram</h3>' +
+        error(reason) +
+        '<p class="hint">Вернитесь в чат ХвостМаркет и нажмите кнопку «Открыть рабочие кабинеты». ' +
+        'Если ошибка повторится, передайте администратору код TG-01 или TG-02, указанный выше.</p>' +
+        '<button type="button" class="btn btn-gold" data-customer-action="retry-telegram">' +
+        '↻ Повторить проверку Telegram</button></div>';
+    } else if (!status.verified) {
       content += '<div class="block customer-entry"><h3>📱 Введите номер телефона</h3>' +
         '<p class="muted" style="font-size:12px;line-height:1.6">Введите номер, который указывали при покупках или регистрации на сайте. ' +
         'Для защиты данных мы проверим, что этот номер действительно принадлежит вашему Telegram.</p>' +
@@ -238,6 +249,10 @@
   root.addEventListener('click', function(e) {
     var btn = e.target.closest('[data-customer-action]');
     if (!btn) return;
+    if (btn.dataset.customerAction === 'retry-telegram') {
+      if (window.location && typeof window.location.reload==='function') window.location.reload();
+      return;
+    }
     if (btn.dataset.customerAction === 'open-shop') {
       if (window.HvostMiniAppGoShop) window.HvostMiniAppGoShop();
       return;
