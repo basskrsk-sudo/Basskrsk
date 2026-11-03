@@ -28,6 +28,11 @@
   var managerRegistrationKind = '';
   var managerRegistrationOptions = null;
   var managerRegistrationBusy = false;
+  var managerNewPointMode = '';
+  var managerPointCities = null;
+  var managerNewPointBusy = false;
+  var managerCreatedPointId = '';
+  var managerCreatedPointName = '';
   var root = document.getElementById('workPage');
   if (!root) return;
   var identity = window.HvostMiniAppIdentity || null;
@@ -157,6 +162,11 @@
     managerRegistrationKind = '';
     managerRegistrationOptions = null;
     managerRegistrationBusy = false;
+    managerNewPointMode = '';
+    managerPointCities = null;
+    managerNewPointBusy = false;
+    managerCreatedPointId = '';
+    managerCreatedPointName = '';
     if (taskPanel) taskPanel.reset();
     serial++;
     renderAll();
@@ -926,6 +936,9 @@
       stat('Бонусы к выплате', compensation ? rub(compensation.launch_bonus_unpaid) : '—', 'Начислены, но не перечислены') +
       stat('Начислено за 30 дней', compensation ? rub(compensation.period_residual) : '—',
         'За период, включая уже оплаченные начисления') + '</div>';
+    html += surface('📍 Новые минимаркеты',
+      '<button type="button" class="work-primary" data-work-action="manager-point-new">➕ Добавить минимаркет</button>' +
+      '<p class="work-note">Точка автоматически закрепится за вами, появится на карте и будет доступна для регистрации сотрудников.</p>');
     html += surface('➕ Регистрация сотрудников',
       '<div class="work-register-actions">' +
       '<button class="work-primary" type="button" data-work-action="manager-reg-groomer">✂️ Добавить грумера</button>' +
