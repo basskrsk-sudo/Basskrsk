@@ -132,7 +132,10 @@ function syncPhoneAccess(){
   if(tab)tab.classList.toggle('hide',!isPhoneAccessUnlocked());
   if(!isPhoneAccessUnlocked()&&state.view==='work')setView('profile');
 }
-window.HvostMiniAppGoProfile=function(){setView('profile')};
+window.HvostMiniAppGoProfile=function(){
+  if(window.HvostMiniAppCustomer)window.HvostMiniAppCustomer.showChoices();
+  setView('profile');
+};
 window.HvostMiniAppGoShop=function(){
   if(window.HvostMiniAppIdentity)window.HvostMiniAppIdentity.rememberRole('shop');
   setView('shop');
@@ -197,22 +200,13 @@ async function init(){
   var query=new URLSearchParams(location.search);
   var resultCode=query.get('payment_return');
   var validPayment=!!(resultCode&&/^[a-zA-Z0-9_-]{5,80}$/.test(resultCode));
-  // Explicit shop, QR location, and payment-return links MUST NOT be
-  // redirected to a previously remembered privileged cabinet.
+  // Universal launch: show verified capabilities, never silently restore a
+  // previously used privileged role. Explicit catalog/QR links remain fast.
+  // Payment return is handled separately below and keeps its priority.
   if(!validPayment){
     var view=query.get('view');
-    var directShop=view==='shop'||!!query.get('point');
-    var identityState=window.HvostMiniAppIdentity&&window.HvostMiniAppIdentity.getStatus();
-    var role=identityState&&identityState.verified?identityState.preferredRole:null;
-    if(directShop||(view!=='work'&&role==='shop')){
-      setView('shop');
-    }else if(view==='work'){
-      if(role&&role!=='customer'&&role!=='shop'&&window.HvostMiniAppOpenRole)window.HvostMiniAppOpenRole(role);
-      else setView('work');
-    }else if(role&&role!=='customer'&&window.HvostMiniAppOpenRole){
-      window.HvostMiniAppOpenRole(role);
-    }
-    // No phone proof or buyer-only role: stay on the safe customer profile.
+    if(view==='shop'||!!query.get('point'))setView('shop');
+    // Old ?view=work links safely show the phone and role picker too.
   }
   try{
     var data=await Promise.all([api('/api/products'),api('/api/points')]);
@@ -233,6 +227,7 @@ async function init(){
 }
 el('pointButton').addEventListener('click',showPointSheet);el('cartFloat').addEventListener('click',function(){setView('cart')});el('searchBox').addEventListener('input',function(e){state.search=e.target.value;renderProducts()});el('sheetCover').addEventListener('click',function(e){if(e.target===el('sheetCover'))hideSheet()});
 document.addEventListener('click',function(e){var t=e.target.closest('button');if(!t)return;if(t.hasAttribute('data-close')){hideSheet();return}if(t.hasAttribute('data-view')){
+  if(t.dataset.view==='profile'&&window.HvostMiniAppCustomer)window.HvostMiniAppCustomer.showChoices();
   setView(t.dataset.view);
   if(window.HvostMiniAppIdentity&&window.HvostMiniAppIdentity.getStatus().verified){
     if(t.dataset.view==='profile')window.HvostMiniAppIdentity.rememberRole('customer');

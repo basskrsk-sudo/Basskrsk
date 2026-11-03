@@ -56,14 +56,15 @@ test('opening Mini App starts in customer profile with an entered-phone form', a
   assert.match(html, /if\(view==='work'&&!isPhoneAccessUnlocked\(\)\)view='profile'/);
   assert.match(html, /if\(validPayment\)await checkPaymentReturn\(resultCode\)/, 'payment returns still take priority');
   assert.match(html, /query\.get\('view'\)/);
-  assert.match(html, /identityState\.preferredRole/);
+  assert.doesNotMatch(html, /identityState\.preferredRole/, 'remembered role never skips phone and role picker');
+  assert.match(html, /view==='shop'/);
   const h = customerHarness();
   h.window.HvostMiniAppCustomer.render({ first_name: 'Тестовый покупатель' }, true);
-  assert.match(h.root.innerHTML, /Кабинет покупателя/);
+  assert.match(h.root.innerHTML, /Ваш ХвостМаркет/);
   assert.match(h.root.innerHTML, /customerPhoneGateForm/);
   assert.match(h.root.innerHTML, /type="tel"/);
   assert.match(h.root.innerHTML, /Введите номер телефона/);
-  assert.match(h.root.innerHTML, /Перейти в магазин без входа/);
+  assert.match(h.root.innerHTML, /Открыть магазин/);
   assert.doesNotMatch(h.root.innerHTML, /data-customer-role="admin"/);
   assert.equal(h.requests.length, 0, 'no phone verification or staff reads without user action');
 });
@@ -131,4 +132,48 @@ test('different salon owner and groomer records are never merged only by phone',
   const spoof={dataset:{customerAction:'choose-role',customerRole:'salon'}};
   h.root.events.click({target:{closest(){return spoof;}}});
   assert.deepEqual(h.navigations,[],'a forged salon button cannot open an unlinked account');
+});
+
+test('verified user sees all and only their registered capabilities plus universal store', () => {
+  const h = customerHarness();
+  h.setStatus({
+    loaded: true, verified: true, contactVerified: true, combinedSalon: false,
+    accounts: [{ role: 'customer', name: 'Покупатель' }, { role: 'manager', name: 'Менеджер' }],
+    ambiguousRoles: [], phoneMasked: '+7 (***) ***-**-06', error: '',
+  });
+  h.window.HvostMiniAppCustomer.render({ id: 77, first_name: 'Тест' }, true);
+  assert.match(h.root.innerHTML, /Ваши кабинеты/);
+  assert.match(h.root.innerHTML, /data-customer-role="customer"/);
+  assert.match(h.root.innerHTML, /data-customer-role="manager"/);
+  assert.match(h.root.innerHTML, /Открыть магазин/);
+  assert.doesNotMatch(h.root.innerHTML, /data-customer-role="admin"/);
+  assert.doesNotMatch(h.root.innerHTML, /Подключаем ваш кабинет/);
+  const chooseManager = { dataset: { customerAction: 'choose-role', customerRole: 'manager' } };
+  h.root.events.click({ target: { closest() { return chooseManager; } } });
+  assert.deepEqual(h.navigations, ['manager']);
+});
+
+test('verified user without registrations still sees public store but no private roles', () => {
+  const h = customerHarness();
+  h.setStatus({
+    loaded: true, verified: true, contactVerified: true, combinedSalon: false,
+    accounts: [], ambiguousRoles: [], phoneMasked: '+7 (***) ***-**-06', error: '',
+  });
+  h.window.HvostMiniAppCustomer.render({ first_name: 'Гость' }, true);
+  assert.match(h.root.innerHTML, /нет зарегистрированных кабинетов/);
+  assert.match(h.root.innerHTML, /Открыть магазин/);
+  assert.doesNotMatch(h.root.innerHTML, /data-customer-role=/);
+});
+
+test('even for registered customers the universal landing waits for explicit role selection', () => {
+  const h = customerHarness();
+  h.setStatus({
+    loaded: true, verified: true, contactVerified: true, combinedSalon: false,
+    accounts: [{ role: 'customer', name: 'Покупатель' }],
+    ambiguousRoles: [], phoneMasked: '+7 (***) ***-**-06', error: '',
+  });
+  h.window.HvostMiniAppCustomer.render({ first_name: 'Покупатель' }, true);
+  assert.match(h.root.innerHTML, /Ваш ХвостМаркет/);
+  assert.match(h.root.innerHTML, /data-customer-role="customer"/);
+  assert.doesNotMatch(h.root.innerHTML, /Мои покупки<\/h3>/);
 });

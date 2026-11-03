@@ -176,6 +176,11 @@ test('customer tab is connected to phone-gated existing orders and bones APIs', 
   const window = { HvostMiniAppIdentity: mock };
   vm.runInNewContext(customerCode, { window, document: fakeDocument, fetch, console, Promise });
   window.HvostMiniAppCustomer.render({ first_name: 'Ольга' }, true);
+  assert.match(elements.profilePage.innerHTML, /data-customer-role="customer"/);
+  assert.equal(calls.length, 0, 'no customer API calls until customer chooses their cabinet');
+  elements.profilePage.listeners.click({
+    target: { closest() { return { dataset: { customerAction: 'choose-role', customerRole: 'customer' } }; } },
+  });
   for (let i = 0; i < 50; i++) await Promise.resolve();
   assert.match(elements.profilePage.innerHTML, /Ольга/);
   assert.match(elements.profilePage.innerHTML, /Жужа/);
