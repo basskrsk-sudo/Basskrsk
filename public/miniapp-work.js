@@ -687,7 +687,10 @@
     var earn = orders.reduce(function(sum, row) { return sum + Number(row.commission || 0); }, 0);
     var low = stock.filter(function(x) { return Number(x.qty) <= 2; });
     var rate = Number(currentUser.commission_rate || 0) * 100;
-    var html = '<div class="work-stats">' +
+    var salon = currentUser.current_point;
+    var pointNotice = salon ? note('📍 ' + salon.name + (salon.addr ? ' · ' + salon.addr : '')) :
+      currentUser.point_unavailable ? problem('Назначенный салон закрыт или удалён. Показана только история личных продаж; пополнение недоступно.') : '';
+    var html = pointNotice + '<div class="work-stats">' +
       stat('Продажи за 30 дней', rub(amount), number(orders.length) + ' покупок') +
       stat('Начислено за 30 дней', rub(earn), 'По фактическим продажам') +
       stat('Ожидает выплаты', data[1] ? rub(pay.unpaid_amount) : '—', 'По всем невыплаченным заказам') +
