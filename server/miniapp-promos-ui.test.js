@@ -64,7 +64,7 @@ test('groomer card shows personal and canonical active salon 20% codes and refer
   assert.match(markup,/HV20-002/);
   assert.match(markup,/GR-053/);
   assert.match(markup,/БаркЛай/);
-  assert.match(markup,/taiga-register\.html\?ref=GR-053/);
+  assert.match(markup,/partner-invite\.html\?ref=GR-053/);
   assert.match(markup,/ref=bark-lay&amp;partner=53&amp;promo=HV20-G-053&amp;city=krsk/);
   assert.equal((markup.match(/data-hm-promo-key=/g)||[]).length,5);
   assert.match(markup,/один раз.*номер телефона/);
