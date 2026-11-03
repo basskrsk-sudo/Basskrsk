@@ -41,6 +41,26 @@ function computeManagerCommissionRate() {
   return MANAGER_COMMISSION_RATE;
 }
 
+// Canonical CURRENT manager network for Telegram Mini App. manager_points is a
+// historical/referral/payout ledger and may contain entries without a live
+// point_id (or for points deleted/renamed/reassigned by an administrator).
+// Never use its row count or handwritten point_name as the operational network.
+function listCurrentManagerPoints(managerId, database = db) {
+  return database.prepare(`
+    SELECT p.id AS point_id, p.name AS point_name, p.addr AS point_addr,
+           p.addr AS address, p.icon AS actual_point_icon,
+           p.city_id AS actual_point_city_id,
+           p.first_purchase_promo_code AS salon_first_purchase_promo_code,
+           COALESCE((SELECT SUM(o.total)
+             FROM orders o
+             WHERE o.point_id = p.id AND o.status = 'paid'
+               AND COALESCE(o.refund_status, '') <> 'refunded'), 0) AS live_revenue
+    FROM points p
+    WHERE p.manager_id = ? AND p.active = 1
+    ORDER BY p.name COLLATE NOCASE, p.id
+  `).all(managerId).map(row => ({ ...row, revenue: row.live_revenue }));
+}
+
 function mgrWithPoints(a) {
   // revenue у manager_points — это исторически хранимая колонка, которая
   // нигде не увеличивается при реальных продажах (заводится нулём при
@@ -66,6 +86,8 @@ function mgrWithPoints(a) {
   const paidLaunch = db.prepare('SELECT COALESCE(SUM(amount), 0) AS amount FROM manager_launch_bonus_payouts WHERE manager_id = ?').get(a.id);
   return {
     ...safeMgr(a), points,
+    // Separate, deduplicated live directory; leave legacy ledger and payout history untouched.
+    current_points: listCurrentManagerPoints(a.id),
     commission_unpaid: commission.amount,
     commission_unpaid_orders: commission.orders_count,
     commission_paid_total: Number(paidCommission.amount || 0),
@@ -510,4 +532,4 @@ function registerManagerRoutes(router) {
   });
 }
 
-module.exports = { registerManagerRoutes, computeManagerCommissionRate };
+module.exports = { registerManagerRoutes, computeManagerCommissionRate, listCurrentManagerPoints };
