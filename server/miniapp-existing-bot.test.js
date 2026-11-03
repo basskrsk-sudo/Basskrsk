@@ -42,44 +42,49 @@ function callMiniAppAuth(body) {
   return response;
 }
 
-test('same existing bot supplies a single menu and both Mini App destinations', () => {
+test('same existing bot exposes one universal app launcher, with legacy command aliases', () => {
   assert.equal(SHOP_URL, 'https://хвостмаркет.рф/miniapp.html');
   assert.equal(WORK_URL, SHOP_URL + '?view=work');
   assert.equal(SHOP_LAUNCH_URL, SHOP_URL + '?view=shop');
   assert.deepEqual(commandsMenuButton(), { type: 'commands' });
-  assert.deepEqual(
-    miniAppInlineKeyboard().map((row) => row[0].web_app.url),
-    [SHOP_LAUNCH_URL, WORK_URL]
-  );
-  assert.equal(miniAppDirectLinkMarkup('shop').inline_keyboard[0][0].web_app.url, SHOP_LAUNCH_URL);
-  assert.equal(miniAppDirectLinkMarkup('work').inline_keyboard[0][0].web_app.url, WORK_URL);
+  const launch = miniAppInlineKeyboard();
+  assert.equal(launch.length, 1);
+  assert.equal(launch[0].length, 1);
+  assert.equal(launch[0][0].text, '🐾 Открыть ХвостМаркет');
+  assert.equal(launch[0][0].web_app.url, SHOP_URL);
+  for (const alias of ['app', 'shop', 'work']) {
+    assert.deepEqual(miniAppDirectLinkMarkup(alias).inline_keyboard, launch);
+  }
+  const poller = fs.readFileSync(path.join(__dirname, 'telegram-login-poller.js'), 'utf8');
+  assert.match(poller, /\{ command: 'app', description:/);
+  assert.doesNotMatch(poller, /\{ command: 'shop', description:/);
+  assert.doesNotMatch(poller, /\{ command: 'cabinet', description:/);
+  assert.match(poller, /(?:app\|shop\|cabinet)/);
 });
 
-
-test('each newly generated private bot reply offers fresh Telegram WebView launch URLs', () => {
+test('one fresh Telegram WebView link does not leak a phone, token or role', () => {
   const a = miniAppInlineKeyboard({ fresh: true });
   const b = miniAppInlineKeyboard({ fresh: true });
-  for (let i = 0; i < 2; i++) {
-    const first = new URL(a[i][0].web_app.url);
-    const second = new URL(b[i][0].web_app.url);
-    assert.equal(first.origin, new URL(SHOP_URL).origin);
-    assert.equal(first.pathname, '/miniapp.html');
-    assert.equal(first.searchParams.get('view'), i ? 'work' : 'shop');
-    assert.match(first.searchParams.get('launch'), /^[0-9a-f]{24}$/);
-    assert.notEqual(first.href, second.href);
-    // A launch marker is NOT an auth token; no role or phone is leaked.
-    assert.equal(first.searchParams.has('phone'), false);
-    assert.equal(first.searchParams.has('token'), false);
-    assert.equal(first.searchParams.has('initData'), false);
+  assert.equal(a.length, 1);
+  assert.equal(b.length, 1);
+  const first = new URL(a[0][0].web_app.url);
+  const second = new URL(b[0][0].web_app.url);
+  assert.equal(first.origin, new URL(SHOP_URL).origin);
+  assert.equal(first.pathname, '/miniapp.html');
+  assert.match(first.searchParams.get('launch'), /^[0-9a-f]{24}$/);
+  assert.notEqual(first.href, second.href);
+  for (const key of ['phone', 'token', 'initData', 'view', 'role']) {
+    assert.equal(first.searchParams.has(key), false);
   }
-  const freshCabinet = miniAppDirectLinkMarkup('work', { fresh: true });
-  const freshShop = miniAppDirectLinkMarkup('shop', { fresh: true });
-  assert.match(freshCabinet.inline_keyboard[0][0].web_app.url, /view=work&launch=[0-9a-f]{24}$/);
-  assert.match(freshShop.inline_keyboard[0][0].web_app.url, /view=shop&launch=[0-9a-f]{24}$/);
+  for (const alias of ['app', 'shop', 'work']) {
+    const direct = miniAppDirectLinkMarkup(alias, { fresh: true });
+    assert.equal(direct.inline_keyboard.length, 1);
+    assert.equal(direct.inline_keyboard[0].length, 1);
+    assert.match(direct.inline_keyboard[0][0].web_app.url, /miniapp\.html\?launch=[0-9a-f]{24}$/);
+  }
   const poller = fs.readFileSync(path.join(__dirname, 'telegram-login-poller.js'), 'utf8');
   assert.match(poller, /miniAppInlineKeyboard\(\{ fresh: true \}\)/);
-  assert.match(poller, /miniAppDirectLinkMarkup\(work \? 'work' : 'shop', \{ fresh: true \}\)/);
-  assert.match(poller, /\/cabinet/);
+  assert.match(poller, /miniAppDirectLinkMarkup\('app', \{ fresh: true \}\)/);
 });
 
 test('Mini App trusts ONLY the shared TG_TOKEN, never a second bot token', () => {
