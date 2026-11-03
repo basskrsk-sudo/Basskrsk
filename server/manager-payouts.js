@@ -49,6 +49,70 @@ function getManagerUnpaidSummary(managerId) {
   };
 }
 
+// Accrued commission IN a selected calendar-day window is NOT the amount
+// still owed. This is the read-only source for the full cabinet's period KPI,
+// its chart and the miniapp's explanation of pending payout amounts.
+function getManagerPeriodAccrual(managerId, days = 7, now = new Date()) {
+  const periodDays = Math.max(1, Math.min(365, Number.parseInt(days, 10) || 7));
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const dayMs = 24 * 60 * 60 * 1000;
+  const startMs = today - (periodDays - 1) * dayMs;
+  const previousMs = startMs - periodDays * dayMs;
+  const sqlTime = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+  const rows = db.prepare(`
+    SELECT o.id, o.created_at, o.total, o.refund_status, o.refunded_amount,
+           p.id AS point_id, p.name AS point_name,
+           COALESCE((
+             SELECT mp.commission_rate FROM manager_points mp
+             WHERE mp.point_id = p.id AND mp.manager_id = p.manager_id
+             ORDER BY mp.active DESC, mp.id DESC LIMIT 1
+           ), 0.07) AS commission_rate
+    FROM orders o
+    JOIN points p ON p.id = o.point_id
+    WHERE p.manager_id = ? AND o.status = 'paid'
+      AND o.created_at >= ? AND o.created_at <= ?
+    ORDER BY o.created_at, o.id
+  `).all(managerId, sqlTime(previousMs), sqlTime(now.getTime()));
+
+  const daily = new Map(), points = new Map();
+  let accrued = 0, previous = 0, paidCount = 0;
+  for (const row of rows) {
+    const net = row.refund_status === 'refunded' && row.refunded_amount == null
+      ? 0 : Math.max(0, Number(row.total || 0) - Number(row.refunded_amount || 0));
+    if (net <= 0) continue;
+    const amount = Math.round(net * Number(row.commission_rate || 0));
+    if (row.created_at < sqlTime(startMs)) { previous += amount; continue; }
+    accrued += amount;
+    paidCount++;
+    const key = String(row.created_at).slice(0, 10);
+    daily.set(key, (daily.get(key) || 0) + amount);
+    const point = points.get(row.point_id) || {
+      point_id: row.point_id, point_name: row.point_name, revenue: 0,
+      commission: 0, orders: 0,
+    };
+    point.revenue += net;
+    point.commission += amount;
+    point.orders++;
+    points.set(row.point_id, point);
+  }
+  const labels = [], earn = [];
+  for (let i = 0; i < periodDays; i++) {
+    const t = startMs + i * dayMs;
+    const key = new Date(t).toISOString().slice(0, 10);
+    labels.push(new Date(t).toLocaleDateString('ru-RU', {
+      timeZone: 'UTC', day: 'numeric', month: 'short',
+    }));
+    earn.push(daily.get(key) || 0);
+  }
+  return {
+    days: periodDays, period_residual: accrued, previous_period_residual: previous,
+    period_change_percent: previous > 0 ? Math.round((accrued - previous) * 1000 / previous) / 10 : null,
+    period_orders_count: paidCount, labels, earn,
+    period_points: [...points.values()].sort((a,b) =>
+      b.commission - a.commission || a.point_name.localeCompare(b.point_name, 'ru')),
+  };
+}
+
 function getLaunchBonusSummary(managerPointId) {
   return db.prepare(`
     SELECT mp.id AS manager_point_id, mp.manager_id, mp.point_id, mp.point_name,
@@ -148,5 +212,6 @@ module.exports = {
   getManagerUnpaidOrders,
   getManagerPayableOrders,
   getManagerUnpaidSummary,
+  getManagerPeriodAccrual,
   listManagerPayouts,
 };
