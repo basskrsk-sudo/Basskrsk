@@ -395,12 +395,12 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-label">Residual (7%)</div>
+          <div class="kpi-label">Начислено за период (7%)</div>
           <div class="kpi-value" style="color:var(--amber)" id="h-residual">—</div>
           <div class="kpi-delta delta-up" id="h-residual-d"></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">Бонусов за запуск</div>
+          <div class="kpi-label">Бонусы к выплате</div>
           <div class="kpi-value" id="h-bonus">—</div>
           <div class="kpi-delta" id="h-bonus-d"></div>
         </div>
@@ -410,7 +410,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <div class="kpi-delta" id="h-active-d"></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">К выплате</div>
+          <div class="kpi-label">К выплате (всего)</div>
           <div class="kpi-value" style="color:var(--deep)" id="h-payout">—</div>
           <div class="kpi-delta" id="h-payout-d"></div>
         </div>
@@ -542,7 +542,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
       <div class="grid-2" style="margin-bottom:1rem;">
         <div class="card">
-          <div class="card-title">Структура дохода <span id="earn-period-label"></span></div>
+          <div class="card-title">Структура невыплаченных начислений <span id="earn-period-label"></span></div>
           <div style="position:relative;height:180px;"><canvas id="chartEarnBreak"></canvas></div>
         </div>
         <div class="card">
@@ -885,6 +885,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 let MY_POINTS = [];
+let MY_LIVE_POINTS = [];
 let myManagerId = null;
 let myManagerCityId = null;
 let currentManagerUser = null;
@@ -892,7 +893,12 @@ let currentManagerUser = null;
 async function loadMyPoints() {
   const res = await authFetch('/api/managers/me');
   const data = await res.json();
-  const pts = (data.manager && data.manager.points) || [];
+  if (!res.ok || !data.manager) throw new Error('Не удалось загрузить данные менеджера');
+  // The operative network is authoritative points, NOT manager_points history.
+  MY_LIVE_POINTS = (data.manager.current_points || []).map(p => ({
+    pointId:p.point_id, name:p.point_name, addr:p.point_addr || '',
+  }));
+  const pts = data.manager.points || [];
   MY_POINTS = pts.map(p => ({
     pointId: p.point_id || null,
     name: p.point_name,
@@ -2294,6 +2300,19 @@ async function submitStockMovement() {
   await renderRestock();
 }
 
+// All payout amounts share one server-side ledger and are fetched on demand.
+async function fetchManagerCompensation(days) {
+  const response = await authFetch('/api/managers/me/compensation?days=' + days);
+  const data = await response.json();
+  if (!response.ok || !data || typeof data.total_unpaid !== 'number') {
+    throw new Error(data.error || 'Не удалось загрузить расчёт вознаграждения');
+  }
+  return data;
+}
+function managerHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
 // ── HOME ─────────────────────────────────────────────────────────────
 async function renderHome(){
   await loadNews();
