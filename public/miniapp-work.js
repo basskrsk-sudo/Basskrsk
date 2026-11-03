@@ -281,6 +281,13 @@
     if (window.HvostMiniAppPromos && window.HvostMiniAppPromos.clear)
       window.HvostMiniAppPromos.clear();
   }
+  function ownerReferralSection(owner,combined) {
+    return window.HvostMiniAppPromos && window.HvostMiniAppPromos.ownerSection
+      ? window.HvostMiniAppPromos.ownerSection(owner,function(){
+          return (activeRole==='owner'||activeRole==='salon') &&
+            phoneRoleAvailable('owner') && !!getToken('owner');
+        },!!combined) : '';
+  }
   function combinedSalonDashboard(partner, owner, ordersData, payoutData, stockData, salonData) {
     var orders = ordersData.orders || [];
     var payout = payoutData || {};
@@ -315,6 +322,7 @@
         Math.round(Number(owner.commission_rate || 0) * 100) + '%', rub(ownerUnpaid)) +
       '<p class="work-note">Погашенные выплаты уже исключены из сумм «к выплате».</p>');
     html += groomerPromoSection(partner);
+    html += ownerReferralSection(owner,true);
     html += surface('🛍 Мои личные продажи · 30 дней',
       rows(orders.slice(0, 8).map(function(o) {
         return line(o.product || 'Покупка', date(o.date) + ' · ' + o.order_code, '+' + rub(o.commission));
@@ -1149,7 +1157,7 @@
   function ownerDashboard(data) {
     var d = data[0];
     if (!d) return problem('Не удалось получить показатели салона.');
-    if (d.noPoint) return note(d.message || 'Вам ещё не назначена точка.');
+    if (d.noPoint) return note(d.message || 'Вам ещё не назначена точка.') + ownerReferralSection(currentUser,false);
     var totals = d.totals || {}, earn = d.owner_earnings || {};
     var html = note('📍 ' + (d.point && d.point.name || 'Ваш салон') + (d.point && d.point.addr ? ' · ' + d.point.addr : '')) +
       '<div class="work-stats">' +
@@ -1157,6 +1165,7 @@
       stat('Продажи за всё время', rub(totals.revenue), number(totals.orders) + ' покупок') +
       stat('К выплате владельцу', rub(earn.unpaid), 'Невыплаченное вознаграждение') +
       stat('Средний чек', rub(totals.avg_order), 'За всё время') + '</div>';
+    html += ownerReferralSection(currentUser,false);
     html += surface('Грумеры салона', rows((d.groomers || []).slice(0, 10).map(function(g) {
       return line(g.full_name, number(g.orders_count) + ' продаж · ' + g.tier_percent + '% комиссия', rub(g.revenue));
     })));
