@@ -709,7 +709,9 @@
     return html;
   }
   function managerDashboard(data) {
-    var points = currentUser.points || [];
+    // manager.points is a legacy payout/referral ledger, not the live network.
+    // Only the server-verified canonical points directory may drive this panel.
+    var points = currentUser.current_points || [];
     var orders = data[0] && data[0].orders || [];
     var stockPoints = data[1] && data[1].points || [];
     var paid = orders.filter(function(o) { return o.status === 'paid' && o.refund_status !== 'refunded'; });
@@ -722,7 +724,7 @@
       stat('Продажи за 30 дней', rub(revenue), number(paid.length) + ' оплаченных заказов') +
       stat('Ожидает выплаты', rub(currentUser.commission_unpaid), 'Комиссия по продажам') +
       stat('Бонусы к выплате', rub(currentUser.launch_bonus_unpaid), 'За открытие точек') + '</div>';
-    html += surface('Мои минимаркеты', rows(points.slice(0, 14).map(function(p) {
+    html += surface('Мои минимаркеты', rows(points.map(function(p) {
       return line(p.point_name || p.name || ('Точка #' + p.point_id), p.address || p.point_addr || 'Выручка за всё время', rub(p.live_revenue != null ? p.live_revenue : p.revenue));
     })));
     html += surface('Последние продажи', rows(orders.slice(0, 6).map(function(o) {
