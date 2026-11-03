@@ -149,9 +149,11 @@ test('groomer can send precisely one restock item with authorized token', async 
 
 test('manager sees only manager-scoped points and 30-day orders', async () => {
   const h = createHarness({
-    '/api/managers/me': { manager: { id: 5, full_name: 'Менеджер', active: 1, points: [{
-      point_id: 3, point_name: 'БаркЛай', live_revenue: 2100,
-    }], commission_unpaid: 142, launch_bonus_unpaid: 500 } },
+    '/api/managers/me': { manager: { id: 5, full_name: 'Менеджер', active: 1,
+      points: [{ point_id: null, point_name: 'Груминг Пушок', live_revenue: 0 },
+        { point_id: 3, point_name: 'Устаревшее название', live_revenue: 2100 }],
+      current_points: [{ point_id: 3, point_name: 'БаркЛай', live_revenue: 2100 }],
+      commission_unpaid: 142, launch_bonus_unpaid: 500 } },
     '/api/managers/me/orders?days=30&limit=200': { orders: [{
       status: 'paid', total: 500, point_name: 'БаркЛай', created_at: '2026-10-29 09:00:00',
     }] },
@@ -159,9 +161,34 @@ test('manager sees only manager-scoped points and 30-day orders', async () => {
   }, { taiga_manager_token: 'manager-token' });
   await h.window.HvostMiniAppWork.chooseRole('manager');
   assert.match(h.root.innerHTML, /БаркЛай/);
+  assert.doesNotMatch(h.root.innerHTML, /Груминг Пушок|Устаревшее название/);
+  assert.match(h.root.innerHTML, /Мои точки/);
   assert.match(h.root.innerHTML, /142 ₽/);
   assert.equal(h.calls.some((c) => c.url === '/api/orders'), false);
 });
+
+
+test('miniapp manager does not show ghost, inactive or duplicate historical rows and has no 14-item cap', async () => {
+  const current = Array.from({length:15}, (_,i) => ({
+    point_id: 'active-'+i, point_name: 'Точка '+String(i+1).padStart(2,'0'),
+    point_addr: 'Красноярск', live_revenue: 0,
+  }));
+  const h = createHarness({
+    '/api/managers/me': { manager: { id: 5, full_name: 'Перепадова Ангелина', active: 1,
+      points: [{point_id:null, point_name:'Груминг Пушок'},
+        {point_id:'inactive', point_name:'Закрытый салон'},
+        {point_id:'active-0', point_name:'Старое название'}],
+      current_points:current, commission_unpaid:0, launch_bonus_unpaid:0 }},
+    '/api/managers/me/orders?days=30&limit=200':{orders:[]},
+    '/api/managers/me/stock':{points:[]},
+  }, {taiga_manager_token:'manager-token'});
+  await h.window.HvostMiniAppWork.chooseRole('manager');
+  assert.doesNotMatch(h.root.innerHTML, /Груминг Пушок|Закрытый салон|Старое название/);
+  assert.match(h.root.innerHTML,/Точка 15/,'all 15 live salons should be visible');
+  assert.match(h.root.innerHTML,/Мои точки/);
+  assert.match(h.root.innerHTML,/15/);
+});
+
 
 test('owner sees only assigned salon and owner earnings', async () => {
   const h = createHarness({
