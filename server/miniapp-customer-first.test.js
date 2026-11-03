@@ -64,7 +64,7 @@ test('opening Mini App starts in customer profile with an entered-phone form', a
   assert.match(h.root.innerHTML, /customerPhoneGateForm/);
   assert.match(h.root.innerHTML, /type="tel"/);
   assert.match(h.root.innerHTML, /Введите номер телефона/);
-  assert.match(h.root.innerHTML, /Перейти в магазин без входа/);
+  assert.match(h.root.innerHTML, /Открыть магазин/);
   assert.doesNotMatch(h.root.innerHTML, /data-customer-role="admin"/);
   assert.equal(h.requests.length, 0, 'no phone verification or staff reads without user action');
 });
