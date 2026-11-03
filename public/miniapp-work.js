@@ -157,6 +157,7 @@
       '</div>' + (value == null ? '' : '<strong>' + esc(value) + '</strong>') + '</div>';
   }
   function openAll() {
+    if(window.HvostAdminWarehouse)window.HvostAdminWarehouse.close(true);
     activeRole = '';
     currentUser = null;
     restockItems = [];
@@ -397,6 +398,7 @@
     }
   }
   async function chooseRole(role) {
+    if(window.HvostAdminWarehouse)window.HvostAdminWarehouse.close(true);
     if (!phoneStatus().verified) { renderAll(); return; }
     if (role === 'salon') return chooseCombinedSalon();
     if (!Object.prototype.hasOwnProperty.call(CONFIG, role)) return;
@@ -1431,6 +1433,10 @@
       stat('Выручка последних заказов', data[1] ? rub(revenue) : '—', 'Оплаченные среди 100 последних') +
       stat('Сигналы контроля', data[2] ? number((ops.summary || {}).total || issues.length) : '—', 'Операционные вопросы') +
       '</div>';
+    html += surface('📦 Центральный склад',
+      '<button class="work-primary" type="button" data-work-action="admin-wh-open">' +
+      '📦 Добавить или удалить товар</button>' +
+      '<p class="work-note">Приход, списание и удаление складской позиции с записью в журнал. Остатки в салонах не изменяются.</p>');
     html += surface('➕ Управление сетью',
       '<div class="work-register-actions">' +
       '<button class="work-primary" type="button" data-work-action="admin-reg-point">📍 Добавить минимаркет</button>' +
@@ -1526,6 +1532,11 @@
       if (activeRole) chooseRole(activeRole);
       else renderAll();
     });
+    if (action === 'admin-wh-open' && activeRole === 'admin' && adminRegisterAuthorized() &&
+        window.HvostAdminWarehouse) return window.HvostAdminWarehouse.open({
+          token:getToken('admin'),isValid:adminRegisterAuthorized,
+          onBack:function(){return chooseRole('admin');},
+        });
     if (action === 'admin-reg-point' && activeRole === 'admin') return openAdminRegistration('point');
     if (action === 'admin-reg-owner' && activeRole === 'admin') return openAdminRegistration('owner');
     if (action === 'admin-reg-manager' && activeRole === 'admin') return openAdminRegistration('manager');
