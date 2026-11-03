@@ -43,13 +43,13 @@ function registerOwnerRoutes(router) {
     // как и раньше, может указать любую точку или вовсе оставить пустой.
     if (payload.role === 'manager') {
       if (!point_id) return sendJson(res, 400, { error: 'Выберите точку' });
-      const point = db.prepare('SELECT id, manager_id FROM points WHERE id = ?').get(point_id);
+      const point = db.prepare('SELECT id, manager_id FROM points WHERE id = ? AND active = 1').get(point_id);
       if (!point) return sendJson(res, 400, { error: 'Точка с таким id не найдена' });
       if (point.manager_id !== payload.id) {
         return sendJson(res, 403, { error: 'Эта точка не закреплена за вами' });
       }
     } else if (point_id) {
-      const point = db.prepare('SELECT id FROM points WHERE id = ?').get(point_id);
+      const point = db.prepare('SELECT id FROM points WHERE id = ? AND active = 1').get(point_id);
       if (!point) return sendJson(res, 400, { error: 'Точка с таким id не найдена' });
     }
     if (point_id) {
@@ -300,15 +300,19 @@ function registerOwnerRoutes(router) {
     if (!payload) return;
     const owner = db.prepare('SELECT * FROM salon_owners WHERE id = ?').get(payload.id);
     if (!owner) return sendJson(res, 404, { error: 'Не найдено' });
-    if (!owner.point_id) return sendJson(res, 200, { noPoint: true, message: 'Вам ещё не назначена точка — обратитесь к администратору «Тайги».' });
+    if (!owner.point_id) return sendJson(res, 200, { noPoint: true, message: 'Вам ещё не назначена точка — обратитесь к администратору «ХвостМаркет».' });
 
     const point = db.prepare('SELECT * FROM points WHERE id = ? AND active = 1').get(owner.point_id);
     if (!point) return sendJson(res, 200, { noPoint: true, message: 'Назначенная вам точка удалена или отключена — обратитесь к администратору.' });
 
     const orders = db.prepare(`
-      SELECT id, total, partner_id, commission_rate, is_partner_self_order, payment_method, created_at
+      SELECT id,
+        CASE WHEN refund_status = 'refunded' AND refunded_amount IS NULL THEN 0
+          ELSE MAX(0,total - COALESCE(refunded_amount,0)) END AS total,
+        partner_id, commission_rate, is_partner_self_order, payment_method, created_at
       FROM orders WHERE point_id = ? AND status = 'paid'
-        AND COALESCE(refund_status, 'none') <> 'refunded'
+        AND CASE WHEN refund_status = 'refunded' AND refunded_amount IS NULL THEN 0
+          ELSE MAX(0,total - COALESCE(refunded_amount,0)) END > 0
       ORDER BY created_at DESC
     `).all(owner.point_id);
 
