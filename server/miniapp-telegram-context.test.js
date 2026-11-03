@@ -115,10 +115,23 @@ test('location search and same-origin current navigation entry support SDK strip
 });
 
 test('main Mini App uses fallback before initializing roles and shows retry instead of dead phone button',()=>{
+  const localBackup=html.indexOf('<script src="/vendor/telegram-web-app-fallback.js"></script>');
   const bridge=html.indexOf('<script src="/miniapp-telegram-context.js"></script>');
   const roles=html.indexOf('<script src="/miniapp-identity.js"></script>');
   const official=html.indexOf('<script src="https://telegram.org/js/telegram-web-app.js"></script>');
-  assert.ok(official>=0 && official<bridge && bridge<roles);
+  assert.ok(official>=0 && official<localBackup && localBackup<bridge && bridge<roles);
+  const localSdkPath=path.join(__dirname,'../public/vendor/telegram-web-app-fallback.js');
+  const localSdk=fs.readFileSync(localSdkPath,'utf8');
+  const license=fs.readFileSync(path.join(__dirname,'../public/vendor/telegram-web-app-LICENSE.txt'),'utf8');
+  assert.match(localSdk,/sessionStorageGet\('initParams'\)/);
+  assert.match(localSdk,/window.Telegram.WebApp/);
+  assert.match(localSdk,/if \(!\(window.Telegram && window.Telegram.WebApp\)\)/);
+  assert.match(license,/MIT License/);
+  // The fallback must never overwrite a healthy official WebApp instance.
+  const officialApp={initData:signed(),ready(){}};
+  const context={window:{Telegram:{WebApp:officialApp}}};
+  vm.runInNewContext(localSdk,context);
+  assert.equal(context.window.Telegram.WebApp,officialApp);
   assert.match(html,/var tg = window\.HvostTelegramContext \?/);
   assert.match(html,/window\.HvostTelegramContext\.resolve\(\)/);
   assert.match(identity,/function telegramUnavailable\(\)/);
