@@ -147,6 +147,32 @@ test('groomer can send precisely one restock item with authorized token', async 
   assert.match(h.document.getElementById('workRestockMessage').innerHTML, /202/);
 });
 
+
+test('groomer never shows a stale salon label as current and warns for a deleted point', async () => {
+ const common={
+  '/api/partners/me/orders?days=30':{orders:[]},
+  '/api/partners/me/payouts?limit=10':{unpaid_amount:0,payouts:[]},
+  '/api/partners/me/stock':{stock:[],point_unavailable:true},
+ };
+ const archived=createHarness({
+   ...common,
+   '/api/partners/me':{partner:{id:7,active:1,full_name:'Грумер',
+     point_name:'Груминг Пушок',point_unavailable:true,current_point:null}},
+ }, {taiga_partner_token:'partner-token'});
+ await archived.window.HvostMiniAppWork.chooseRole('partner');
+ assert.match(archived.root.innerHTML,/Назначенный салон закрыт или удалён/);
+ assert.doesNotMatch(archived.root.innerHTML,/Груминг Пушок/);
+ const live=createHarness({
+   ...common,
+   '/api/partners/me':{partner:{id:8,active:1,full_name:'Грумер',
+     point_name:'Старое название',point_unavailable:false,
+     current_point:{id:'bark',name:'БаркЛай',addr:'Молокова 40'}}},
+ }, {taiga_partner_token:'partner-token'});
+ await live.window.HvostMiniAppWork.chooseRole('partner');
+ assert.match(live.root.innerHTML,/БаркЛай/);
+ assert.doesNotMatch(live.root.innerHTML,/Старое название/);
+});
+
 test('manager sees only manager-scoped points and 30-day orders', async () => {
   const h = createHarness({
     '/api/managers/me': { manager: { id: 5, full_name: 'Менеджер', active: 1,
