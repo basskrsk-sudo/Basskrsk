@@ -102,8 +102,8 @@
   root.addEventListener('click', function (event) {
     var button = event.target && typeof event.target.closest === 'function'
       ? event.target.closest('[data-hm-promo-key]') : null;
-    if (!button) return;
-    event.preventDefault();
+    if (!button || !button.dataset || !button.dataset.hmPromoKey) return;
+    if (typeof event.preventDefault === 'function') event.preventDefault();
     return copy(button.dataset.hmPromoKey);
   });
   window.HvostMiniAppPromos = {
