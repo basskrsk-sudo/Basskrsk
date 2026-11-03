@@ -174,6 +174,105 @@ test('groomer never shows a stale salon label as current and warns for a deleted
 });
 
 
+test('manager creates a minimarket in Telegram, auto-selects their city and can register staff right away',async()=>{
+  const fixtures={
+    '/api/managers/me':{manager:{id:18,active:1,city_id:'krsk',
+      full_name:'Перепадова Ангелина',current_points:[]}},
+    '/api/managers/me/orders?days=30&limit=200':{orders:[]},
+    '/api/managers/me/stock':{points:[]},
+    '/api/managers/me/compensation?days=30':{commission_unpaid:0,launch_bonus_unpaid:0,period_residual:0},
+    '/api/cities':{cities:[{id:'krsk',name:'Красноярск'},{id:'spb',name:'Санкт-Петербург'}]},
+    '/api/points':{status:201,body:{ok:true,id:'new-market',lat:56.0,lng:92.0,geocoded:true}},
+    '/api/managers/me/registration-options':{
+      groomer_points:[{id:'new-market',name:'Новый салон'}],
+      owner_points:[{id:'new-market',name:'Новый салон'}],groomers:[],
+    },
+  };
+  const h=createHarness(fixtures,{taiga_manager_token:'signed-manager-token'});
+  const get=id=>h.document.getElementById(id);
+  await h.window.HvostMiniAppWork.chooseRole('manager');
+  assert.match(h.root.innerHTML,/data-work-action="manager-point-new"/);
+  await h.click('manager-point-new');
+  assert.match(h.root.innerHTML,/id="workManagerNewPointForm"/);
+  assert.match(h.root.innerHTML,/Красноярск/);
+  assert.equal(get('workPointCity').value,'krsk');
+  get('workPointName').value='Новый салон';
+  get('workPointAddr').value='ул. Молокова, 40';
+  get('workPointIcon').value='🐾';
+  await h.submit('workManagerNewPointForm');
+  const request=h.calls.find(call=>call.url==='/api/points'&&call.opts.method==='POST');
+  assert.ok(request,'actual protected points API is called');
+  assert.equal(request.opts.headers.Authorization,'Bearer signed-manager-token');
+  assert.deepEqual(JSON.parse(request.opts.body),{
+    name:'Новый салон',addr:'ул. Молокова, 40',city_id:'krsk',icon:'🐾',
+  });
+  assert.equal(JSON.parse(request.opts.body).manager_id,undefined,'client cannot choose someone else as manager');
+  assert.match(h.root.innerHTML,/Минимаркет создан/);
+  assert.match(h.root.innerHTML,/Новый салон/);
+  assert.match(h.root.innerHTML,/data-work-action="manager-point-groomer"/);
+  await h.click('manager-point-groomer');
+  assert.match(h.root.innerHTML,/id="workManagerRegisterForm"/);
+  assert.equal(get('workRegPoint').value,'new-market','new salon preselected for groomer');
+  // The owner form also automatically selects this newly created salon.
+  await h.click('manager-point-back');
+  await h.click('manager-point-new');
+  get('workPointName').value='Новый салон';
+  get('workPointAddr').value='ул. Молокова, 40';
+  await h.submit('workManagerNewPointForm');
+  await h.click('manager-point-owner');
+  assert.equal(get('workRegPoint').value,'new-market','new salon preselected for owner');
+});
+
+test('new point validation blocks incomplete city or address and never duplicates on 409 response',async()=>{
+  const fixtures={
+    '/api/managers/me':{manager:{id:18,active:1,full_name:'Перепадова Ангелина',current_points:[]}},
+    '/api/managers/me/orders?days=30&limit=200':{orders:[]},
+    '/api/managers/me/stock':{points:[]},
+    '/api/managers/me/compensation?days=30':{commission_unpaid:0},
+    '/api/cities':{cities:[{id:'krsk',name:'Красноярск'}]},
+    '/api/points':{status:409,body:{error:'Минимаркет с таким названием и адресом уже зарегистрирован. Проверьте список точек.'}},
+  };
+  const h=createHarness(fixtures,{taiga_manager_token:'signed-manager-token'});
+  const get=id=>h.document.getElementById(id);
+  await h.window.HvostMiniAppWork.chooseRole('manager');
+  await h.click('manager-point-new');
+  get('workPointName').value='Повторная точка';
+  get('workPointAddr').value='ул. Молокова, 40';
+  get('workPointCity').value='';
+  await h.submit('workManagerNewPointForm');
+  assert.match(get('workPointStatus').innerHTML,/Выберите город/);
+  assert.equal(h.calls.some(c=>c.url==='/api/points'),false);
+  get('workPointCity').value='krsk';
+  get('workPointAddr').value='дом';
+  await h.submit('workManagerNewPointForm');
+  assert.match(get('workPointStatus').innerHTML,/точный адрес/);
+  assert.equal(h.calls.some(c=>c.url==='/api/points'),false);
+  get('workPointAddr').value='ул. Молокова, 40';
+  await h.submit('workManagerNewPointForm');
+  assert.match(get('workPointStatus').innerHTML,/уже зарегистрирован/);
+  assert.match(h.root.innerHTML,/id="workManagerNewPointForm"/,'form remains open after server rejection');
+  assert.equal(get('workPointSubmit').disabled,false,'submit is reenabled after server error');
+  assert.equal(h.calls.filter(c=>c.url==='/api/points').length,1);
+});
+
+test('new point creation cannot open from non-manager cabinet or unverified Telegram phone',async()=>{
+  const h=createHarness({
+    '/api/owner/me':{owner:{id:2,full_name:'Владелец',active:1}},
+    '/api/owner/dashboard':{noPoint:true},
+  },{taiga_owner_token:'owner-token'});
+  await h.window.HvostMiniAppWork.chooseRole('owner');
+  assert.doesNotMatch(h.root.innerHTML,/manager-point-new/);
+  await h.click('manager-point-new');
+  assert.equal(h.calls.some(c=>c.url==='/api/cities'||c.url==='/api/points'),false);
+  const unverified=createHarness({}, {taiga_manager_token:'old-token'}, {
+    getStatus(){return {verified:false,loaded:true,accounts:[],ambiguousRoles:[]};},
+    onChange(){},
+  });
+  await unverified.window.HvostMiniAppWork.chooseRole('manager');
+  await unverified.click('manager-point-new');
+  assert.equal(unverified.calls.some(c=>c.url==='/api/cities'||c.url==='/api/points'),false);
+});
+
 test('manager Telegram Mini App registers groomers on own salons with consent and manager token', async () => {
   const fixtures={
     '/api/managers/me':{manager:{id:15,active:1,full_name:'Перепадова Ангелина',
