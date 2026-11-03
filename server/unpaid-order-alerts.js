@@ -1,6 +1,6 @@
-// Оповещение ТОЛЬКО ответственного менеджера активной точки через минуту
-// после создания неоплаченного заказа. Не отправляем персональные данные в
-// общий служебный чат и не выбираем случайного исторического менеджера.
+// Оповещение ответственного менеджера и администратора ХвостМаркета через минуту.
+// Независимые журналы защищают от повторов и пропуска администратора, если
+// менеджер не подключил Telegram.
 'use strict';
 
 const db = require('./db');
@@ -11,6 +11,14 @@ const { connectedChatId, findManagerAndPoint } = require('./order-notifications'
 // never silently keep the historical 3-minute notification threshold.
 const ALERT_DELAY_MINUTES = 1;
 const POLL_INTERVAL_MS = 15 * 1000;
+
+// Admin recipients must be deduplicated independently from managers.
+db.exec('CREATE TABLE IF NOT EXISTS unpaid_order_admin_alert_log (' +
+  'order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,' +
+  'alert_type TEXT NOT NULL,target_chat_id TEXT NOT NULL,' +
+  "status TEXT NOT NULL DEFAULT 'pending',error TEXT," +
+  "created_at TEXT NOT NULL DEFAULT (datetime('now')),sent_at TEXT," +
+  'PRIMARY KEY(order_id,alert_type,target_chat_id))');
 
 function escapeHtml(value) {
   return String(value == null ? '' : value)
@@ -68,7 +76,7 @@ function responsibleManagerChat(order) {
   return String(chatId);
 }
 
-async function sendUnpaidOrderAlert(orderId, alertType = 'pending', reason = null, options = {}) {
+async function sendManagerUnpaidAlert(orderId, alertType = 'pending', reason = null, options = {}) {
   const data = getOrderWithItems(orderId);
   if (!data) return { ok: false, skipped: true, error: 'Заказ не найден' };
   const { order, items } = data;
@@ -124,22 +132,159 @@ async function sendUnpaidOrderAlert(orderId, alertType = 'pending', reason = nul
   return { ok, error, ...(ok ? { chat_id: chatId } : {}) };
 }
 
-function pendingOrderIds() {
-  return db.prepare(`
-    SELECT o.id FROM orders o
-    LEFT JOIN unpaid_order_alert_log a ON a.order_id = o.id AND a.alert_type = 'pending'
-    WHERE o.status = 'pending' AND o.reservation_status = 'active'
-      AND o.created_at <= datetime('now', '-1 minute')
-      AND o.created_at >= datetime('now', '-30 minutes')
-      AND a.id IS NULL
-    ORDER BY o.id
-  `).all().map((row) => row.id);
+// Admin personal chats + existing operations chat. Deduplicate by actual
+// Telegram chat ID (one person may have both manager and admin roles).
+function adminRecipientChats(options = {}) {
+  const chats = new Set();
+  const admins = db.prepare(
+    "SELECT telegram_chat_id FROM admins WHERE active=1 AND TRIM(COALESCE(telegram_chat_id,''))<>''"
+  ).all();
+  for (const admin of admins) {
+    const chat = String(admin.telegram_chat_id || '').trim();
+    if (/^[1-9]\d{0,19}$/.test(chat)) chats.add(chat);
+  }
+  // The service chat received these alerts before manager-only routing.
+  // It can be a Telegram group with a negative chat ID.
+  const service = String(options.businessChatId === undefined ?
+    (process.env.TG_CHAT_ID || '') : (options.businessChatId || '')).trim();
+  if (/^-?[1-9]\d{0,19}$/.test(service)) chats.add(service);
+  return [...chats];
+}
+
+function buildAdminUnpaidMessage(order, items, alertType, reason) {
+  const assignment = findManagerAndPoint(order);
+  const managerName = assignment.manager ? (assignment.manager.full_name || 'Имя не указано') : 'не назначен';
+  return buildUnpaidOrderMessage(order, items, alertType, reason) +
+    '\n\n👔 Ответственный менеджер: ' + escapeHtml(managerName);
+}
+
+function currentUnpaidOrder(orderId, alertType) {
+  const order = db.prepare('SELECT * FROM orders WHERE id=?').get(orderId);
+  if (!order || order.status === 'paid') return null;
+  if (alertType === 'pending' && (order.status !== 'pending' ||
+      order.reservation_status !== 'active')) return null;
+  return order;
+}
+
+const RETRY_SECONDS = 30;
+
+// Per-recipient ledger: a failed admin delivery can retry separately from
+// successful ones, without resending to the manager or other administrators.
+function reserveAdminDelivery(orderId, alertType, chatId) {
+  const first = db.prepare(
+    "INSERT OR IGNORE INTO unpaid_order_admin_alert_log " +
+    "(order_id,alert_type,target_chat_id,status) VALUES (?,?,?,'pending')"
+  ).run(orderId, alertType, chatId);
+  if (first.changes) return true;
+  // After a recoverable Telegram failure, permit limited retry in the first
+  // 30 minutes; do not replay messages that have already been accepted.
+  const retried = db.prepare(
+    "UPDATE unpaid_order_admin_alert_log " +
+    "SET status='pending', error=NULL, created_at=datetime('now') " +
+    "WHERE order_id=? AND alert_type=? AND target_chat_id=? " +
+    "AND status='failed' AND created_at<=datetime('now','-30 seconds')"
+  ).run(orderId,alertType,chatId);
+  return !!retried.changes;
+}
+function adminDeliveryDue(orderId, alertType, chatId) {
+  const row = db.prepare(
+    'SELECT status,created_at FROM unpaid_order_admin_alert_log ' +
+    'WHERE order_id=? AND alert_type=? AND target_chat_id=?'
+  ).get(orderId,alertType,chatId);
+  if (!row) return true;
+  return row.status === 'failed' && !!db.prepare(
+    "SELECT 1 AS due WHERE ? <= datetime('now','-30 seconds')"
+  ).get(row.created_at);
+}
+
+async function sendAdminUnpaidAlert(order, items, alertType, reason, chatId, options = {}) {
+  if (!reserveAdminDelivery(order.id,alertType,chatId)) return {ok:false,skipped:true};
+  const latest = currentUnpaidOrder(order.id,alertType);
+  if (!latest || !adminRecipientChats(options).includes(chatId)) {
+    db.prepare(
+      "UPDATE unpaid_order_admin_alert_log SET status='skipped',error=? " +
+      'WHERE order_id=? AND alert_type=? AND target_chat_id=?'
+    ).run('Заказ оплачен или адресат больше не администратор',order.id,alertType,chatId);
+    return {ok:false,skipped:true};
+  }
+  let result;
+  try {
+    result = await (options.sendToChat || sendToChat)(
+      chatId,buildAdminUnpaidMessage(latest,items,alertType,reason)
+    );
+  } catch (error) {
+    result = {ok:false,error:error.message};
+  }
+  const ok = !!(result && result.ok);
+  const error = ok ? null : String((result && result.error) ||
+    (result && result.skipped ? 'Telegram не настроен' : 'Неизвестная ошибка')).slice(0,500);
+  db.prepare(
+    'UPDATE unpaid_order_admin_alert_log ' +
+    "SET status=?,error=?,sent_at=CASE WHEN ?=1 THEN datetime('now') ELSE NULL END " +
+    'WHERE order_id=? AND alert_type=? AND target_chat_id=?'
+  ).run(ok?'sent':'failed',error,ok?1:0,order.id,alertType,chatId);
+  return {ok,error,...(ok?{chat_id:chatId}:{})};
+}
+
+async function sendUnpaidOrderAlert(orderId, alertType = 'pending', reason = null, options = {}) {
+  const data = getOrderWithItems(orderId);
+  if (!data) return {ok:false,skipped:true,error:'Заказ не найден'};
+  const {order,items} = data;
+  if (!currentUnpaidOrder(orderId,alertType)) return {ok:false,skipped:true,error:'Заказ оплачен или закрыт'};
+  if (alertType === 'pending' && !db.prepare(
+    "SELECT 1 AS due FROM orders WHERE id=? AND created_at<=datetime('now','-1 minute')"
+  ).get(orderId)) return {ok:false,skipped:true,error:'Ещё не прошла 1 минута'};
+  const adminChats = adminRecipientChats(options);
+  const managerChat = responsibleManagerChat(order);
+  const results = [];
+
+  // Do not duplicate a single order in the same Telegram account.
+  if (managerChat && !adminChats.includes(managerChat)) {
+    const result = await sendManagerUnpaidAlert(orderId,alertType,reason,options);
+    if (!result.skipped) results.push({role:'manager',...result});
+  }
+  // Admin delivery is independent: absent/failed manager cannot suppress it.
+  for (const chatId of adminChats) {
+    const result = await sendAdminUnpaidAlert(order,items,alertType,reason,chatId,options);
+    if (!result.skipped) results.push({role:'admin',...result});
+  }
+  if (!results.length) return {ok:false,skipped:true,error:'Адресаты уже уведомлены или недоступны'};
+  return {
+    ok:results.some(r=>r.ok),
+    manager_sent:results.some(r=>r.role==='manager'&&r.ok),
+    admin_sent:results.some(r=>r.role==='admin'&&r.ok),
+    sent_count:results.filter(r=>r.ok).length,
+    failed_count:results.filter(r=>!r.ok).length,
+  };
+}
+
+function pendingOrderIds(options = {}) {
+  // Keep the 30-minute recovery window from the previous implementation.
+  // An admin may still need the notice after a manager's notification was
+  // already logged, and an admin retry must not resend successful chats.
+  const rows = db.prepare(
+    "SELECT * FROM orders WHERE status='pending' AND reservation_status='active' " +
+    "AND created_at<=datetime('now','-1 minute') " +
+    "AND created_at>=datetime('now','-30 minutes') ORDER BY id"
+  ).all();
+  const adminChats = adminRecipientChats(options);
+  const hasManagerLog = db.prepare(
+    "SELECT 1 AS logged FROM unpaid_order_alert_log WHERE order_id=? AND alert_type='pending'"
+  );
+  return rows.filter(order => {
+    const managerChat = responsibleManagerChat(order);
+    const managerDue = managerChat && !adminChats.includes(managerChat) &&
+      !hasManagerLog.get(order.id);
+    const adminDue = adminChats.some(chatId => adminDeliveryDue(order.id,'pending',chatId));
+    return !!(managerDue || adminDue);
+  }).map(row => row.id);
 }
 
 async function runUnpaidOrderAlertCheck(options = {}) {
   const results = [];
-  for (const orderId of pendingOrderIds()) {
-    results.push({ order_id: orderId, ...(await sendUnpaidOrderAlert(orderId, 'pending', null, options)) });
+  for (const orderId of pendingOrderIds(options)) {
+    const result = await sendUnpaidOrderAlert(orderId, 'pending', null, options);
+    if (!result.skipped) results.push({ order_id: orderId, ...result });
   }
   return results;
 }
@@ -162,6 +307,8 @@ module.exports = {
   POLL_INTERVAL_MS,
   buildUnpaidOrderMessage,
   responsibleManagerChat,
+  adminRecipientChats,
+  buildAdminUnpaidMessage,
   pendingOrderIds,
   runUnpaidOrderAlertCheck,
   scheduleUnpaidOrderAlerts,
