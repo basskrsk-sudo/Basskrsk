@@ -493,8 +493,15 @@ function registerPartnerRoutes(router) {
     if (!partner) return sendJson(res, 404, { error: 'Не найдено' });
     // city_id живёт на самой точке, не на партнёре — подтягиваем отдельно,
     // чтобы кабинет мог показать город, в котором физически работает грумер.
-    const point = partner.point_id ? db.prepare('SELECT city_id FROM points WHERE id = ?').get(partner.point_id) : null;
-    sendJson(res, 200, { partner: { ...safePartner(partner), city_id: point ? point.city_id : null } });
+    const point = partner.point_id ? db.prepare(
+      'SELECT id,name,addr,city_id FROM points WHERE id = ? AND active = 1'
+    ).get(partner.point_id) : null;
+    sendJson(res, 200, { partner: {
+      ...safePartner(partner),
+      city_id: point ? point.city_id : null,
+      current_point: point || null,
+      point_unavailable: !!(partner.point_id && !point),
+    } });
   });
 
   // GET /api/partners/me/tier-progress — сколько осталось до следующего
@@ -514,7 +521,12 @@ function registerPartnerRoutes(router) {
     if (!payload) return;
     const partner = db.prepare('SELECT * FROM partners WHERE id = ?').get(payload.id);
     if (!partner) return sendJson(res, 404, { error: 'Не найдено' });
-    if (!partner.point_id) return sendJson(res, 200, { stock: [], point_id: null });
+    const assignedPoint = partner.point_id ? db.prepare(
+      'SELECT id FROM points WHERE id = ? AND active = 1'
+    ).get(partner.point_id) : null;
+    if (!assignedPoint) return sendJson(res, 200, {
+      stock: [], point_id: null, point_unavailable: !!partner.point_id,
+    });
     const rows = db.prepare(`
       SELECT s.variant_id, s.qty, v.weight, v.price, p.name AS product_name
       FROM stock s
@@ -619,23 +631,29 @@ function registerPartnerRoutes(router) {
     const days = Math.max(1, Math.min(365, parseInt(ctx.query.days, 10) || 7));
 
     const orders = db.prepare(`
-      SELECT id, order_code, customer_name, customer_lname, total, commission_rate, status, created_at
+      SELECT id, order_code, customer_name, customer_lname,
+        CASE WHEN refund_status = 'refunded' AND refunded_amount IS NULL THEN 0
+          ELSE MAX(0,total - COALESCE(refunded_amount,0)) END AS net_total,
+        commission_rate, status, created_at
       FROM orders
-      WHERE partner_id = ? AND status = 'paid' AND created_at >= datetime('now', '-' || ? || ' days')
+      WHERE partner_id = ? AND status = 'paid'
+        AND created_at >= datetime('now', '-' || ? || ' days')
+        AND CASE WHEN refund_status = 'refunded' AND refunded_amount IS NULL THEN 0
+          ELSE MAX(0,total - COALESCE(refunded_amount,0)) END > 0
       ORDER BY created_at DESC
     `).all(payload.id, days);
 
     const result = orders.map((o) => {
       const items = db.prepare('SELECT name, weight, qty, price FROM order_items WHERE order_id = ? AND is_custom = 0').all(o.id);
       const productLabel = items.map((i) => i.name + ' (' + i.weight + ')' + (i.qty > 1 ? ' ×' + i.qty : '')).join(', ') || 'Товар не из каталога';
-      const commission = Math.round(o.total * (o.commission_rate ?? 0));
+      const commission = Math.round(o.net_total * (o.commission_rate ?? 0));
       return {
         id: o.id,
         order_code: o.order_code,
         customer_name: (o.customer_name + ' ' + (o.customer_lname || '')).trim(),
         product: productLabel,
         items: items.map((i) => ({ name: i.name, qty: i.qty, commission: Math.round(i.price * i.qty * (o.commission_rate ?? 0)) })),
-        sum: o.total,
+        sum: o.net_total,
         commission,
         date: o.created_at,
       };

@@ -140,7 +140,7 @@ function pointRanking(start) {
       revenue:s?Math.round(safeNumber(s.net)):0,orders:s?Number(s.n):0,
       last_sale:s?s.last_paid:null,
     };
-  }).sort((a,b)=>b.revenue-a.revenue).slice(0,50);
+  }).sort((a,b)=>b.revenue-a.revenue);
 }
 function founderTasks(founder) {
   const name = founder.full_name || '';
@@ -258,6 +258,7 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
       ).get().n||0),
       sold_points_period:pointRows.filter(p=>p.orders>0).length,
       top_points:pointRows.filter(p=>p.orders>0).slice(0,7),
+      silent_points_count:pointRows.filter(p=>p.orders===0).length,
       silent_points:pointRows.filter(p=>p.orders===0).slice(0,7),
     },
     strategy:strategicReadiness(date),

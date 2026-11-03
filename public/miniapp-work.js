@@ -687,7 +687,10 @@
     var earn = orders.reduce(function(sum, row) { return sum + Number(row.commission || 0); }, 0);
     var low = stock.filter(function(x) { return Number(x.qty) <= 2; });
     var rate = Number(currentUser.commission_rate || 0) * 100;
-    var html = '<div class="work-stats">' +
+    var salon = currentUser.current_point;
+    var pointNotice = salon ? note('📍 ' + salon.name + (salon.addr ? ' · ' + salon.addr : '')) :
+      currentUser.point_unavailable ? problem('Назначенный салон закрыт или удалён. Показана только история личных продаж; пополнение недоступно.') : '';
+    var html = pointNotice + '<div class="work-stats">' +
       stat('Продажи за 30 дней', rub(amount), number(orders.length) + ' покупок') +
       stat('Начислено за 30 дней', rub(earn), 'По фактическим продажам') +
       stat('Ожидает выплаты', data[1] ? rub(pay.unpaid_amount) : '—', 'По всем невыплаченным заказам') +
@@ -708,14 +711,21 @@
       '<button class="work-secondary" type="submit" style="margin-top:12px" id="workRestockButton">Отправить заявку</button><div id="workRestockMessage" aria-live="polite"></div></form>');
     return html;
   }
+  // Paid sales are net of full or partial refunds. Undefined refund
+  // metadata in older orders is treated as "no return", never as extra sale.
+  function netPaidAmount(order) {
+    if (!order || order.status !== 'paid') return 0;
+    if (order.refund_status === 'refunded' && order.refunded_amount == null) return 0;
+    return Math.max(0, Number(order.total || 0) - Number(order.refunded_amount || 0));
+  }
   function managerDashboard(data) {
     // manager.points is a legacy payout/referral ledger, not the live network.
     // Only the server-verified canonical points directory may drive this panel.
     var points = currentUser.current_points || [];
     var orders = data[0] && data[0].orders || [];
     var stockPoints = data[1] && data[1].points || [];
-    var paid = orders.filter(function(o) { return o.status === 'paid' && o.refund_status !== 'refunded'; });
-    var revenue = paid.reduce(function(s, o) { return s + Number(o.total || 0); }, 0);
+    var paid = orders.filter(function(o) { return netPaidAmount(o) > 0; });
+    var revenue = paid.reduce(function(s, o) { return s + netPaidAmount(o); }, 0);
     var low = stockPoints.reduce(function(s, p) {
       return s + (p.items || []).filter(function(i) { return Number(i.qty) <= 2; }).length;
     }, 0);
@@ -759,14 +769,18 @@
     return html;
   }
   function adminDashboard(data) {
-    var points = data[0] && data[0].points || [];
+    var allPoints = data[0] && data[0].points || [];
+    // Match the founder network counter: only current, non-hub minimarkets.
+    var points = allPoints.filter(function(p) {
+      return Number(p.active) !== 0 && Number(p.is_hub) !== 1;
+    });
     var allOrders = data[1] && data[1].orders || [];
     var paidOrders = allOrders.filter(function(o) {
-      return o.status === 'paid' && o.refund_status !== 'refunded';
+      return netPaidAmount(o) > 0;
     });
     var ops = data[2] || {};
     var issues = ops.issues || [];
-    var revenue = paidOrders.reduce(function(s, o) { return s + Number(o.total || 0); }, 0);
+    var revenue = paidOrders.reduce(function(s, o) { return s + netPaidAmount(o); }, 0);
     var html = '<div class="work-stats">' +
       stat('Активных точек', data[0] ? number(points.length) : '—', 'По всей сети') +
       stat('Последние покупки', data[1] ? number(paidOrders.length) : '—', 'Оплаченных среди 100 последних заказов') +
@@ -774,7 +788,10 @@
       stat('Сигналы контроля', data[2] ? number((ops.summary || {}).total || issues.length) : '—', 'Операционные вопросы') +
       '</div>';
     html += surface('Последние заказы сети', rows(allOrders.slice(0, 8).map(function(o) {
-      return line(o.pickup_point || 'Покупка', date(o.created_at) + ' · ' + (o.status === 'paid' ? 'Оплачен' : 'Статус: ' + o.status), rub(o.total));
+      return line(o.pickup_point || 'Покупка', date(o.created_at) + ' · ' +
+        (o.refund_status === 'refunded' ? 'Возврат' :
+          o.status === 'paid' ? 'Оплачен' : 'Статус: ' + o.status),
+        rub(netPaidAmount(o) || (o.status === 'paid' ? 0 : Number(o.total || 0))));
     })));
     html += surface('Операционный контроль', rows(issues.slice(0, 7).map(function(issue) {
       return line((issue.icon || '⚠️') + ' ' + (issue.title || 'Задача'), issue.summary || '', number(issue.count || 0));

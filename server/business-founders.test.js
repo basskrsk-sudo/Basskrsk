@@ -132,6 +132,24 @@ test('founder revenue, capital and expenses derive from actual records, not fabr
  assert.equal(JSON.stringify(dashboard).includes('79135554433'),false,'no customer phone in founder dashboard');
  assert.equal(JSON.stringify(dashboard).includes('password_hash'),false);
 });
+
+test('founder counts ALL silent active salons, even past the previous 50-point ranking cutoff', () => {
+ const founder=getFounder(1);
+ for(let i=0;i<60;i++){
+   db.prepare('INSERT INTO points(id,name,addr,icon,active,is_hub) VALUES(?,?,?,?,?,?)')
+     .run('founder-silent-'+i,'Новая точка '+i,'Красноярск','🐾',1,0);
+ }
+ db.prepare('INSERT INTO points(id,name,addr,icon,active,is_hub) VALUES(?,?,?,?,?,?)')
+   .run('founder-inactive','Удалённая тестовая точка','Красноярск','🐾',0,0);
+ const dashboard=collectFounderDashboard(founder,'30d',new Date('2026-11-01T12:00:00Z'));
+ const currentPoints=Number(db.prepare('SELECT COUNT(*) AS c FROM points WHERE active=1 AND COALESCE(is_hub,0)=0').get().c);
+ assert.equal(dashboard.network.active_points,currentPoints);
+ assert.equal(dashboard.network.silent_points_count,currentPoints-dashboard.network.sold_points_period);
+ assert.ok(dashboard.network.silent_points_count>=60);
+ assert.equal(dashboard.network.silent_points.length,7,'only list preview is capped');
+ assert.equal(dashboard.network.silent_points.some(p=>p.name==='Удалённая тестовая точка'),false);
+});
+
 test('deactivating owner denies previously signed sessions and prevents Telegram login',()=>{
  const ownerSession=signToken({role:'founder',id:1});
  const adminSession=signToken({role:'admin',id:admin('super',1),adminRole:'super'});

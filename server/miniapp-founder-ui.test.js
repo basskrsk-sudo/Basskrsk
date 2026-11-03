@@ -21,7 +21,7 @@ test('business founder dashboard contains financial growth, plan, risks, persona
    manager_commission_est:100,salon_owner_commission_est:70,tax_est:400,
    acquiring_est:130,expenses_by_category:[{name:'Закуп товара',amount:5000}],
    disclaimer:'Оценка, не прибыль'},
-  network:{active_points:7,sold_points_period:4,
+  network:{active_points:7,sold_points_period:4,silent_points_count:12,
    top_points:[{name:'БаркЛай',revenue:2500,orders:7}],
    silent_points:[{name:'Точка без продаж',revenue:0,orders:0}]},
   strategy:{goal_2031:1000,current_active_30d:4,plan_year:2027,
@@ -35,6 +35,7 @@ test('business founder dashboard contains financial growth, plan, risks, persona
   tasks:{my_active:3,my_overdue:1,items:[{title:'Договор',status:'new',due_date:'2026-11-05'}],initiatives:[]},
  };
  const page=view.render(data);
+ assert.match(page, /<small>Без продаж<\/small><strong>12<\/strong>/);
  for(const text of ['Лакомых Алексей','45%','КАБИНЕТ СОБСТВЕННИКА',
   'Выручка','Средний чек','Расчётный результат','Точка без продаж',
   'Стратегия: 1000 точек','Капитал и доли','Мои поручения','Расходы',
