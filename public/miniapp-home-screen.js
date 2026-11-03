@@ -1,21 +1,22 @@
-// Native Telegram home screen shortcut for every ХвостМаркет Mini App role.
-// One shortcut opens the existing shared Mini App; role authorization is
-// unchanged and always validated by the server after phone confirmation.
+// One home-screen icon for the real Telegram Main Mini App, not a chat shortcut.
+// Native Telegram 8.0+ installation must be initiated by a user tap. When
+// Telegram cannot report its home-screen status, keep a useful manual path.
 (function () {
   'use strict';
+
   var telegram = window.Telegram && window.Telegram.WebApp;
-  var supported = !!(telegram &&
+  var nativeSupported = !!(telegram &&
     typeof telegram.addToHomeScreen === 'function' &&
     typeof telegram.checkHomeScreenStatus === 'function');
-  if (supported && typeof telegram.isVersionAtLeast === 'function') {
-    try { supported = !!telegram.isVersionAtLeast('8.0'); }
-    catch (_) { supported = false; }
+  if (nativeSupported && typeof telegram.isVersionAtLeast === 'function') {
+    try { nativeSupported = !!telegram.isVersionAtLeast('8.0'); }
+    catch (_) { nativeSupported = false; }
   }
 
-  var status = supported ? 'checking' : 'unsupported';
-  var feedback = '';
+  var status = nativeSupported ? 'checking' : 'unsupported';
   var checking = false;
-  var STATUSES = { unsupported: 1, unknown: 1, missed: 1, added: 1 };
+  var feedback = '';
+  var STATUSES = { checking: 1, unsupported: 1, unknown: 1, missed: 1, added: 1 };
 
   function esc(value) {
     return String(value || '').replace(/[&<>"']/g, function (char) {
@@ -23,65 +24,94 @@
         '"': '&quot;', "'": '&#39;' }[char];
     });
   }
-  function showButton() {
-    return supported && (status === 'missed' || status === 'unknown');
+  function isIos() {
+    return !!(telegram && telegram.platform === 'ios');
   }
-  function hiddenAttr() {
-    return showButton() ? '' : ' hidden';
+  function buttonLabel() {
+    if (status === 'added') return '♻️ Обновить иконку ХвостМаркета';
+    if (!nativeSupported || status === 'unsupported') return '📲 Как сделать иконку ХвостМаркета';
+    return '📲 Сделать иконку ХвостМаркета';
   }
+  function visibleFeedback() {
+    if (feedback) return feedback;
+    return status === 'added'
+      ? 'Telegram сообщает, что иконка уже есть. Если она открывает чат бота, её нужно заменить.'
+      : '';
+  }
+  function manualInstructions() {
+    var first = status === 'added'
+      ? 'Telegram считает, что ярлык уже создан. Если он открывает переписку с ботом, удалите старый значок с экрана телефона.\n'
+      : 'Если старая иконка открывает чат бота, сначала удалите этот значок.\n';
+    return first +
+      '1. Откройте @HvostMarketRusBot и нажмите «Open App».\n' +
+      '2. В открытом мини-приложении откройте меню ⋯ → «Добавить на экран Домой».\n' +
+      '3. На iPhone, если откроется Safari, нажмите «Поделиться» → «На экран Домой» → «Добавить».\n' +
+      'Если пункта добавления нет, обновите Telegram. Не создавайте ярлык из профиля или чата бота.';
+  }
+  function afterNativeRequest() {
+    if (isIos()) {
+      return 'Telegram открыл создание ярлыка. На iPhone может появиться Safari: нажмите «Поделиться» → «На экран Домой» → «Добавить». ' +
+        'Если новая иконка открывает чат, удалите старый значок и создайте иконку заново из Mini App.';
+    }
+    return 'Подтвердите добавление в Telegram. Если значок не появился, откройте меню ⋯ мини-приложения → «Добавить на экран Домой». ' +
+      'Старый ярлык чата бота при необходимости удалите.';
+  }
+
+  // The button is available while Telegram is checking, including when iOS
+  // never calls checkHomeScreenStatus back. This was previously a dead end.
   function cardMarkup() {
-    if (!supported) return '';
-    return '<div class="hm-home-card" data-hm-home-card' + hiddenAttr() + '>' +
+    var notice = visibleFeedback();
+    return '<div class="hm-home-card" data-hm-home-card>' +
       '<div class="hm-home-card-head">' +
         '<img src="/images/hvostmarket-mark-v4-transparent.webp" alt="" ' +
           'class="hm-home-icon" width="52" height="52" loading="lazy">' +
-        '<div><strong>ХвостМаркет всегда под рукой 🐾</strong>' +
-          '<p>Один значок для магазина и всех доступных вам кабинетов.</p></div>' +
+        '<div><strong>Иконка ХвостМаркета на телефоне 🐾</strong>' +
+          '<p>Один ярлык открывает само мини-приложение: магазин и доступные кабинеты.</p></div>' +
       '</div>' +
       '<button type="button" class="hm-home-install" data-hm-home-add>' +
-        '📲 Добавить на экран телефона</button>' +
-      '<p class="hm-home-feedback" data-hm-home-feedback role="status"' +
-        (feedback ? '' : ' hidden') + '>' + esc(feedback) + '</p>' +
+        esc(buttonLabel()) + '</button>' +
+      '<p class="hm-home-feedback" data-hm-home-feedback role="status" aria-live="polite"' +
+        (notice ? '' : ' hidden') + '>' + esc(notice) + '</p>' +
     '</div>';
   }
   function actionMarkup() {
-    if (!supported) return '';
-    return '<div class="hm-home-action" data-hm-home-card' + hiddenAttr() + '>' +
+    var notice = visibleFeedback();
+    return '<div class="hm-home-action" data-hm-home-card>' +
       '<button type="button" class="work-secondary" data-hm-home-add>' +
-        '📲 Добавить ХвостМаркет на экран телефона</button>' +
-      '<p class="hm-home-feedback" data-hm-home-feedback role="status"' +
-        (feedback ? '' : ' hidden') + '>' + esc(feedback) + '</p>' +
+        esc(buttonLabel()) + '</button>' +
+      '<p class="hm-home-feedback" data-hm-home-feedback role="status" aria-live="polite"' +
+        (notice ? '' : ' hidden') + '>' + esc(notice) + '</p>' +
     '</div>';
   }
   function updateControls() {
-    // Cards rendered after a phone check or a role switch use the same status.
-    // Native dialogs may update the status while a dashboard is open.
     if (typeof document.querySelectorAll !== 'function') return;
-    var visible = showButton();
+    // Keep the manual-instructions fallback visible even if Telegram does not
+    // implement its native home-screen API or fails to answer the status check.
     document.querySelectorAll('[data-hm-home-card]').forEach(function (node) {
-      node.hidden = !visible;
+      node.hidden = false;
     });
     document.querySelectorAll('[data-hm-home-add]').forEach(function (node) {
-      node.disabled = !visible;
+      node.disabled = false;
+      node.textContent = buttonLabel();
     });
+    var notice = visibleFeedback();
     document.querySelectorAll('[data-hm-home-feedback]').forEach(function (node) {
-      node.textContent = feedback;
-      node.hidden = !visible || !feedback;
+      node.textContent = notice;
+      node.hidden = !notice;
     });
   }
   function setStatus(value) {
     if (!Object.prototype.hasOwnProperty.call(STATUSES, value)) return;
     status = value;
-    if (value === 'added') feedback = '';
-    if (value === 'unsupported') feedback = '';
+    if (value === 'added') {
+      feedback = 'Иконка мини-приложения добавлена. Если старый значок всё ещё открывает бот, удалите его и используйте новый.';
+    }
     updateControls();
   }
   function checkStatus() {
-    if (!supported || checking) return;
+    if (!nativeSupported || checking) return;
     checking = true;
     try {
-      // Official Telegram callback: status is one of
-      // unsupported/unknown/added/missed. Unknown is NOT "not installed".
       telegram.checkHomeScreenStatus(function (value) {
         checking = false;
         setStatus(value);
@@ -92,24 +122,27 @@
     }
   }
   function requestInstall() {
-    if (!showButton()) return false;
+    // For Telegram installations with an existing shortcut and clients
+    // without native support, explain the correct Main Mini App flow.
+    if (!nativeSupported || status === 'unsupported' || status === 'added') {
+      feedback = manualInstructions();
+      updateControls();
+      return false;
+    }
     try {
-      // Must run synchronously inside the user click gesture: never call on
-      // startup, page render, or when switching between staff roles.
+      // Must stay directly inside the user's tap; no awaits or timers here.
       telegram.addToHomeScreen();
-      feedback = 'Подтвердите добавление в Telegram или в системном меню телефона. ' +
-        'Если значок не появился, проверьте меню ⋯ мини-приложения.';
+      feedback = afterNativeRequest();
       updateControls();
       return true;
     } catch (_) {
-      feedback = 'Telegram не смог открыть добавление. Обновите приложение ' +
-        'или попробуйте пункт «Добавить на экран» в меню ⋯.';
+      feedback = 'Не удалось открыть создание ярлыка.\n' + manualInstructions();
       updateControls();
       return false;
     }
   }
 
-  if (supported) {
+  if (nativeSupported) {
     if (typeof telegram.onEvent === 'function') {
       telegram.onEvent('homeScreenChecked', function (event) {
         if (event && event.status) {
@@ -121,13 +154,12 @@
         setStatus('added');
       });
       telegram.onEvent('homeScreenFailed', function () {
-        feedback = 'Добавление не подтвердилось. Вы можете попробовать ещё раз.';
+        feedback = 'Telegram не подтвердил создание иконки.\n' + manualInstructions();
         updateControls();
       });
       telegram.onEvent('activated', checkStatus);
     }
-    // A silent check only; never request installation without a real tap.
-    checkStatus();
+    checkStatus(); // A best-effort check, never a gate for showing the button.
   }
 
   if (typeof document.addEventListener === 'function') {
@@ -135,13 +167,13 @@
       var target = event.target;
       var button = target && typeof target.closest === 'function' ?
         target.closest('[data-hm-home-add]') : null;
-      if (!button || !showButton()) return;
+      if (!button) return;
       event.preventDefault();
       requestInstall();
     });
   }
-  // Supported by buyer profile, the guest storefront, the verified role
-  // picker and the individual/combined staff work dashboards.
+  // Static shop card and dynamically rendered customer, combined-salon and
+  // staff dashboard buttons all use the same install flow.
   window.HvostMiniAppHomeScreen = {
     cardMarkup: cardMarkup,
     actionMarkup: actionMarkup,
@@ -149,4 +181,7 @@
     requestInstall: requestInstall,
     getStatus: function () { return status; },
   };
+
+  // Run even when checkHomeScreenStatus never reports its result.
+  updateControls();
 })();

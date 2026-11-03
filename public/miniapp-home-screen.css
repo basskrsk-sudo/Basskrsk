@@ -34,7 +34,7 @@
 .hm-home-header button:focus-visible { outline:3px solid #f6c44f;outline-offset:2px; }
 .hm-home-action { margin-bottom:8px; }
 .hm-home-action button { width:100%; }
-.hm-home-feedback { margin:8px 0 0;font-size:11px;line-height:1.5;color:#397355; }
+.hm-home-feedback { margin:8px 0 0;font-size:11px;line-height:1.55;color:#397355;white-space:pre-line;overflow-wrap:anywhere; }
 .hm-home-header { margin-top:11px;position:relative;z-index:1; }
 .hm-home-header button {
   width:100%;background:rgba(255,255,255,.13);

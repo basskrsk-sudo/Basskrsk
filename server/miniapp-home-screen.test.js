@@ -20,6 +20,7 @@ function harness(options={}){
   const notices=[{textContent:'',hidden:true},{textContent:'',hidden:true}];
   const telegram=options.telegram===false?null:{
     initData:'signed-telegram-data',
+    platform:options.platform||'ios',
     addToHomeScreen(){clicks.added=(clicks.added||0)+1; if(options.throwOnInstall)throw Error('unsupported now');},
     checkHomeScreenStatus(callback){checkCallbacks.push(callback);clicks.checked=(clicks.checked||0)+1;},
     onEvent(name,fn){events[name]=fn;},
@@ -49,69 +50,77 @@ function harness(options={}){
   return {api,events,cards,buttons,notices,clicks,checkCallbacks,click};
 }
 
-test('Telegram Bot API 8.0+ offers one shared home-screen shortcut only on user tap',()=>{
+test('Telegram iPhone has one visible icon button during status check and installs only on tap',()=>{
   const h=harness();
-  assert.equal(h.clicks.checked,1,'initial check queries status without installing');
-  assert.equal(h.clicks.added,undefined,'no automatic install request');
+  assert.equal(h.clicks.checked,1,'initial status check is passive');
+  assert.equal(h.clicks.added,undefined,'no automatic installation');
   assert.equal(h.api.getStatus(),'checking');
-  assert.equal(h.api.cardMarkup().includes(' hidden'),true);
-  h.checkCallbacks[0]('missed');
-  assert.equal(h.api.getStatus(),'missed');
-  assert.ok(h.cards.every(x=>x.hidden===false));
+  assert.match(h.api.cardMarkup(),/Сделать иконку ХвостМаркета/);
+  assert.ok(h.cards.every(x=>!x.hidden),'home icon action is never hidden while checking');
   assert.ok(h.buttons.every(x=>x.disabled===false));
-  assert.match(h.api.cardMarkup(),/Добавить на экран телефона/);
-  assert.match(h.api.actionMarkup(),/data-hm-home-add/);
+  assert.equal(h.click(),true);
+  assert.equal(h.clicks.added,1,'native install called synchronously from a tap');
+  assert.match(h.notices[0].textContent,/Поделиться/,'iPhone-specific Safari instructions are visible');
+  h.events.homeScreenAdded();
+  assert.equal(h.api.getStatus(),'added');
+  assert.ok(h.cards.every(x=>!x.hidden),'repair action stays visible after installation');
+  assert.match(h.buttons[0].textContent,/Обновить иконку/);
+  assert.equal(h.click(),true,'tapping a completed icon opens the repair guide');
+  assert.equal(h.clicks.added,1,'existing installation is not silently replaced');
+  assert.match(h.notices[0].textContent,/Open App/);
+});
+
+test('missed and unknown Telegram statuses keep the native button available',()=>{
+  const h=harness({platform:'android'});
+  h.events.homeScreenChecked({status:'unknown'});
+  assert.equal(h.api.getStatus(),'unknown');
+  assert.match(h.api.actionMarkup(),/Сделать иконку/);
+  h.events.homeScreenChecked({status:'missed'});
+  assert.equal(h.api.getStatus(),'missed');
+  assert.ok(!h.cards[0].hidden);
   assert.equal(h.click(),true);
   assert.equal(h.clicks.added,1);
   assert.match(h.notices[0].textContent,/Подтвердите добавление/);
-  h.events.homeScreenAdded();
-  assert.equal(h.api.getStatus(),'added');
-  assert.ok(h.cards.every(x=>x.hidden===true));
-  assert.ok(h.buttons.every(x=>x.disabled===true));
-  assert.equal(h.click(),false,'installed button is inactive');
-  assert.equal(h.clicks.added,1,'already-installed icon never requests another shortcut');
-});
-
-test('Telegram status unknown still permits install, added/unsupported status hides prompt',()=>{
-  const h=harness();
-  h.events.homeScreenChecked({status:'unknown'});
-  assert.equal(h.api.getStatus(),'unknown');
-  assert.match(h.api.actionMarkup(),/data-hm-home-add/);
-  assert.ok(!h.cards[0].hidden);
-  h.events.homeScreenChecked({status:'added'});
-  assert.equal(h.api.getStatus(),'added');
-  assert.ok(h.cards[0].hidden);
-  h.events.homeScreenChecked({status:'missed'});
-  assert.ok(!h.cards[0].hidden);
   h.events.activated();
   assert.equal(h.clicks.checked,2);
-  h.checkCallbacks[1]('unsupported');
-  assert.equal(h.api.getStatus(),'unsupported');
-  assert.equal(h.api.actionMarkup().includes('hidden'),true);
 });
 
-test('older Telegram and ordinary browsers never invoke unsupported native API',()=>{
+test('old Telegram and browsers always offer honest manual installation instructions',()=>{
   for(const options of [{versionOk:false},{telegram:false}]){
     const h=harness(options);
     assert.equal(h.api.getStatus(),'unsupported');
-    assert.equal(h.api.actionMarkup(),'');
-    assert.equal(h.api.cardMarkup(),'');
+    assert.match(h.api.actionMarkup(),/Как сделать иконку/);
+    assert.match(h.api.cardMarkup(),/Как сделать иконку/);
+    assert.ok(!h.cards[0].hidden);
     assert.equal(h.clicks.checked,undefined);
-    assert.equal(h.click(),false);
-    assert.equal(h.clicks.added,undefined);
+    assert.equal(h.click(),true,'the visible button opens the manual guide');
+    assert.equal(h.clicks.added,undefined,'no unsupported native install calls');
+    assert.match(h.notices[0].textContent,/Open App/);
+    assert.match(h.notices[0].textContent,/удалите этот значок/);
   }
 });
 
-test('native installation errors do not interrupt page and explain the manual route',()=>{
+test('failed iOS native call or installation callback still explains the manual route',()=>{
   const h=harness({throwOnInstall:true});
   h.checkCallbacks[0]('missed');
   assert.equal(h.api.requestInstall(),false);
   assert.match(h.notices[0].textContent,/меню/);
+  assert.match(h.notices[0].textContent,/Open App/);
   assert.ok(!h.cards[0].hidden);
+  h.events.homeScreenFailed();
+  assert.match(h.notices[0].textContent,/Telegram не подтвердил/);
+});
+
+test('Telegram never invoking checkHomeScreenStatus callback does not block button',()=>{
+  const h=harness();
+  assert.equal(h.api.getStatus(),'checking');
+  assert.ok(h.cards.every(x=>!x.hidden));
+  assert.equal(h.click(),true);
+  assert.equal(h.clicks.added,1);
 });
 
 test('same shortcut appears in storefront and account selection for all roles',()=>{
-  assert.match(html,/data-hm-home-card hidden/);
+  assert.match(html,/class="hm-home-card" data-hm-home-card>/);
   assert.match(html,/data-hm-home-add/);
   assert.match(html,/src="\/miniapp-home-screen\.js"/);
   assert.match(html,/href="\/miniapp-home-screen\.css"/);
@@ -126,7 +135,7 @@ test('same shortcut appears in storefront and account selection for all roles',(
     assert.match(staff,new RegExp("role.*"+role));
   }
   assert.match(staff,/renderAll\(\)[\s\S]*?shortcutAction\(\)/);
-  assert.match(css,/\[data-hm-home-card\]\[hidden\]/);
+  assert.match(css,/white-space:pre-line/);
 });
 
 test('manifest uses the same existing Mini App entry and installed public icons',()=>{
