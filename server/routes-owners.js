@@ -302,12 +302,13 @@ function registerOwnerRoutes(router) {
     if (!owner) return sendJson(res, 404, { error: 'Не найдено' });
     if (!owner.point_id) return sendJson(res, 200, { noPoint: true, message: 'Вам ещё не назначена точка — обратитесь к администратору «Тайги».' });
 
-    const point = db.prepare('SELECT * FROM points WHERE id = ?').get(owner.point_id);
-    if (!point) return sendJson(res, 200, { noPoint: true, message: 'Назначенная вам точка не найдена — обратитесь к администратору.' });
+    const point = db.prepare('SELECT * FROM points WHERE id = ? AND active = 1').get(owner.point_id);
+    if (!point) return sendJson(res, 200, { noPoint: true, message: 'Назначенная вам точка удалена или отключена — обратитесь к администратору.' });
 
     const orders = db.prepare(`
       SELECT id, total, partner_id, commission_rate, is_partner_self_order, payment_method, created_at
       FROM orders WHERE point_id = ? AND status = 'paid'
+        AND COALESCE(refund_status, 'none') <> 'refunded'
       ORDER BY created_at DESC
     `).all(owner.point_id);
 
@@ -352,10 +353,19 @@ function registerOwnerRoutes(router) {
     };
 
     // Менеджер, курирующий эту точку (если назначен)
+    // Resolve the CURRENT assigned active manager from points.manager_id.
+    // manager_points also contains historical referral rows; an unchecked JOIN
+    // could show a former/other manager in the owner's private salon dashboard.
     const mgrPoint = db.prepare(`
-      SELECT mp.commission_rate, m.full_name, m.phone
-      FROM manager_points mp JOIN managers m ON m.id = mp.manager_id
-      WHERE mp.point_id = ?
+      SELECT m.full_name, m.phone, COALESCE(mp.commission_rate, 0.07) AS commission_rate
+      FROM points p
+      JOIN managers m ON m.id = p.manager_id AND m.active = 1
+      LEFT JOIN manager_points mp ON mp.id = (
+        SELECT mp2.id FROM manager_points mp2
+        WHERE mp2.point_id = p.id AND mp2.manager_id = m.id AND mp2.active = 1
+        ORDER BY mp2.id DESC LIMIT 1
+      )
+      WHERE p.id = ? AND p.active = 1
     `).get(owner.point_id);
     const manager = mgrPoint ? {
       full_name: mgrPoint.full_name,
