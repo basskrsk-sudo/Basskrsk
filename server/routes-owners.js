@@ -42,6 +42,8 @@ function registerOwnerRoutes(router) {
     // Менеджер может регистрировать владельца только на СВОЮ точку — админ,
     // как и раньше, может указать любую точку или вовсе оставить пустой.
     if (payload.role === 'manager') {
+      const activeManager = db.prepare('SELECT id FROM managers WHERE id = ? AND active = 1').get(payload.id);
+      if (!activeManager) return sendJson(res, 401, { error: 'Учётная запись менеджера отключена' });
       if (!point_id) return sendJson(res, 400, { error: 'Выберите точку' });
       const point = db.prepare('SELECT id, manager_id FROM points WHERE id = ? AND active = 1').get(point_id);
       if (!point) return sendJson(res, 400, { error: 'Точка с таким id не найдена' });
@@ -61,6 +63,17 @@ function registerOwnerRoutes(router) {
 
     const groomerLink = validateOwnerGroomer(point_id, groomer_partner_id);
     if (!groomerLink.valid) return sendJson(res, 400, { error: groomerLink.error });
+    // Manager linking an owner to a groomer must not accidentally connect
+    // somebody else's profile on the same salon. Such a link affects
+    // automatic checkout attribution and the combined Telegram cabinet.
+    if (payload.role === 'manager' && groomerLink.id) {
+      const groomer = db.prepare('SELECT phone FROM partners WHERE id = ? AND point_id = ? AND active = 1')
+        .get(groomerLink.id, point_id);
+      const digits = value => String(value || '').replace(/\D/g, '').slice(-10);
+      if (!groomer || digits(phone).length !== 10 || digits(phone) !== digits(groomer.phone)) {
+        return sendJson(res, 400, { error: 'Владелец и выбранный грумер должны иметь одинаковый номер телефона' });
+      }
+    }
     const info = db.prepare(`
       INSERT INTO salon_owners (login, password_hash, full_name, phone, point_id, groomer_partner_id, active)
       VALUES (?, ?, ?, ?, ?, ?, 1)
