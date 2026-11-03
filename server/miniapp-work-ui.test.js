@@ -236,6 +236,51 @@ test('admin metrics are sourced from live admin endpoints (not demo numbers)', a
   assert.equal(h.navigation[0], '/taiga-admin.html?from=miniapp');
 });
 
+
+test('admin counts only active non-hub minimarkets and subtracts all refunds', async () => {
+  const h=createHarness({
+    '/api/admin/me': {admin:{id:10,full_name:'Администратор',active:1,role:'admin'}},
+    '/api/points': {points:[
+      {id:'live',name:'БаркЛай',active:1,is_hub:0},
+      {id:'second',name:'Zveryuga',active:1,is_hub:0},
+      {id:'hub',name:'Служебная точка',active:1,is_hub:1},
+      {id:'disabled',name:'Груминг Пушок',active:0,is_hub:0},
+    ]},
+    '/api/orders?limit=100': {orders:[
+      {status:'paid',total:300,refund_status:'none',point_id:'live'},
+      {status:'paid',total:220,refund_status:'refunded',refunded_amount:220,point_id:'live'},
+      {status:'paid',total:160,refund_status:'refunded',refunded_amount:100,point_id:'second'},
+      {status:'pending',total:800,point_id:'live'},
+    ]},
+    '/api/operations-center': {summary:{total:0},issues:[]},
+  }, {taiga_admin_token:'admin-token'});
+  await h.window.HvostMiniAppWork.chooseRole('admin');
+  assert.match(h.root.innerHTML, /<small>Активных точек<\/small><strong>2<\/strong>/);
+  assert.match(h.root.innerHTML, /<small>Последние покупки<\/small><strong>2<\/strong>/);
+  assert.match(h.root.innerHTML, /<small>Выручка последних заказов<\/small><strong>360 ₽<\/strong>/);
+  assert.doesNotMatch(h.root.innerHTML, /<strong>1 480 ₽<\/strong>/);
+});
+
+test('manager Mini App excludes fully refunded and pending sales from its paid KPIs', async () => {
+ const h=createHarness({
+   '/api/managers/me':{manager:{id:50,active:1,full_name:'Перепадова Ангелина',
+     current_points:[{point_id:'real',point_name:'БаркЛай'}],
+     points:[{point_id:null,point_name:'Груминг Пушок'}],
+     commission_unpaid:0,launch_bonus_unpaid:0}},
+   '/api/managers/me/orders?days=30&limit=200':{orders:[
+     {status:'paid',total:300,refund_status:'none'},
+     {status:'paid',total:200,refund_status:'refunded',refunded_amount:200},
+     {status:'paid',total:160,refund_status:'refunded',refunded_amount:100},
+     {status:'pending',total:800},
+   ]},
+   '/api/managers/me/stock':{points:[]},
+ },{taiga_manager_token:'manager-token'});
+ await h.window.HvostMiniAppWork.chooseRole('manager');
+ assert.match(h.root.innerHTML, /<small>Мои точки<\/small><strong>1<\/strong>/);
+ assert.match(h.root.innerHTML, /<small>Продажи за 30 дней<\/small><strong>360 ₽<\/strong>/);
+ assert.doesNotMatch(h.root.innerHTML,/Груминг Пушок/);
+});
+
 test('invalid or inactive account does not reveal a dashboard', async () => {
   const h = createHarness({
     '/api/partners/me': { partner: { id: 9, full_name: 'Отключённый грумер', active: 0 } },
