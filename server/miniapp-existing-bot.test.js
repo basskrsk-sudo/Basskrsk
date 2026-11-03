@@ -115,7 +115,7 @@ test('only existing long-poller is started and Mini App routes are registered', 
   assert.match(server, /registerMiniAppRoutes\(router\)/);
   assert.match(poller, /\['setChatMenuButton', \{ menu_button: commandsMenuButton\(\) \}\]/);
   assert.doesNotMatch(poller, /\['setChatMenuButton', \{ menu_button: miniAppMenuButton\(\) \}\]/);
-  assert.match(poller, /miniAppInlineKeyboard\(\)/);
+  assert.match(poller, /miniAppInlineKeyboard\(\{ fresh: true \}\)/);
   assert.match(poller, /\/cabinet/);
   assert.match(poller, /\/shop/);
   assert.ok(!fs.existsSync(path.join(dir, 'customer-miniapp-bot.js')));
