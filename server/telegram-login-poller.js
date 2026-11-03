@@ -152,7 +152,7 @@ function buildWelcomeMessage() {
 }
 
 function botActionButtons(chatId) {
-  const keyboard = [...miniAppInlineKeyboard(), [
+  const keyboard = [...miniAppInlineKeyboard({ fresh: true }), [
     { text: '➕ Новая задача', callback_data: 'newtsk:start' },
     { text: '💳 Добавить трату', callback_data: 'expense:start' },
   ]];
@@ -983,7 +983,7 @@ async function processUpdate(update) {
       work
         ? '👤 Рабочие кабинеты ХвостМаркета. Подтвердите номер Telegram для входа без пароля или используйте логин и пароль сайта.'
         : '🛍 Магазин ХвостМаркета. Выберите салон, товары и оплачивайте покупки через ЮKassa.',
-      miniAppDirectLinkMarkup(work ? 'work' : 'shop')
+      miniAppDirectLinkMarkup(work ? 'work' : 'shop', { fresh: true })
     );
     return;
   }
