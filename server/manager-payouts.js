@@ -12,6 +12,7 @@ function getManagerUnpaidOrders(managerId) {
   // paid automatically. Existing payout snapshots are not modified.
   return db.prepare(`
     SELECT o.id, o.order_code, o.total, o.point_id, o.created_at,
+           o.refund_status, o.refunded_amount,
            p.name AS point_name,
            COALESCE((
              SELECT mp.commission_rate FROM manager_points mp
@@ -22,8 +23,6 @@ function getManagerUnpaidOrders(managerId) {
     JOIN points p ON p.id = o.point_id AND p.manager_id = ?
     LEFT JOIN manager_commission_payout_items pi ON pi.order_id = o.id
     WHERE o.status = 'paid' AND pi.id IS NULL
-      AND COALESCE(o.refund_status, 'none') <> 'refunded'
-      AND COALESCE(o.refunded_amount, 0) = 0
     ORDER BY o.created_at, o.id
   `).all(managerId).map((order) => ({
     ...order,
@@ -31,8 +30,18 @@ function getManagerUnpaidOrders(managerId) {
   }));
 }
 
+// A refund is held for administrative reconciliation. Keep such rows visible
+// to payout-brief.js, while excluding them from sums and actual transfer flows.
+function isManagerOrderPayable(order) {
+  return order.refund_status !== 'refunded' && Number(order.refunded_amount || 0) === 0;
+}
+
+function getManagerPayableOrders(managerId) {
+  return getManagerUnpaidOrders(managerId).filter(isManagerOrderPayable);
+}
+
 function getManagerUnpaidSummary(managerId) {
-  const orders = getManagerUnpaidOrders(managerId);
+  const orders = getManagerPayableOrders(managerId);
   return {
     amount: orders.reduce((sum, order) => sum + order.commission_amount, 0),
     revenue: orders.reduce((sum, order) => sum + Number(order.total || 0), 0),
@@ -59,7 +68,7 @@ function createManagerCommissionPayout(managerId, adminPayload) {
   try {
     const manager = db.prepare('SELECT id, full_name, mgr_code, inn FROM managers WHERE id = ?').get(managerId);
     if (!manager) throw Object.assign(new Error('Менеджер не найден'), { code: 'MANAGER_NOT_FOUND' });
-    const orders = getManagerUnpaidOrders(managerId);
+    const orders = getManagerPayableOrders(managerId);
     const amount = orders.reduce((sum, order) => sum + order.commission_amount, 0);
     if (!orders.length || amount <= 0) {
       throw Object.assign(new Error('У менеджера нет невыплаченного вознаграждения 7%'), { code: 'NOTHING_TO_PAY' });
@@ -137,6 +146,7 @@ module.exports = {
   createManagerLaunchBonusPayout,
   getLaunchBonusSummary,
   getManagerUnpaidOrders,
+  getManagerPayableOrders,
   getManagerUnpaidSummary,
   listManagerPayouts,
 };
