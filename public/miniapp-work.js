@@ -157,6 +157,7 @@
       '</div>' + (value == null ? '' : '<strong>' + esc(value) + '</strong>') + '</div>';
   }
   function openAll() {
+    clearGroomerPromos();
     if(window.HvostAdminWarehouse)window.HvostAdminWarehouse.close(true);
     activeRole = '';
     currentUser = null;
@@ -268,6 +269,17 @@
         Number(owner.groomer_partner_id) !== Number(partner.id)) return false;
     return true;
   }
+  function groomerPromoSection(partner) {
+    return window.HvostMiniAppPromos && window.HvostMiniAppPromos.section
+      ? window.HvostMiniAppPromos.section(partner, function () {
+          return (activeRole === 'partner' || activeRole === 'salon') &&
+            phoneRoleAvailable('partner') && !!getToken('partner');
+        }) : '';
+  }
+  function clearGroomerPromos() {
+    if (window.HvostMiniAppPromos && window.HvostMiniAppPromos.clear)
+      window.HvostMiniAppPromos.clear();
+  }
   function combinedSalonDashboard(partner, owner, ordersData, payoutData, stockData, salonData) {
     var orders = ordersData.orders || [];
     var payout = payoutData || {};
@@ -337,6 +349,7 @@
     return html;
   }
   async function chooseCombinedSalon() {
+    clearGroomerPromos();
     if (!phoneRoleAvailable('salon') || !identity || typeof identity.session !== 'function') {
       return openAll();
     }
@@ -398,6 +411,7 @@
     }
   }
   async function chooseRole(role) {
+    clearGroomerPromos();
     if(window.HvostAdminWarehouse)window.HvostAdminWarehouse.close(true);
     if (!phoneStatus().verified) { renderAll(); return; }
     if (role === 'salon') return chooseCombinedSalon();
