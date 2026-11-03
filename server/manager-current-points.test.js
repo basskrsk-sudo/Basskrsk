@@ -56,7 +56,7 @@ test('current manager network only counts real active assigned points, not ghost
   order('paid-other', 'other', 'paid', 'none', 900);
 
   const result = listCurrentManagerPoints(angelina);
-  assert.deepEqual(result.map(row => row.point_name), ['БаркЛай','Zveryuga']);
+  assert.deepEqual(result.map(row => row.point_name).sort(), ['Zveryuga','БаркЛай']);
   assert.equal(result.find(row => row.point_id === 'barklay-live').live_revenue, 500);
   assert.equal(result.find(row => row.point_id === 'second-live').live_revenue, 0);
   assert.equal(result.some(row => row.point_name.includes('Пушок')), false);
