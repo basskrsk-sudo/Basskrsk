@@ -1,12 +1,16 @@
-// unpaid-order-alerts.js — оперативные уведомления в служебный Telegram,
-// когда клиент не завершил оплату или платёж завершился ошибкой.
+// Оповещение ТОЛЬКО ответственного менеджера активной точки через минуту
+// после создания неоплаченного заказа. Не отправляем персональные данные в
+// общий служебный чат и не выбираем случайного исторического менеджера.
 'use strict';
 
 const db = require('./db');
-const { sendTelegram } = require('./telegram');
+const { sendToChat } = require('./telegram');
+const { connectedChatId, findManagerAndPoint } = require('./order-notifications');
 
-const configuredDelay = Number(process.env.UNPAID_ORDER_ALERT_MINUTES || 3);
-const ALERT_DELAY_MINUTES = Math.max(1, Math.min(30, Number.isFinite(configuredDelay) ? configuredDelay : 3));
+// The operational SLA is fixed: an old Amvera environment override must
+// never silently keep the historical 3-minute notification threshold.
+const ALERT_DELAY_MINUTES = 1;
+const POLL_INTERVAL_MS = 15 * 1000;
 
 function escapeHtml(value) {
   return String(value == null ? '' : value)
@@ -31,7 +35,7 @@ function getOrderWithItems(orderId) {
 function buildUnpaidOrderMessage(order, items, alertType, reason) {
   const heading = alertType === 'failed'
     ? '❌ <b>Платёж не состоялся — помогите клиенту</b>'
-    : '⚠️ <b>Заказ не оплачен ' + ALERT_DELAY_MINUTES + ' минуты</b>';
+    : '⚠️ <b>Заказ не оплачен 1 минуту</b>';
   const itemLines = items.map((item) =>
     '• ' + escapeHtml(item.name) + ' (' + escapeHtml(item.weight) + ') × ' + Number(item.qty || 0) +
     ' — ' + (Number(item.price || 0) * Number(item.qty || 0)) + ' ₽'
@@ -55,38 +59,69 @@ function buildUnpaidOrderMessage(order, items, alertType, reason) {
   return lines.join('\n');
 }
 
-async function sendUnpaidOrderAlert(orderId, alertType = 'pending', reason = null) {
+function responsibleManagerChat(order) {
+  if (!order || !order.point_id) return null;
+  const { manager, point } = findManagerAndPoint(order);
+  if (!point || point.active !== 1 || !manager || manager.active !== 1) return null;
+  const chatId = connectedChatId('manager', manager);
+  if (!chatId || !/^[1-9]\d{0,19}$/.test(String(chatId))) return null;
+  return String(chatId);
+}
+
+async function sendUnpaidOrderAlert(orderId, alertType = 'pending', reason = null, options = {}) {
   const data = getOrderWithItems(orderId);
   if (!data) return { ok: false, skipped: true, error: 'Заказ не найден' };
   const { order, items } = data;
 
-  // Предупреждение об ожидании уже не актуально, если заказ успел изменить
-  // статус между выборкой планировщика и фактической отправкой.
-  if (alertType === 'pending' && order.status !== 'pending') {
-    return { ok: false, skipped: true, error: 'Статус заказа уже изменился' };
-  }
+  // Payment can complete between scheduler selection and the actual send.
   if (order.status === 'paid') return { ok: false, skipped: true, error: 'Заказ уже оплачен' };
+  if (alertType === 'pending' && (order.status !== 'pending' ||
+      order.reservation_status !== 'active' ||
+      !db.prepare("SELECT 1 AS ok FROM orders WHERE id=? AND created_at <= datetime('now', '-1 minute')").get(order.id))) {
+    return { ok: false, skipped: true, error: 'Неоплаченный заказ ещё не требует напоминания' };
+  }
 
+  // A point's active primary manager wins. Legacy points are routed only
+  // when exactly one active manager is uniquely associated with the point.
+  // Never send an order's phone number to all managers or service TG_CHAT_ID.
+  const chatId = responsibleManagerChat(order);
+  if (!chatId) return { ok: false, skipped: true, error: 'У точки нет подключённого ответственного менеджера' };
+
+  // One alert per order/type even if the check overlaps or the server restarts.
   const reservation = db.prepare(`
     INSERT OR IGNORE INTO unpaid_order_alert_log (order_id, alert_type, reason, status)
     VALUES (?, ?, ?, 'pending')
   `).run(order.id, alertType, reason ? String(reason).slice(0, 500) : null);
   if (!reservation.changes) return { ok: false, skipped: true, error: 'Оповещение уже создавалось' };
 
+  // Do not publish information to an unrelated chat when assignment changes
+  // after the alert was reserved but before the async Telegram call.
+  const latestOrder = db.prepare('SELECT id, status, reservation_status, point_id FROM orders WHERE id=?').get(order.id);
+  const latestChat = latestOrder && responsibleManagerChat(latestOrder);
+  if (!latestOrder || latestOrder.status === 'paid' ||
+      (alertType === 'pending' && latestOrder.status !== 'pending') ||
+      latestChat !== chatId) {
+    db.prepare(`UPDATE unpaid_order_alert_log SET status='skipped', error=? WHERE order_id=? AND alert_type=?`)
+      .run('Статус заказа или ответственный менеджер изменился', order.id, alertType);
+    return { ok: false, skipped: true, error: 'Данные заказа изменились до отправки' };
+  }
+
   let result;
   try {
-    result = await sendTelegram(buildUnpaidOrderMessage(order, items, alertType, reason));
+    const send = options.sendToChat || sendToChat;
+    result = await send(chatId, buildUnpaidOrderMessage(order, items, alertType, reason));
   } catch (error) {
     result = { ok: false, error: error.message };
   }
   const ok = !!(result && result.ok);
-  const error = ok ? null : String((result && result.error) || (result && result.skipped ? 'Telegram не настроен' : 'Неизвестная ошибка')).slice(0, 500);
+  const error = ok ? null : String((result && result.error) ||
+    (result && result.skipped ? 'Telegram не настроен' : 'Неизвестная ошибка')).slice(0, 500);
   db.prepare(`
     UPDATE unpaid_order_alert_log
     SET status = ?, error = ?, sent_at = CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END
     WHERE order_id = ? AND alert_type = ?
   `).run(ok ? 'sent' : 'failed', error, ok ? 1 : 0, order.id, alertType);
-  return { ok, error };
+  return { ok, error, ...(ok ? { chat_id: chatId } : {}) };
 }
 
 function pendingOrderIds() {
@@ -94,17 +129,17 @@ function pendingOrderIds() {
     SELECT o.id FROM orders o
     LEFT JOIN unpaid_order_alert_log a ON a.order_id = o.id AND a.alert_type = 'pending'
     WHERE o.status = 'pending' AND o.reservation_status = 'active'
-      AND o.created_at <= datetime('now', '-' || ? || ' minutes')
+      AND o.created_at <= datetime('now', '-1 minute')
       AND o.created_at >= datetime('now', '-30 minutes')
       AND a.id IS NULL
     ORDER BY o.id
-  `).all(ALERT_DELAY_MINUTES).map((row) => row.id);
+  `).all().map((row) => row.id);
 }
 
-async function runUnpaidOrderAlertCheck() {
+async function runUnpaidOrderAlertCheck(options = {}) {
   const results = [];
   for (const orderId of pendingOrderIds()) {
-    results.push({ order_id: orderId, ...(await sendUnpaidOrderAlert(orderId, 'pending')) });
+    results.push({ order_id: orderId, ...(await sendUnpaidOrderAlert(orderId, 'pending', null, options)) });
   }
   return results;
 }
@@ -113,15 +148,20 @@ let schedulerStarted = false;
 function scheduleUnpaidOrderAlerts() {
   if (schedulerStarted) return;
   schedulerStarted = true;
-  const first = setTimeout(() => runUnpaidOrderAlertCheck().catch((error) => console.warn('Неоплаченные заказы: ошибка проверки:', error.message)), 15000);
-  const interval = setInterval(() => runUnpaidOrderAlertCheck().catch((error) => console.warn('Неоплаченные заказы: ошибка проверки:', error.message)), 60 * 1000);
+  const run = () => runUnpaidOrderAlertCheck().catch(
+    (error) => console.warn('Неоплаченные заказы: ошибка проверки:', error.message)
+  );
+  const first = setTimeout(run, 3000);
+  const interval = setInterval(run, POLL_INTERVAL_MS);
   if (typeof first.unref === 'function') first.unref();
   if (typeof interval.unref === 'function') interval.unref();
 }
 
 module.exports = {
   ALERT_DELAY_MINUTES,
+  POLL_INTERVAL_MS,
   buildUnpaidOrderMessage,
+  responsibleManagerChat,
   pendingOrderIds,
   runUnpaidOrderAlertCheck,
   scheduleUnpaidOrderAlerts,

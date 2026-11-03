@@ -244,4 +244,5 @@ module.exports = {
   buildPartnerMessage,
   buildManagerMessage,
   connectedChatId,
+  findManagerAndPoint,
 };
