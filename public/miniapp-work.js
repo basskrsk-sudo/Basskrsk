@@ -1135,6 +1135,273 @@
     })));
     return html;
   }
+  // Admin registrations use only active administrator credentials. The
+  // server independently validates every selected salon and role.
+  function adminRegisterAuthorized() {
+    return activeRole === 'admin' && !!currentUser &&
+      phoneRoleAvailable('admin') && !!getToken('admin');
+  }
+  function adminRegistrationChoicesHtml(items, blank) {
+    return '<option value="">' + esc(blank || '— Выберите —') + '</option>' +
+      (items || []).map(function(item) {
+        return '<option value="' + esc(item.id) + '">' + esc(item.name || item.full_name) +
+          (item.addr ? ' · ' + esc(item.addr) : '') + '</option>';
+      }).join('');
+  }
+  function adminGroomersForPoint(pointId) {
+    return ((adminRegistrationOptions && adminRegistrationOptions.groomers) || []).filter(function(g) {
+      return String(g.point_id) === String(pointId);
+    });
+  }
+  function updateAdminOwnerGroomerChoices() {
+    if (adminRegistrationKind !== 'owner' || !adminRegisterAuthorized()) return;
+    var pointField = document.getElementById('workAdminPersonPoint');
+    var select = document.getElementById('workAdminPersonGroomer');
+    if (!pointField || !select) return;
+    select.innerHTML = adminRegistrationChoicesHtml(
+      adminGroomersForPoint(pointField.value), 'Не связывать с карточкой грумера');
+  }
+  function renderAdminRegistration() {
+    if (!adminRegisterAuthorized() || !adminRegistrationKind) return;
+    var kind = adminRegistrationKind;
+    var captions = {
+      point: '📍 Новый минимаркет',
+      owner: '🏠 Новый владелец салона',
+      manager: '👤 Новый менеджер',
+      groomer: '✂️ Новый грумер',
+    };
+    var top = dashboardHeader('admin') +
+      '<button class="work-back" type="button" data-work-action="admin-reg-back">← В кабинет администратора</button>';
+    if (adminRegistrationMode === 'complete') {
+      var message = kind === 'point'
+        ? 'Минимаркет «' + esc(adminCreatedPointName) +
+          '» создан. Можно сразу зарегистрировать владельца и грумеров.'
+        : 'Новый пользователь зарегистрирован. Ему доступен вход по подтверждённому номеру телефона.';
+      var actions = kind === 'point'
+        ? '<button class="work-primary" type="button" data-work-action="admin-reg-groomer">✂️ Добавить грумера</button>' +
+          '<button class="work-secondary" type="button" data-work-action="admin-reg-owner">🏠 Добавить владельца</button>'
+        : '';
+      root.innerHTML = top + heading('✅ Регистрация выполнена', message) +
+        '<div class="work-action-bar">' + actions +
+        '<button class="work-secondary" type="button" data-work-action="admin-reg-repeat">➕ Зарегистрировать ещё</button>' +
+        '<button class="work-secondary" type="button" data-work-action="admin-reg-back">← В кабинет администратора</button></div>';
+      return;
+    }
+    if (!adminRegistrationOptions) {
+      root.innerHTML = top + problem('Не удалось получить актуальные точки и города. Повторите загрузку.') +
+        '<button type="button" class="work-secondary" data-work-action="admin-reg-retry">↻ Повторить</button>';
+      return;
+    }
+    var options = adminRegistrationOptions;
+    var cities = options.cities || [];
+    var points = kind === 'owner' ? options.owner_points || [] : options.points || [];
+    if ((kind === 'point' || kind === 'manager') && !cities.length) {
+      root.innerHTML = top + problem('Нет доступных городов. Добавьте город через полную админку.') +
+        '<button type="button" class="work-secondary" data-work-action="admin-reg-back">Назад</button>';
+      return;
+    }
+    if ((kind === 'owner' || kind === 'groomer') && !points.length) {
+      root.innerHTML = top + note('Нет подходящих действующих минимаркетов. Сначала создайте точку.') +
+        '<button class="work-primary" type="button" data-work-action="admin-reg-point">➕ Добавить минимаркет</button>';
+      return;
+    }
+    var cityHtml = adminRegistrationChoicesHtml(cities, '— Выберите город —');
+    var form = '';
+    if (kind === 'point') {
+      form = '<label class="work-register-label" for="workAdminPointName">Название салона *</label>' +
+        '<input class="work-register-input" id="workAdminPointName" type="text" maxlength="120" required placeholder="Название">' +
+        '<label class="work-register-label" for="workAdminPointCity">Город *</label>' +
+        '<select class="work-register-input" id="workAdminPointCity" required>' + cityHtml + '</select>' +
+        '<label class="work-register-label" for="workAdminPointAddr">Улица, номер дома *</label>' +
+        '<input class="work-register-input" id="workAdminPointAddr" type="text" maxlength="240" required placeholder="ул. Молокова, 40">' +
+        '<label class="work-register-label" for="workAdminPointManager">Ответственный менеджер</label>' +
+        '<select class="work-register-input" id="workAdminPointManager">' +
+        adminRegistrationChoicesHtml(options.managers || [], 'Пока не назначен') +
+        '</select>' +
+        '<label class="work-register-label" for="workAdminPointIcon">Значок (необязательно)</label>' +
+        '<input class="work-register-input" id="workAdminPointIcon" type="text" maxlength="8" placeholder="📍">' +
+        '<p class="work-note">Точка будет добавлена на карту после проверки адреса. Начальные остатки — 0. Менеджера можно выбрать сейчас.</p>';
+    } else {
+      if (kind === 'manager') {
+        form = '<label class="work-register-label" for="workAdminPersonCity">Город работы *</label>' +
+          '<select class="work-register-input" id="workAdminPersonCity" required>' + cityHtml + '</select>';
+      } else {
+        form = '<label class="work-register-label" for="workAdminPersonPoint">Минимаркет *</label>' +
+          '<select class="work-register-input" id="workAdminPersonPoint" required>' +
+          adminRegistrationChoicesHtml(points, '— Выберите минимаркет —') + '</select>';
+      }
+      form += '<label class="work-register-label" for="workAdminPersonName">Фамилия и имя *</label>' +
+        '<input class="work-register-input" id="workAdminPersonName" type="text" maxlength="120" required placeholder="Фамилия Имя">' +
+        '<label class="work-register-label" for="workAdminPersonPhone">Телефон *</label>' +
+        '<input class="work-register-input" id="workAdminPersonPhone" type="tel" autocomplete="tel" inputmode="tel" required placeholder="+7 999 123-45-67">' +
+        '<label class="work-register-label" for="workAdminPersonLogin">Логин *</label>' +
+        '<input class="work-register-input" id="workAdminPersonLogin" type="text" maxlength="80" required placeholder="Логин для полного кабинета">' +
+        '<label class="work-register-label" for="workAdminPersonPassword">Пароль *</label>' +
+        '<input class="work-register-input" id="workAdminPersonPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" required placeholder="От 6 символов">';
+      if (kind === 'manager') {
+        form += '<label class="work-register-label" for="workAdminPersonEmail">Электронная почта (необязательно)</label>' +
+          '<input class="work-register-input" id="workAdminPersonEmail" type="email" maxlength="120" placeholder="name@example.ru">';
+      } else if (kind === 'owner') {
+        form += '<label class="work-register-label" for="workAdminPersonGroomer">Если владелец также грумер</label>' +
+          '<select class="work-register-input" id="workAdminPersonGroomer">' +
+          '<option value="">Не связывать с грумером</option></select>' +
+          '<p class="work-note">Для объединения кабинетов выбирайте карточку этого же человека на той же точке с тем же номером телефона.</p>';
+      } else {
+        form += '<label class="work-register-label" for="workAdminPersonReferral">Код пригласившего (необязательно)</label>' +
+          '<input class="work-register-input" id="workAdminPersonReferral" type="text" maxlength="60" placeholder="GR-001 / OWN-001">';
+      }
+      form += '<label class="work-register-consent"><input id="workAdminConsent" type="checkbox" required>' +
+        '<span>Подтверждаю согласие человека на обработку персональных данных для регистрации в ХвостМаркет.</span></label>';
+    }
+    root.innerHTML = top + heading(captions[kind], 'Регистрация в действующей базе ХвостМаркета.') +
+      surface('Данные регистрации',
+        '<form id="workAdminRegistrationForm" class="work-register-form">' + form +
+        '<div id="workAdminRegStatus" role="status" aria-live="polite"></div>' +
+        '<button class="work-primary" type="submit" id="workAdminRegSubmit">' +
+          (kind === 'point' ? '➕ Создать минимаркет' : 'Зарегистрировать') + '</button></form>');
+    if (kind === 'owner') updateAdminOwnerGroomerChoices();
+    if (adminCreatedPointId && (kind === 'groomer' || kind === 'owner') &&
+        points.some(function(p) { return String(p.id) === adminCreatedPointId; })) {
+      document.getElementById('workAdminPersonPoint').value = adminCreatedPointId;
+      if (kind === 'owner') updateAdminOwnerGroomerChoices();
+    }
+    if (kind === 'point' && adminCreatedManagerId &&
+        (options.managers || []).some(function(m) { return String(m.id) === adminCreatedManagerId; })) {
+      document.getElementById('workAdminPointManager').value = adminCreatedManagerId;
+    }
+  }
+  async function openAdminRegistration(kind) {
+    if (!adminRegisterAuthorized() || !['point','owner','manager','groomer'].includes(kind)) return;
+    adminRegistrationKind = kind;
+    adminRegistrationMode = 'form';
+    adminRegistrationBusy = false;
+    adminRegistrationOptions = null;
+    var mySerial = serial;
+    root.innerHTML = dashboardHeader('admin') + note('Загружаем действующие точки, города и менеджеров…');
+    try {
+      var options = await fetchJSON('/api/miniapp/admin/registration-options', getToken('admin'));
+      if (mySerial !== serial || !adminRegisterAuthorized() ||
+          adminRegistrationKind !== kind || adminRegistrationMode !== 'form') return;
+      adminRegistrationOptions = options;
+      renderAdminRegistration();
+    } catch (err) {
+      if (mySerial !== serial || !adminRegisterAuthorized() || adminRegistrationKind !== kind) return;
+      if (err.status === 401) {
+        clearToken('admin');
+        adminRegistrationKind = '';
+        return renderLogin('Сессия администратора завершена. Войдите снова.');
+      }
+      adminRegistrationOptions = null;
+      renderAdminRegistration();
+    }
+  }
+  function adminRegistrationError(message) {
+    var status = document.getElementById('workAdminRegStatus');
+    if (status) status.innerHTML = problem(message);
+  }
+  async function submitAdminRegistration() {
+    if (!adminRegisterAuthorized() || !adminRegistrationOptions ||
+        adminRegistrationMode !== 'form' || adminRegistrationBusy) return;
+    var kind = adminRegistrationKind;
+    var opts = adminRegistrationOptions;
+    var get = function(id) { return document.getElementById(id); };
+    var body = {};
+    var url = '';
+    var name = '';
+    if (kind === 'point') {
+      name = String(get('workAdminPointName').value || '').trim().replace(/\s+/g,' ');
+      var addr = String(get('workAdminPointAddr').value || '').trim().replace(/\s+/g,' ');
+      var city = String(get('workAdminPointCity').value || '');
+      var managerId = String(get('workAdminPointManager').value || '');
+      var icon = String(get('workAdminPointIcon').value || '').trim();
+      if (name.length < 2 || name.length > 120 || addr.length < 5 || addr.length > 240)
+        return adminRegistrationError('Введите название (2–120 символов) и адрес с номером дома.');
+      if (!(opts.cities || []).some(function(c) { return String(c.id) === city; }))
+        return adminRegistrationError('Выберите действующий город.');
+      if (managerId && !(opts.managers || []).some(function(m) { return String(m.id) === managerId; }))
+        return adminRegistrationError('Выберите действующего менеджера из списка.');
+      if (icon.length > 8) return adminRegistrationError('Слишком длинный значок.');
+      body = { name:name, addr:addr, city_id:city, icon:icon || '📍' };
+      if (managerId) body.manager_id = Number(managerId);
+      url = '/api/points';
+    } else {
+      name = String(get('workAdminPersonName').value || '').trim();
+      var phone = String(get('workAdminPersonPhone').value || '').trim();
+      var login = String(get('workAdminPersonLogin').value || '').trim();
+      var password = String(get('workAdminPersonPassword').value || '');
+      var digits = phone.replace(/\D/g, '');
+      if (name.length < 3 || name.length > 120 || login.length < 3 ||
+          password.length < 6 || password.length > 128)
+        return adminRegistrationError('Укажите ФИО, логин от 3 символов и пароль от 6 символов.');
+      if (!(digits.length === 10 || digits.length === 11 && /^[78]/.test(digits)))
+        return adminRegistrationError('Проверьте номер телефона.');
+      if (!get('workAdminConsent').checked)
+        return adminRegistrationError('Необходимо получить согласие человека на обработку персональных данных.');
+      body = {full_name:name, phone:phone, login:login, password:password};
+      if (kind === 'manager') {
+        var managerCity = String(get('workAdminPersonCity').value || '');
+        if (!(opts.cities || []).some(function(c) { return String(c.id) === managerCity; }))
+          return adminRegistrationError('Выберите город работы менеджера.');
+        body.city_id = managerCity;
+        var email = String(get('workAdminPersonEmail').value || '').trim();
+        if (email) body.email = email;
+        url = '/api/managers';
+      } else {
+        var pointId = String(get('workAdminPersonPoint').value || '');
+        var allowedPoints = kind === 'owner' ? opts.owner_points || [] : opts.points || [];
+        if (!allowedPoints.some(function(p) { return String(p.id) === pointId; }))
+          return adminRegistrationError('Выберите действующий минимаркет.');
+        body.point_id = pointId;
+        if (kind === 'owner') {
+          var linked = String(get('workAdminPersonGroomer').value || '');
+          if (linked) {
+            if (!adminGroomersForPoint(pointId).some(function(g) { return String(g.id) === linked; }))
+              return adminRegistrationError('Грумер не относится к выбранному минимаркету.');
+            body.groomer_partner_id = Number(linked);
+          }
+          url = '/api/salon-owners';
+        } else {
+          body.personal_data_consent = true;
+          var referral = String(get('workAdminPersonReferral').value || '').trim();
+          if (referral) body.referral_code = referral;
+          url = '/api/miniapp/admin/register-groomer';
+        }
+      }
+    }
+    adminRegistrationBusy = true;
+    var button = get('workAdminRegSubmit');
+    button.disabled = true;
+    get('workAdminRegStatus').innerHTML = note('Сохраняем в системе ХвостМаркет…');
+    var mySerial = serial;
+    try {
+      var result = await fetchJSON(url,getToken('admin'),{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body),
+      });
+      if (mySerial !== serial || !adminRegisterAuthorized() ||
+          adminRegistrationKind !== kind || adminRegistrationMode !== 'form') return;
+      if (kind === 'point') {
+        if (!result.id) throw new Error('Сервер не вернул идентификатор точки. Проверьте реестр.');
+        adminCreatedPointId = String(result.id);
+        adminCreatedPointName = name;
+      }
+      if (kind === 'manager' && result.id) adminCreatedManagerId = String(result.id);
+      adminRegistrationMode = 'complete';
+      renderAdminRegistration();
+    } catch (err) {
+      if (mySerial !== serial || !adminRegisterAuthorized() ||
+          adminRegistrationKind !== kind || adminRegistrationMode !== 'form') return;
+      if (err.status === 401) {
+        clearToken('admin');
+        adminRegistrationKind = '';
+        return renderLogin('Сессия администратора завершена. Войдите снова.');
+      }
+      adminRegistrationError(err.message || 'Не удалось сохранить запись.');
+      button.disabled = false;
+    } finally {
+      adminRegistrationBusy = false;
+    }
+  }
   function adminDashboard(data) {
     var allPoints = data[0] && data[0].points || [];
     // Match the founder network counter: only current, non-hub minimarkets.
