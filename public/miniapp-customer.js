@@ -17,7 +17,9 @@
   var enteredPhone = '';
   var confirmingPhone = false;
   var notificationSettingsOpen = false;
+  var customerDetailsOpen = false;
   var ROLE_LABELS = {
+    customer: '🐾 Мои покупки и косточки',
     salon: '✂️🏠 Мой салон и продажи',
     partner: '✂️ Грумер', manager: '🗂️ Менеджер',
     owner: '🏠 Владелец салона', founder: '👑 Собственник ХвостМаркета',
@@ -47,8 +49,9 @@
     return '<button type="button" class="btn ' + (secondary ? 'btn-light' : 'btn-gold') +
       '" data-customer-action="' + name + '">' + label + '</button>';
   }
-  function heading() {
-    return '<h1 class="page-title">Кабинет покупателя 🐾</h1>';
+  function heading(details) {
+    return '<h1 class="page-title">' +
+      (details ? 'Кабинет покупателя' : 'Ваш ХвостМаркет') + ' 🐾</h1>';
   }
   function accessibleCabinets(status) {
     if (!status.verified) return '';
@@ -63,8 +66,8 @@
         roles.filter(function(a) { return a.role !== 'partner' && a.role !== 'owner'; })
       );
     }
-    if (!roles.length) return '';
-    return '<div class="block"><h3 style="margin:0 0 8px">Ваши другие кабинеты</h3>' +
+    if (!roles.length) return '<div class="block"><p class="muted">По этому номеру пока нет зарегистрированных кабинетов. Магазин доступен без регистрации.</p></div>';
+    return '<div class="block"><h3 style="margin:0 0 8px">Ваши кабинеты</h3>' +
       '<p class="muted" style="font-size:12px">Найдены по подтверждённому номеру Telegram:</p>' +
       '<div class="customer-role-links">' + roles.map(function(a) {
         return '<button class="customer-role-link" type="button" data-customer-action="choose-role" ' +
@@ -91,8 +94,8 @@
       var reason = status.error || window.HvostTelegramContext.unavailableMessage();
       content += '<div class="block customer-entry"><h3>⚠️ Не удалось проверить вход через Telegram</h3>' +
         error(reason) +
-        '<p class="hint">Вернитесь в чат ХвостМаркет и нажмите кнопку «Открыть рабочие кабинеты». ' +
-        'Если повторяется, отправьте боту /cabinet, откройте новую кнопку и ' +
+        '<p class="hint">Вернитесь в чат ХвостМаркет и нажмите кнопку «Открыть ХвостМаркет». ' +
+        'Если повторяется, отправьте боту /app, откройте новую кнопку и ' +
         'передайте администратору код TG-01 или TG-02, указанный выше.</p>' +
         '<button type="button" class="btn btn-gold" data-customer-action="retry-telegram">' +
         '↻ Повторить проверку Telegram</button></div>';
@@ -117,14 +120,13 @@
     } else {
       content += '<div class="block"><h3>✅ Номер проверен</h3>' +
         '<p class="ok">Подтверждён: ' + esc(status.phoneMasked) + '</p>' +
-        '<p class="muted" style="font-size:12px">По этому номеру пока не найден кабинет покупателя. ' +
-        'Магазином можно пользоваться без регистрации.</p>' +
-        ((status.ambiguousRoles || []).includes('customer')
-          ? error('На этот номер записаны несколько клиентских профилей. Обратитесь к администратору для объединения.') : '') +
+        '<p class="muted" style="font-size:12px">Выберите, что хотите открыть. Система показывает только подтверждённые регистрации.</p>' +
+        ((status.ambiguousRoles || []).length
+          ? error('Для некоторых ролей найдено несколько регистраций. Обратитесь к администратору, чтобы уточнить привязку.') : '') +
         '</div>' + accessibleCabinets(status);
     }
     content += '<div class="block"><button type="button" class="btn btn-light" data-customer-action="open-shop">' +
-      '🛍 Перейти в магазин без входа</button></div>';
+      '🛍 Открыть магазин</button></div>';
     return content + shortcutAction();
   }
   function secureFetch(path, token) {
@@ -157,7 +159,8 @@
     var bones = data.bones || {};
     var name = [customer.name, customer.lname].filter(Boolean).join(' ') ||
       (currentUser && currentUser.first_name) || 'Покупатель';
-    var html = heading() +
+    var html = heading(true) +
+      '<button type="button" class="btn btn-light" style="margin-bottom:12px" data-customer-action="all-roles">← Все мои возможности</button>' +
       '<div class="block profile-hero">' + avatar(name) +
       '<p>✅ Телефон подтверждён: ' + esc(identity.getStatus().phoneMasked) + '</p>' +
       (customer.pet_name ? '<p style="margin-top:10px">🐶 ' + esc(customer.pet_name) + '</p>' : '') +
@@ -173,7 +176,7 @@
           esc(Number(t.amount) > 0 ? '+' + t.amount : String(t.amount)) + '</strong></div>';
       }).join('') || '<p class="muted" style="font-size:12px">Операций пока нет</p>' :
         '<p class="muted" style="font-size:12px">Не удалось загрузить операции</p>') +
-      '</div>' + accessibleCabinets(identity.getStatus()) +
+      '</div>' +
       action('notifications', '🔔 Настройки уведомлений', true) +
       shortcutAction() +
       action('refresh', '↻ Обновить мой кабинет', true) +
@@ -186,7 +189,7 @@
     if (pending) return;
     var myGeneration = ++generation;
     pending = true;
-    root.innerHTML = heading() + '<div class="block profile-hero"><div class="avatar">🐾</div><h2>Подключаем ваш кабинет</h2><p>Загружаем покупки и баланс косточек…</p></div>';
+    root.innerHTML = heading(true) + '<div class="block profile-hero"><div class="avatar">🐾</div><h2>Подключаем ваш кабинет</h2><p>Загружаем покупки и баланс косточек…</p></div>';
     identity.session('customer').then(function(session) {
       return Promise.allSettled([
         secureFetch('/api/customer/me', session.token),
@@ -206,7 +209,7 @@
     }).catch(function(err) {
       if (myGeneration !== generation) return;
       if (!root.classList.contains('hide')) {
-        root.innerHTML = heading() + '<div class="block">' +
+        root.innerHTML = heading(true) + '<div class="block">' +
           error(err.message) + action('refresh', 'Повторить вход') + '</div>';
       }
     }).finally(function() {
@@ -214,10 +217,13 @@
     });
   }
   function render(user, signed) {
+    if (currentUser && user && currentUser.id && user.id && currentUser.id !== user.id) customerDetailsOpen = false;
     currentUser = user || null;
     isTelegramSigned = !!signed;
     var status = identity.getStatus();
-    if (!signed || !status.verified || !status.accounts.some(function(a) { return a.role === 'customer'; })) {
+    if (!status.verified) customerDetailsOpen = false;
+    if (!signed || !status.verified || !customerDetailsOpen ||
+        !status.accounts.some(function(a) { return a.role === 'customer'; })) {
       cached = null;
       root.innerHTML = heading() + renderIdentityPrompt(status);
       return;
@@ -255,18 +261,30 @@
       return;
     }
     if (btn.dataset.customerAction === 'open-shop') {
+      customerDetailsOpen = false;
       if (window.HvostMiniAppGoShop) window.HvostMiniAppGoShop();
+      return;
+    }
+    if (btn.dataset.customerAction === 'all-roles') {
+      customerDetailsOpen = false;
+      render(currentUser, isTelegramSigned);
       return;
     }
     if (btn.dataset.customerAction === 'choose-role') {
       var role = btn.dataset.customerRole;
       var status = identity.getStatus();
-      if (status.verified &&
-          (status.accounts.some(function(a) { return a.role === role; }) ||
-            (role === 'salon' && status.combinedSalon &&
-              status.accounts.some(function(a) { return a.role === 'partner'; }) &&
-              status.accounts.some(function(a) { return a.role === 'owner'; }))) &&
-          window.HvostMiniAppOpenRole) window.HvostMiniAppOpenRole(role);
+      var authorized = !!(status.verified &&
+        (status.accounts.some(function(a) { return a.role === role; }) ||
+          (role === 'salon' && status.combinedSalon &&
+            status.accounts.some(function(a) { return a.role === 'partner'; }) &&
+            status.accounts.some(function(a) { return a.role === 'owner'; }))));
+      if (!authorized) return;
+      if (role === 'customer') {
+        customerDetailsOpen = true;
+        render(currentUser, isTelegramSigned);
+      } else if (window.HvostMiniAppOpenRole) {
+        window.HvostMiniAppOpenRole(role);
+      }
       return;
     }
     if (btn.dataset.customerAction === 'share') {
@@ -300,5 +318,8 @@
   identity.onChange(function() {
     if (!notificationSettingsOpen && !root.classList.contains('hide')) render(currentUser, isTelegramSigned);
   });
-  window.HvostMiniAppCustomer = { render: render };
+  window.HvostMiniAppCustomer = {
+    render: render,
+    showChoices: function() { customerDetailsOpen = false; render(currentUser, isTelegramSigned); },
+  };
 })();
