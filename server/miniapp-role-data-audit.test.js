@@ -83,10 +83,10 @@ test('owner and combined salon only use an active real salon, current manager an
   db.prepare('INSERT INTO manager_points(manager_id,point_id,point_name,point_type,commission_rate) VALUES (?,?,?,?,?)')
     .run(current,'owner-live','Устаревшее название','Груминг',0.07);
 
-  order('OWN-LIVE-PAID','79131234567','owner-live',null,1000);
-  order('OWN-LIVE-FULL-RETURN','79131234567','owner-live',null,500,'paid','refunded',500);
-  order('OWN-LIVE-PARTIAL','79131234567','owner-live',null,700,'paid','refunded',200);
-  order('OWN-LIVE-PENDING','79131234567','owner-live',null,300,'pending');
+  order('OWN-LIVE-PAID','79135554444','owner-live',null,1000);
+  order('OWN-LIVE-FULL-RETURN','79135554444','owner-live',null,500,'paid','refunded',500);
+  order('OWN-LIVE-PARTIAL','79135554444','owner-live',null,700,'paid','refunded',200);
+  order('OWN-LIVE-PENDING','79135554444','owner-live',null,300,'pending');
 
   const dashboard = call('GET','/api/owner/dashboard','owner',liveOwner);
   assert.equal(dashboard.status,200);
