@@ -275,7 +275,17 @@ function registerProductRoutes(router) {
   router.post('/api/points', async (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
     if (!payload) return;
-    const { name, addr, icon, lat, lng, city_id } = ctx.body || {};
+    let { name, addr, icon, lat, lng, city_id } = ctx.body || {};
+    if (typeof name !== 'string' || typeof addr !== 'string') {
+      return sendJson(res, 400, { error: 'Укажите название и адрес точки' });
+    }
+    name = name.trim().replace(/\s+/g, ' ');
+    addr = addr.trim().replace(/\s+/g, ' ');
+    if (name.length < 2 || name.length > 120 || addr.length < 5 || addr.length > 240) {
+      return sendJson(res, 400, {
+        error: 'Название: 2–120 символов, адрес: 5–240 символов',
+      });
+    }
     // Менеджер может создавать точки только на СЕБЯ — даже если в теле
     // запроса как-то оказался чужой manager_id, игнорируем его полностью.
     // Так не получится случайно (или намеренно) завести точку на другого
@@ -296,6 +306,25 @@ function registerProductRoutes(router) {
       managerRow = db.prepare('SELECT id FROM managers WHERE id = ? AND active = 1').get(manager_id);
       if (!managerRow) return sendJson(res, 400, { error: 'Менеджер не найден или неактивен' });
     }
+
+    // Do not let a second submit (or another client) create a "name-2"
+    // duplicate for the same salon address. Keep different salons sharing
+    // one building possible: both name AND city/address must match.
+    // Include archived points, so reactivation remains an admin decision.
+    const normalizeDuplicateText = value => String(value || '')
+      .normalize('NFKC').toLocaleLowerCase('ru-RU')
+      .replace(/[.,;]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const duplicateName = normalizeDuplicateText(name);
+    const duplicateAddress = normalizeDuplicateText(addr);
+    const existingPoint = db.prepare(
+      'SELECT id,name,addr FROM points WHERE city_id = ?'
+    ).all(city_id).find(point =>
+      normalizeDuplicateText(point.name) === duplicateName &&
+      normalizeDuplicateText(point.addr) === duplicateAddress
+    );
+    if (existingPoint) return sendJson(res, 409, {
+      error: 'Минимаркет с таким названием и адресом уже зарегистрирован. Проверьте список точек.',
+    });
 
     const { slugify } = require('./routes-warehouse');
     let base = slugify(name);
