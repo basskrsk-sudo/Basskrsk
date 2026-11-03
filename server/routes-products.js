@@ -371,6 +371,16 @@ function registerProductRoutes(router) {
       }
     }
 
+    // Recheck after asynchronous geocoding: two simultaneous requests could
+    // have passed the initial check before either stored its new point.
+    if (db.prepare('SELECT id,name,addr FROM points WHERE city_id = ?').all(city_id)
+      .some(point => normalizeDuplicateText(point.name) === duplicateName &&
+        normalizeDuplicateText(point.addr) === duplicateAddress)) {
+      return sendJson(res, 409, {
+        error: 'Минимаркет уже зарегистрирован. Обновите список точек.',
+      });
+    }
+
     db.prepare('INSERT INTO points (id, name, addr, icon, lat, lng, city_id, manager_id, is_hub, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)')
       .run(candidate, name, addr, icon || '📍', pointLat, pointLng, city_id, manager_id || null);
 
