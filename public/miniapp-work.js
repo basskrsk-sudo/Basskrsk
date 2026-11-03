@@ -1516,6 +1516,15 @@
       if (activeRole) chooseRole(activeRole);
       else renderAll();
     });
+    if (action === 'admin-reg-point' && activeRole === 'admin') return openAdminRegistration('point');
+    if (action === 'admin-reg-owner' && activeRole === 'admin') return openAdminRegistration('owner');
+    if (action === 'admin-reg-manager' && activeRole === 'admin') return openAdminRegistration('manager');
+    if (action === 'admin-reg-groomer' && activeRole === 'admin') return openAdminRegistration('groomer');
+    if (action === 'admin-reg-repeat' && activeRole === 'admin' && adminRegistrationKind)
+      return openAdminRegistration(adminRegistrationKind);
+    if (action === 'admin-reg-retry' && activeRole === 'admin' && adminRegistrationKind)
+      return openAdminRegistration(adminRegistrationKind);
+    if (action === 'admin-reg-back' && activeRole === 'admin') return chooseRole('admin');
     if (action === 'manager-point-new' && activeRole === 'manager') return openManagerNewPoint();
     if (action === 'manager-point-retry' && activeRole === 'manager' && managerNewPointMode === 'form')
       return openManagerNewPoint();
@@ -1577,10 +1586,16 @@
       e.preventDefault();
       return submitManagerNewPoint();
     }
+    if (e.target.id === 'workAdminRegistrationForm') {
+      e.preventDefault();
+      return submitAdminRegistration();
+    }
   });
   root.addEventListener('change', function(e) {
     if (activeRole === 'manager' && managerRegistrationKind === 'owner' &&
         e.target && e.target.id === 'workRegPoint') updateOwnerGroomerChoices();
+    if (activeRole === 'admin' && adminRegistrationKind === 'owner' &&
+        e.target && e.target.id === 'workAdminPersonPoint') updateAdminOwnerGroomerChoices();
   });
   if (identity) identity.onChange(function(state) {
     if (!state.verified || (activeRole === 'salon' && !state.combinedSalon)) return openAll();
