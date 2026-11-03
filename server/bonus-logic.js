@@ -87,15 +87,19 @@ async function checkAndPayManagerBonus(pointId) {
   const profitSoFar = computePointProfitSoFar(pointId, partner ? partner.commission_rate : 0, mgrPoint.commission_rate);
   if (profitSoFar < LAUNCH_BONUS) return; // точка ещё не "окупила" бонус
 
-  // Грумера на этой точке мог привести другой грумер ИЛИ владелец салона по
-  // своему коду — проверяем оба варианта (в базе заполнено не больше одного
-  // из двух полей, форма регистрации принимает только один код за раз).
-  const groomerReferrer = partner && partner.referred_by_partner_id
-    ? db.prepare('SELECT * FROM partners WHERE id = ?').get(partner.referred_by_partner_id)
-    : null;
-  const ownerReferrer = partner && partner.referred_by_owner_id
-    ? db.prepare('SELECT * FROM salon_owners WHERE id = ?').get(partner.referred_by_owner_id)
-    : null;
+  // A point acquired through a referral link has a locked recipient already
+  // when the point was created. Do not let subsequent groomers overwrite it.
+  const locked = require('./referral-program').storedReferral(pointId);
+  const groomerReferrer = locked
+    ? locked.role==='partner'
+      ? db.prepare('SELECT * FROM partners WHERE id=?').get(locked.recipient_id) : null
+    : partner && partner.referred_by_partner_id
+      ? db.prepare('SELECT * FROM partners WHERE id=?').get(partner.referred_by_partner_id) : null;
+  const ownerReferrer = locked
+    ? locked.role==='owner'
+      ? db.prepare('SELECT * FROM salon_owners WHERE id=?').get(locked.recipient_id) : null
+    : partner && partner.referred_by_owner_id
+      ? db.prepare('SELECT * FROM salon_owners WHERE id=?').get(partner.referred_by_owner_id) : null;
   const hasReferrer = !!(groomerReferrer || ownerReferrer);
 
   const managerAmount = hasReferrer ? REFERRAL_SPLIT : LAUNCH_BONUS;
