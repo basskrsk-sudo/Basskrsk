@@ -67,8 +67,8 @@ salon('own-hub',managerId,1,1);
 salon('foreign-live',otherManagerId);
 salon('blocked-manager',inactiveManagerId);
 createOwnerDirect('taken','own-taken','79130000012');
-const existingGroomerId=groomer('GR-EXIST','own-live','79131112233');
-groomer('GR-FOREIGN','foreign-live','79139998877');
+const existingGroomerId=groomer('GR-001','own-live','79131112233');
+groomer('GR-002','foreign-live','79139998877');
 db.prepare('INSERT INTO manager_points(manager_id,point_id,point_name,point_type) VALUES(?,?,?,?)')
   .run(managerId,null,'Груминг Пушок','Груминг');
 
