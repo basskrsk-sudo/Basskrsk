@@ -1295,6 +1295,16 @@
       renderAdminRegistration();
     }
   }
+  function closeAdminRegistration() {
+    if (!adminRegisterAuthorized()) return;
+    adminRegistrationKind = '';
+    adminRegistrationMode = '';
+    adminRegistrationOptions = null;
+    adminRegistrationBusy = false;
+    // Refresh the live dashboard without logging out or discarding the newly
+    // created manager/point selection within this authenticated admin session.
+    return loadDashboard('admin', serial, getToken('admin'));
+  }
   function adminRegistrationError(message) {
     var status = document.getElementById('workAdminRegStatus');
     if (status) status.innerHTML = problem(message);
@@ -1524,7 +1534,7 @@
       return openAdminRegistration(adminRegistrationKind);
     if (action === 'admin-reg-retry' && activeRole === 'admin' && adminRegistrationKind)
       return openAdminRegistration(adminRegistrationKind);
-    if (action === 'admin-reg-back' && activeRole === 'admin') return chooseRole('admin');
+    if (action === 'admin-reg-back' && activeRole === 'admin') return closeAdminRegistration();
     if (action === 'manager-point-new' && activeRole === 'manager') return openManagerNewPoint();
     if (action === 'manager-point-retry' && activeRole === 'manager' && managerNewPointMode === 'form')
       return openManagerNewPoint();
