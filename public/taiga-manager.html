@@ -395,12 +395,12 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-label">Residual (7%)</div>
+          <div class="kpi-label">Начислено за период (7%)</div>
           <div class="kpi-value" style="color:var(--amber)" id="h-residual">—</div>
           <div class="kpi-delta delta-up" id="h-residual-d"></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">Бонусов за запуск</div>
+          <div class="kpi-label">Бонусы к выплате</div>
           <div class="kpi-value" id="h-bonus">—</div>
           <div class="kpi-delta" id="h-bonus-d"></div>
         </div>
@@ -410,7 +410,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <div class="kpi-delta" id="h-active-d"></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">К выплате</div>
+          <div class="kpi-label">К выплате (всего)</div>
           <div class="kpi-value" style="color:var(--deep)" id="h-payout">—</div>
           <div class="kpi-delta" id="h-payout-d"></div>
         </div>
@@ -537,12 +537,12 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           (<span data-next-payout-countdown></span>)<br>
           График: 9-го и 24-го числа каждого месяца
         </div>
-        <button class="payout-btn" onclick="requestPayout()">Запросить выплату</button>
+        <button class="payout-btn" onclick="requestPayout()">Как получить выплату</button>
       </div>
 
       <div class="grid-2" style="margin-bottom:1rem;">
         <div class="card">
-          <div class="card-title">Структура дохода <span id="earn-period-label"></span></div>
+          <div class="card-title">Структура невыплаченных начислений <span id="earn-period-label"></span></div>
           <div style="position:relative;height:180px;"><canvas id="chartEarnBreak"></canvas></div>
         </div>
         <div class="card">
@@ -564,7 +564,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       </div>
 
       <div class="card">
-        <div class="card-title">История начислений <span id="earn-hist-count"></span></div>
+        <div class="card-title">Начисления по точкам <span id="earn-hist-count"></span></div>
         <table class="tbl">
           <thead>
             <tr>
@@ -885,6 +885,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 let MY_POINTS = [];
+let MY_LIVE_POINTS = [];
 let myManagerId = null;
 let myManagerCityId = null;
 let currentManagerUser = null;
@@ -892,7 +893,12 @@ let currentManagerUser = null;
 async function loadMyPoints() {
   const res = await authFetch('/api/managers/me');
   const data = await res.json();
-  const pts = (data.manager && data.manager.points) || [];
+  if (!res.ok || !data.manager) throw new Error('Не удалось загрузить данные менеджера');
+  // The operative network is authoritative points, NOT manager_points history.
+  MY_LIVE_POINTS = (data.manager.current_points || []).map(p => ({
+    pointId:p.point_id, name:p.point_name, addr:p.point_addr || '',
+  }));
+  const pts = data.manager.points || [];
   MY_POINTS = pts.map(p => ({
     pointId: p.point_id || null,
     name: p.point_name,
@@ -2294,76 +2300,85 @@ async function submitStockMovement() {
   await renderRestock();
 }
 
+// All payout amounts share one server-side ledger and are fetched on demand.
+async function fetchManagerCompensation(days) {
+  const response = await authFetch('/api/managers/me/compensation?days=' + days);
+  const data = await response.json();
+  if (!response.ok || !data || typeof data.total_unpaid !== 'number') {
+    throw new Error(data.error || 'Не удалось загрузить расчёт вознаграждения');
+  }
+  return data;
+}
+function managerHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
 // ── HOME ─────────────────────────────────────────────────────────────
 async function renderHome(){
   await loadNews();
   await renderNewsList();
-  const days=periodDays();
-  const {labels,earn} = await (async () => {
-    try {
-      const res = await authFetch('/api/managers/me/daily-residual?days=' + days);
-      const data = await res.json();
-      return { labels: data.labels, earn: data.earn };
-    } catch (e) {
-      console.error('Не удалось загрузить график по дням:', e);
-      return { labels: [], earn: [] };
-    }
-  })();
-  // Точки, у которых point_id стал null (администратор удалил саму точку,
-  // но запись в manager_points осталась — там хранится история: сколько
-  // бонуса уже выплачено, сколько выручки принесла точка за всё время).
-  // Для "текущих, с чем можно работать" точек эту историю не показываем —
-  // иначе удалённая точка выглядела бы так, будто она всё ещё привязана.
-  // Для лайфтайм-сумм (бонусы, когда-либо выплаченные) историю оставляем —
-  // деньги реально были получены, это не должно пропадать из статистики.
-  const LIVE_POINTS = MY_POINTS.filter(p => p.pointId);
-  const activePts=LIVE_POINTS.filter(p=>p.status==='active');
-  const totalRev=activePts.reduce((s,p)=>s+p.rev,0);
-  const residual=Math.round(activePts.reduce((s,p)=>s+p.rev*p.rate,0));
-  const bonuses=MY_POINTS.filter(p=>p.bonusPaid).reduce((sum,p)=>sum+p.bonusAmount,0);
-  const payout=residual+bonuses;
+  const days = periodDays();
+  let overview = null;
+  try { overview = await fetchManagerCompensation(days); }
+  catch (error) { console.error('Не удалось загрузить вознаграждение:', error); }
+  if (currentSec !== 'home' || periodDays() !== days) return;
 
-  document.getElementById('h-residual').textContent=residual.toLocaleString('ru-RU')+' ₽';
-  document.getElementById('h-residual-d').textContent='↑ +8% к пред. периоду';
-  document.getElementById('h-bonus').textContent=bonuses.toLocaleString('ru-RU')+' ₽';
-  document.getElementById('h-bonus-d').innerHTML='<span style="color:var(--muted)">'+MY_POINTS.filter(p=>p.bonusPaid).length+' бонусов выплачено</span>';
-  document.getElementById('h-active').textContent=activePts.length+' из '+LIVE_POINTS.length;
-  document.getElementById('h-active-d').innerHTML='<span style="color:var(--amber)">'+LIVE_POINTS.filter(p=>p.status==='sleeping').length+' спящих</span>';
-  document.getElementById('h-payout').textContent=payout.toLocaleString('ru-RU')+' ₽';
-  document.getElementById('h-payout-d').innerHTML='<span style="color:var(--muted)">'+PayoutSchedule.shortLabel().toLowerCase()+'</span>';
+  const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
+  const unavailable = overview ? null : '—';
+  const residual = overview ? overview.period_residual : null;
+  const bonus = overview ? overview.launch_bonus_unpaid : null;
+  const payout = overview ? overview.total_unpaid : null;
 
+  document.getElementById('h-residual').textContent = unavailable || money(residual);
+  const change = overview ? overview.period_change_percent : null;
+  document.getElementById('h-residual-d').textContent = change === null
+    ? 'Нет базы для сравнения с предыдущими ' + days + ' днями'
+    : (change > 0 ? '↑ +' : change < 0 ? '↓ ' : '') +
+      change.toLocaleString('ru-RU') + '% к предыдущим ' + days + ' дням';
+  document.getElementById('h-bonus').textContent = unavailable || money(bonus);
+  document.getElementById('h-bonus-d').textContent = overview
+    ? overview.paid_launch_bonus_count + ' бонусов уже выплачено'
+    : 'Данные временно недоступны';
+  document.getElementById('h-active').textContent = MY_LIVE_POINTS.length +
+    ' из ' + MY_LIVE_POINTS.length;
+  document.getElementById('h-active-d').textContent = 'Действующие закреплённые точки';
+  document.getElementById('h-payout').textContent = unavailable || money(payout);
+  document.getElementById('h-payout-d').textContent =
+    'Невыплаченная комиссия + бонусы · ' +
+    PayoutSchedule.shortLabel().toLowerCase();
+
+  const labels = overview ? overview.labels : [];
+  const earn = overview ? overview.earn : [];
   destroyChart('hRes');
-  charts['hRes']=new Chart(document.getElementById('chartHomeRes'),{type:'line',
-    data:{labels,datasets:[{label:'Residual',data:earn,borderColor:'#534AB7',backgroundColor:'rgba(83,74,183,.08)',borderWidth:2,fill:true,tension:.4,pointRadius:days<=7?4:2,pointBackgroundColor:'#534AB7'}]},
+  charts['hRes'] = new Chart(document.getElementById('chartHomeRes'), { type:'line',
+    data:{labels,datasets:[{label:'Начислено',data:earn,borderColor:'#534AB7',
+      backgroundColor:'rgba(83,74,183,.08)',borderWidth:2,fill:true,tension:.4,
+      pointRadius:days<=7?4:2,pointBackgroundColor:'#534AB7'}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{x:{ticks:{font:{size:10},maxRotation:45,autoSkip:days>14},grid:{display:false}},
               y:{ticks:{font:{size:10},callback:v=>v+'₽'},grid:{color:'rgba(0,0,0,.04)'}}}}});
 
-  const sorted=[...LIVE_POINTS].sort((a,b)=>b.rev-a.rev).slice(0,5);
+  const summaryPoints = overview ? overview.period_points : [];
+  const sorted = summaryPoints.slice(0, 5);
   destroyChart('hPts');
-  charts['hPts']=new Chart(document.getElementById('chartHomePts'),{type:'bar',
-    data:{labels:sorted.map(p=>p.name.split('«')[1]?.replace('»','')||p.name),
-          datasets:[{data:sorted.map(p=>p.rev),backgroundColor:'#D4872A',borderRadius:4}]},
+  charts['hPts'] = new Chart(document.getElementById('chartHomePts'), {type:'bar',
+    data:{labels:sorted.map(p=>p.point_name),
+          datasets:[{data:sorted.map(p=>p.revenue),backgroundColor:'#D4872A',borderRadius:4}]},
     options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{x:{ticks:{font:{size:10},callback:v=>(v/1000).toFixed(0)+'к'},grid:{color:'rgba(0,0,0,.04)'}},
               y:{ticks:{font:{size:10}},grid:{display:false}}}}});
 
-  document.getElementById('h-pts-count').textContent=LIVE_POINTS.length+' точек';
-  const statusIcon={active:'✓',sleeping:'⚠',dead:'✕'};
-  const statusColor={active:'var(--green)',sleeping:'var(--amber)',dead:'var(--red)'};
-  const statusLabel={active:'Активна',sleeping:'Спящая',dead:'Мёртвая'};
-  document.getElementById('h-pts-list').innerHTML=LIVE_POINTS.map(p=>`
-    <div style="display:flex;align-items:center;gap:.75rem;padding:.6rem 0;border-bottom:1px solid #F5F0E8;">
-      <div style="width:8px;height:8px;border-radius:50%;background:${statusColor[p.status]};flex-shrink:0;"></div>
-      <div style="flex:1;">
-        <div style="font-size:.82rem;font-weight:500;">${p.name}</div>
-        <div style="font-size:.72rem;color:var(--muted);">${p.addr}</div>
-      </div>
-      <div style="text-align:right;">
-        <div style="font-size:.82rem;font-weight:600;color:var(--amber);">${Math.round(p.rev*p.rate).toLocaleString('ru-RU')} ₽</div>
-        <div style="font-size:.7rem;color:${statusColor[p.status]}">${statusLabel[p.status]}</div>
-      </div>
-    </div>`).join('');
+  document.getElementById('h-pts-count').textContent = MY_LIVE_POINTS.length + ' точек';
+  const incomeByPoint = new Map(summaryPoints.map(p=>[p.point_id,p.commission]));
+  document.getElementById('h-pts-list').innerHTML = MY_LIVE_POINTS.map(p=>
+    '<div style="display:flex;align-items:center;gap:.75rem;padding:.6rem 0;border-bottom:1px solid #F5F0E8;">' +
+      '<div style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0;"></div>' +
+      '<div style="flex:1;"><div style="font-size:.82rem;font-weight:500;">' + managerHtml(p.name) + '</div>' +
+        '<div style="font-size:.72rem;color:var(--muted);">' + managerHtml(p.addr) + '</div></div>' +
+      '<div style="text-align:right;"><div style="font-size:.82rem;font-weight:600;color:var(--amber);">' +
+        (overview ? money(incomeByPoint.get(p.pointId) || 0) : '—') + '</div>' +
+        '<div style="font-size:.7rem;color:var(--green);">За ' + days + ' дней</div></div>' +
+    '</div>').join('');
 }
 
 // ── POINTS ───────────────────────────────────────────────────────────
@@ -2498,42 +2513,50 @@ async function saveSalonPageModal() {
 }
 
 // ── EARNINGS ─────────────────────────────────────────────────────────
-function renderEarnings(){
-  const days=periodDays();
-  const livePoints=MY_POINTS.filter(p=>p.pointId);
-  const activePts=livePoints.filter(p=>p.status==='active');
-  const totalRev=activePts.reduce((s,p)=>s+p.rev,0);
-  const residual=Math.round(activePts.reduce((s,p)=>s+p.rev*p.rate,0));
-  const bonuses=MY_POINTS.filter(p=>p.bonusPaid).reduce((sum,p)=>sum+p.bonusAmount,0);
-  document.getElementById('earn-payout').textContent=(residual+bonuses).toLocaleString('ru-RU')+' ₽';
-  document.getElementById('earn-period-label').textContent='за '+days+' дней';
-  document.getElementById('earn-hist-count').textContent=livePoints.length+' начислений';
+async function renderEarnings() {
+  const days = periodDays();
+  let overview = null;
+  try { overview = await fetchManagerCompensation(days); }
+  catch (error) { console.error('Не удалось загрузить начисления:', error); }
+  if (currentSec !== 'earnings' || periodDays() !== days) return;
+  const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
+  const commissionUnpaid = overview ? overview.commission_unpaid : 0;
+  const launchUnpaid = overview ? overview.launch_bonus_unpaid : 0;
+  document.getElementById('earn-payout').textContent =
+    overview ? money(overview.total_unpaid) : '—';
+  document.getElementById('earn-period-label').textContent = '· за всё время до выплаты';
+  document.getElementById('earn-hist-count').textContent = overview
+    ? '(за ' + days + ' дней, ' + overview.period_orders_count + ' заказов)'
+    : '· данные недоступны';
 
   destroyChart('earnBreak');
-  charts['earnBreak']=new Chart(document.getElementById('chartEarnBreak'),{type:'doughnut',
-    data:{labels:['Residual 7%','Бонусы за запуск'],
-          datasets:[{data:[residual,bonuses],backgroundColor:['#534AB7','#D4872A'],borderWidth:2,borderColor:'#fff'}]},
+  charts['earnBreak'] = new Chart(document.getElementById('chartEarnBreak'),{
+    type:'doughnut',
+    data:{labels:['Комиссия к выплате','Бонусы к выплате'],
+      datasets:[{data:[commissionUnpaid, launchUnpaid],
+        backgroundColor:['#534AB7','#D4872A'],borderWidth:2,borderColor:'#fff'}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
-      plugins:{legend:{position:'bottom',labels:{font:{size:11},padding:12}}}}});
+      plugins:{legend:{position:'bottom',labels:{font:{size:11},padding:12}}}}
+  });
 
-  document.getElementById('earn-tbody').innerHTML=livePoints.map((p,i)=>`
-    <tr>
-      <td>${new Date().toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</td>
-      <td><span class="pill pill-purple">Residual</span></td>
-      <td>${p.name}</td>
-      <td class="r">${p.rev.toLocaleString('ru-RU')} ₽</td>
-      <td class="r" style="font-weight:600;color:var(--amber)">${Math.round(p.rev*p.rate).toLocaleString('ru-RU')} ₽</td>
-      <td><span class="pill ${p.status==='active'?'pill-green':'pill-amber'}">${p.status==='active'?'Начислено':'Приостановлено'}</span></td>
-    </tr>
-    ${p.bonusPaid?`<tr>
-      <td>${new Date(Date.now()-7*86400000).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</td>
-      <td><span class="pill pill-purple">Бонус запуска</span></td>
-      <td>${p.name}</td>
-      <td class="r">—</td>
-      <td class="r" style="font-weight:600;color:var(--amber)">${p.bonusAmount.toLocaleString('ru-RU')} ₽</td>
-      <td><span class="pill pill-green">Выплачено</span></td>
-    </tr>`:''}
-  `).join('');
+  const items = overview ? overview.period_points : [];
+  const rows = items.map(p=>
+    '<tr><td>За ' + days + ' дн.</td>' +
+      '<td><span class="pill pill-purple">Residual</span></td>' +
+      '<td>' + managerHtml(p.point_name) + '</td>' +
+      '<td class="r">' + money(p.revenue) + '</td>' +
+      '<td class="r" style="font-weight:600;color:var(--amber)">' + money(p.commission) + '</td>' +
+      '<td><span class="pill pill-green">За период</span></td></tr>'
+  );
+  if (overview && launchUnpaid > 0) rows.push(
+    '<tr><td>—</td><td><span class="pill pill-purple">Бонусы запуска</span></td>' +
+    '<td>Все невыплаченные бонусы</td><td class="r">—</td>' +
+    '<td class="r">' + money(launchUnpaid) + '</td>' +
+    '<td><span class="pill pill-green">К выплате</span></td></tr>'
+  );
+  document.getElementById('earn-tbody').innerHTML = overview
+    ? (rows.join('') || '<tr><td colspan="6">Начислений за выбранный период нет.</td></tr>')
+    : '<tr><td colspan="6">Не удалось получить расчёт. Обновите страницу.</td></tr>';
 }
 
 // ── ACTIONS ──────────────────────────────────────────────────────────
@@ -2544,7 +2567,7 @@ function copyCode(){
   btn.textContent='Скопировано!';btn.style.background='#2D5A3F';
   setTimeout(()=>{btn.textContent='Скопировать';btn.style.background='';},2000);
 }
-function requestPayout(){alert('Запрос на выплату отправлен. Средства поступят на карту в течение 1 рабочего дня.');}
+function requestPayout(){alert('Сумма к выплате рассчитывается по подтверждённым неоплаченным начислениям. Для согласования и перечисления обратитесь к администратору ХвостМаркет. Заявка автоматически не отправлялась.');}
 
 // ── PWA: регистрация service worker (устанавливаемое приложение) ──────
 if ('serviceWorker' in navigator) {

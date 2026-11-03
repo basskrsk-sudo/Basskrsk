@@ -184,6 +184,9 @@ test('manager sees only manager-scoped points and 30-day orders', async () => {
       status: 'paid', total: 500, point_name: 'БаркЛай', created_at: '2026-10-29 09:00:00',
     }] },
     '/api/managers/me/stock': { points: [{ point_id: 3, point_name: 'БаркЛай', items: [] }] },
+    '/api/managers/me/compensation?days=30': {
+      period_residual: 35, commission_unpaid: 142, launch_bonus_unpaid: 500, total_unpaid: 642,
+    },
   }, { taiga_manager_token: 'manager-token' });
   await h.window.HvostMiniAppWork.chooseRole('manager');
   assert.match(h.root.innerHTML, /БаркЛай/);
@@ -193,6 +196,26 @@ test('manager sees only manager-scoped points and 30-day orders', async () => {
   assert.equal(h.calls.some((c) => c.url === '/api/orders'), false);
 });
 
+
+
+test('manager Mini App never substitutes accumulated lifetime earnings for actual unpaid balance', async () => {
+ const h=createHarness({
+   '/api/managers/me':{manager:{id:1,full_name:'Перепадова Ангелина',active:1,
+     current_points:[{point_id:'real',point_name:'БаркЛай'}],
+     points:[{point_id:'real',point_name:'БаркЛай',live_revenue:9240}],
+     commission_unpaid:648,launch_bonus_unpaid:0}},
+   '/api/managers/me/orders?days=30&limit=200':{orders:[]},
+   '/api/managers/me/stock':{points:[]},
+   '/api/managers/me/compensation?days=30':{
+     commission_unpaid:201,launch_bonus_unpaid:0,total_unpaid:201,
+     period_residual:70,period_orders_count:1},
+ },{taiga_manager_token:'manager-token'});
+ await h.window.HvostMiniAppWork.chooseRole('manager');
+ assert.match(h.root.innerHTML,/<small>Ожидает выплаты<\/small><strong>201 ₽<\/strong>/);
+ assert.match(h.root.innerHTML,/<small>Начислено за 30 дней<\/small><strong>70 ₽<\/strong>/);
+ assert.doesNotMatch(h.root.innerHTML,/648 ₽/);
+ assert.ok(h.calls.some(call=>call.url==='/api/managers/me/compensation?days=30'));
+});
 
 test('miniapp manager does not show ghost, inactive or duplicate historical rows and has no 14-item cap', async () => {
   const current = Array.from({length:15}, (_,i) => ({

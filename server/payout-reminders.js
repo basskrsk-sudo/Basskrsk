@@ -8,7 +8,7 @@ const { preference } = require('./notification-preferences');
 const { sendMaxMessage } = require('./max-bot');
 const { getUnpaidOrders } = require('./partner-payouts');
 const { getOwnerUnpaidOrders } = require('./owner-payouts');
-const { getLaunchBonusSummary, getManagerUnpaidOrders } = require('./manager-payouts');
+const { getLaunchBonusSummary, getManagerPayableOrders } = require('./manager-payouts');
 const { getTierProgress, TIERS } = require('./partner-tiers');
 
 const TIME_ZONE = 'Asia/Krasnoyarsk';
@@ -230,7 +230,7 @@ function previewOwnerPayout(ownerId) {
 function previewManagerCommissionPayout(managerId) {
   const account = getManagerAccount(managerId);
   if (!account) return null;
-  const summary = summarize(getManagerUnpaidOrders(managerId));
+  const summary = summarize(getManagerPayableOrders(managerId));
   return {
     recipient_name: account.full_name,
     amount: summary.amount,
