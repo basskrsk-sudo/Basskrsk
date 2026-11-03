@@ -308,6 +308,24 @@ function registerProductRoutes(router) {
       if (!managerRow) return sendJson(res, 400, { error: 'Менеджер не найден или неактивен' });
     }
 
+    // Referral is attached to a new point, never to a second groomer.
+    const { referralFromCode, resolveLead, assertReferralRules } = require('./referral-program');
+    const incomingCode=String((ctx.body||{}).referral_code||'').trim();
+    let referringLead=null;
+    let referrer=null;
+    try {
+      referringLead=resolveLead((ctx.body||{}).referral_lead_id,city_id,name,manager_id);
+      if (referringLead) {
+        referrer=referringLead.referrer;
+        if (incomingCode && incomingCode.toUpperCase()!==String(referrer.code).toUpperCase())
+          throw Object.assign(new Error('Код не совпадает с выбранной заявкой'),{statusCode:409});
+      } else if (incomingCode) {
+        referrer=referralFromCode(incomingCode);
+        if (!referrer) throw Object.assign(new Error('Код пригласившего не найден'),{statusCode:400});
+        assertReferralRules(referrer,null,null);
+      }
+    } catch(error) { return sendJson(res,error.statusCode||400,{error:error.message}); }
+
     // Do not let a second submit (or another client) create a "name-2"
     // duplicate for the same salon address. Keep different salons sharing
     // one building possible: both name AND city/address must match.
@@ -382,29 +400,51 @@ function registerProductRoutes(router) {
       });
     }
 
-    db.prepare('INSERT INTO points (id, name, addr, icon, lat, lng, city_id, manager_id, is_hub, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)')
-      .run(candidate, name, addr, icon || '📍', pointLat, pointLng, city_id, manager_id || null);
-
-    // Если сразу назначили менеджера — заводим и связь в manager_points,
-    // иначе точка физически не появится в его кабинете («Мои точки»,
-    // «Пополнение», формы регистрации партнёра/владельца) до тех пор, пока
-    // кто-то не зарегистрируется на неё как партнёр — то есть может вообще
-    // никогда, если точку регистрирует сам менеджер, а не грумер с улицы.
-    if (managerRow) {
-      const { computeManagerCommissionRate } = require('./routes-managers');
-      db.prepare(`
-        INSERT INTO manager_points (manager_id, point_id, point_name, point_type, revenue, commission_rate, active, bonus_paid)
-        VALUES (?, ?, ?, 'Точка', 0, ?, 1, 0)
-      `).run(manager_id, candidate, name, computeManagerCommissionRate());
-    }
-
-    const products = db.prepare('SELECT id FROM products').all();
-    for (const p of products) {
-      const variants = db.prepare('SELECT id FROM product_variants WHERE product_id = ?').all(p.id);
-      for (const v of variants) {
-        db.prepare('INSERT OR IGNORE INTO stock (variant_id, point_id, qty) VALUES (?, ?, 0)').run(v.id, candidate);
+    // Atomic claim: new stock, point, referral reward and linked lead either
+    // all persist together or all roll back on concurrent signup/duplicate.
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const lockedLead=referringLead
+        ? resolveLead(referringLead.lead.id,city_id,name,manager_id) : null;
+      if (referringLead && (!lockedLead ||
+          lockedLead.referrer.role!==referringLead.referrer.role ||
+          lockedLead.referrer.recipient_id!==referringLead.referrer.recipient_id))
+        throw Object.assign(new Error('Реферальная заявка изменилась'),{statusCode:409});
+      db.prepare('INSERT INTO points (id, name, addr, icon, lat, lng, city_id, manager_id, is_hub, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)')
+        .run(candidate, name, addr, icon || '📍', pointLat, pointLng, city_id, manager_id || null);
+  
+      // Если сразу назначили менеджера — заводим и связь в manager_points,
+      // иначе точка физически не появится в его кабинете («Мои точки»,
+      // «Пополнение», формы регистрации партнёра/владельца) до тех пор, пока
+      // кто-то не зарегистрируется на неё как партнёр — то есть может вообще
+      // никогда, если точку регистрирует сам менеджер, а не грумер с улицы.
+      if (managerRow) {
+        const { computeManagerCommissionRate } = require('./routes-managers');
+        db.prepare(`
+          INSERT INTO manager_points (manager_id, point_id, point_name, point_type, revenue, commission_rate, active, bonus_paid)
+          VALUES (?, ?, ?, 'Точка', 0, ?, 1, 0)
+        `).run(manager_id, candidate, name, computeManagerCommissionRate());
       }
+  
+      const products = db.prepare('SELECT id FROM products').all();
+      for (const p of products) {
+        const variants = db.prepare('SELECT id FROM product_variants WHERE product_id = ?').all(p.id);
+        for (const v of variants) {
+          db.prepare('INSERT OR IGNORE INTO stock (variant_id, point_id, qty) VALUES (?, ?, 0)').run(v.id, candidate);
+        }
+      }
+      const refs=require('./referral-program');
+      refs.lockPointReferral({id:candidate,name},referrer,
+        referringLead?'referral-lead':referrer?'direct-code':'new-point',
+        referringLead?referringLead.lead.id:null);
+      if (referringLead) refs.markLeadLinked(referringLead.lead.id,candidate);
+      db.exec('COMMIT');
+    } catch(error) {
+      try { db.exec('ROLLBACK'); } catch(_) {}
+      return sendJson(res,error.statusCode||500,{error:
+        error.statusCode?error.message:'Не удалось сохранить реферальную точку'});
     }
+
 
     const creatorLine = payload.role === 'manager'
       ? '👤 Создал менеджер: ' + payload.login
@@ -416,6 +456,7 @@ function registerProductRoutes(router) {
       '🏠 ' + addr,
       '🏙 ' + (cityRow ? cityRow.name : city_id),
       '🗺 Добавлена на карту' + (geocoded ? ' автоматически' : ''),
+      referrer ? '🤝 Пригласил: '+referrer.full_name+' ('+referrer.code+') · ожидается бонус 1 000 ₽' : '',
       creatorLine,
       '🕐 ' + new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Krasnoyarsk' }),
     ].join('\n'));
