@@ -1,6 +1,6 @@
-// Оповещение ТОЛЬКО ответственного менеджера активной точки через минуту
-// после создания неоплаченного заказа. Не отправляем персональные данные в
-// общий служебный чат и не выбираем случайного исторического менеджера.
+// Оповещение ответственного менеджера и администратора ХвостМаркета через минуту.
+// Независимые журналы защищают от повторов и пропуска администратора, если
+// менеджер не подключил Telegram.
 'use strict';
 
 const db = require('./db');
@@ -11,6 +11,14 @@ const { connectedChatId, findManagerAndPoint } = require('./order-notifications'
 // never silently keep the historical 3-minute notification threshold.
 const ALERT_DELAY_MINUTES = 1;
 const POLL_INTERVAL_MS = 15 * 1000;
+
+// Admin recipients must be deduplicated independently from managers.
+db.exec('CREATE TABLE IF NOT EXISTS unpaid_order_admin_alert_log (' +
+  'order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,' +
+  'alert_type TEXT NOT NULL,target_chat_id TEXT NOT NULL,' +
+  "status TEXT NOT NULL DEFAULT 'pending',error TEXT," +
+  "created_at TEXT NOT NULL DEFAULT (datetime('now')),sent_at TEXT," +
+  'PRIMARY KEY(order_id,alert_type,target_chat_id))');
 
 function escapeHtml(value) {
   return String(value == null ? '' : value)
@@ -68,7 +76,7 @@ function responsibleManagerChat(order) {
   return String(chatId);
 }
 
-async function sendUnpaidOrderAlert(orderId, alertType = 'pending', reason = null, options = {}) {
+async function sendManagerUnpaidAlert(orderId, alertType = 'pending', reason = null, options = {}) {
   const data = getOrderWithItems(orderId);
   if (!data) return { ok: false, skipped: true, error: 'Заказ не найден' };
   const { order, items } = data;
