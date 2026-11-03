@@ -933,8 +933,9 @@
       var point = await fetchJSON('/api/points', getToken('manager'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name, addr: addr, city_id: cityId, icon: icon || '📍',
-          referral_lead_id: String((get('workPointReferralLead') || {}).value || '') || null }),
+        body: JSON.stringify(Object.assign({ name: name, addr: addr, city_id: cityId, icon: icon || '📍' },
+          String((get('workPointReferralLead') || {}).value || '')
+            ? { referral_lead_id:Number(get('workPointReferralLead').value) } : {})),
       });
       if (mySerial !== serial || !managerNewPointAuthorized() || managerNewPointMode !== 'form') return;
       managerCreatedPointId = String(point.id || '');
