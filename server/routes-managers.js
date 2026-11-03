@@ -13,6 +13,7 @@ const {
   createManagerCommissionPayout,
   createManagerLaunchBonusPayout,
   getManagerUnpaidSummary,
+  getManagerPeriodAccrual,
   listManagerPayouts,
 } = require('./manager-payouts');
 const {
@@ -82,7 +83,7 @@ function mgrWithPoints(a) {
   `).all(a.id).map((row) => ({ ...row, revenue: row.live_revenue }));
   const commission = getManagerUnpaidSummary(a.id);
   const paidCommission = db.prepare('SELECT COALESCE(SUM(amount), 0) AS amount FROM manager_commission_payouts WHERE manager_id = ?').get(a.id);
-  const unpaidLaunch = points.reduce((sum, point) => sum + (point.bonus_paid && !point.launch_bonus_payout_id ? Number(point.bonus_manager_amount || 2000) : 0), 0);
+  const unpaidLaunch = points.reduce((sum, point) => sum + (point.bonus_paid && !point.launch_bonus_payout_id ? Number(point.bonus_manager_amount ?? 2000) : 0), 0);
   const paidLaunch = db.prepare('SELECT COALESCE(SUM(amount), 0) AS amount FROM manager_launch_bonus_payouts WHERE manager_id = ?').get(a.id);
   return {
     ...safeMgr(a), points,
@@ -427,37 +428,43 @@ function registerManagerRoutes(router) {
     sendJson(res, 200, { ok: true });
   });
 
-  // GET /api/managers/me/daily-residual?days=N — реальный резидуал по дням
-  // за период, по ВСЕМ точкам менеджера сразу. Раньше график "Residual по
-  // дням" в кабинете рисовал случайные цифры (genDays на фронтенде),
-  // никак не связанные с настоящими продажами.
+  // GET /api/managers/me/compensation?days=N — одно происхождение цифр
+  // для Telegram Mini App и полного кабинета. Начислено за период отдельно
+  // от НЕВЫПЛАЧЕННОГО с учётом зафиксированных выплат. Никаких записей в БД.
+  router.get('/api/managers/me/compensation', (req, res, ctx) => {
+    const payload = requireAuth(['manager'])(req, res, ctx);
+    if (!payload) return;
+    const manager = db.prepare('SELECT id FROM managers WHERE id = ? AND active = 1').get(payload.id);
+    if (!manager) return sendJson(res, 401, { error: 'Доступ менеджера отключён' });
+    const period = getManagerPeriodAccrual(payload.id, ctx.query.days);
+    const commission = getManagerUnpaidSummary(payload.id);
+    const bonuses = db.prepare(`
+      SELECT COALESCE(SUM(COALESCE(mp.bonus_manager_amount, 2000)),0) AS amount
+      FROM manager_points mp
+      LEFT JOIN manager_launch_bonus_payouts bp ON bp.manager_point_id = mp.id
+      WHERE mp.manager_id = ? AND mp.bonus_paid = 1 AND bp.id IS NULL
+    `).get(payload.id);
+    const paidBonuses = db.prepare(
+      'SELECT COUNT(*) AS count FROM manager_launch_bonus_payouts WHERE manager_id = ?'
+    ).get(payload.id);
+    const commissionUnpaid = Number(commission.amount || 0);
+    const launchUnpaid = Number(bonuses.amount || 0);
+    sendJson(res, 200, {
+      ...period,
+      commission_unpaid: commissionUnpaid,
+      commission_unpaid_orders: commission.orders_count,
+      launch_bonus_unpaid: launchUnpaid,
+      paid_launch_bonus_count: paidBonuses.count,
+      total_unpaid: commissionUnpaid + launchUnpaid,
+    });
+  });
+
+  // Backward-compatible daily chart, from the exact same periodic calculation.
   router.get('/api/managers/me/daily-residual', (req, res, ctx) => {
     const payload = requireAuth(['manager'])(req, res, ctx);
     if (!payload) return;
-    const days = Math.max(1, Math.min(365, parseInt(ctx.query.days, 10) || 7));
-
-    const rows = db.prepare(`
-      SELECT o.created_at AS date, o.total * mp.commission_rate AS residual
-      FROM orders o
-      JOIN manager_points mp ON mp.point_id = o.point_id AND mp.manager_id = ?
-      WHERE o.status = 'paid' AND o.created_at >= datetime('now', '-' || ? || ' days')
-    `).all(payload.id, days);
-
-    const byDate = {};
-    rows.forEach((r) => {
-      const key = r.date.slice(0, 10);
-      byDate[key] = (byDate[key] || 0) + r.residual;
-    });
-
-    const labels = [], earn = [];
-    const now = new Date();
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now); d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      labels.push(d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }));
-      earn.push(Math.round(byDate[key] || 0));
-    }
-    sendJson(res, 200, { labels, earn });
+    const period = getManagerPeriodAccrual(payload.id, ctx.query.days);
+    sendJson(res, 200, { labels: period.labels, earn: period.earn });
   });
   // GET /api/managers/me/stock — остатки по ВСЕМ точкам менеджера сразу,
   // сгруппированные по точке. Товары с нулевым остатком тоже показываем —
