@@ -1217,3 +1217,31 @@ test('manager and owner-only dashboards cannot expose groomer promo cards',async
   assert.doesNotMatch(manager.root.innerHTML,/PROMO-PRIVATE/);
   assert.deepEqual(calls,[]);
 });
+
+
+test('owner Mini App surfaces their own referral invitation and 1000 RUB accounting',async()=>{
+  const calls=[];
+  const h=createHarness({
+    '/api/owner/me':{owner:{id:92,full_name:'Владелец партнёрской точки',active:1,
+      point_id:'salon-92',owner_code:'OWN-092',
+      referrals:{awaiting:1000,payable:0,paid:0,rows:[]}}},
+    '/api/owner/dashboard':{point:{id:'salon-92',name:'Дог Стиль'},
+      totals:{revenue:0,orders:0},owner_earnings:{unpaid:0},groomers:[],recent_orders:[]},
+  },{taiga_owner_token:'owner-92-token'},null,{
+    HvostMiniAppPromos:{
+      clear(){},
+      ownerSection(owner,authorized,combined){
+        calls.push({owner,authorized:authorized(),combined});
+        return '<section>🔗 Моя ссылка для привлечения новых грумеров: '+
+          'https://хвостмаркет.рф/partner-invite.html?ref='+owner.owner_code+'</section>';
+      },
+    },
+  });
+  await h.window.HvostMiniAppWork.chooseRole('owner');
+  assert.match(h.root.innerHTML,/partner-invite\.html\?ref=OWN-092/);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].owner.id,92);
+  assert.equal(calls[0].authorized,true);
+  assert.equal(calls[0].combined,false);
+  assert.equal(h.calls.some(c=>c.url==='/api/salon-owners'),false);
+});
