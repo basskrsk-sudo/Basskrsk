@@ -1072,6 +1072,11 @@
       if (activeRole) chooseRole(activeRole);
       else renderAll();
     });
+    if (action === 'manager-reg-groomer' && activeRole === 'manager') return openManagerRegistration('groomer');
+    if (action === 'manager-reg-owner' && activeRole === 'manager') return openManagerRegistration('owner');
+    if (action === 'manager-reg-retry' && activeRole === 'manager' && managerRegistrationKind)
+      return openManagerRegistration(managerRegistrationKind);
+    if (action === 'manager-reg-back' && activeRole === 'manager') return chooseRole('manager');
     if (action === 'phone-login' && activeRole) return chooseRole(activeRole);
     if (action === 'go-profile' && window.HvostMiniAppGoProfile) return window.HvostMiniAppGoProfile();
     if (action === 'owner-setup') return chooseRole('admin');
@@ -1112,6 +1117,14 @@
     if (e.target.id === 'workLoginForm') { e.preventDefault(); login(); }
     if (e.target.id === 'workRestockForm') { e.preventDefault(); sendRestock(); }
     if (e.target.id === 'workChatForm') { e.preventDefault(); sendChat(); }
+    if (e.target.id === 'workManagerRegisterForm') {
+      e.preventDefault();
+      return submitManagerRegistration();
+    }
+  });
+  root.addEventListener('change', function(e) {
+    if (activeRole === 'manager' && managerRegistrationKind === 'owner' &&
+        e.target && e.target.id === 'workRegPoint') updateOwnerGroomerChoices();
   });
   if (identity) identity.onChange(function(state) {
     if (!state.verified || (activeRole === 'salon' && !state.combinedSalon)) return openAll();
