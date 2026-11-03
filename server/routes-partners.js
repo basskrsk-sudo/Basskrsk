@@ -63,11 +63,18 @@ function registerPartnerRoutes(router) {
     sendJson(res, 200, { isSelfOrder });
   });
 
-  router.post('/api/partners/register', (req, res, ctx) => {
-    // Регистрация остаётся публичной для обычной формы сайта. Если запрос
-    // пришёл из авторизованного кабинета менеджера, фиксируем именно его как
-    // автора действия, но только когда выбранная точка закреплена за ним.
-    const managerPayload = tryAuth(['manager'])(req);
+  // Shared implementation for the public signup and the protected manager
+  // Mini App workflow. The second path NEVER falls back to anonymous signup.
+  const registerPartner = (req, res, ctx, managerOnly = false) => {
+    const managerPayload = managerOnly
+      ? requireAuth(['manager'])(req, res, ctx)
+      : tryAuth(['manager'])(req);
+    if (managerOnly && !managerPayload) return;
+    if (managerPayload && !db.prepare(
+      'SELECT id FROM managers WHERE id = ? AND active = 1'
+    ).get(managerPayload.id)) {
+      return sendJson(res, 401, { error: 'Доступ менеджера отключён' });
+    }
     const {
       full_name, phone, point_id,
       legal_form, inn, bank_details, manager_code, referral_code,
@@ -90,6 +97,13 @@ function registerPartnerRoutes(router) {
     // приводило к дублям и точкам без реального контроля со стороны сети.
     const point = db.prepare('SELECT * FROM points WHERE id = ? AND active = 1').get(point_id);
     if (!point) return sendJson(res, 400, { error: 'Минимаркет не найден или отключён' });
+    if (managerPayload && (
+      String(point.manager_id) !== String(managerPayload.id) ||
+      Number(point.is_hub) === 1
+    )) return sendJson(res, 403, { error: 'Можно регистрировать грумеров только на своих действующих точках' });
+    if (managerOnly && manager_code) return sendJson(res, 400, {
+      error: 'Менеджер определяется автоматически по выбранной точке',
+    });
     // На одной точке может работать несколько партнёров одновременно (см.
     // orders.partner_id и выбор грумера в чекауте на сайте — это штатный,
     // уже реализованный сценарий, не ограничение "один партнёр на точку").
@@ -231,7 +245,13 @@ function registerPartnerRoutes(router) {
       '',
       '→ Проверьте заявку в админке (раздел «Партнёры») и активируйте, если всё в порядке.',
     ].filter(Boolean).join('\n')).catch(function() {});
-  });
+  };
+  // Public signup continues unchanged; this one is available only for a
+  // verified manager and enforces their existing active point assignment.
+  router.post('/api/partners/register', (req, res, ctx) =>
+    registerPartner(req, res, ctx, false));
+  router.post('/api/managers/me/register-groomer', (req, res, ctx) =>
+    registerPartner(req, res, ctx, true));
 
   // GET /api/partners — список всех (для админки)
   router.get('/api/partners', (req, res, ctx) => {
