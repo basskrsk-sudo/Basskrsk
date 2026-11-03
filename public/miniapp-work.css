@@ -192,3 +192,16 @@
 .work-chat-form .work-primary{margin-top:10px}
 .work-chat-form .work-quiet{display:block;margin-top:7px}
 .work-chat-reload{margin:10px 0 17px}
+
+/* Manager registration forms in Telegram WebView: thumb-friendly controls. */
+.work-register-actions{display:grid;gap:10px;margin:4px 0 10px}
+.work-register-form{display:grid;gap:8px}
+.work-register-label{font-size:12px;font-weight:750;color:var(--green);margin-top:8px}
+.work-register-input{display:block;width:100%;min-width:0;border:1px solid #d4e4d6;border-radius:12px;background:#fff;color:#183f2b;padding:13px 12px;outline:none;font:inherit;font-size:15px;box-sizing:border-box}
+.work-register-input:focus{border-color:#2b9061;box-shadow:0 0 0 3px #2b906119}
+.work-register-input::placeholder{color:#91a499}
+.work-register-consent{display:flex;align-items:flex-start;gap:10px;margin:14px 0 9px;color:#365943;font-size:12px;line-height:1.45;cursor:pointer}
+.work-register-consent input{flex-shrink:0;width:19px;height:19px;accent-color:#1c6847;margin-top:1px}
+.work-register-form .work-primary{margin-top:10px;min-height:46px}
+.work-register-form #workRegStatus:empty{display:none}
+@media (max-width:360px){.work-register-input{font-size:16px}}

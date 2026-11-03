@@ -56,9 +56,9 @@ function createHarness(fixtures = {}, initialStorage = {}, phoneIdentity = null,
   vm.runInContext(source, context, { filename: 'miniapp-work.js', timeout: 3000 });
   return {
     root, document, elements, events, values, calls, navigation, window,
-    submit(id) { events.submit({ target: { id }, preventDefault() {} }); },
+    submit(id) { return events.submit({ target: { id }, preventDefault() {} }); },
     click(action, role) {
-      events.click({
+      return events.click({
         target: {
           closest() { return { dataset: { workAction: action, workRole: role || '' } }; },
         },
@@ -171,6 +171,122 @@ test('groomer never shows a stale salon label as current and warns for a deleted
  await live.window.HvostMiniAppWork.chooseRole('partner');
  assert.match(live.root.innerHTML,/БаркЛай/);
  assert.doesNotMatch(live.root.innerHTML,/Старое название/);
+});
+
+
+test('manager Telegram Mini App registers groomers on own salons with consent and manager token', async () => {
+  const fixtures={
+    '/api/managers/me':{manager:{id:15,active:1,full_name:'Перепадова Ангелина',
+      current_points:[{point_id:'a',point_name:'БаркЛай'}]}},
+    '/api/managers/me/orders?days=30&limit=200':{orders:[]},
+    '/api/managers/me/stock':{points:[]},
+    '/api/managers/me/compensation?days=30':{commission_unpaid:0,launch_bonus_unpaid:0,period_residual:0},
+    '/api/managers/me/registration-options':{groomer_points:[
+      {id:'a',name:'БаркЛай',addr:'Молокова 40'}, {id:'b',name:'Zveryuga',addr:'Семафорная'}
+    ],owner_points:[{id:'a',name:'БаркЛай',addr:'Молокова 40'}],
+    groomers:[{id:31,point_id:'a',full_name:'Грумер салона'},
+      {id:32,point_id:'b',full_name:'Чужой для БаркЛай'}]},
+    '/api/managers/me/register-groomer':{status:201,body:{ok:true,partner_code:'GR-777'}},
+  };
+  const h=createHarness(fixtures,{taiga_manager_token:'manager-token'});
+  await h.window.HvostMiniAppWork.chooseRole('manager');
+  assert.match(h.root.innerHTML,/data-work-action="manager-reg-groomer"/);
+  assert.match(h.root.innerHTML,/data-work-action="manager-reg-owner"/);
+  await h.click('manager-reg-groomer');
+  assert.match(h.root.innerHTML,/id="workManagerRegisterForm"/);
+  assert.match(h.root.innerHTML,/БаркЛай/);
+  assert.match(h.root.innerHTML,/Zveryuga/);
+  assert.doesNotMatch(h.root.innerHTML,/Чужая точка/);
+  h.document.getElementById('workRegPoint').value='a';
+  h.document.getElementById('workRegName').value='Новая Грумерова';
+  h.document.getElementById('workRegPhone').value='+7 913 444-55-66';
+  h.document.getElementById('workRegLogin').value='new-groomer';
+  h.document.getElementById('workRegPassword').value='safe-secret';
+  h.document.getElementById('workRegConsent').checked=false;
+  await h.submit('workManagerRegisterForm');
+  assert.match(h.document.getElementById('workRegStatus').innerHTML,/Нужно получить согласие/);
+  assert.equal(h.calls.some(c=>c.url==='/api/managers/me/register-groomer'),false);
+  h.document.getElementById('workRegConsent').checked=true;
+  await h.submit('workManagerRegisterForm');
+  const request=h.calls.find(c=>c.url==='/api/managers/me/register-groomer');
+  assert.ok(request);
+  assert.equal(request.opts.headers.Authorization,'Bearer manager-token');
+  assert.equal(request.opts.method,'POST');
+  assert.deepEqual(JSON.parse(request.opts.body),{
+    point_id:'a',full_name:'Новая Грумерова',phone:'+7 913 444-55-66',
+    login:'new-groomer',password:'safe-secret',personal_data_consent:true,
+  });
+  assert.equal(h.calls.some(c=>c.url==='/api/partners/register'),false);
+  assert.match(h.root.innerHTML,/GR-777/);
+  assert.doesNotMatch(h.root.innerHTML,/safe-secret/);
+  assert.match(h.root.innerHTML,/Зарегистрировать ещё/);
+});
+
+test('manager Mini App owner form links only groomer on chosen salon and uses protected owner endpoint', async () => {
+  const fixtures={
+    '/api/managers/me':{manager:{id:15,active:1,full_name:'Перепадова Ангелина',
+      current_points:[{point_id:'a',point_name:'БаркЛай'}]}},
+    '/api/managers/me/orders?days=30&limit=200':{orders:[]},
+    '/api/managers/me/stock':{points:[]},
+    '/api/managers/me/compensation?days=30':{commission_unpaid:0,launch_bonus_unpaid:0,period_residual:0},
+    '/api/managers/me/registration-options':{
+      groomer_points:[{id:'a',name:'БаркЛай'}],
+      owner_points:[{id:'a',name:'БаркЛай'}, {id:'b',name:'Zveryuga'}],
+      groomers:[{id:13,point_id:'a',full_name:'Барсукова Юлия'},
+        {id:14,point_id:'b',full_name:'Чужой грумер'}]},
+    '/api/salon-owners':{status:201,body:{ok:true,owner_code:'OWN-777'}},
+  };
+  const h=createHarness(fixtures,{taiga_manager_token:'manager-token'});
+  await h.window.HvostMiniAppWork.chooseRole('manager');
+  await h.click('manager-reg-owner');
+  assert.match(h.root.innerHTML,/id="workRegLinkedGroomer"/);
+  assert.doesNotMatch(h.root.innerHTML,/data-work-action="manager-reg-groomer"/);
+  h.document.getElementById('workRegPoint').value='a';
+  h.events.change({target:{id:'workRegPoint'}});
+  assert.match(h.document.getElementById('workRegLinkedGroomer').innerHTML,/Барсукова Юлия/);
+  assert.doesNotMatch(h.document.getElementById('workRegLinkedGroomer').innerHTML,/Чужой грумер/);
+  h.document.getElementById('workRegName').value='Барсукова Юлия';
+  h.document.getElementById('workRegPhone').value='79131112233';
+  h.document.getElementById('workRegLogin').value='bar-owner';
+  h.document.getElementById('workRegPassword').value='temporary-pass';
+  h.document.getElementById('workRegLinkedGroomer').value='14';
+  h.document.getElementById('workRegConsent').checked=true;
+  await h.submit('workManagerRegisterForm');
+  assert.match(h.document.getElementById('workRegStatus').innerHTML,/не относится к этому минимаркету/);
+  assert.equal(h.calls.some(c=>c.url==='/api/salon-owners'),false);
+  h.document.getElementById('workRegLinkedGroomer').value='13';
+  await h.submit('workManagerRegisterForm');
+  const request=h.calls.find(c=>c.url==='/api/salon-owners');
+  assert.equal(request.opts.headers.Authorization,'Bearer manager-token');
+  assert.deepEqual(JSON.parse(request.opts.body),{
+    point_id:'a',full_name:'Барсукова Юлия',phone:'79131112233',
+    login:'bar-owner',password:'temporary-pass',groomer_partner_id:13,
+  });
+  assert.match(h.root.innerHTML,/OWN-777/);
+  assert.doesNotMatch(h.root.innerHTML,/temporary-pass/);
+});
+
+test('registration is not exposed from non-manager cabinet, and empty owned salon list blocks form', async () => {
+  const owner=createHarness({
+    '/api/owner/me':{owner:{id:9,full_name:'Владелец',active:1}},
+    '/api/owner/dashboard':{noPoint:true,message:'Не назначена точка'},
+  },{taiga_owner_token:'owner-session'});
+  await owner.window.HvostMiniAppWork.chooseRole('owner');
+  assert.doesNotMatch(owner.root.innerHTML,/manager-reg-owner|manager-reg-groomer/);
+  owner.click('manager-reg-groomer');
+  assert.equal(owner.calls.some(c=>c.url.includes('registration-options')),false);
+
+  const m=createHarness({
+    '/api/managers/me':{manager:{id:9,full_name:'Менеджер',active:1,current_points:[]}},
+    '/api/managers/me/orders?days=30&limit=200':{orders:[]},
+    '/api/managers/me/stock':{points:[]},
+    '/api/managers/me/compensation?days=30':{commission_unpaid:0},
+    '/api/managers/me/registration-options':{groomer_points:[],owner_points:[],groomers:[]},
+  },{taiga_manager_token:'manager-session'});
+  await m.window.HvostMiniAppWork.chooseRole('manager');
+  await m.click('manager-reg-owner');
+  assert.match(m.root.innerHTML,/нет доступных минимаркетов/);
+  assert.doesNotMatch(m.root.innerHTML,/id="workManagerRegisterForm"/);
 });
 
 test('manager sees only manager-scoped points and 30-day orders', async () => {

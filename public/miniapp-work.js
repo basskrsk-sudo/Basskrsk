@@ -25,6 +25,9 @@
   var chatView = '';
   var chatThreadId = null;
   var chatNotice = '';
+  var managerRegistrationKind = '';
+  var managerRegistrationOptions = null;
+  var managerRegistrationBusy = false;
   var root = document.getElementById('workPage');
   if (!root) return;
   var identity = window.HvostMiniAppIdentity || null;
@@ -151,6 +154,9 @@
     chatView = '';
     chatThreadId = null;
     chatNotice = '';
+    managerRegistrationKind = '';
+    managerRegistrationOptions = null;
+    managerRegistrationBusy = false;
     if (taskPanel) taskPanel.reset();
     serial++;
     renderAll();
@@ -376,6 +382,9 @@
     chatNotice = '';
     dashboardMarkup = '';
     taskData = null;
+    managerRegistrationKind = '';
+    managerRegistrationOptions = null;
+    managerRegistrationBusy = false;
     if (taskPanel) taskPanel.reset();
     // A stale token or remembered role from another login must not expose
     // an account which is absent from this verified phone's role list.
@@ -718,6 +727,186 @@
     if (order.refund_status === 'refunded' && order.refunded_amount == null) return 0;
     return Math.max(0, Number(order.total || 0) - Number(order.refunded_amount || 0));
   }
+  // Registration stays inside the Telegram Mini App; both actions are bound
+  // to the already authenticated manager role and scoped by the server.
+  function registrationPointChoices() {
+    if (!managerRegistrationOptions) return [];
+    return managerRegistrationKind === 'owner'
+      ? managerRegistrationOptions.owner_points || []
+      : managerRegistrationOptions.groomer_points || [];
+  }
+  function registrationOptionsHtml(points) {
+    return '<option value="">— Выберите минимаркет —</option>' +
+      points.map(function(p) {
+        return '<option value="' + esc(p.id) + '">' + esc(p.name) +
+          (p.addr ? ' · ' + esc(p.addr) : '') + '</option>';
+      }).join('');
+  }
+  function groomersOnPoint(pointId) {
+    return managerRegistrationOptions && (managerRegistrationOptions.groomers || []).filter(function(g) {
+      return String(g.point_id) === String(pointId);
+    }) || [];
+  }
+  function updateOwnerGroomerChoices() {
+    if (managerRegistrationKind !== 'owner') return;
+    var point = document.getElementById('workRegPoint');
+    var linked = document.getElementById('workRegLinkedGroomer');
+    if (!point || !linked) return;
+    linked.innerHTML = '<option value="">Не связывать с карточкой грумера</option>' +
+      groomersOnPoint(point.value).map(function(g) {
+        return '<option value="' + esc(g.id) + '">' + esc(g.full_name) + '</option>';
+      }).join('');
+  }
+  function renderManagerRegistration() {
+    if (activeRole !== 'manager' || !currentUser || !managerRegistrationKind ||
+        !phoneRoleAvailable('manager') || !getToken('manager')) return;
+    var isOwner = managerRegistrationKind === 'owner';
+    var title = isOwner ? '🏠 Новый владелец салона' : '✂️ Новый грумер';
+    var html = dashboardHeader('manager') +
+      '<button type="button" class="work-back" data-work-action="manager-reg-back">← В кабинет менеджера</button>' +
+      heading(title, 'Регистрация на одном из закреплённых за вами действующих минимаркетов.');
+    if (!managerRegistrationOptions) {
+      root.innerHTML = html + problem('Не удалось получить список доступных точек. Повторите загрузку.') +
+        '<button type="button" class="work-secondary" data-work-action="manager-reg-retry">↻ Повторить</button>';
+      return;
+    }
+    var points = registrationPointChoices();
+    if (!points.length) {
+      root.innerHTML = html + note(isOwner
+        ? 'На ваших действующих точках уже есть владельцы или нет доступных минимаркетов.'
+        : 'У вас пока нет действующих минимаркетов. Сначала создайте точку через полный кабинет.') +
+        '<button type="button" class="work-secondary" data-work-action="manager-reg-back">Вернуться</button>';
+      return;
+    }
+    var ownerLink = isOwner
+      ? '<label class="work-register-label" for="workRegLinkedGroomer">Если владелец также грумер</label>' +
+        '<select class="work-register-input" id="workRegLinkedGroomer">' +
+        '<option value="">Не связывать с карточкой грумера</option></select>' +
+        '<p class="work-note">Выбирайте только карточку этого же человека на выбранной точке. Тогда кабинет грумера и владельца объединится.</p>'
+      : '<label class="work-register-label" for="workRegReferral">Код пригласившего (необязательно)</label>' +
+        '<input class="work-register-input" id="workRegReferral" type="text" autocomplete="off" maxlength="60" placeholder="GR-001 / OWN-001">';
+    root.innerHTML = html +
+      surface('Данные нового партнёра',
+        '<form id="workManagerRegisterForm" class="work-register-form">' +
+        '<label class="work-register-label" for="workRegPoint">Минимаркет *</label>' +
+        '<select class="work-register-input" id="workRegPoint" required>' +
+        registrationOptionsHtml(points) + '</select>' +
+        '<label class="work-register-label" for="workRegName">Фамилия, имя *</label>' +
+        '<input class="work-register-input" id="workRegName" type="text" autocomplete="name" maxlength="120" required placeholder="Фамилия Имя">' +
+        '<label class="work-register-label" for="workRegPhone">Телефон *</label>' +
+        '<input class="work-register-input" id="workRegPhone" type="tel" autocomplete="tel" inputmode="tel" required placeholder="+7 999 123-45-67">' +
+        '<label class="work-register-label" for="workRegLogin">Логин *</label>' +
+        '<input class="work-register-input" id="workRegLogin" type="text" autocomplete="off" maxlength="80" required placeholder="Логин для полного кабинета">' +
+        '<label class="work-register-label" for="workRegPassword">Пароль *</label>' +
+        '<input class="work-register-input" id="workRegPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" required placeholder="Не менее 6 символов">' +
+        ownerLink +
+        '<label class="work-register-consent"><input type="checkbox" id="workRegConsent" required>' +
+        '<span>Подтверждаю, что человек дал согласие на обработку персональных данных для регистрации в ХвостМаркет.</span></label>' +
+        '<div id="workRegStatus" role="status" aria-live="polite"></div>' +
+        '<button type="submit" id="workRegSubmit" class="work-primary">' +
+        (isOwner ? 'Зарегистрировать владельца' : 'Зарегистрировать грумера') +
+        '</button></form>') +
+      '<p class="work-quiet">После регистрации новый пользователь может войти в Telegram Mini App по подтверждённому номеру телефона.</p>';
+  }
+  async function openManagerRegistration(kind) {
+    if (activeRole !== 'manager' || !currentUser || !phoneRoleAvailable('manager') ||
+        !getToken('manager') || !['owner', 'groomer'].includes(kind)) return;
+    managerRegistrationKind = kind;
+    managerRegistrationOptions = null;
+    managerRegistrationBusy = false;
+    var mySerial = serial;
+    root.innerHTML = dashboardHeader('manager') + note('Загружаем доступные минимаркеты…');
+    try {
+      var data = await fetchJSON('/api/managers/me/registration-options', getToken('manager'));
+      if (mySerial !== serial || activeRole !== 'manager' || managerRegistrationKind !== kind) return;
+      managerRegistrationOptions = data;
+      renderManagerRegistration();
+    } catch (e) {
+      if (mySerial !== serial || activeRole !== 'manager' || managerRegistrationKind !== kind) return;
+      if (e.status === 401 || e.status === 403) {
+        clearToken('manager');
+        managerRegistrationKind = '';
+        return renderLogin('Сессия менеджера завершена. Войдите снова.');
+      }
+      renderManagerRegistration();
+    }
+  }
+  function managerRegistrationError(message) {
+    var status = document.getElementById('workRegStatus');
+    if (status) status.innerHTML = problem(message);
+  }
+  async function submitManagerRegistration() {
+    if (activeRole !== 'manager' || !currentUser || !phoneRoleAvailable('manager') ||
+        !managerRegistrationOptions || managerRegistrationBusy || !getToken('manager')) return;
+    var kind = managerRegistrationKind;
+    if (!['owner', 'groomer'].includes(kind)) return;
+    var get = function(id) { return document.getElementById(id); };
+    var pointId = String(get('workRegPoint').value || '');
+    var name = String(get('workRegName').value || '').trim();
+    var phone = String(get('workRegPhone').value || '').trim();
+    var loginName = String(get('workRegLogin').value || '').trim();
+    var password = String(get('workRegPassword').value || '');
+    var digits = phone.replace(/\D/g, '');
+    if (!registrationPointChoices().some(function(p) { return String(p.id) === pointId; })) {
+      return managerRegistrationError('Выберите действующий минимаркет из списка.');
+    }
+    if (name.length < 3 || name.length > 120 || loginName.length < 3 || !password || password.length < 6) {
+      return managerRegistrationError('Укажите ФИО, логин от 3 символов и пароль не короче 6 символов.');
+    }
+    if (!(digits.length === 10 || (digits.length === 11 && /^[78]/.test(digits)))) {
+      return managerRegistrationError('Проверьте телефон: нужен российский номер из 10 или 11 цифр.');
+    }
+    if (!get('workRegConsent').checked) {
+      return managerRegistrationError('Нужно получить согласие человека на обработку персональных данных.');
+    }
+    var body = { point_id: pointId, full_name: name, phone: phone,
+      login: loginName, password: password };
+    if (kind === 'owner') {
+      var groomerId = get('workRegLinkedGroomer').value;
+      if (groomerId) {
+        if (!groomersOnPoint(pointId).some(function(g) { return String(g.id) === String(groomerId); })) {
+          return managerRegistrationError('Выбранный грумер не относится к этому минимаркету.');
+        }
+        body.groomer_partner_id = Number(groomerId);
+      }
+    } else {
+      body.personal_data_consent = true;
+      var referral = String(get('workRegReferral').value || '').trim();
+      if (referral) body.referral_code = referral;
+    }
+    managerRegistrationBusy = true;
+    var button = get('workRegSubmit');
+    button.disabled = true;
+    var mySerial = serial;
+    var status = get('workRegStatus');
+    status.innerHTML = note('Регистрируем пользователя…');
+    try {
+      var result = await fetchJSON(
+        kind === 'owner' ? '/api/salon-owners' : '/api/managers/me/register-groomer',
+        getToken('manager'), { method:'POST',
+          headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+      if (mySerial !== serial || activeRole !== 'manager' || managerRegistrationKind !== kind) return;
+      // Do not re-display passwords or personal phone data after registration.
+      var code = result.owner_code || result.partner_code || '';
+      root.innerHTML = dashboardHeader('manager') +
+        note('✅ ' + (kind === 'owner' ? 'Владелец' : 'Грумер') + ' «' + name +
+          '» зарегистрирован' + (code ? '. Код: ' + code : '') + '.') +
+        '<div class="work-action-bar">' +
+        '<button type="button" class="work-primary" data-work-action="manager-reg-retry">➕ Зарегистрировать ещё</button>' +
+        '<button type="button" class="work-secondary" data-work-action="manager-reg-back">← В кабинет менеджера</button></div>';
+    } catch (e) {
+      if (mySerial !== serial || activeRole !== 'manager' || managerRegistrationKind !== kind) return;
+      if (e.status === 401 || e.status === 403 && /авторизац|сессия/i.test(e.message)) {
+        clearToken('manager');
+        managerRegistrationKind = '';
+        return renderLogin('Сессия менеджера завершена. Войдите снова.');
+      }
+      managerRegistrationError(e.message);
+      button.disabled = false;
+    } finally {
+      managerRegistrationBusy = false;
+    }
+  }
   function managerDashboard(data) {
     // manager.points is a legacy payout/referral ledger, not the live network.
     // Only the server-verified canonical points directory may drive this panel.
@@ -737,6 +926,11 @@
       stat('Бонусы к выплате', compensation ? rub(compensation.launch_bonus_unpaid) : '—', 'Начислены, но не перечислены') +
       stat('Начислено за 30 дней', compensation ? rub(compensation.period_residual) : '—',
         'За период, включая уже оплаченные начисления') + '</div>';
+    html += surface('➕ Регистрация сотрудников',
+      '<div class="work-register-actions">' +
+      '<button class="work-primary" type="button" data-work-action="manager-reg-groomer">✂️ Добавить грумера</button>' +
+      '<button class="work-secondary" type="button" data-work-action="manager-reg-owner">🏠 Добавить владельца салона</button>' +
+      '</div><p class="work-note">Выберите свой действующий минимаркет. Регистрация откроет новый кабинет по номеру телефона.</p>');
     html += surface('Мои минимаркеты', rows(points.map(function(p) {
       return line(p.point_name || p.name || ('Точка #' + p.point_id), p.address || p.point_addr || 'Выручка за всё время', rub(p.live_revenue != null ? p.live_revenue : p.revenue));
     })));
@@ -878,6 +1072,11 @@
       if (activeRole) chooseRole(activeRole);
       else renderAll();
     });
+    if (action === 'manager-reg-groomer' && activeRole === 'manager') return openManagerRegistration('groomer');
+    if (action === 'manager-reg-owner' && activeRole === 'manager') return openManagerRegistration('owner');
+    if (action === 'manager-reg-retry' && activeRole === 'manager' && managerRegistrationKind)
+      return openManagerRegistration(managerRegistrationKind);
+    if (action === 'manager-reg-back' && activeRole === 'manager') return chooseRole('manager');
     if (action === 'phone-login' && activeRole) return chooseRole(activeRole);
     if (action === 'go-profile' && window.HvostMiniAppGoProfile) return window.HvostMiniAppGoProfile();
     if (action === 'owner-setup') return chooseRole('admin');
@@ -918,6 +1117,14 @@
     if (e.target.id === 'workLoginForm') { e.preventDefault(); login(); }
     if (e.target.id === 'workRestockForm') { e.preventDefault(); sendRestock(); }
     if (e.target.id === 'workChatForm') { e.preventDefault(); sendChat(); }
+    if (e.target.id === 'workManagerRegisterForm') {
+      e.preventDefault();
+      return submitManagerRegistration();
+    }
+  });
+  root.addEventListener('change', function(e) {
+    if (activeRole === 'manager' && managerRegistrationKind === 'owner' &&
+        e.target && e.target.id === 'workRegPoint') updateOwnerGroomerChoices();
   });
   if (identity) identity.onChange(function(state) {
     if (!state.verified || (activeRole === 'salon' && !state.combinedSalon)) return openAll();
