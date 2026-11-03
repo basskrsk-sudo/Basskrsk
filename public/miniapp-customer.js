@@ -92,7 +92,8 @@
       content += '<div class="block customer-entry"><h3>⚠️ Не удалось проверить вход через Telegram</h3>' +
         error(reason) +
         '<p class="hint">Вернитесь в чат ХвостМаркет и нажмите кнопку «Открыть рабочие кабинеты». ' +
-        'Если ошибка повторится, передайте администратору код TG-01 или TG-02, указанный выше.</p>' +
+        'Если повторяется, отправьте боту /cabinet, откройте новую кнопку и ' +
+        'передайте администратору код TG-01 или TG-02, указанный выше.</p>' +
         '<button type="button" class="btn btn-gold" data-customer-action="retry-telegram">' +
         '↻ Повторить проверку Telegram</button></div>';
     } else if (!status.verified) {
