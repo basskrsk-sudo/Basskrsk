@@ -2,6 +2,7 @@
 'use strict';
 
 const db = require('./db');
+const referralProgram = require('./referral-program');
 const { findDefaultGroomer } = require('./auto-groomer');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
