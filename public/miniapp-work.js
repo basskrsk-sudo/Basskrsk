@@ -913,8 +913,10 @@
     if (!points.length) {
       root.innerHTML = html + note(isOwner
         ? 'На ваших действующих точках уже есть владельцы или нет доступных минимаркетов.'
-        : 'У вас пока нет действующих минимаркетов. Сначала создайте точку через полный кабинет.') +
-        '<button type="button" class="work-secondary" data-work-action="manager-reg-back">Вернуться</button>';
+        : 'У вас пока нет действующих минимаркетов. Создайте новый прямо здесь.') +
+        '<div class="work-action-bar">' +
+        '<button type="button" class="work-primary" data-work-action="manager-point-new">➕ Добавить минимаркет</button>' +
+        '<button type="button" class="work-secondary" data-work-action="manager-reg-back">Вернуться</button></div>';
       return;
     }
     var ownerLink = isOwner
