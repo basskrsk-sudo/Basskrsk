@@ -28,6 +28,11 @@
   var managerRegistrationKind = '';
   var managerRegistrationOptions = null;
   var managerRegistrationBusy = false;
+  var managerNewPointMode = '';
+  var managerPointCities = null;
+  var managerNewPointBusy = false;
+  var managerCreatedPointId = '';
+  var managerCreatedPointName = '';
   var root = document.getElementById('workPage');
   if (!root) return;
   var identity = window.HvostMiniAppIdentity || null;
@@ -157,6 +162,11 @@
     managerRegistrationKind = '';
     managerRegistrationOptions = null;
     managerRegistrationBusy = false;
+    managerNewPointMode = '';
+    managerPointCities = null;
+    managerNewPointBusy = false;
+    managerCreatedPointId = '';
+    managerCreatedPointName = '';
     if (taskPanel) taskPanel.reset();
     serial++;
     renderAll();
@@ -385,6 +395,11 @@
     managerRegistrationKind = '';
     managerRegistrationOptions = null;
     managerRegistrationBusy = false;
+    managerNewPointMode = '';
+    managerPointCities = null;
+    managerNewPointBusy = false;
+    managerCreatedPointId = '';
+    managerCreatedPointName = '';
     if (taskPanel) taskPanel.reset();
     // A stale token or remembered role from another login must not expose
     // an account which is absent from this verified phone's role list.
@@ -757,6 +772,130 @@
         return '<option value="' + esc(g.id) + '">' + esc(g.full_name) + '</option>';
       }).join('');
   }
+  // Create a real point through the same server endpoint as the full
+  // manager cabinet; no local "fake" points or direct manager_id input.
+  function managerNewPointAuthorized() {
+    return activeRole === 'manager' && !!currentUser &&
+      phoneRoleAvailable('manager') && !!getToken('manager');
+  }
+  function renderManagerNewPoint() {
+    if (!managerNewPointAuthorized() || !managerNewPointMode) return;
+    var title = dashboardHeader('manager') +
+      '<button type="button" class="work-back" data-work-action="manager-point-back">← В кабинет менеджера</button>';
+    if (managerNewPointMode === 'complete') {
+      root.innerHTML = title + heading('✅ Минимаркет создан', 'Новая точка зарегистрирована в ХвостМаркет.') +
+        note('📍 «' + managerCreatedPointName + '» закреплён за вами. Теперь вы можете добавить грумеров и владельца салона.') +
+        '<div class="work-action-bar">' +
+        '<button type="button" class="work-primary" data-work-action="manager-point-groomer">✂️ Добавить грумера</button>' +
+        '<button type="button" class="work-secondary" data-work-action="manager-point-owner">🏠 Добавить владельца</button>' +
+        '<button type="button" class="work-secondary" data-work-action="manager-point-back">↻ К моим точкам</button></div>';
+      return;
+    }
+    if (!managerPointCities || !managerPointCities.length) {
+      root.innerHTML = title + problem('Не удалось получить города сети. Обновите список.') +
+        '<button type="button" class="work-secondary" data-work-action="manager-point-retry">↻ Загрузить города</button>';
+      return;
+    }
+    var cityOptions = managerPointCities.map(function(city) {
+      return '<option value="' + esc(city.id) + '">' + esc(city.name) + '</option>';
+    }).join('');
+    root.innerHTML = title + heading('📍 Новый минимаркет', 'Заполните данные салона. Проверим адрес на карте перед созданием.') +
+      surface('Новая точка',
+        '<form id="workManagerNewPointForm" class="work-register-form">' +
+        '<label class="work-register-label" for="workPointName">Название салона *</label>' +
+        '<input class="work-register-input" id="workPointName" type="text" maxlength="120" required placeholder="Например, Барсик">' +
+        '<label class="work-register-label" for="workPointCity">Город *</label>' +
+        '<select class="work-register-input" id="workPointCity" required>' +
+        '<option value="">— Выберите город —</option>' + cityOptions + '</select>' +
+        '<label class="work-register-label" for="workPointAddr">Улица и номер дома *</label>' +
+        '<input class="work-register-input" id="workPointAddr" type="text" maxlength="240" required placeholder="ул. Молокова, 40">' +
+        '<label class="work-register-label" for="workPointIcon">Значок точки (необязательно)</label>' +
+        '<input class="work-register-input" id="workPointIcon" type="text" maxlength="8" placeholder="📍" autocomplete="off">' +
+        '<p class="work-note">Адрес автоматически проверяется на карте. При ошибке точка не создаётся. Новая точка появится с нулевыми остатками.</p>' +
+        '<div id="workPointStatus" role="status" aria-live="polite"></div>' +
+        '<button type="submit" class="work-primary" id="workPointSubmit">➕ Создать минимаркет</button>' +
+        '</form>');
+    var preferredCity = String(currentUser.city_id || '');
+    if (managerPointCities.some(function(city) { return String(city.id) === preferredCity; })) {
+      document.getElementById('workPointCity').value = preferredCity;
+    }
+  }
+  async function openManagerNewPoint() {
+    if (!managerNewPointAuthorized()) return;
+    managerNewPointMode = 'form';
+    managerNewPointBusy = false;
+    managerCreatedPointId = '';
+    managerCreatedPointName = '';
+    var mySerial = serial;
+    root.innerHTML = dashboardHeader('manager') + note('Загружаем города сети…');
+    try {
+      var result = await fetchJSON('/api/cities', getToken('manager'));
+      if (mySerial !== serial || !managerNewPointAuthorized() || managerNewPointMode !== 'form') return;
+      managerPointCities = (result.cities || []).filter(function(city) {
+        return city && city.id && city.name;
+      });
+      renderManagerNewPoint();
+    } catch (e) {
+      if (mySerial !== serial || !managerNewPointAuthorized() || managerNewPointMode !== 'form') return;
+      if (e.status === 401) {
+        clearToken('manager');
+        managerNewPointMode = '';
+        return renderLogin('Сессия менеджера завершена. Войдите снова.');
+      }
+      managerPointCities = null;
+      renderManagerNewPoint();
+    }
+  }
+  function managerPointError(message) {
+    var el = document.getElementById('workPointStatus');
+    if (el) el.innerHTML = problem(message);
+  }
+  async function submitManagerNewPoint() {
+    if (!managerNewPointAuthorized() || managerNewPointMode !== 'form' ||
+        managerNewPointBusy || !managerPointCities) return;
+    var get = function(id) { return document.getElementById(id); };
+    var name = String(get('workPointName').value || '').trim().replace(/\s+/g, ' ');
+    var addr = String(get('workPointAddr').value || '').trim().replace(/\s+/g, ' ');
+    var cityId = String(get('workPointCity').value || '');
+    var icon = String(get('workPointIcon').value || '').trim();
+    if (name.length < 2 || name.length > 120 || addr.length < 5 || addr.length > 240) {
+      return managerPointError('Введите название (2–120 символов) и точный адрес с номером дома.');
+    }
+    if (!managerPointCities.some(function(city) { return String(city.id) === cityId; })) {
+      return managerPointError('Выберите город из списка ХвостМаркета.');
+    }
+    if (icon.length > 8) return managerPointError('Значок должен быть коротким.');
+    managerNewPointBusy = true;
+    var button = get('workPointSubmit');
+    var status = get('workPointStatus');
+    button.disabled = true;
+    status.innerHTML = note('Проверяем адрес и добавляем минимаркет на карту…');
+    var mySerial = serial;
+    try {
+      var point = await fetchJSON('/api/points', getToken('manager'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, addr: addr, city_id: cityId, icon: icon || '📍' }),
+      });
+      if (mySerial !== serial || !managerNewPointAuthorized() || managerNewPointMode !== 'form') return;
+      managerCreatedPointId = String(point.id || '');
+      if (!managerCreatedPointId) throw new Error('Сервер не вернул идентификатор созданной точки.');
+      managerCreatedPointName = name;
+      managerNewPointMode = 'complete';
+      renderManagerNewPoint();
+    } catch (e) {
+      if (mySerial !== serial || !managerNewPointAuthorized() || managerNewPointMode !== 'form') return;
+      if (e.status === 401) {
+        clearToken('manager');
+        managerNewPointMode = '';
+        return renderLogin('Сессия менеджера завершена. Войдите снова.');
+      }
+      managerPointError(e.message || 'Не удалось создать минимаркет.');
+      button.disabled = false;
+    } finally {
+      managerNewPointBusy = false;
+    }
+  }
   function renderManagerRegistration() {
     if (activeRole !== 'manager' || !currentUser || !managerRegistrationKind ||
         !phoneRoleAvailable('manager') || !getToken('manager')) return;
@@ -774,8 +913,10 @@
     if (!points.length) {
       root.innerHTML = html + note(isOwner
         ? 'На ваших действующих точках уже есть владельцы или нет доступных минимаркетов.'
-        : 'У вас пока нет действующих минимаркетов. Сначала создайте точку через полный кабинет.') +
-        '<button type="button" class="work-secondary" data-work-action="manager-reg-back">Вернуться</button>';
+        : 'У вас пока нет действующих минимаркетов. Создайте новый прямо здесь.') +
+        '<div class="work-action-bar">' +
+        '<button type="button" class="work-primary" data-work-action="manager-point-new">➕ Добавить минимаркет</button>' +
+        '<button type="button" class="work-secondary" data-work-action="manager-reg-back">Вернуться</button></div>';
       return;
     }
     var ownerLink = isOwner
@@ -807,6 +948,11 @@
         (isOwner ? 'Зарегистрировать владельца' : 'Зарегистрировать грумера') +
         '</button></form>') +
       '<p class="work-quiet">После регистрации новый пользователь может войти в Telegram Mini App по подтверждённому номеру телефона.</p>';
+    if (managerCreatedPointId && points.some(function(p) { return String(p.id) === managerCreatedPointId; })) {
+      var selectedPoint = document.getElementById('workRegPoint');
+      if (selectedPoint) selectedPoint.value = managerCreatedPointId;
+      if (isOwner) updateOwnerGroomerChoices();
+    }
   }
   async function openManagerRegistration(kind) {
     if (activeRole !== 'manager' || !currentUser || !phoneRoleAvailable('manager') ||
@@ -926,6 +1072,9 @@
       stat('Бонусы к выплате', compensation ? rub(compensation.launch_bonus_unpaid) : '—', 'Начислены, но не перечислены') +
       stat('Начислено за 30 дней', compensation ? rub(compensation.period_residual) : '—',
         'За период, включая уже оплаченные начисления') + '</div>';
+    html += surface('📍 Новые минимаркеты',
+      '<button type="button" class="work-primary" data-work-action="manager-point-new">➕ Добавить минимаркет</button>' +
+      '<p class="work-note">Точка автоматически закрепится за вами, появится на карте и будет доступна для регистрации сотрудников.</p>');
     html += surface('➕ Регистрация сотрудников',
       '<div class="work-register-actions">' +
       '<button class="work-primary" type="button" data-work-action="manager-reg-groomer">✂️ Добавить грумера</button>' +
@@ -1072,6 +1221,14 @@
       if (activeRole) chooseRole(activeRole);
       else renderAll();
     });
+    if (action === 'manager-point-new' && activeRole === 'manager') return openManagerNewPoint();
+    if (action === 'manager-point-retry' && activeRole === 'manager' && managerNewPointMode === 'form')
+      return openManagerNewPoint();
+    if (action === 'manager-point-back' && activeRole === 'manager') return chooseRole('manager');
+    if (action === 'manager-point-groomer' && activeRole === 'manager' && managerNewPointMode === 'complete')
+      return openManagerRegistration('groomer');
+    if (action === 'manager-point-owner' && activeRole === 'manager' && managerNewPointMode === 'complete')
+      return openManagerRegistration('owner');
     if (action === 'manager-reg-groomer' && activeRole === 'manager') return openManagerRegistration('groomer');
     if (action === 'manager-reg-owner' && activeRole === 'manager') return openManagerRegistration('owner');
     if (action === 'manager-reg-retry' && activeRole === 'manager' && managerRegistrationKind)
@@ -1120,6 +1277,10 @@
     if (e.target.id === 'workManagerRegisterForm') {
       e.preventDefault();
       return submitManagerRegistration();
+    }
+    if (e.target.id === 'workManagerNewPointForm') {
+      e.preventDefault();
+      return submitManagerNewPoint();
     }
   });
   root.addEventListener('change', function(e) {
