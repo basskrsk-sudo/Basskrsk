@@ -157,6 +157,7 @@
       '</div>' + (value == null ? '' : '<strong>' + esc(value) + '</strong>') + '</div>';
   }
   function openAll() {
+    clearGroomerPromos();
     if(window.HvostAdminWarehouse)window.HvostAdminWarehouse.close(true);
     activeRole = '';
     currentUser = null;
@@ -268,6 +269,17 @@
         Number(owner.groomer_partner_id) !== Number(partner.id)) return false;
     return true;
   }
+  function groomerPromoSection(partner) {
+    return window.HvostMiniAppPromos && window.HvostMiniAppPromos.section
+      ? window.HvostMiniAppPromos.section(partner, function () {
+          return (activeRole === 'partner' || activeRole === 'salon') &&
+            phoneRoleAvailable('partner') && !!getToken('partner');
+        }) : '';
+  }
+  function clearGroomerPromos() {
+    if (window.HvostMiniAppPromos && window.HvostMiniAppPromos.clear)
+      window.HvostMiniAppPromos.clear();
+  }
   function combinedSalonDashboard(partner, owner, ordersData, payoutData, stockData, salonData) {
     var orders = ordersData.orders || [];
     var payout = payoutData || {};
@@ -301,6 +313,7 @@
       line('🏠 За размещение в салоне', 'К выплате владельцу · текущий тариф ' +
         Math.round(Number(owner.commission_rate || 0) * 100) + '%', rub(ownerUnpaid)) +
       '<p class="work-note">Погашенные выплаты уже исключены из сумм «к выплате».</p>');
+    html += groomerPromoSection(partner);
     html += surface('🛍 Мои личные продажи · 30 дней',
       rows(orders.slice(0, 8).map(function(o) {
         return line(o.product || 'Покупка', date(o.date) + ' · ' + o.order_code, '+' + rub(o.commission));
@@ -337,6 +350,7 @@
     return html;
   }
   async function chooseCombinedSalon() {
+    clearGroomerPromos();
     if (!phoneRoleAvailable('salon') || !identity || typeof identity.session !== 'function') {
       return openAll();
     }
@@ -398,6 +412,7 @@
     }
   }
   async function chooseRole(role) {
+    clearGroomerPromos();
     if(window.HvostAdminWarehouse)window.HvostAdminWarehouse.close(true);
     if (!phoneStatus().verified) { renderAll(); return; }
     if (role === 'salon') return chooseCombinedSalon();
@@ -742,6 +757,7 @@
       stat('Начислено за 30 дней', rub(earn), 'По фактическим продажам') +
       stat('Ожидает выплаты', data[1] ? rub(pay.unpaid_amount) : '—', 'По всем невыплаченным заказам') +
       stat('Комиссия', Math.round(rate) + '%', 'Ваш текущий тариф') + '</div>';
+    html += groomerPromoSection(currentUser);
     html += surface('Последние продажи', rows(orders.slice(0, 6).map(function(o) {
       return line(o.product || 'Покупка', date(o.date) + ' · ' + o.order_code, '+' + rub(o.commission));
     })));

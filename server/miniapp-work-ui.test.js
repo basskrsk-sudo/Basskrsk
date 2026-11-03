@@ -1117,3 +1117,103 @@ test('founder and admin have no manager messaging action on their dashboards',as
   }}});
   assert.equal(f.calls.some(c=>c.url.includes('manager-messages')),false);
 });
+
+
+test('groomer Telegram dashboard passes only the signed groomer profile to promo cards',async()=>{
+  const values=[];
+  const component={
+    clear(){},
+    section(partner,canAccess){
+      values.push({partner,allowed:canAccess()});
+      return '<div id="groomer-promos">'+partner.first_purchase_promo_code+'</div>';
+    },
+  };
+  const h=createHarness({
+    '/api/partners/me':{partner:{
+      id:31,point_id:'bark',active:1,full_name:'Барсукова Юлия',
+      partner_code:'GR-031',first_purchase_promo_code:'HV20-G-031',
+      current_point:{id:'bark',name:'БаркЛай',first_purchase_promo_code:'HV20-001'},
+    }},
+    '/api/partners/me/orders?days=30':{orders:[]},
+    '/api/partners/me/payouts?limit=10':{unpaid_amount:0},
+    '/api/partners/me/stock':{stock:[]},
+  },{taiga_partner_token:'partner-access-token'},null,{HvostMiniAppPromos:component});
+  await h.window.HvostMiniAppWork.chooseRole('partner');
+  assert.match(h.root.innerHTML,/HV20-G-031/);
+  assert.equal(values.length,1);
+  assert.equal(values[0].partner.current_point.first_purchase_promo_code,'HV20-001');
+  assert.equal(values[0].allowed,true);
+  assert.equal(h.calls.some(c=>c.url==='/api/points'||c.url==='/api/partners'),false,
+    'promo cards must not query the network-wide partner or points directories');
+});
+
+test('combined groomer/owner cabinet uses groomer token to render only their own promo codes',async()=>{
+  const entries=[];
+  const partner={
+    id:52,point_id:'salon-52',phone:'79135554444',active:1,
+    partner_code:'GR-052',first_purchase_promo_code:'HV20-G-052',
+    current_point:{id:'salon-52',name:'Дог Стиль',
+      first_purchase_promo_code:'HV20-005'},
+  };
+  const owner={
+    id:72,point_id:'salon-52',phone:'79135554444',active:1,
+    full_name:'Грумер-владелец',groomer_partner_id:52,
+    owner_code:'OWN-072',
+  };
+  const identity={
+    getStatus(){return {loaded:true,verified:true,combinedSalon:true,
+      accounts:[{role:'partner'},{role:'owner'}],ambiguousRoles:[],error:''};},
+    onChange(){},
+    async session(role){return {role,token:'signed-'+role};},
+  };
+  const h=createHarness({
+    '/api/partners/me':{partner},
+    '/api/owner/me':{owner},
+    '/api/partners/me/orders?days=30':{orders:[]},
+    '/api/partners/me/payouts?limit=10':{unpaid_amount:0},
+    '/api/partners/me/stock':{stock:[]},
+    '/api/owner/dashboard':{point:{id:'salon-52',name:'Дог Стиль'},
+      totals:{revenue:0,this_month_revenue:0,this_month_orders:0},
+      owner_earnings:{unpaid:0,this_month:0},groomers:[],recent_orders:[]},
+  },{},identity,{
+    HvostMiniAppPromos:{
+      clear(){},
+      section(data,canAccess){
+        entries.push({data,authorized:canAccess()});
+        return '<p>Персональный промокод '+data.first_purchase_promo_code+'</p>';
+      },
+    },
+  });
+  await h.window.HvostMiniAppWork.chooseRole('salon');
+  assert.match(h.root.innerHTML,/HV20-G-052/);
+  assert.equal(entries.length,1);
+  assert.equal(entries[0].data.id,52,'must use actual groomer profile rather than owner');
+  assert.equal(entries[0].authorized,true);
+  assert.equal(h.calls.find(c=>c.url==='/api/partners/me').opts.headers.Authorization,
+    'Bearer signed-partner');
+  assert.equal(h.calls.find(c=>c.url==='/api/owner/me').opts.headers.Authorization,
+    'Bearer signed-owner');
+});
+
+test('manager and owner-only dashboards cannot expose groomer promo cards',async()=>{
+  const calls=[];
+  const component={clear(){},section(){calls.push('unexpected');return 'PROMO-PRIVATE';}};
+  const fixtures={
+    '/api/owner/me':{owner:{id:1,point_id:'salon',active:1,full_name:'Владелец'}},
+    '/api/owner/dashboard':{point:{id:'salon',name:'Салон'},
+      totals:{},owner_earnings:{},groomers:[],recent_orders:[]},
+    '/api/managers/me':{manager:{id:2,active:1,current_points:[]}},
+    '/api/managers/me/orders?days=30&limit=200':{orders:[]},
+    '/api/managers/me/stock':{points:[]},
+    '/api/managers/me/compensation?days=30':{commission_unpaid:0},
+  };
+  const owner=createHarness(fixtures,{taiga_owner_token:'owner-token'},null,
+    {HvostMiniAppPromos:component});
+  await owner.window.HvostMiniAppWork.chooseRole('owner');
+  assert.doesNotMatch(owner.root.innerHTML,/PROMO-PRIVATE/);
+  const manager=createHarness(fixtures,{taiga_manager_token:'manager-token'},null,
+    {HvostMiniAppPromos:component});
+  await manager.window.HvostMiniAppWork.chooseRole('manager');
+  assert.doesNotMatch(manager.root.innerHTML,/PROMO-PRIVATE/);
+  assert.deepEqual(calls,[]);
+});
