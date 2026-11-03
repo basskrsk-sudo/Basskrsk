@@ -30,6 +30,7 @@
   var managerRegistrationBusy = false;
   var managerNewPointMode = '';
   var managerPointCities = null;
+  var managerReferralLeads = [];
   var managerNewPointBusy = false;
   var managerCreatedPointId = '';
   var managerCreatedPointName = '';
@@ -280,6 +281,13 @@
     if (window.HvostMiniAppPromos && window.HvostMiniAppPromos.clear)
       window.HvostMiniAppPromos.clear();
   }
+  function ownerReferralSection(owner,combined) {
+    return window.HvostMiniAppPromos && window.HvostMiniAppPromos.ownerSection
+      ? window.HvostMiniAppPromos.ownerSection(owner,function(){
+          return (activeRole==='owner'||activeRole==='salon') &&
+            phoneRoleAvailable('owner') && !!getToken('owner');
+        },!!combined) : '';
+  }
   function combinedSalonDashboard(partner, owner, ordersData, payoutData, stockData, salonData) {
     var orders = ordersData.orders || [];
     var payout = payoutData || {};
@@ -314,6 +322,7 @@
         Math.round(Number(owner.commission_rate || 0) * 100) + '%', rub(ownerUnpaid)) +
       '<p class="work-note">Погашенные выплаты уже исключены из сумм «к выплате».</p>');
     html += groomerPromoSection(partner);
+    html += ownerReferralSection(owner,true);
     html += surface('🛍 Мои личные продажи · 30 дней',
       rows(orders.slice(0, 8).map(function(o) {
         return line(o.product || 'Покупка', date(o.date) + ' · ' + o.order_code, '+' + rub(o.commission));
@@ -835,6 +844,10 @@
         '<button type="button" class="work-secondary" data-work-action="manager-point-retry">↻ Загрузить города</button>';
       return;
     }
+    var referralOptions = (managerReferralLeads || []).map(function(lead) {
+      return '<option value="' + esc(lead.id) + '">' +
+        esc(lead.salon_name + ' · ' + lead.referral_code) + '</option>';
+    }).join('');
     var cityOptions = managerPointCities.map(function(city) {
       return '<option value="' + esc(city.id) + '">' + esc(city.name) + '</option>';
     }).join('');
@@ -848,6 +861,9 @@
         '<option value="">— Выберите город —</option>' + cityOptions + '</select>' +
         '<label class="work-register-label" for="workPointAddr">Улица и номер дома *</label>' +
         '<input class="work-register-input" id="workPointAddr" type="text" maxlength="240" required placeholder="ул. Молокова, 40">' +
+        '<label class="work-register-label" for="workPointReferralLead">Заявка по реферальной ссылке</label>' +
+        '<select class="work-register-input" id="workPointReferralLead"><option value="">Нет реферальной заявки</option>' + referralOptions + '</select>' +
+        '<p class="work-note">Если салон пришёл по ссылке партнёра, выберите его заявку. После создания точки за пригласившим фиксируется 1 000 ₽ ожидаемого бонуса.</p>' +
         '<label class="work-register-label" for="workPointIcon">Значок точки (необязательно)</label>' +
         '<input class="work-register-input" id="workPointIcon" type="text" maxlength="8" placeholder="📍" autocomplete="off">' +
         '<p class="work-note">Адрес автоматически проверяется на карте. При ошибке точка не создаётся. Новая точка появится с нулевыми остатками.</p>' +
@@ -869,6 +885,9 @@
     root.innerHTML = dashboardHeader('manager') + note('Загружаем города сети…');
     try {
       var result = await fetchJSON('/api/cities', getToken('manager'));
+      var invites = await fetchJSON('/api/partner-leads/referral-options', getToken('manager'))
+        .catch(function(){return {leads:[]};});
+      managerReferralLeads = (invites.leads || []).filter(function(x){return x && x.id;});
       if (mySerial !== serial || !managerNewPointAuthorized() || managerNewPointMode !== 'form') return;
       managerPointCities = (result.cities || []).filter(function(city) {
         return city && city.id && city.name;
@@ -914,7 +933,9 @@
       var point = await fetchJSON('/api/points', getToken('manager'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name, addr: addr, city_id: cityId, icon: icon || '📍' }),
+        body: JSON.stringify(Object.assign({ name: name, addr: addr, city_id: cityId, icon: icon || '📍' },
+          String((get('workPointReferralLead') || {}).value || '')
+            ? { referral_lead_id:Number(get('workPointReferralLead').value) } : {})),
       });
       if (mySerial !== serial || !managerNewPointAuthorized() || managerNewPointMode !== 'form') return;
       managerCreatedPointId = String(point.id || '');
@@ -1137,7 +1158,7 @@
   function ownerDashboard(data) {
     var d = data[0];
     if (!d) return problem('Не удалось получить показатели салона.');
-    if (d.noPoint) return note(d.message || 'Вам ещё не назначена точка.');
+    if (d.noPoint) return note(d.message || 'Вам ещё не назначена точка.') + ownerReferralSection(currentUser,false);
     var totals = d.totals || {}, earn = d.owner_earnings || {};
     var html = note('📍 ' + (d.point && d.point.name || 'Ваш салон') + (d.point && d.point.addr ? ' · ' + d.point.addr : '')) +
       '<div class="work-stats">' +
@@ -1145,6 +1166,7 @@
       stat('Продажи за всё время', rub(totals.revenue), number(totals.orders) + ' покупок') +
       stat('К выплате владельцу', rub(earn.unpaid), 'Невыплаченное вознаграждение') +
       stat('Средний чек', rub(totals.avg_order), 'За всё время') + '</div>';
+    html += ownerReferralSection(currentUser,false);
     html += surface('Грумеры салона', rows((d.groomers || []).slice(0, 10).map(function(g) {
       return line(g.full_name, number(g.orders_count) + ' продаж · ' + g.tier_percent + '% комиссия', rub(g.revenue));
     })));
@@ -1236,6 +1258,14 @@
         '<select class="work-register-input" id="workAdminPointManager">' +
         adminRegistrationChoicesHtml(options.managers || [], 'Пока не назначен') +
         '</select>' +
+        '<label class="work-register-label" for="workAdminPointReferralLead">Заявка приглашённого салона</label>' +
+        '<select class="work-register-input" id="workAdminPointReferralLead">' +
+          '<option value="">Без реферальной заявки</option>' +
+          (options.referral_leads || []).map(function(x){
+            return '<option value="' + esc(x.id) + '">' +
+              esc(x.salon_name+' · '+x.referral_code) + '</option>';
+          }).join('') + '</select>' +
+        '<p class="work-note">За пригласившим партнёром фиксируется ожидаемый бонус 1 000 ₽ после создания новой точки.</p>' +
         '<label class="work-register-label" for="workAdminPointIcon">Значок (необязательно)</label>' +
         '<input class="work-register-input" id="workAdminPointIcon" type="text" maxlength="8" placeholder="📍">' +
         '<p class="work-note">Точка будет добавлена на карту после проверки адреса. Начальные остатки — 0. Менеджера можно выбрать сейчас.</p>';
@@ -1350,6 +1380,8 @@
         return adminRegistrationError('Выберите действующего менеджера из списка.');
       if (icon.length > 8) return adminRegistrationError('Слишком длинный значок.');
       body = { name:name, addr:addr, city_id:city, icon:icon || '📍' };
+      var selectedReferral=String((get('workAdminPointReferralLead')||{}).value||'');
+      if (selectedReferral) body.referral_lead_id=Number(selectedReferral);
       if (managerId) body.manager_id = Number(managerId);
       url = '/api/points';
     } else {
@@ -1629,6 +1661,30 @@
     }
   });
   root.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'workAdminPointReferralLead' && activeRole === 'admin') {
+      var opt=(adminRegistrationOptions&&adminRegistrationOptions.referral_leads||[]).find(function(x){
+        return String(x.id)===String(e.target.value);
+      });
+      if (opt) {
+        var n=document.getElementById('workAdminPointName');
+        var c=document.getElementById('workAdminPointCity');
+        var m=document.getElementById('workAdminPointManager');
+        if(n)n.value=opt.salon_name;
+        if(c&&opt.city_id)c.value=opt.city_id;
+        if(m&&opt.assigned_manager_id)m.value=String(opt.assigned_manager_id);
+      }
+    }
+
+    if (e.target && e.target.id === 'workPointReferralLead' && activeRole === 'manager') {
+      var selectedLead = managerReferralLeads.find(function(x){return String(x.id)===String(e.target.value);});
+      if (selectedLead) {
+        var nameInput=document.getElementById('workPointName');
+        var cityInput=document.getElementById('workPointCity');
+        if (nameInput) nameInput.value=selectedLead.salon_name;
+        if (cityInput && selectedLead.city_id) cityInput.value=selectedLead.city_id;
+      }
+    }
+
     if (activeRole === 'manager' && managerRegistrationKind === 'owner' &&
         e.target && e.target.id === 'workRegPoint') updateOwnerGroomerChoices();
     if (activeRole === 'admin' && adminRegistrationKind === 'owner' &&

@@ -666,7 +666,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
         <div style="display:flex;flex-direction:column;gap:.75rem;font-size:.83rem;color:var(--text);line-height:1.6;">
           <div style="display:flex;gap:.75rem;">
             <div style="width:24px;height:24px;border-radius:50%;background:var(--green-bg);color:var(--green-text);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:.75rem;">1</div>
-            <div><strong>Приглашаете грумера или ветеринара</strong> — он вводит ваш промокод при регистрации новой точки на «Тайге».</div>
+            <div><strong>Приглашаете грумера или ветеринара</strong> — он переходит по вашей ссылке и оставляет заявку на открытие новой точки ХвостМаркета.</div>
           </div>
           <div style="display:flex;gap:.75rem;">
             <div style="width:24px;height:24px;border-radius:50%;background:var(--green-bg);color:var(--green-text);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:.75rem;">2</div>
@@ -1161,7 +1161,7 @@ async function onPartnerLoginSuccess(data) {
 
   const refLinkEl = document.getElementById('ref-link-text');
   if (refLinkEl && data.user.partner_code) {
-    refLinkEl.textContent = 'хвостмаркет.рф/taiga-register.html?ref=' + data.user.partner_code;
+    refLinkEl.textContent = 'хвостмаркет.рф/partner-invite.html?ref=' + data.user.partner_code;
   }
   const customerLinkEl = document.getElementById('customer-link-text');
   const firstPurchasePromoEl = document.getElementById('first-purchase-promo-text');

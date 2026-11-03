@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Приглашение в ХвостМаркет — стать партнёром</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+:root{color-scheme:light;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:#f5f7f1;color:#1e4033}
+main{max-width:540px;margin:0 auto;padding:24px 16px 40px}
+.top{display:flex;align-items:center;gap:10px;color:#13543a;font-weight:900;margin-bottom:20px}
+.foot{font-size:12px;color:#667d70;line-height:1.6;margin-top:22px}
+h1{font-size:26px;line-height:1.25;margin:0 0 12px}
+h2{font-size:18px;margin:0 0 10px}
+p{font-size:14px;line-height:1.6}
+.card{background:white;border:1px solid #e0e9df;border-radius:18px;padding:22px;box-shadow:0 6px 18px #0a4a2412;margin-bottom:16px}
+.pill{font-size:12px;font-weight:800;color:#186b49;background:#e8f5e8;border-radius:8px;display:inline-block;padding:6px 10px;margin-bottom:14px}
+label{display:block;font-size:13px;font-weight:700;margin:15px 0 6px}
+input,select{width:100%;min-height:46px;border:1px solid #cddbd1;border-radius:10px;padding:10px 12px;background:#fff;font:inherit;font-size:16px;color:#1e4033}
+button{display:block;margin-top:20px;width:100%;background:#146a46;border:0;border-radius:12px;color:#fff;font-size:16px;font-weight:800;padding:14px;cursor:pointer}
+button:disabled{opacity:.65}
+.error{color:#ac3027;font-size:13px;margin-top:12px;line-height:1.5}
+.success{display:none}
+.small{font-size:12px;color:#65776a}
+a{color:#186b49}
+</style></head><body>
+<main><div class="top">🐾 ХВОСТМАРКЕТ</div>
+<section class="card" id="formCard">
+<span class="pill">🤝 Приглашение от партнёра</span>
+<h1>Откройте минимаркет для питомцев в своём салоне</h1>
+<p>Оставьте заявку на подключение. Наш менеджер согласует размещение и зарегистрирует вашу новую точку в ХвостМаркете.</p>
+<p class="small" id="refNote">Проверяем реферальную ссылку…</p>
+<form id="inviteForm">
+<label for="salon">Название груминг-салона или клиники *</label>
+<input id="salon" name="salon" required maxlength="120" autocomplete="organization" placeholder="Например, Дог Стиль">
+<label for="city">Город *</label>
+<select id="city" name="city" required><option value="">Загружаем города…</option></select>
+<label for="person">Ваше имя и фамилия *</label>
+<input id="person" name="person" required maxlength="120" autocomplete="name" placeholder="Как к вам обращаться">
+<label for="phone">Номер телефона *</label>
+<input id="phone" name="phone" required type="tel" inputmode="tel" autocomplete="tel" maxlength="32" placeholder="+7 999 123-45-67">
+<label class="small" style="font-weight:400"><input type="checkbox" id="consent" required style="width:18px;height:18px;min-height:0;vertical-align:middle;margin:0 7px 0 0">Согласен(на) на <a href="/privacy-policy.html" target="_blank" rel="noopener">обработку персональных данных</a> для связи и регистрации новой точки</label>
+<div class="error" id="error" role="alert" aria-live="assertive"></div>
+<button type="submit" id="send">Отправить заявку на новую точку</button>
+</form>
+</section>
+<section class="card success" id="success">
+<h1>✅ Заявка получена!</h1><p>Менеджер ХвостМаркета свяжется с вами и поможет подключить новый салон. Реферальное приглашение сохранено.</p>
+<p id="ticket"></p><a href="/">Перейти в магазин ХвостМаркет</a>
+</section>
+<div class="foot">Привлёкший вас партнёр получит право на бонус 1 000 ₽ после запуска новой точки и достижения ею 2 000 ₽ прямой прибыли. Переход по ссылке или заявка сами по себе не означают выплату.</div>
+</main>
+<script>
+(function(){
+  'use strict';
+  var params=new URLSearchParams(location.search);
+  var code=String(params.get('ref')||'').trim().toUpperCase();
+  var note=document.getElementById('refNote');
+  note.textContent=code?'Реферальный код приглашения: '+code:'Для регистрации новой точки обратитесь к менеджеру ХвостМаркета.';
+  if(!/^(GR|OWN)-[0-9]{1,12}$/.test(code)){
+    document.getElementById('send').disabled=true;
+    document.getElementById('error').textContent='Реферальная ссылка недействительна. Попросите партнёра отправить новую ссылку.';
+  }
+  fetch('/api/cities',{cache:'no-store'}).then(function(r){if(!r.ok)throw Error();return r.json();})
+    .then(function(data){
+      var cities=(data.cities||[]).filter(function(x){return x&&x.id&&x.name&&x.active!==0;});
+      var select=document.getElementById('city');
+      select.innerHTML='<option value="">Выберите город</option>';
+      cities.forEach(function(c){var item=document.createElement('option');item.value=c.id;item.textContent=c.name;select.appendChild(item);});
+    }).catch(function(){document.getElementById('error').textContent='Не удалось загрузить города. Обновите страницу.';});
+  document.getElementById('inviteForm').addEventListener('submit',async function(e){
+    e.preventDefault();
+    var err=document.getElementById('error'),btn=document.getElementById('send');
+    err.textContent='';
+    var phone=document.getElementById('phone').value.trim();
+    if(phone.replace(/\D/g,'').length!==11){err.textContent='Проверьте номер телефона.';return;}
+    if(!code||!document.getElementById('consent').checked){err.textContent='Необходимо реферальное приглашение и согласие на обработку данных.';return;}
+    btn.disabled=true;
+    try{
+      var r=await fetch('/api/partner-leads/public',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({salon_name:document.getElementById('salon').value.trim(),
+          category:'groomer',city_id:document.getElementById('city').value,
+          contact_name:document.getElementById('person').value.trim(),phone:phone,referral_code:code})});
+      var data=await r.json();
+      if(!r.ok)throw Error(data.error||'Не удалось отправить заявку');
+      document.getElementById('formCard').hidden=true;
+      document.getElementById('success').style.display='block';
+    }catch(ex){err.textContent=ex.message;btn.disabled=false;}
+  });
+})();
+</script></body></html>

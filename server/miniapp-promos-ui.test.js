@@ -64,7 +64,7 @@ test('groomer card shows personal and canonical active salon 20% codes and refer
   assert.match(markup,/HV20-002/);
   assert.match(markup,/GR-053/);
   assert.match(markup,/БаркЛай/);
-  assert.match(markup,/taiga-register\.html\?ref=GR-053/);
+  assert.match(markup,/partner-invite\.html\?ref=GR-053/);
   assert.match(markup,/ref=bark-lay&amp;partner=53&amp;promo=HV20-G-053&amp;city=krsk/);
   assert.equal((markup.match(/data-hm-promo-key=/g)||[]).length,5);
   assert.match(markup,/один раз.*номер телефона/);
@@ -82,7 +82,7 @@ test('groomer can copy each code directly in Telegram after verifying role',asyn
   await h.click('buyer');
   assert.match(h.copied.at(-1),/partner=53&promo=HV20-G-053/);
   await h.click('registration');
-  assert.equal(h.copied.at(-1),'https://хвостмаркет.рф/taiga-register.html?ref=GR-053');
+  assert.equal(h.copied.at(-1),'https://хвостмаркет.рф/partner-invite.html?ref=GR-053');
   assert.match(h.elements.workPromoCopyStatus.textContent,/Скопировано/);
 });
 
@@ -149,4 +149,45 @@ test('promo script is loaded before role dashboards and resets on account switch
   assert.match(work,/groomerPromoSection\(currentUser\)/);
   assert.match(work,/clearGroomerPromos\(\)/);
   assert.match(work,/phoneRoleAvailable\('partner'\)/);
+});
+
+test('owner-only invitation is copyable, records 1000 RUB without claiming money transferred',async()=>{
+  const h=harness();
+  const owner={id:42,active:1,owner_code:'OWN-042',referrals:{
+    awaiting:1000,payable:2000,paid:1000,rows:[
+      {point_id:'a',point_name:'Дог Стиль',amount:1000,status:'awaiting'},
+    ],
+  }};
+  const markup=h.api.ownerSection(owner,()=>true);
+  assert.match(markup,/OWN-042/);
+  assert.match(markup,/partner-invite\.html\?ref=OWN-042/);
+  assert.match(markup,/2 000 ₽ прямой прибыли/);
+  assert.match(markup,/Дог Стиль/);
+  assert.match(markup,/Ожидают порога прибыли/);
+  assert.match(markup,/Доступны к выплате/);
+  assert.match(markup,/Выплачено/);
+  assert.equal(await h.click('ownerInvite'),true);
+  assert.equal(h.copied.at(-1),'https://хвостмаркет.рф/partner-invite.html?ref=OWN-042');
+  h.api.clear();
+  await h.click('ownerInvite');
+  assert.equal(h.copied.length,1);
+});
+test('combined groomer and owner can copy both referral links without losing either role',async()=>{
+  const h=harness();
+  h.api.section(personalPartner,()=>true);
+  h.api.ownerSection({id:3,active:1,owner_code:'OWN-003'},()=>true,true);
+  await h.click('registration');
+  assert.equal(h.copied.at(-1),'https://хвостмаркет.рф/partner-invite.html?ref=GR-053');
+  await h.click('ownerInvite');
+  assert.equal(h.copied.at(-1),'https://хвостмаркет.рф/partner-invite.html?ref=OWN-003');
+});
+test('owner referral invitation requires verified owner role and cannot be read from guest data',async()=>{
+  const h=harness();
+  assert.equal(h.api.ownerSection(null,()=>true),'');
+  assert.equal(h.api.ownerSection({id:42,owner_code:'OWN-042',active:0},()=>true),'');
+  let active=true;
+  h.api.ownerSection({id:42,owner_code:'OWN-042',active:1},()=>active);
+  active=false;
+  await h.click('ownerInvite');
+  assert.equal(h.copied.length,0);
 });

@@ -14,6 +14,11 @@ on:
       - server/miniapp-home-screen.test.js
       - public/miniapp-work.js
       - public/miniapp-promos.js
+      - public/partner-invite.html
+      - server/referral-program.js
+      - server/referral-flow.test.js
+      - server/bonus-logic.js
+      - server/routes-partner-leads.js
       - server/miniapp-promos-ui.test.js
       - public/miniapp-tasks.js
       - server/routes-miniapp-tasks.js
@@ -170,6 +175,10 @@ jobs:
           node --check public/miniapp-customer.js
           node --check public/miniapp-work.js
           node --check public/miniapp-promos.js
+          node --check server/referral-program.js
+          node --check server/referral-flow.test.js
+          node --check server/bonus-logic.js
+          node --check server/routes-partner-leads.js
           node --check server/miniapp-promos-ui.test.js
           node --check public/miniapp-telegram-context.js
           node --check server/miniapp-telegram-context.test.js
@@ -188,4 +197,4 @@ jobs:
         run: |
           node -e "const fs=require('node:fs');const s=fs.readFileSync('public/miniapp.html','utf8');const m=s.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);if(!m)throw new Error('missing Mini App script');new Function(m[1]);console.log('Mini App JavaScript syntax OK');"
       - name: Verify Telegram auth and all four staff dashboards
-        run: node --test --test-concurrency=1 server/unpaid-order-alerts.test.js server/miniapp-admin-warehouse.test.js server/miniapp-admin-warehouse-ui.test.js server/miniapp-admin-registration.test.js server/manager-miniapp-create-point.test.js server/manager-miniapp-registration.test.js server/manager-compensation-consistency.test.js server/miniapp-role-data-audit.test.js server/manager-current-points.test.js server/routes-miniapp.test.js server/miniapp-existing-bot.test.js server/miniapp-work-ui.test.js server/miniapp-promos-ui.test.js server/miniapp-telegram-context.test.js server/static-cache.test.js server/miniapp-home-screen.test.js server/miniapp-header-contrast.test.js server/miniapp-phone-identity.test.js server/miniapp-identity-ui.test.js server/miniapp-customer-first.test.js server/business-founders.test.js server/miniapp-founder-ui.test.js server/notification-preferences.test.js server/notification-settings-ui.test.js server/telegram-connections.test.js server/telegram-bot-identity.test.js server/telegram-connection-alerts.test.js server/task-daily-digest.test.js server/new-product-broadcast.test.js server/partner-club-photo-posts.test.js server/partner-club-reroll.test.js server/partner-tier-approvals.test.js server/miniapp-staff-tasks.test.js server/miniapp-staff-tasks-ui.test.js server/miniapp-manager-messages.test.js server/task-seed-2026-11-01.test.js server/task-seed-2026-11-02.test.js
+        run: node --test --test-concurrency=1 server/unpaid-order-alerts.test.js server/miniapp-admin-warehouse.test.js server/miniapp-admin-warehouse-ui.test.js server/miniapp-admin-registration.test.js server/manager-miniapp-create-point.test.js server/manager-miniapp-registration.test.js server/manager-compensation-consistency.test.js server/miniapp-role-data-audit.test.js server/manager-current-points.test.js server/routes-miniapp.test.js server/miniapp-existing-bot.test.js server/miniapp-work-ui.test.js server/miniapp-promos-ui.test.js server/referral-flow.test.js server/miniapp-telegram-context.test.js server/static-cache.test.js server/miniapp-home-screen.test.js server/miniapp-header-contrast.test.js server/miniapp-phone-identity.test.js server/miniapp-identity-ui.test.js server/miniapp-customer-first.test.js server/business-founders.test.js server/miniapp-founder-ui.test.js server/notification-preferences.test.js server/notification-settings-ui.test.js server/telegram-connections.test.js server/telegram-bot-identity.test.js server/telegram-connection-alerts.test.js server/task-daily-digest.test.js server/new-product-broadcast.test.js server/partner-club-photo-posts.test.js server/partner-club-reroll.test.js server/partner-tier-approvals.test.js server/miniapp-staff-tasks.test.js server/miniapp-staff-tasks-ui.test.js server/miniapp-manager-messages.test.js server/task-seed-2026-11-01.test.js server/task-seed-2026-11-02.test.js

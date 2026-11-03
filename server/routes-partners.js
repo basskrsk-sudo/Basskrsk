@@ -2,6 +2,7 @@
 'use strict';
 
 const db = require('./db');
+const referralProgram = require('./referral-program');
 const { findDefaultGroomer } = require('./auto-groomer');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
@@ -140,20 +141,25 @@ function registerPartnerRoutes(router) {
       return sendJson(res, 400, { error: 'Выберите хотя бы один формат размещения: стойка, картинка или корзинка' });
     }
 
-    // Промокод для привлечения новой точки — принимает код и грумера
-    // (partner_code, например GR-001), и владельца салона (owner_code,
-    // например OWN-001). Один и тот же код не может принадлежать обеим
-    // ролям одновременно, так что порядок проверки не важен.
+    // A new point can have one inviting groomer or owner, never several.
+    const recorded = referralProgram.storedReferral(point.id);
+    let effectiveReferralCode = String(referral_code || '').trim().toUpperCase();
+    if (!effectiveReferralCode && recorded && recorded.role !== 'none') {
+      effectiveReferralCode = recorded.recipient_code || '';
+    }
     let referrerPartner = null;
     let referrerOwner = null;
-    if (referral_code) {
-      referrerPartner = db.prepare('SELECT id FROM partners WHERE partner_code = ? AND active = 1').get(referral_code);
-      if (!referrerPartner) {
-        referrerOwner = db.prepare('SELECT id FROM salon_owners WHERE owner_code = ? AND active = 1').get(referral_code);
+    if (effectiveReferralCode) {
+      const inviting = referralProgram.referralFromCode(effectiveReferralCode);
+      if (!inviting) return sendJson(res,400,{error:'Код пригласившего не найден или неактивен'});
+      try {
+        referralProgram.assertReferralRules(inviting,point.id,phone);
+        if (recorded) referralProgram.firstGroomerReferral(point,effectiveReferralCode,phone);
+      } catch (e) {
+        return sendJson(res,e.statusCode||409,{error:e.message});
       }
-      if (!referrerPartner && !referrerOwner) {
-        return sendJson(res, 400, { error: 'Промокод не найден или неактивен' });
-      }
+      if (inviting.role === 'partner') referrerPartner = {id:inviting.recipient_id};
+      else referrerOwner = {id:inviting.recipient_id};
     }
 
     // Менеджер — берётся у самой точки (назначается при её создании), если
@@ -539,6 +545,7 @@ function registerPartnerRoutes(router) {
     ).get(partner.point_id) : null;
     sendJson(res, 200, { partner: {
       ...safePartner(partner),
+      referrals: referralProgram.referralSummary('partner',partner.id),
       city_id: point ? point.city_id : null,
       current_point: point || null,
       point_unavailable: !!(partner.point_id && !point),

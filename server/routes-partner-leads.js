@@ -6,6 +6,7 @@
 'use strict';
 
 const db = require('./db');
+const referralProgram = require('./referral-program');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
@@ -81,10 +82,20 @@ function registerPartnerLeadRoutes(router) {
       return sendJson(res, 400, { error: 'Укажите название заведения и телефон' });
     }
     const category = CATEGORIES.includes(b.category) ? b.category : null;
+    const referralCode=String(b.referral_code || '').trim().toUpperCase();
+    const referrer=referralCode ? referralProgram.referralFromCode(referralCode) : null;
+    if (referralCode && !referrer) return sendJson(res,400,{error:'Реферальная ссылка больше не действует'});
+    try { referralProgram.assertReferralRules(referrer,null,phone); } catch(e) {
+      return sendJson(res,e.statusCode||409,{error:e.message});
+    }
+    if (referrer && db.prepare(
+      "SELECT id FROM partner_leads WHERE referral_code=? AND phone=? AND linked_point_id IS NULL AND status<>'declined'"
+    ).get(referrer.code,phone)) return sendJson(res,409,{error:'Такая реферальная заявка уже получена'});
     const info = db.prepare(`
-      INSERT INTO partner_leads (salon_name, category, city_id, contact_name, phone, status)
-      VALUES (?, ?, ?, ?, ?, 'to_call')
-    `).run(salonName, category, b.city_id || null, (b.contact_name || '').trim() || null, phone);
+      INSERT INTO partner_leads (salon_name, category, city_id, contact_name, phone, status,referral_code,referred_by_role,referred_by_id)
+      VALUES (?, ?, ?, ?, ?, 'to_call', ?, ?, ?)
+    `).run(salonName, category, b.city_id || null, (b.contact_name || '').trim() || null, phone,
+      referrer?referrer.code:null, referrer?referrer.role:null, referrer?referrer.recipient_id:null);
     db.prepare('INSERT INTO partner_lead_notes (lead_id, author, note) VALUES (?, ?, ?)')
       .run(info.lastInsertRowid, 'Сайт', 'Заявка с формы «Стать партнёром» на главной странице' + (b.message ? ': ' + b.message.trim() : ''));
 
@@ -96,11 +107,25 @@ function registerPartnerLeadRoutes(router) {
       (cityRow ? '<b>Город:</b> ' + escapeHtml(cityRow.name) + '\n' : '') +
       (b.contact_name ? '<b>Контакт:</b> ' + escapeHtml(b.contact_name.trim()) + '\n' : '') +
       '<b>Телефон:</b> ' + escapeHtml(phone) +
+      (referrer ? '\n🤝 <b>Реферальный пригласивший:</b> '+escapeHtml(referrer.full_name)+' ('+escapeHtml(referrer.code)+') · 1 000 ₽ при запуске новой точки' : '') +
       (b.message ? '\n<b>Сообщение:</b> ' + escapeHtml(b.message.trim()) : '')
     );
     sendJson(res, 201, { ok: true });
   });
 
+  // Minimal selectable referrals for creating new points. No phone numbers.
+  router.get('/api/partner-leads/referral-options', (req,res,ctx) => {
+    const payload=requireAuth(['admin','manager'])(req,res,ctx);
+    if (!payload) return;
+    if (payload.role==='manager') {
+      const manager=db.prepare('SELECT city_id FROM managers WHERE id=? AND active=1').get(payload.id);
+      if (!manager) return sendJson(res,401,{error:'Менеджер отключён'});
+      return sendJson(res,200,{leads:referralProgram.referralLeadOptions(manager.city_id,payload.id)});
+    }
+    const active=db.prepare('SELECT 1 FROM admins WHERE id=? AND active=1').get(payload.id);
+    if (!active) return sendJson(res,401,{error:'Администратор отключён'});
+    return sendJson(res,200,{leads:referralProgram.referralLeadOptions(null,null)});
+  });
   // GET /api/partner-leads?status=&city_id=&q= — список лидов, новые сверху
   router.get('/api/partner-leads', (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);

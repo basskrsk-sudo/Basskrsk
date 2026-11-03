@@ -232,11 +232,25 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       <div class="owner-panel" data-owner-panel="salon">
       <div class="card" style="margin-bottom:1.2rem;">
         <div class="card-title">🤝 Мой промокод для привлечения новых точек</div>
-        <p style="font-size:.85rem;color:var(--muted);line-height:1.6;margin-bottom:.8rem;">Приведите нового грумера или ветеринара — когда его точка заработает «Тайге» 2 000 ₽ прибыли, вам придёт 1 000 ₽ (вторая половина достаётся менеджеру, который нашёл саму точку).</p>
+        <p style="font-size:.85rem;color:var(--muted);line-height:1.6;margin-bottom:.8rem;">Приведите нового грумера или ветеринара — когда его точка заработает «ХвостМаркету» 2 000 ₽ прямой прибыли, вам придёт 1 000 ₽ (вторая половина достаётся менеджеру, который нашёл саму точку).</p>
         <div style="display:flex;align-items:center;gap:.6rem;background:var(--cream);border-radius:8px;padding:.7rem 1rem;flex-wrap:wrap;">
           <span style="font-family:monospace;font-weight:700;font-size:1.05rem;color:var(--forest);" id="owner-ref-code">—</span>
-          <button class="row-btn" onclick="copyOwnerRefCode()" style="margin-left:auto;">Скопировать</button>
+          <button class="row-btn" onclick="copyOwnerRefCode(this)" style="margin-left:auto;">Скопировать</button>
         </div>
+        <p style="font-size:.82rem;margin:12px 0 4px;">Реферальная ссылка на заявку новой точки:</p>
+        <div style="background:var(--cream);padding:.7rem 1rem;border-radius:8px;overflow-wrap:anywhere">
+          <span style="font-size:.8rem;" id="owner-ref-link">—</span>
+        </div>
+        <button class="row-btn" type="button" onclick="copyOwnerRefLink(this)" style="margin:8px 0 0;">📋 Скопировать ссылку</button>
+        <p style="margin-top:.8rem;font-size:.82rem;color:var(--muted);">
+          При создании новой точки фиксируется ожидаемый бонус 1 000 ₽.
+          К выплате после 2 000 ₽ прямой прибыли точки. Перевод подтверждается администратором.
+        </p>
+        <p style="font-size:.82rem;color:var(--muted);line-height:1.65">
+          Ожидается: <b id="owner-ref-awaiting">0 ₽</b> ·
+          К выплате: <b id="owner-ref-payable">0 ₽</b> ·
+          Выплачено: <b id="owner-ref-paid">0 ₽</b>
+        </p>
         <div style="margin-top:.8rem;font-size:.82rem;color:var(--muted);">Уже заработано по промокоду: <strong id="owner-ref-total" style="color:var(--text);">0 ₽</strong></div>
       </div>
 
@@ -375,16 +389,22 @@ async function getCityName(cityId) {
   return city ? city.name : cityId;
 }
 
-function copyOwnerRefCode() {
-  const code = document.getElementById('owner-ref-code').textContent;
-  if (!code || code === '—') return;
-  navigator.clipboard.writeText(code).then(function() {
-    const btn = event.target;
-    const original = btn.textContent;
-    btn.textContent = 'Скопировано ✓';
-    setTimeout(function() { btn.textContent = original; }, 1500);
-  });
+async function copyOwnerReferralText(id,button) {
+  const value=document.getElementById(id)?.textContent?.trim()||'';
+  if(!value||value==='—')return;
+  try {
+    await navigator.clipboard.writeText(value);
+    if(button){
+      const before=button.textContent;
+      button.textContent='Скопировано ✓';
+      setTimeout(function(){button.textContent=before;},1600);
+    }
+  } catch(e) {
+    window.prompt('Скопируйте ссылку или код:',value);
+  }
 }
+function copyOwnerRefCode(button) { return copyOwnerReferralText('owner-ref-code',button); }
+function copyOwnerRefLink(button) { return copyOwnerReferralText('owner-ref-link',button); }
 
 // ── СТРАНИЦА САЛОНА (публичная реклама на сайте) ────────────────────
 let myOwnerPointId = null;
@@ -533,6 +553,12 @@ async function loadDashboard() {
     }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1.25rem;">Выплат пока не зафиксировано</td></tr>';
 
     document.getElementById('owner-ref-code').textContent = data.owner_code || '—';
+    document.getElementById('owner-ref-link').textContent = data.owner_code ?
+      'https://хвостмаркет.рф/partner-invite.html?ref='+encodeURIComponent(data.owner_code) : '—';
+    const bonuses=data.referrals||{};
+    document.getElementById('owner-ref-awaiting').textContent=fmtMoney(bonuses.awaiting||0);
+    document.getElementById('owner-ref-payable').textContent=fmtMoney(bonuses.payable||0);
+    document.getElementById('owner-ref-paid').textContent=fmtMoney(bonuses.paid||0);
     document.getElementById('owner-ref-total').textContent = fmtMoney((data.referral_bonuses && data.referral_bonuses.total) || 0);
 
     const groomersBody = document.getElementById('groomers-tbody');

@@ -24,6 +24,48 @@
       '<button class="work-secondary work-promo-copy" type="button" ' +
       'data-hm-promo-key="' + esc(key) + '">📋 Скопировать</button></div>';
   }
+  function referralStats(referrals) {
+    var data = referrals || {};
+    var awaiting = Math.max(0,Number(data.awaiting || 0));
+    var payable = Math.max(0,Number(data.payable || 0));
+    var paid = Math.max(0,Number(data.paid || 0));
+    var list = Array.isArray(data.rows) ? data.rows : [];
+    var summary = '<div class="work-promo-status-line"><b>Ожидают порога прибыли:</b> ' +
+      awaiting.toLocaleString('ru-RU')+' ₽' +
+      ' · <b>Доступны к выплате:</b> '+payable.toLocaleString('ru-RU')+' ₽' +
+      ' · <b>Выплачено:</b> '+paid.toLocaleString('ru-RU')+' ₽</div>';
+    var latest = list.slice(0,5).map(function(item) {
+      var state = item.status==='paid'?'Выплачено':
+        item.status==='payable'?'Доступно к выплате':'Ожидается';
+      return '<div class="work-row"><div><b>'+esc(item.point_name)+'</b>'+
+        '<small>'+esc(state)+'</small></div><strong>1 000 ₽</strong></div>';
+    }).join('');
+    return summary+(latest?'<div class="work-promo-referrals">'+latest+'</div>':'');
+  }
+  function ownerSection(owner,accessCheck,combined) {
+    if (!combined) {
+      copyValues=Object.create(null);
+      canAccess=typeof accessCheck==='function'?accessCheck:function(){return false;};
+    } else if (typeof accessCheck==='function') {
+      var previous=canAccess;
+      canAccess=function(){return previous()||accessCheck();};
+    }
+    if (!owner || !owner.id || owner.active===false || owner.active===0) return '';
+    var ownerCode=String(owner.owner_code||'').trim();
+    var link=ownerCode
+      ? 'https://хвостмаркет.рф/partner-invite.html?ref='+encodeURIComponent(ownerCode) : '';
+    return '<section class="work-surface"><h2>🤝 Приглашайте новые салоны</h2>'+
+      '<p class="work-note">За запуск новой точки по вашей ссылке фиксируется бонус 1 000 ₽. '+
+      'К выплате он становится доступен после достижения точкой 2 000 ₽ прямой прибыли. '+
+      'Реальный перевод подтверждается отдельно.</p>'+
+      '<div class="work-promo-list">'+
+      card('ownerCode','🏠 Мой реферальный код владельца',ownerCode,
+        'Отправьте потенциальному партнёру.')+
+      card('ownerInvite','🔗 Моя ссылка для приглашения грумеров',link,
+        'Новый партнёр заполнит заявку на открытие своей точки.')+
+      '</div>'+referralStats(owner.referrals)+
+      '<p class="work-promo-feedback" id="workOwnerReferralCopyStatus" role="status" aria-live="polite"></p></section>';
+  }
   function section(partner, accessCheck) {
     copyValues = Object.create(null);
     canAccess = typeof accessCheck === 'function' ? accessCheck : function () { return false; };
@@ -43,7 +85,7 @@
         (point.city_id ? '&city=' + encodeURIComponent(point.city_id) : '')
       : '';
     var registrationLink = referralCode
-      ? 'https://хвостмаркет.рф/taiga-register.html?ref=' + encodeURIComponent(referralCode)
+      ? 'https://хвостмаркет.рф/partner-invite.html?ref=' + encodeURIComponent(referralCode)
       : '';
     return '<section class="work-surface"><h2>🎁 Мои промокоды</h2>' +
       '<p class="work-note">Скидка 20% на первую покупку доступна один раз ' +
@@ -57,14 +99,17 @@
         'Пригласите нового грумера или салон.') +
       card('buyer', '🔗 Моя ссылка для покупателей', buyerLink,
         'Предвыбирает ваш салон, грумера и персональный промокод.') +
-      card('registration', '🔗 Ссылка для приглашения партнёра', registrationLink,
-        'Для регистрации нового партнёра по вашему реферальному коду.') +
-      '</div><p class="work-promo-feedback" id="workPromoCopyStatus" role="status" aria-live="polite"></p>' +
+      card('registration', '🔗 Моя ссылка для привлечения новых грумеров', registrationLink,
+        'Новый салон заполнит заявку. За новую точку фиксируется 1 000 ₽, к выплате после 2 000 ₽ прибыли.') +
+      '</div>' + referralStats(partner.referrals) +
+      '<p class="work-promo-feedback" id="workPromoCopyStatus" role="status" aria-live="polite"></p>' +
       '</section>';
   }
   function notice(text) {
     var feedback = document.getElementById('workPromoCopyStatus');
     if (feedback) feedback.textContent = text;
+    var other = document.getElementById('workOwnerReferralCopyStatus');
+    if (other) other.textContent = text;
   }
   async function copy(key) {
     if (!canAccess() || !Object.prototype.hasOwnProperty.call(copyValues, key)) return;
@@ -108,6 +153,7 @@
   });
   window.HvostMiniAppPromos = {
     section: section,
+    ownerSection:ownerSection,
     clear: function () {
       copyValues = Object.create(null);
       canAccess = function () { return false; };
