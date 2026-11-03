@@ -75,7 +75,7 @@
       '<div class="work-stats">' +
       card('Активных точек',n(net.active_points),'Открытых в системе') +
       card('С продажами',n(net.sold_points_period),'За выбранный период') +
-      card('Без продаж',n(net.silent_points ? net.silent_points.length : 0),'Показаны первые 7') +
+      card('Без продаж',n(net.silent_points_count == null ? (net.silent_points||[]).length : net.silent_points_count),'Все действующие точки') +
       card('План 2031',n(strategy.goal_2031),'Активных точек') + '</div>' +
       '<h3 class="founder-subhead">Лидеры по выручке</h3>' +
       ((net.top_points||[]).length
