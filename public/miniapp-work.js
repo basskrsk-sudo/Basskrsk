@@ -33,6 +33,13 @@
   var managerNewPointBusy = false;
   var managerCreatedPointId = '';
   var managerCreatedPointName = '';
+  var adminRegistrationKind = '';
+  var adminRegistrationOptions = null;
+  var adminRegistrationMode = '';
+  var adminRegistrationBusy = false;
+  var adminCreatedPointId = '';
+  var adminCreatedPointName = '';
+  var adminCreatedManagerId = '';
   var root = document.getElementById('workPage');
   if (!root) return;
   var identity = window.HvostMiniAppIdentity || null;
@@ -167,6 +174,13 @@
     managerNewPointBusy = false;
     managerCreatedPointId = '';
     managerCreatedPointName = '';
+    adminRegistrationKind = '';
+    adminRegistrationOptions = null;
+    adminRegistrationMode = '';
+    adminRegistrationBusy = false;
+    adminCreatedPointId = '';
+    adminCreatedPointName = '';
+    adminCreatedManagerId = '';
     if (taskPanel) taskPanel.reset();
     serial++;
     renderAll();
@@ -400,6 +414,13 @@
     managerNewPointBusy = false;
     managerCreatedPointId = '';
     managerCreatedPointName = '';
+    adminRegistrationKind = '';
+    adminRegistrationOptions = null;
+    adminRegistrationMode = '';
+    adminRegistrationBusy = false;
+    adminCreatedPointId = '';
+    adminCreatedPointName = '';
+    adminCreatedManagerId = '';
     if (taskPanel) taskPanel.reset();
     // A stale token or remembered role from another login must not expose
     // an account which is absent from this verified phone's role list.
@@ -1133,6 +1154,13 @@
       stat('Выручка последних заказов', data[1] ? rub(revenue) : '—', 'Оплаченные среди 100 последних') +
       stat('Сигналы контроля', data[2] ? number((ops.summary || {}).total || issues.length) : '—', 'Операционные вопросы') +
       '</div>';
+    html += surface('➕ Управление сетью',
+      '<div class="work-register-actions">' +
+      '<button class="work-primary" type="button" data-work-action="admin-reg-point">📍 Добавить минимаркет</button>' +
+      '<button class="work-secondary" type="button" data-work-action="admin-reg-owner">🏠 Зарегистрировать владельца</button>' +
+      '<button class="work-secondary" type="button" data-work-action="admin-reg-manager">👤 Зарегистрировать менеджера</button>' +
+      '<button class="work-secondary" type="button" data-work-action="admin-reg-groomer">✂️ Зарегистрировать грумера</button></div>' +
+      '<p class="work-note">Создание в действующем реестре ХвостМаркета. Доступно только администраторам.</p>');
     html += surface('Последние заказы сети', rows(allOrders.slice(0, 8).map(function(o) {
       return line(o.pickup_point || 'Покупка', date(o.created_at) + ' · ' +
         (o.refund_status === 'refunded' ? 'Возврат' :
