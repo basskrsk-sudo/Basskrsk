@@ -121,6 +121,18 @@ test('groomer uses existing active point for current profile, not stale name or 
   const profile = call('GET','/api/partners/me','partner',livePartner);
   assert.equal(profile.body.partner.current_point.name,'Новое название салона');
   assert.equal(profile.body.partner.point_unavailable,false);
+  const personalCode=db.prepare('SELECT first_purchase_promo_code FROM partners WHERE id=?')
+    .get(livePartner).first_purchase_promo_code;
+  const pointCode=db.prepare('SELECT first_purchase_promo_code FROM points WHERE id=?')
+    .get('groomer-active').first_purchase_promo_code;
+  assert.ok(personalCode && pointCode && personalCode !== pointCode);
+  assert.equal(profile.body.partner.first_purchase_promo_code,personalCode);
+  assert.equal(profile.body.partner.current_point.first_purchase_promo_code,pointCode);
+  assert.equal(closedProfile.body.partner.current_point,null,
+    'a closed salon never leaks its point promo code');
+  assert.notEqual(call('GET','/api/partners/me','owner',livePartner).status,200,
+    'an owner token cannot read a groomer\'s personal promo');
+
 
   order('GROOM-PAID','79131234568','groomer-active',livePartner,1000);
   order('GROOM-RETURN','79131234568','groomer-active',livePartner,600,'paid','refunded',600);
