@@ -466,6 +466,36 @@ function registerManagerRoutes(router) {
     const period = getManagerPeriodAccrual(payload.id, ctx.query.days);
     sendJson(res, 200, { labels: period.labels, earn: period.earn });
   });
+  // GET /api/managers/me/registration-options — Telegram manager Mini App.
+  // All IDs come from the canonical, active salon table. Never use the
+  // request's manager_id or historical manager_points as an access grant.
+  router.get('/api/managers/me/registration-options', (req, res, ctx) => {
+    const actor = requireAuth(['manager'])(req, res, ctx);
+    if (!actor) return;
+    const manager = db.prepare('SELECT id FROM managers WHERE id = ? AND active = 1').get(actor.id);
+    if (!manager) return sendJson(res, 401, { error: 'Учётная запись менеджера отключена' });
+    const points = db.prepare(`
+      SELECT p.id, p.name, p.addr, p.icon,
+             EXISTS(SELECT 1 FROM salon_owners so WHERE so.point_id = p.id) AS has_owner
+      FROM points p
+      WHERE p.manager_id = ? AND p.active = 1 AND COALESCE(p.is_hub, 0) = 0
+      ORDER BY p.name COLLATE NOCASE, p.id
+    `).all(actor.id);
+    const groomers = db.prepare(`
+      SELECT g.id, g.point_id, g.full_name
+      FROM partners g JOIN points p ON p.id = g.point_id
+      WHERE p.manager_id = ? AND p.active = 1
+        AND COALESCE(p.is_hub, 0) = 0 AND g.active = 1
+      ORDER BY g.full_name COLLATE NOCASE, g.id
+    `).all(actor.id);
+    const cleanPoints = points.map(({ has_owner, ...point }) => point);
+    sendJson(res, 200, {
+      groomer_points: cleanPoints,
+      owner_points: points.filter(point => !point.has_owner).map(({ has_owner, ...point }) => point),
+      groomers,
+    });
+  });
+
   // GET /api/managers/me/stock — остатки по ВСЕМ точкам менеджера сразу,
   // сгруппированные по точке. Товары с нулевым остатком тоже показываем —
   // это как раз то, что менеджеру нужно увидеть в первую очередь (что
