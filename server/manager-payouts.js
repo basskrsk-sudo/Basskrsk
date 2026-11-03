@@ -5,16 +5,27 @@ const db = require('./db');
 const { snapshotPayout, snapshotBonusPayout } = require('./payout-reports');
 
 function getManagerUnpaidOrders(managerId) {
+  // Every paid order can accrue commission ONCE. manager_points is a
+  // historical/referral ledger: joining all its rows duplicates a sale when a
+  // point was reassigned/recreated. Use the latest relevant rate only.
+  // Returned orders are held for review (same rule as payout-brief.js), never
+  // paid automatically. Existing payout snapshots are not modified.
   return db.prepare(`
     SELECT o.id, o.order_code, o.total, o.point_id, o.created_at,
-           p.name AS point_name, mp.commission_rate
+           p.name AS point_name,
+           COALESCE((
+             SELECT mp.commission_rate FROM manager_points mp
+             WHERE mp.point_id = p.id AND mp.manager_id = p.manager_id
+             ORDER BY mp.active DESC, mp.id DESC LIMIT 1
+           ), 0.07) AS commission_rate
     FROM orders o
     JOIN points p ON p.id = o.point_id AND p.manager_id = ?
-    JOIN manager_points mp ON mp.point_id = o.point_id AND mp.manager_id = ?
     LEFT JOIN manager_commission_payout_items pi ON pi.order_id = o.id
     WHERE o.status = 'paid' AND pi.id IS NULL
+      AND COALESCE(o.refund_status, 'none') <> 'refunded'
+      AND COALESCE(o.refunded_amount, 0) = 0
     ORDER BY o.created_at, o.id
-  `).all(managerId, managerId).map((order) => ({
+  `).all(managerId).map((order) => ({
     ...order,
     commission_amount: Math.round(Number(order.total || 0) * Number(order.commission_rate || 0)),
   }));
