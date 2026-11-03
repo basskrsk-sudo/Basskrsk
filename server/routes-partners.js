@@ -104,6 +104,19 @@ function registerPartnerRoutes(router) {
     if (managerOnly && manager_code) return sendJson(res, 400, {
       error: 'Менеджер определяется автоматически по выбранной точке',
     });
+    if (managerOnly && ctx.body?.personal_data_consent !== true) {
+      return sendJson(res, 400, { error: 'Подтвердите согласие грумера на обработку персональных данных' });
+    }
+    if (managerOnly) {
+      const phoneDigits = String(phone).replace(/\D/g, '').slice(-10);
+      if (phoneDigits.length !== 10) return sendJson(res, 400, { error: 'Укажите корректный номер телефона' });
+      const alreadyHere = db.prepare(
+        'SELECT id, phone FROM partners WHERE point_id = ? AND active = 1'
+      ).all(point.id).some(p => String(p.phone || '').replace(/\D/g, '').slice(-10) === phoneDigits);
+      if (alreadyHere) return sendJson(res, 409, {
+        error: 'Грумер с этим номером уже зарегистрирован на выбранной точке',
+      });
+    }
     // На одной точке может работать несколько партнёров одновременно (см.
     // orders.partner_id и выбор грумера в чекауте на сайте — это штатный,
     // уже реализованный сценарий, не ограничение "один партнёр на точку").
