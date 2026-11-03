@@ -25,6 +25,9 @@
   var chatView = '';
   var chatThreadId = null;
   var chatNotice = '';
+  var managerRegistrationKind = '';
+  var managerRegistrationOptions = null;
+  var managerRegistrationBusy = false;
   var root = document.getElementById('workPage');
   if (!root) return;
   var identity = window.HvostMiniAppIdentity || null;
@@ -151,6 +154,9 @@
     chatView = '';
     chatThreadId = null;
     chatNotice = '';
+    managerRegistrationKind = '';
+    managerRegistrationOptions = null;
+    managerRegistrationBusy = false;
     if (taskPanel) taskPanel.reset();
     serial++;
     renderAll();
@@ -376,6 +382,9 @@
     chatNotice = '';
     dashboardMarkup = '';
     taskData = null;
+    managerRegistrationKind = '';
+    managerRegistrationOptions = null;
+    managerRegistrationBusy = false;
     if (taskPanel) taskPanel.reset();
     // A stale token or remembered role from another login must not expose
     // an account which is absent from this verified phone's role list.
@@ -737,6 +746,11 @@
       stat('Бонусы к выплате', compensation ? rub(compensation.launch_bonus_unpaid) : '—', 'Начислены, но не перечислены') +
       stat('Начислено за 30 дней', compensation ? rub(compensation.period_residual) : '—',
         'За период, включая уже оплаченные начисления') + '</div>';
+    html += surface('➕ Регистрация сотрудников',
+      '<div class="work-register-actions">' +
+      '<button class="work-primary" type="button" data-work-action="manager-reg-groomer">✂️ Добавить грумера</button>' +
+      '<button class="work-secondary" type="button" data-work-action="manager-reg-owner">🏠 Добавить владельца салона</button>' +
+      '</div><p class="work-note">Выберите свой действующий минимаркет. Регистрация откроет новый кабинет по номеру телефона.</p>');
     html += surface('Мои минимаркеты', rows(points.map(function(p) {
       return line(p.point_name || p.name || ('Точка #' + p.point_id), p.address || p.point_addr || 'Выручка за всё время', rub(p.live_revenue != null ? p.live_revenue : p.revenue));
     })));
