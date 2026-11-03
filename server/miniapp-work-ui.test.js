@@ -471,6 +471,204 @@ test('owner sees only assigned salon and owner earnings', async () => {
   assert.match(h.root.innerHTML, /Грумер салона/);
 });
 
+test('admin Mini App offers all four network registration actions with active admin token',async()=>{
+ const data={
+   '/api/admin/me':{admin:{id:5,full_name:'Администратор',active:1,role:'admin'}},
+   '/api/points':{points:[]},'/api/orders?limit=100':{orders:[]},
+   '/api/operations-center':{summary:{total:0},issues:[]},
+   '/api/miniapp/admin/registration-options':{
+     cities:[{id:'krsk',name:'Красноярск'},{id:'spb',name:'Санкт-Петербург'}],
+     managers:[{id:7,full_name:'Менеджер А',city_id:'krsk'}],
+     points:[{id:'bark',name:'БаркЛай',addr:'Молокова, 40'},
+             {id:'new-point',name:'Новый минимаркет',addr:'Ленина, 3'}],
+     owner_points:[{id:'bark',name:'БаркЛай'}, {id:'new-point',name:'Новый минимаркет'}],
+     groomers:[{id:44,full_name:'Грумер БаркЛай',point_id:'bark'}],
+   },
+   '/api/points':{status:201,body:{ok:true,id:'new-point',geocoded:true}},
+   '/api/miniapp/admin/register-groomer':{status:201,body:{ok:true,partner_code:'GR-777'}},
+ };
+ const h=createHarness(data,{taiga_admin_token:'admin-token'});
+ const get=id=>h.document.getElementById(id);
+ await h.window.HvostMiniAppWork.chooseRole('admin');
+ for(const action of ['point','owner','manager','groomer']){
+   assert.match(h.root.innerHTML,new RegExp('data-work-action="admin-reg-'+action+'"'));
+ }
+ await h.click('admin-reg-point');
+ assert.match(h.root.innerHTML,/id="workAdminRegistrationForm"/);
+ assert.match(h.root.innerHTML,/Ответственный менеджер/);
+ get('workAdminPointName').value='Новый минимаркет';
+ get('workAdminPointAddr').value='ул. Ленина, 3';
+ get('workAdminPointCity').value='';
+ await h.submit('workAdminRegistrationForm');
+ assert.match(get('workAdminRegStatus').innerHTML,/Выберите действующий город/);
+ assert.equal(h.calls.some(c=>c.url==='/api/points'&&c.opts.method==='POST'),false);
+ get('workAdminPointCity').value='krsk';
+ get('workAdminPointManager').value='7';
+ get('workAdminPointIcon').value='🐾';
+ await h.submit('workAdminRegistrationForm');
+ const created=h.calls.find(c=>c.url==='/api/points'&&c.opts.method==='POST');
+ assert.ok(created,'uses original real points API');
+ assert.equal(created.opts.headers.Authorization,'Bearer admin-token');
+ assert.deepEqual(JSON.parse(created.opts.body),{
+   name:'Новый минимаркет',addr:'ул. Ленина, 3',city_id:'krsk',
+   icon:'🐾',manager_id:7,
+ });
+ assert.match(h.root.innerHTML,/Регистрация выполнена/);
+ assert.match(h.root.innerHTML,/admin-reg-owner/);
+ assert.match(h.root.innerHTML,/admin-reg-groomer/);
+ await h.click('admin-reg-groomer');
+ assert.match(h.root.innerHTML,/id="workAdminPersonPoint"/);
+ assert.equal(get('workAdminPersonPoint').value,'new-point','newly created salon is preselected');
+ get('workAdminPersonName').value='Грумер Новый';
+ get('workAdminPersonPhone').value='+7 913 222-33-44';
+ get('workAdminPersonLogin').value='test-groomer';
+ get('workAdminPersonPassword').value='secret123';
+ get('workAdminConsent').checked=true;
+ await h.submit('workAdminRegistrationForm');
+ const groomer=h.calls.find(c=>c.url==='/api/miniapp/admin/register-groomer');
+ assert.ok(groomer);
+ assert.equal(groomer.opts.headers.Authorization,'Bearer admin-token');
+ assert.deepEqual(JSON.parse(groomer.opts.body),{
+   full_name:'Грумер Новый',phone:'+7 913 222-33-44',
+   login:'test-groomer',password:'secret123',
+   point_id:'new-point',personal_data_consent:true,
+ });
+ assert.doesNotMatch(h.root.innerHTML,/secret123/);
+});
+test('admin Mini App registers a manager in chosen city and offers assigning new points',async()=>{
+ const fixture={
+  '/api/admin/me':{admin:{id:5,active:1,role:'admin'}},
+  '/api/points':{points:[]},'/api/orders?limit=100':{orders:[]},
+  '/api/operations-center':{summary:{total:0},issues:[]},
+  '/api/miniapp/admin/registration-options':{
+    cities:[{id:'krsk',name:'Красноярск'}],
+    managers:[{id:24,full_name:'Новый менеджер',city_id:'krsk'}],
+    points:[],owner_points:[],groomers:[],
+  },
+  '/api/managers':{status:201,body:{id:24,mgr_code:'MGR-2026-024',ok:true}},
+ };
+ const h=createHarness(fixture,{taiga_admin_token:'admin-token'});
+ const get=id=>h.document.getElementById(id);
+ await h.window.HvostMiniAppWork.chooseRole('admin');
+ await h.click('admin-reg-manager');
+ assert.match(h.root.innerHTML,/Новый менеджер/);
+ get('workAdminPersonName').value='Новый менеджер';
+ get('workAdminPersonPhone').value='79132223344';
+ get('workAdminPersonLogin').value='new-manager';
+ get('workAdminPersonPassword').value='pass12345';
+ get('workAdminPersonCity').value='krsk';
+ get('workAdminPersonEmail').value='manager@example.ru';
+ get('workAdminConsent').checked=false;
+ await h.submit('workAdminRegistrationForm');
+ assert.match(get('workAdminRegStatus').innerHTML,/Необходимо получить согласие/);
+ assert.equal(h.calls.some(c=>c.url==='/api/managers'),false);
+ get('workAdminConsent').checked=true;
+ await h.submit('workAdminRegistrationForm');
+ const req=h.calls.find(c=>c.url==='/api/managers'&&c.opts.method==='POST');
+ assert.ok(req);
+ assert.equal(req.opts.headers.Authorization,'Bearer admin-token');
+ assert.deepEqual(JSON.parse(req.opts.body),{
+   full_name:'Новый менеджер',phone:'79132223344',
+   login:'new-manager',password:'pass12345',city_id:'krsk',email:'manager@example.ru',
+ });
+ assert.match(h.root.innerHTML,/Регистрация выполнена/);
+ await h.click('admin-reg-back');
+ await h.click('admin-reg-point');
+ assert.equal(get('workAdminPointManager').value,'24','new manager is preselected for next salon');
+});
+test('admin owner registration validates same-point groomer and uses protected owner endpoint',async()=>{
+ const fixture={
+  '/api/admin/me':{admin:{id:5,active:1,role:'admin'}},
+  '/api/points':{points:[]},'/api/orders?limit=100':{orders:[]},
+  '/api/operations-center':{summary:{total:0},issues:[]},
+  '/api/miniapp/admin/registration-options':{
+    cities:[{id:'krsk',name:'Красноярск'}],managers:[],
+    points:[{id:'salon-a',name:'БаркЛай'},{id:'salon-b',name:'Zveryuga'}],
+    owner_points:[{id:'salon-a',name:'БаркЛай'}],
+    groomers:[{id:30,point_id:'salon-a',full_name:'Юлия Барсукова'},
+      {id:31,point_id:'salon-b',full_name:'Чужой грумер'}],
+  },
+  '/api/salon-owners':{status:201,body:{id:61,owner_code:'OWN-061',ok:true}},
+ };
+ const h=createHarness(fixture,{taiga_admin_token:'admin-token'});
+ const get=id=>h.document.getElementById(id);
+ await h.window.HvostMiniAppWork.chooseRole('admin');
+ await h.click('admin-reg-owner');
+ assert.match(h.root.innerHTML,/id="workAdminPersonPoint"/);
+ assert.doesNotMatch(h.root.innerHTML,/Zveryuga/,'already-owned points must not be offered to owners');
+ get('workAdminPersonPoint').value='salon-a';
+ h.events.change({target:{id:'workAdminPersonPoint'}});
+ assert.match(get('workAdminPersonGroomer').innerHTML,/Юлия Барсукова/);
+ assert.doesNotMatch(get('workAdminPersonGroomer').innerHTML,/Чужой грумер/);
+ get('workAdminPersonName').value='Юлия Барсукова';
+ get('workAdminPersonPhone').value='79131112233';
+ get('workAdminPersonLogin').value='owner-julia';
+ get('workAdminPersonPassword').value='pass12345';
+ get('workAdminConsent').checked=true;
+ get('workAdminPersonGroomer').value='31';
+ await h.submit('workAdminRegistrationForm');
+ assert.match(get('workAdminRegStatus').innerHTML,/Грумер не относится к выбранному минимаркету/);
+ assert.equal(h.calls.some(c=>c.url==='/api/salon-owners'),false);
+ get('workAdminPersonGroomer').value='30';
+ await h.submit('workAdminRegistrationForm');
+ const req=h.calls.find(c=>c.url==='/api/salon-owners');
+ assert.ok(req);
+ assert.equal(req.opts.headers.Authorization,'Bearer admin-token');
+ assert.deepEqual(JSON.parse(req.opts.body),{
+   full_name:'Юлия Барсукова',phone:'79131112233',login:'owner-julia',
+   password:'pass12345',point_id:'salon-a',groomer_partner_id:30,
+ });
+ assert.match(h.root.innerHTML,/Регистрация выполнена/);
+});
+test('admin Mini App creation cannot be opened by managers, owners or an unverified phone',async()=>{
+ const manager=createHarness({
+   '/api/managers/me':{manager:{id:5,active:1,current_points:[]}},
+   '/api/managers/me/orders?days=30&limit=200':{orders:[]},
+   '/api/managers/me/stock':{points:[]},
+   '/api/managers/me/compensation?days=30':{commission_unpaid:0},
+ },{taiga_manager_token:'manager-token'});
+ await manager.window.HvostMiniAppWork.chooseRole('manager');
+ assert.doesNotMatch(manager.root.innerHTML,/data-work-action="admin-reg-/);
+ await manager.click('admin-reg-manager');
+ await manager.click('admin-reg-groomer');
+ assert.equal(manager.calls.some(c=>c.url==='/api/miniapp/admin/registration-options'),false);
+
+ const guest=createHarness({}, {taiga_admin_token:'old-admin-token'}, {
+   getStatus(){return {verified:false,loaded:true,accounts:[],ambiguousRoles:[]};},
+   onChange(){},
+ });
+ await guest.window.HvostMiniAppWork.chooseRole('admin');
+ await guest.click('admin-reg-point');
+ assert.equal(guest.calls.length,0);
+});
+test('admin registration form survives duplicate API response without re-sending password',async()=>{
+ const fixture={
+  '/api/admin/me':{admin:{id:5,active:1,role:'admin'}},
+  '/api/points':{points:[]},'/api/orders?limit=100':{orders:[]},
+  '/api/operations-center':{summary:{total:0},issues:[]},
+  '/api/miniapp/admin/registration-options':{
+    cities:[{id:'krsk',name:'Красноярск'}],managers:[],
+    points:[{id:'salon-a',name:'БаркЛай'}],
+    owner_points:[{id:'salon-a',name:'БаркЛай'}],groomers:[],
+  },
+  '/api/miniapp/admin/register-groomer':{status:409,body:{error:'Грумер с этим номером уже зарегистрирован'}},
+ };
+ const h=createHarness(fixture,{taiga_admin_token:'admin-token'});
+ const get=id=>h.document.getElementById(id);
+ await h.window.HvostMiniAppWork.chooseRole('admin');
+ await h.click('admin-reg-groomer');
+ get('workAdminPersonPoint').value='salon-a';
+ get('workAdminPersonName').value='Грумер Новый';
+ get('workAdminPersonPhone').value='79131112233';
+ get('workAdminPersonLogin').value='groomer-new';
+ get('workAdminPersonPassword').value='secret123';
+ get('workAdminConsent').checked=true;
+ await h.submit('workAdminRegistrationForm');
+ assert.match(get('workAdminRegStatus').innerHTML,/уже зарегистрирован/);
+ assert.equal(get('workAdminRegSubmit').disabled,false);
+ assert.match(h.root.innerHTML,/workAdminRegistrationForm/);
+ assert.equal(h.calls.filter(c=>c.url==='/api/miniapp/admin/register-groomer').length,1);
+});
 test('admin requires valid admin session, never grants it from another role token', async () => {
   const h = createHarness({
     '/api/admin/me': { status: 401, body: { error: 'Wrong role' } },

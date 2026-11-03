@@ -6,7 +6,7 @@ const { findDefaultGroomer } = require('./auto-groomer');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
-const { requireAuth, tryAuth } = require('./routes-auth');
+const { requireAuth, requireActiveAdmin, tryAuth } = require('./routes-auth');
 const { reverseAndDeleteOrdersBy } = require('./order-reversal');
 const { sendTelegram } = require('./telegram');
 const { computeManagerCommissionRate } = require('./routes-managers');
@@ -63,13 +63,16 @@ function registerPartnerRoutes(router) {
     sendJson(res, 200, { isSelfOrder });
   });
 
-  // Shared implementation for the public signup and the protected manager
-  // Mini App workflow. The second path NEVER falls back to anonymous signup.
-  const registerPartner = (req, res, ctx, managerOnly = false) => {
+  // Shared validation and insertion for public, manager and admin signup.
+  // Privileged endpoints never silently fall back to the public flow.
+  const registerPartner = (req, res, ctx, mode = 'public') => {
+    const managerOnly = mode === 'manager';
+    const adminOnly = mode === 'admin';
     const managerPayload = managerOnly
       ? requireAuth(['manager'])(req, res, ctx)
-      : tryAuth(['manager'])(req);
-    if (managerOnly && !managerPayload) return;
+      : adminOnly ? null : tryAuth(['manager'])(req);
+    const adminPayload = adminOnly ? requireActiveAdmin(req, res, ctx) : null;
+    if (managerOnly && !managerPayload || adminOnly && !adminPayload) return;
     if (managerPayload && !db.prepare(
       'SELECT id FROM managers WHERE id = ? AND active = 1'
     ).get(managerPayload.id)) {
@@ -101,13 +104,16 @@ function registerPartnerRoutes(router) {
       String(point.manager_id) !== String(managerPayload.id) ||
       Number(point.is_hub) === 1
     )) return sendJson(res, 403, { error: 'Можно регистрировать грумеров только на своих действующих точках' });
-    if (managerOnly && manager_code) return sendJson(res, 400, {
+    if (adminOnly && Number(point.is_hub) === 1) {
+      return sendJson(res, 403, { error: 'Нельзя регистрировать грумера на служебную точку' });
+    }
+    if ((managerOnly || adminOnly) && manager_code) return sendJson(res, 400, {
       error: 'Менеджер определяется автоматически по выбранной точке',
     });
-    if (managerOnly && ctx.body?.personal_data_consent !== true) {
+    if ((managerOnly || adminOnly) && ctx.body?.personal_data_consent !== true) {
       return sendJson(res, 400, { error: 'Подтвердите согласие грумера на обработку персональных данных' });
     }
-    if (managerOnly) {
+    if (managerOnly || adminOnly) {
       const phoneDigits = String(phone).replace(/\D/g, '').slice(-10);
       if (phoneDigits.length !== 10) return sendJson(res, 400, { error: 'Укажите корректный номер телефона' });
       const alreadyHere = db.prepare(
@@ -262,9 +268,11 @@ function registerPartnerRoutes(router) {
   // Public signup continues unchanged; this one is available only for a
   // verified manager and enforces their existing active point assignment.
   router.post('/api/partners/register', (req, res, ctx) =>
-    registerPartner(req, res, ctx, false));
+    registerPartner(req, res, ctx, 'public'));
   router.post('/api/managers/me/register-groomer', (req, res, ctx) =>
-    registerPartner(req, res, ctx, true));
+    registerPartner(req, res, ctx, 'manager'));
+  router.post('/api/miniapp/admin/register-groomer', (req, res, ctx) =>
+    registerPartner(req, res, ctx, 'admin'));
 
   // GET /api/partners — список всех (для админки)
   router.get('/api/partners', (req, res, ctx) => {

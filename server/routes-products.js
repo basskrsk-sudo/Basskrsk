@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const db = require('./db');
 const { sendJson } = require('./http-utils');
-const { requireAuth, requireSuperAdmin, tryAuth } = require('./routes-auth');
+const { requireAuth, requireActiveAdmin, requireSuperAdmin, tryAuth } = require('./routes-auth');
 const { reverseAndDeleteOrdersBy } = require('./order-reversal');
 const { getReviewSummary } = require('./routes-reviews');
 const { sendTelegram } = require('./telegram');
@@ -275,6 +275,7 @@ function registerProductRoutes(router) {
   router.post('/api/points', async (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
     if (!payload) return;
+    if (payload.role === 'admin' && !requireActiveAdmin(req, res, ctx)) return;
     let { name, addr, icon, lat, lng, city_id } = ctx.body || {};
     if (typeof name !== 'string' || typeof addr !== 'string') {
       return sendJson(res, 400, { error: 'Укажите название и адрес точки' });

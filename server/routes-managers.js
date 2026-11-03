@@ -5,7 +5,7 @@ const db = require('./db');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
-const { requireAuth } = require('./routes-auth');
+const { requireAuth, requireActiveAdmin } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
 const { getUnpaidSummary, listManagerPartnerPayouts } = require('./partner-payouts');
@@ -100,7 +100,7 @@ function mgrWithPoints(a) {
 function registerManagerRoutes(router) {
   // POST /api/managers — админ создаёт нового менеджера (по договорённости, не самостоятельная регистрация)
   router.post('/api/managers', async (req, res, ctx) => {
-    const payload = requireAuth(['admin'])(req, res, ctx);
+    const payload = requireActiveAdmin(req, res, ctx);
     if (!payload) return;
     const { full_name, phone, email, login, password, legal_form, inn, bank_details, city_id } = ctx.body || {};
     if (!full_name || !phone || !login || !password) {

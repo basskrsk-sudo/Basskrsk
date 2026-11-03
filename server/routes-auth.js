@@ -723,6 +723,19 @@ function requireAuth(roles) {
   };
 }
 
+// A signed admin token can outlive an admin's deactivation. Mutating
+// network-registration endpoints must confirm the account is still active.
+function requireActiveAdmin(req, res, ctx) {
+  const payload = requireAuth(['admin'])(req, res, ctx);
+  if (!payload) return null;
+  const admin = db.prepare('SELECT id FROM admins WHERE id = ? AND active = 1').get(payload.id);
+  if (!admin) {
+    sendJson(res, 401, { error: 'Учётная запись администратора отключена' });
+    return null;
+  }
+  return payload;
+}
+
 // Как requireAuth(['admin']), но дополнительно проверяет, что это именно
 // супер-админ — управление другими админами доступно только ему.
 function requireSuperAdmin(req, res, ctx) {
@@ -750,4 +763,4 @@ function tryAuth(roles) {
   };
 }
 
-module.exports = { registerAuthRoutes, requireAuth, requireSuperAdmin, tryAuth };
+module.exports = { registerAuthRoutes, requireAuth, requireActiveAdmin, requireSuperAdmin, tryAuth };
