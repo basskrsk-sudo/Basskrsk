@@ -30,6 +30,7 @@
   var managerRegistrationBusy = false;
   var managerNewPointMode = '';
   var managerPointCities = null;
+  var managerReferralLeads = [];
   var managerNewPointBusy = false;
   var managerCreatedPointId = '';
   var managerCreatedPointName = '';
@@ -835,6 +836,10 @@
         '<button type="button" class="work-secondary" data-work-action="manager-point-retry">↻ Загрузить города</button>';
       return;
     }
+    var referralOptions = (managerReferralLeads || []).map(function(lead) {
+      return '<option value="' + esc(lead.id) + '">' +
+        esc(lead.salon_name + ' · ' + lead.referral_code) + '</option>';
+    }).join('');
     var cityOptions = managerPointCities.map(function(city) {
       return '<option value="' + esc(city.id) + '">' + esc(city.name) + '</option>';
     }).join('');
@@ -848,6 +853,9 @@
         '<option value="">— Выберите город —</option>' + cityOptions + '</select>' +
         '<label class="work-register-label" for="workPointAddr">Улица и номер дома *</label>' +
         '<input class="work-register-input" id="workPointAddr" type="text" maxlength="240" required placeholder="ул. Молокова, 40">' +
+        '<label class="work-register-label" for="workPointReferralLead">Заявка по реферальной ссылке</label>' +
+        '<select class="work-register-input" id="workPointReferralLead"><option value="">Нет реферальной заявки</option>' + referralOptions + '</select>' +
+        '<p class="work-note">Если салон пришёл по ссылке партнёра, выберите его заявку. После создания точки за пригласившим фиксируется 1 000 ₽ ожидаемого бонуса.</p>' +
         '<label class="work-register-label" for="workPointIcon">Значок точки (необязательно)</label>' +
         '<input class="work-register-input" id="workPointIcon" type="text" maxlength="8" placeholder="📍" autocomplete="off">' +
         '<p class="work-note">Адрес автоматически проверяется на карте. При ошибке точка не создаётся. Новая точка появится с нулевыми остатками.</p>' +
@@ -869,6 +877,9 @@
     root.innerHTML = dashboardHeader('manager') + note('Загружаем города сети…');
     try {
       var result = await fetchJSON('/api/cities', getToken('manager'));
+      var invites = await fetchJSON('/api/partner-leads/referral-options', getToken('manager'))
+        .catch(function(){return {leads:[]};});
+      managerReferralLeads = (invites.leads || []).filter(function(x){return x && x.id;});
       if (mySerial !== serial || !managerNewPointAuthorized() || managerNewPointMode !== 'form') return;
       managerPointCities = (result.cities || []).filter(function(city) {
         return city && city.id && city.name;
@@ -914,7 +925,8 @@
       var point = await fetchJSON('/api/points', getToken('manager'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name, addr: addr, city_id: cityId, icon: icon || '📍' }),
+        body: JSON.stringify({ name: name, addr: addr, city_id: cityId, icon: icon || '📍',
+          referral_lead_id: String((get('workPointReferralLead') || {}).value || '') || null }),
       });
       if (mySerial !== serial || !managerNewPointAuthorized() || managerNewPointMode !== 'form') return;
       managerCreatedPointId = String(point.id || '');
@@ -1629,6 +1641,16 @@
     }
   });
   root.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'workPointReferralLead' && activeRole === 'manager') {
+      var selectedLead = managerReferralLeads.find(function(x){return String(x.id)===String(e.target.value);});
+      if (selectedLead) {
+        var nameInput=document.getElementById('workPointName');
+        var cityInput=document.getElementById('workPointCity');
+        if (nameInput) nameInput.value=selectedLead.salon_name;
+        if (cityInput && selectedLead.city_id) cityInput.value=selectedLead.city_id;
+      }
+    }
+
     if (activeRole === 'manager' && managerRegistrationKind === 'owner' &&
         e.target && e.target.id === 'workRegPoint') updateOwnerGroomerChoices();
     if (activeRole === 'admin' && adminRegistrationKind === 'owner' &&
