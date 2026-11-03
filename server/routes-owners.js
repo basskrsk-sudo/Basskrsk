@@ -9,7 +9,7 @@ const { validateOwnerGroomer } = require('./auto-groomer');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
-const { requireAuth } = require('./routes-auth');
+const { requireAuth, requireActiveAdmin } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
 const { normalizeProfile, isLoginAvailable, logProfileCorrection, ProfileCorrectionError } = require('./profile-corrections');
@@ -35,6 +35,7 @@ function registerOwnerRoutes(router) {
   router.post('/api/salon-owners', async (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
     if (!payload) return;
+    if (payload.role === 'admin' && !requireActiveAdmin(req, res, ctx)) return;
     const { full_name, phone, login, password, point_id, groomer_partner_id } = ctx.body || {};
     if (!full_name || !phone || !login || !password) {
       return sendJson(res, 400, { error: 'Заполните ФИО, телефон, логин и пароль' });
@@ -66,7 +67,7 @@ function registerOwnerRoutes(router) {
     // Manager linking an owner to a groomer must not accidentally connect
     // somebody else's profile on the same salon. Such a link affects
     // automatic checkout attribution and the combined Telegram cabinet.
-    if (payload.role === 'manager' && groomerLink.id) {
+    if (groomerLink.id) {
       const groomer = db.prepare('SELECT phone FROM partners WHERE id = ? AND point_id = ? AND active = 1')
         .get(groomerLink.id, point_id);
       const digits = value => String(value || '').replace(/\D/g, '').slice(-10);
