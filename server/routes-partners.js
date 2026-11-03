@@ -535,7 +535,7 @@ function registerPartnerRoutes(router) {
     // city_id живёт на самой точке, не на партнёре — подтягиваем отдельно,
     // чтобы кабинет мог показать город, в котором физически работает грумер.
     const point = partner.point_id ? db.prepare(
-      'SELECT id,name,addr,city_id FROM points WHERE id = ? AND active = 1'
+      'SELECT id,name,addr,city_id,first_purchase_promo_code FROM points WHERE id = ? AND active = 1'
     ).get(partner.point_id) : null;
     sendJson(res, 200, { partner: {
       ...safePartner(partner),
