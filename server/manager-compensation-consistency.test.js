@@ -108,7 +108,7 @@ test('authenticated full and mini app manager compensation endpoints share one s
  assert.equal(result.body.commission_unpaid,280);
  assert.equal(result.body.launch_bonus_unpaid,500);
  assert.equal(result.body.total_unpaid,780);
- assert.equal(result.body.period_residual,undefined === result.body.period_residual ? undefined : result.body.period_residual,
+ assert.equal(typeof result.body.period_residual,'number',
    'period accrued uses current system time (not a hardcoded screenshot)');
  assert.equal(invoke('/api/managers/me/compensation','partner').status,403);
  const daily=invoke('/api/managers/me/daily-residual');
