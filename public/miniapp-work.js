@@ -642,7 +642,7 @@
     renderLoading('Получаем актуальную статистику…');
     var endpoints = {
       partner: ['/api/partners/me/orders?days=30', '/api/partners/me/payouts?limit=10', '/api/partners/me/stock'],
-      manager: ['/api/managers/me/orders?days=30&limit=200', '/api/managers/me/stock'],
+      manager: ['/api/managers/me/orders?days=30&limit=200', '/api/managers/me/stock', '/api/managers/me/compensation?days=30'],
       owner: ['/api/owner/dashboard'],
       founder: ['/api/business-founder/dashboard?period=' + (window.HvostBusinessFounder ? window.HvostBusinessFounder.getPeriod() : '30d')],
       admin: ['/api/points', '/api/orders?limit=100', '/api/operations-center'].concat(currentUser && currentUser.role === 'super' ? ['/api/business-founders'] : []),
@@ -724,6 +724,7 @@
     var points = currentUser.current_points || [];
     var orders = data[0] && data[0].orders || [];
     var stockPoints = data[1] && data[1].points || [];
+    var compensation = data[2] || null;
     var paid = orders.filter(function(o) { return netPaidAmount(o) > 0; });
     var revenue = paid.reduce(function(s, o) { return s + netPaidAmount(o); }, 0);
     var low = stockPoints.reduce(function(s, p) {
@@ -732,8 +733,10 @@
     var html = '<div class="work-stats">' +
       stat('Мои точки', number(points.length), 'Закреплены за менеджером') +
       stat('Продажи за 30 дней', rub(revenue), number(paid.length) + ' оплаченных заказов') +
-      stat('Ожидает выплаты', rub(currentUser.commission_unpaid), 'Комиссия по продажам') +
-      stat('Бонусы к выплате', rub(currentUser.launch_bonus_unpaid), 'За открытие точек') + '</div>';
+      stat('Ожидает выплаты', compensation ? rub(compensation.commission_unpaid) : '—', 'Только невыплаченная комиссия') +
+      stat('Бонусы к выплате', compensation ? rub(compensation.launch_bonus_unpaid) : '—', 'Начислены, но не перечислены') +
+      stat('Начислено за 30 дней', compensation ? rub(compensation.period_residual) : '—',
+        'За период, включая уже оплаченные начисления') + '</div>';
     html += surface('Мои минимаркеты', rows(points.map(function(p) {
       return line(p.point_name || p.name || ('Точка #' + p.point_id), p.address || p.point_addr || 'Выручка за всё время', rub(p.live_revenue != null ? p.live_revenue : p.revenue));
     })));
