@@ -130,7 +130,7 @@ function referralSummary(role,recipientId) {
   return {count:rows.length,awaiting:sum('awaiting'),payable:sum('payable'),paid:sum('paid'),rows};
 }
 function referralLeadOptions(cityId,managerId) {
-  let query="SELECT id,salon_name,city_id,referral_code FROM partner_leads " +
+  let query="SELECT id,salon_name,city_id,assigned_manager_id,referral_code FROM partner_leads " +
     "WHERE referral_code IS NOT NULL AND linked_point_id IS NULL AND status<>'declined'";
   let args=[];
   if (cityId) {query+=" AND (city_id=? OR city_id IS NULL)"; args.push(cityId);}
