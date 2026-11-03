@@ -55,6 +55,33 @@ test('same existing bot supplies a single menu and both Mini App destinations', 
   assert.equal(miniAppDirectLinkMarkup('work').inline_keyboard[0][0].web_app.url, WORK_URL);
 });
 
+
+test('each newly generated private bot reply offers fresh Telegram WebView launch URLs', () => {
+  const a = miniAppInlineKeyboard({ fresh: true });
+  const b = miniAppInlineKeyboard({ fresh: true });
+  for (let i = 0; i < 2; i++) {
+    const first = new URL(a[i][0].web_app.url);
+    const second = new URL(b[i][0].web_app.url);
+    assert.equal(first.origin, new URL(SHOP_URL).origin);
+    assert.equal(first.pathname, '/miniapp.html');
+    assert.equal(first.searchParams.get('view'), i ? 'work' : 'shop');
+    assert.match(first.searchParams.get('launch'), /^[0-9a-f]{24}$/);
+    assert.notEqual(first.href, second.href);
+    // A launch marker is NOT an auth token; no role or phone is leaked.
+    assert.equal(first.searchParams.has('phone'), false);
+    assert.equal(first.searchParams.has('token'), false);
+    assert.equal(first.searchParams.has('initData'), false);
+  }
+  const freshCabinet = miniAppDirectLinkMarkup('work', { fresh: true });
+  const freshShop = miniAppDirectLinkMarkup('shop', { fresh: true });
+  assert.match(freshCabinet.inline_keyboard[0][0].web_app.url, /view=work&launch=[0-9a-f]{24}$/);
+  assert.match(freshShop.inline_keyboard[0][0].web_app.url, /view=shop&launch=[0-9a-f]{24}$/);
+  const poller = fs.readFileSync(path.join(__dirname, 'telegram-login-poller.js'), 'utf8');
+  assert.match(poller, /miniAppInlineKeyboard\(\{ fresh: true \}\)/);
+  assert.match(poller, /miniAppDirectLinkMarkup\(work \? 'work' : 'shop', \{ fresh: true \}\)/);
+  assert.match(poller, /\/cabinet/);
+});
+
 test('Mini App trusts ONLY the shared TG_TOKEN, never a second bot token', () => {
   const previous = { TG_TOKEN: process.env.TG_TOKEN, TG_SHOP_BOT_TOKEN: process.env.TG_SHOP_BOT_TOKEN };
   const now = Math.floor(Date.now() / 1000);
