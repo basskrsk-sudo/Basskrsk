@@ -1706,6 +1706,31 @@ ensureColumn('manager_points', 'referred_owner_amount', 'INTEGER');
   }
 })();
 
+// Referral program: one immutable attribution per newly launched point.
+// Historical "bonus_paid" on manager_points means accrued, not transferred.
+ensureColumn('partner_leads','referral_code','TEXT');
+ensureColumn('partner_leads','referred_by_role','TEXT');
+ensureColumn('partner_leads','referred_by_id','INTEGER');
+ensureColumn('partner_leads','linked_point_id','TEXT');
+db.exec("CREATE TABLE IF NOT EXISTS point_referrals (" +
+  "point_id TEXT PRIMARY KEY REFERENCES points(id) ON DELETE CASCADE," +
+  "point_name TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('none','partner','owner'))," +
+  "recipient_id INTEGER, recipient_code TEXT,amount INTEGER NOT NULL DEFAULT 0," +
+  "source TEXT NOT NULL,lead_id INTEGER UNIQUE," +
+  "recorded_at TEXT NOT NULL DEFAULT (datetime('now'))" +
+  ")");
+db.exec('CREATE INDEX IF NOT EXISTS idx_point_referrals_recipient ON point_referrals(role,recipient_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_partner_leads_referrer ON partner_leads(referred_by_role,referred_by_id)');
+// Preserve previously accrued referral bonuses; never recreate a cash payout.
+db.exec("INSERT OR IGNORE INTO point_referrals(point_id,point_name,role,recipient_id,recipient_code,amount,source) " +
+  "SELECT mp.point_id,mp.point_name,'partner',mp.referred_groomer_id,g.partner_code," +
+  "COALESCE(mp.referred_groomer_amount,1000),'legacy-bonus' FROM manager_points mp " +
+  "JOIN partners g ON g.id=mp.referred_groomer_id WHERE mp.point_id IS NOT NULL AND mp.bonus_paid=1");
+db.exec("INSERT OR IGNORE INTO point_referrals(point_id,point_name,role,recipient_id,recipient_code,amount,source) " +
+  "SELECT mp.point_id,mp.point_name,'owner',mp.referred_owner_id,o.owner_code," +
+  "COALESCE(mp.referred_owner_amount,1000),'legacy-bonus' FROM manager_points mp " +
+  "JOIN salon_owners o ON o.id=mp.referred_owner_id WHERE mp.point_id IS NOT NULL AND mp.bonus_paid=1");
+
 // warehouse_stock раньше был один общий склад на всю систему (первичный
 // ключ — только variant_id). SQLite не даёт поменять первичный ключ через
 // ALTER TABLE, поэтому пересоздаём таблицу целиком: составной ключ
