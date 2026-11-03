@@ -537,7 +537,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           (<span data-next-payout-countdown></span>)<br>
           График: 9-го и 24-го числа каждого месяца
         </div>
-        <button class="payout-btn" onclick="requestPayout()">Запросить выплату</button>
+        <button class="payout-btn" onclick="requestPayout()">Как получить выплату</button>
       </div>
 
       <div class="grid-2" style="margin-bottom:1rem;">
@@ -564,7 +564,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       </div>
 
       <div class="card">
-        <div class="card-title">История начислений <span id="earn-hist-count"></span></div>
+        <div class="card-title">Начисления по точкам <span id="earn-hist-count"></span></div>
         <table class="tbl">
           <thead>
             <tr>
@@ -2513,42 +2513,50 @@ async function saveSalonPageModal() {
 }
 
 // ── EARNINGS ─────────────────────────────────────────────────────────
-function renderEarnings(){
-  const days=periodDays();
-  const livePoints=MY_POINTS.filter(p=>p.pointId);
-  const activePts=livePoints.filter(p=>p.status==='active');
-  const totalRev=activePts.reduce((s,p)=>s+p.rev,0);
-  const residual=Math.round(activePts.reduce((s,p)=>s+p.rev*p.rate,0));
-  const bonuses=MY_POINTS.filter(p=>p.bonusPaid).reduce((sum,p)=>sum+p.bonusAmount,0);
-  document.getElementById('earn-payout').textContent=(residual+bonuses).toLocaleString('ru-RU')+' ₽';
-  document.getElementById('earn-period-label').textContent='за '+days+' дней';
-  document.getElementById('earn-hist-count').textContent=livePoints.length+' начислений';
+async function renderEarnings() {
+  const days = periodDays();
+  let overview = null;
+  try { overview = await fetchManagerCompensation(days); }
+  catch (error) { console.error('Не удалось загрузить начисления:', error); }
+  if (currentSec !== 'earnings' || periodDays() !== days) return;
+  const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
+  const commissionUnpaid = overview ? overview.commission_unpaid : 0;
+  const launchUnpaid = overview ? overview.launch_bonus_unpaid : 0;
+  document.getElementById('earn-payout').textContent =
+    overview ? money(overview.total_unpaid) : '—';
+  document.getElementById('earn-period-label').textContent = '· за всё время до выплаты';
+  document.getElementById('earn-hist-count').textContent = overview
+    ? '(за ' + days + ' дней, ' + overview.period_orders_count + ' заказов)'
+    : '· данные недоступны';
 
   destroyChart('earnBreak');
-  charts['earnBreak']=new Chart(document.getElementById('chartEarnBreak'),{type:'doughnut',
-    data:{labels:['Residual 7%','Бонусы за запуск'],
-          datasets:[{data:[residual,bonuses],backgroundColor:['#534AB7','#D4872A'],borderWidth:2,borderColor:'#fff'}]},
+  charts['earnBreak'] = new Chart(document.getElementById('chartEarnBreak'),{
+    type:'doughnut',
+    data:{labels:['Комиссия к выплате','Бонусы к выплате'],
+      datasets:[{data:[commissionUnpaid, launchUnpaid],
+        backgroundColor:['#534AB7','#D4872A'],borderWidth:2,borderColor:'#fff'}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
-      plugins:{legend:{position:'bottom',labels:{font:{size:11},padding:12}}}}});
+      plugins:{legend:{position:'bottom',labels:{font:{size:11},padding:12}}}}
+  });
 
-  document.getElementById('earn-tbody').innerHTML=livePoints.map((p,i)=>`
-    <tr>
-      <td>${new Date().toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</td>
-      <td><span class="pill pill-purple">Residual</span></td>
-      <td>${p.name}</td>
-      <td class="r">${p.rev.toLocaleString('ru-RU')} ₽</td>
-      <td class="r" style="font-weight:600;color:var(--amber)">${Math.round(p.rev*p.rate).toLocaleString('ru-RU')} ₽</td>
-      <td><span class="pill ${p.status==='active'?'pill-green':'pill-amber'}">${p.status==='active'?'Начислено':'Приостановлено'}</span></td>
-    </tr>
-    ${p.bonusPaid?`<tr>
-      <td>${new Date(Date.now()-7*86400000).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</td>
-      <td><span class="pill pill-purple">Бонус запуска</span></td>
-      <td>${p.name}</td>
-      <td class="r">—</td>
-      <td class="r" style="font-weight:600;color:var(--amber)">${p.bonusAmount.toLocaleString('ru-RU')} ₽</td>
-      <td><span class="pill pill-green">Выплачено</span></td>
-    </tr>`:''}
-  `).join('');
+  const items = overview ? overview.period_points : [];
+  const rows = items.map(p=>
+    '<tr><td>За ' + days + ' дн.</td>' +
+      '<td><span class="pill pill-purple">Residual</span></td>' +
+      '<td>' + managerHtml(p.point_name) + '</td>' +
+      '<td class="r">' + money(p.revenue) + '</td>' +
+      '<td class="r" style="font-weight:600;color:var(--amber)">' + money(p.commission) + '</td>' +
+      '<td><span class="pill pill-green">За период</span></td></tr>'
+  );
+  if (overview && launchUnpaid > 0) rows.push(
+    '<tr><td>—</td><td><span class="pill pill-purple">Бонусы запуска</span></td>' +
+    '<td>Все невыплаченные бонусы</td><td class="r">—</td>' +
+    '<td class="r">' + money(launchUnpaid) + '</td>' +
+    '<td><span class="pill pill-green">К выплате</span></td></tr>'
+  );
+  document.getElementById('earn-tbody').innerHTML = overview
+    ? (rows.join('') || '<tr><td colspan="6">Начислений за выбранный период нет.</td></tr>')
+    : '<tr><td colspan="6">Не удалось получить расчёт. Обновите страницу.</td></tr>';
 }
 
 // ── ACTIONS ──────────────────────────────────────────────────────────
@@ -2559,7 +2567,7 @@ function copyCode(){
   btn.textContent='Скопировано!';btn.style.background='#2D5A3F';
   setTimeout(()=>{btn.textContent='Скопировать';btn.style.background='';},2000);
 }
-function requestPayout(){alert('Запрос на выплату отправлен. Средства поступят на карту в течение 1 рабочего дня.');}
+function requestPayout(){alert('Сумма к выплате рассчитывается по подтверждённым неоплаченным начислениям. Для согласования и перечисления обратитесь к администратору ХвостМаркет. Заявка автоматически не отправлялась.');}
 
 // ── PWA: регистрация service worker (устанавливаемое приложение) ──────
 if ('serviceWorker' in navigator) {
