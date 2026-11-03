@@ -1219,6 +1219,14 @@
       if (activeRole) chooseRole(activeRole);
       else renderAll();
     });
+    if (action === 'manager-point-new' && activeRole === 'manager') return openManagerNewPoint();
+    if (action === 'manager-point-retry' && activeRole === 'manager' && managerNewPointMode === 'form')
+      return openManagerNewPoint();
+    if (action === 'manager-point-back' && activeRole === 'manager') return chooseRole('manager');
+    if (action === 'manager-point-groomer' && activeRole === 'manager' && managerNewPointMode === 'complete')
+      return openManagerRegistration('groomer');
+    if (action === 'manager-point-owner' && activeRole === 'manager' && managerNewPointMode === 'complete')
+      return openManagerRegistration('owner');
     if (action === 'manager-reg-groomer' && activeRole === 'manager') return openManagerRegistration('groomer');
     if (action === 'manager-reg-owner' && activeRole === 'manager') return openManagerRegistration('owner');
     if (action === 'manager-reg-retry' && activeRole === 'manager' && managerRegistrationKind)
@@ -1267,6 +1275,10 @@
     if (e.target.id === 'workManagerRegisterForm') {
       e.preventDefault();
       return submitManagerRegistration();
+    }
+    if (e.target.id === 'workManagerNewPointForm') {
+      e.preventDefault();
+      return submitManagerNewPoint();
     }
   });
   root.addEventListener('change', function(e) {
