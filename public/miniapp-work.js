@@ -1248,6 +1248,14 @@
         '<select class="work-register-input" id="workAdminPointManager">' +
         adminRegistrationChoicesHtml(options.managers || [], 'Пока не назначен') +
         '</select>' +
+        '<label class="work-register-label" for="workAdminPointReferralLead">Заявка приглашённого салона</label>' +
+        '<select class="work-register-input" id="workAdminPointReferralLead">' +
+          '<option value="">Без реферальной заявки</option>' +
+          (options.referral_leads || []).map(function(x){
+            return '<option value="' + esc(x.id) + '">' +
+              esc(x.salon_name+' · '+x.referral_code) + '</option>';
+          }).join('') + '</select>' +
+        '<p class="work-note">За пригласившим партнёром фиксируется ожидаемый бонус 1 000 ₽ после создания новой точки.</p>' +
         '<label class="work-register-label" for="workAdminPointIcon">Значок (необязательно)</label>' +
         '<input class="work-register-input" id="workAdminPointIcon" type="text" maxlength="8" placeholder="📍">' +
         '<p class="work-note">Точка будет добавлена на карту после проверки адреса. Начальные остатки — 0. Менеджера можно выбрать сейчас.</p>';
@@ -1362,6 +1370,8 @@
         return adminRegistrationError('Выберите действующего менеджера из списка.');
       if (icon.length > 8) return adminRegistrationError('Слишком длинный значок.');
       body = { name:name, addr:addr, city_id:city, icon:icon || '📍' };
+      var selectedReferral=String((get('workAdminPointReferralLead')||{}).value||'');
+      if (selectedReferral) body.referral_lead_id=Number(selectedReferral);
       if (managerId) body.manager_id = Number(managerId);
       url = '/api/points';
     } else {
@@ -1641,6 +1651,20 @@
     }
   });
   root.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'workAdminPointReferralLead' && activeRole === 'admin') {
+      var opt=(adminRegistrationOptions&&adminRegistrationOptions.referral_leads||[]).find(function(x){
+        return String(x.id)===String(e.target.value);
+      });
+      if (opt) {
+        var n=document.getElementById('workAdminPointName');
+        var c=document.getElementById('workAdminPointCity');
+        var m=document.getElementById('workAdminPointManager');
+        if(n)n.value=opt.salon_name;
+        if(c&&opt.city_id)c.value=opt.city_id;
+        if(m&&opt.assigned_manager_id)m.value=String(opt.assigned_manager_id);
+      }
+    }
+
     if (e.target && e.target.id === 'workPointReferralLead' && activeRole === 'manager') {
       var selectedLead = managerReferralLeads.find(function(x){return String(x.id)===String(e.target.value);});
       if (selectedLead) {
