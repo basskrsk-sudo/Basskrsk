@@ -83,8 +83,7 @@ async function configureBotProfile() {
     ['setChatMenuButton', { menu_button: commandsMenuButton() }],
     ['setMyCommands', { commands: [
       { command: 'start', description: 'Открыть помощника ХвостМаркета' },
-      { command: 'shop', description: '🛍 Открыть магазин' },
-      { command: 'cabinet', description: '👤 Рабочие кабинеты' },
+      { command: 'app', description: '🐾 Открыть ХвостМаркет — все возможности' },
       { command: 'phone', description: '🔐 Подтвердить свой номер для кабинета' },
       { command: 'tasks', description: 'Мои активные поручения' },
       { command: 'taskpdf', description: 'Свежий PDF моих поручений' },
@@ -139,9 +138,9 @@ function buildWelcomeMessage() {
   return [
     '🐾 ХвостМаркет',
     '',
-    'Откройте магазин или свой рабочий кабинет прямо в Telegram. Я также помогу войти на сайт и буду присылать уведомления о продажах, заказах и вознаграждениях.',
+    'Одна кнопка открывает магазин и все ваши кабинеты прямо в Telegram. Я также помогу войти на сайт и буду присылать уведомления о продажах, заказах и вознаграждениях.',
     '',
-    'Магазин: /shop · Кабинеты грумеров, менеджеров, владельцев и администраторов: /cabinet.',
+    'Нажмите «🐾 Открыть ХвостМаркет» или отправьте /app. После подтверждения телефона увидите только доступные вам разделы.',
     '',
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /stock — остатки центрального склада; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
@@ -974,16 +973,13 @@ async function processUpdate(update) {
     return;
   }
 
-  // Mini App links work in this EXISTING bot. Handle commands before free-text
-  // club drafts and task creation so they cannot consume /shop or /cabinet.
-  if (msg.chat.type === 'private' && /^\/(?:shop|cabinet)(?:@\w+)?$/i.test(text)) {
-    const work = /^\/cabinet(?:@\w+)?$/i.test(text);
+  // One universal launch. Keep old /shop and /cabinet commands as aliases
+  // so earlier Telegram messages remain useful after this update.
+  if (msg.chat.type === 'private' && /^\/(?:app|shop|cabinet)(?:@\w+)?$/i.test(text)) {
     await replyToChat(
       msg.chat.id,
-      work
-        ? '👤 Рабочие кабинеты ХвостМаркета. Подтвердите номер Telegram для входа без пароля или используйте логин и пароль сайта.'
-        : '🛍 Магазин ХвостМаркета. Выберите салон, товары и оплачивайте покупки через ЮKassa.',
-      miniAppDirectLinkMarkup(work ? 'work' : 'shop', { fresh: true })
+      '🐾 Откройте ХвостМаркет. Подтвердите свой номер и выберите магазин или один из доступных вам кабинетов.',
+      miniAppDirectLinkMarkup('app', { fresh: true })
     );
     return;
   }
