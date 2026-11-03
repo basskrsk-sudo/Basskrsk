@@ -34,6 +34,7 @@ function registerMiniAppAdminRegistrationRoutes(router) {
       points: points.map(({has_owner, ...point}) => point),
       owner_points: points.filter(p => !p.has_owner).map(({has_owner, ...point}) => point),
       groomers,
+      referral_leads: require('./referral-program').referralLeadOptions(null,null),
     });
   });
 }
