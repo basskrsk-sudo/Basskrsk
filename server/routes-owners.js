@@ -5,6 +5,7 @@
 'use strict';
 
 const db = require('./db');
+const referralProgram = require('./referral-program');
 const { validateOwnerGroomer } = require('./auto-groomer');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
@@ -304,7 +305,8 @@ function registerOwnerRoutes(router) {
     if (!payload) return;
     const owner = db.prepare('SELECT * FROM salon_owners WHERE id = ?').get(payload.id);
     if (!owner) return sendJson(res, 404, { error: 'Не найдено' });
-    sendJson(res, 200, { owner: safeOwner(owner) });
+    sendJson(res, 200, { owner: { ...safeOwner(owner),
+      referrals:referralProgram.referralSummary('owner',owner.id) } });
   });
 
   // GET /api/owner/dashboard — вся статистика по точке владельца: общая
@@ -410,6 +412,7 @@ function registerOwnerRoutes(router) {
     sendJson(res, 200, {
       point: { id: point.id, name: point.name, addr: point.addr, city_id: point.city_id },
       owner_code: owner.owner_code,
+      referrals:referralProgram.referralSummary('owner',owner.id),
       totals: {
         revenue: totalRevenue,
         orders: totalOrders,
