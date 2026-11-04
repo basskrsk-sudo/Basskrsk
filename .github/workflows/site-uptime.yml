@@ -5,6 +5,12 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      test_notification:
+        description: 'Send one test Telegram monitoring notification (no outage simulated)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -24,7 +30,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Test Telegram notification without touching production
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_notification }}
+        run: |
+          node - <<'NODE'
+          const { telegram } = require('./scripts/site-uptime-monitor');
+          telegram('🧪 ХвостМаркет: тест уведомлений мониторинга GitHub Actions. Сайт не отключался.', {
+            token: process.env.HM_MONITOR_TELEGRAM_TOKEN,
+            chatId: process.env.HM_MONITOR_CHAT_ID,
+          }).then(result => {
+            if (!result.sent) {
+              console.error('Тест Telegram не пройден: проверьте HM_MONITOR_TELEGRAM_TOKEN и HM_MONITOR_CHAT_ID в GitHub Actions Secrets.');
+              process.exitCode = 1;
+            } else console.log('Проверочное Telegram-сообщение доставлено.');
+          }).catch(() => {
+            console.error('Тест Telegram не пройден: ошибка отправки сообщения.');
+            process.exitCode = 1;
+          });
+          NODE
+        env:
+          HM_MONITOR_TELEGRAM_TOKEN: ${{ secrets.HM_MONITOR_TELEGRAM_TOKEN }}
+          HM_MONITOR_CHAT_ID: ${{ secrets.HM_MONITOR_CHAT_ID }}
       - name: Check site and manage GitHub incident + Telegram notification
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.test_notification }}
         run: node scripts/site-uptime-monitor.js
         env:
           GH_MONITOR_TOKEN: ${{ github.token }}
