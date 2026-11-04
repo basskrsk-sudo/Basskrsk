@@ -24,8 +24,9 @@ const REFERRAL_SPLIT = 1000; // отдельная премия пригласи
 // формула себестоимости и комиссий, что и там — чтобы цифры не расходились
 // между "когда выплачивать бонус" и "квартальный отчёт по прибыльности".
 function computePointRevenueSoFar(pointId) {
-  return Number(db.prepare("SELECT COALESCE(SUM(total),0) AS revenue FROM orders " +
-    "WHERE point_id=? AND status='paid' AND COALESCE(refund_status,'') <> 'refunded'")
+  return Number(db.prepare("SELECT COALESCE(SUM(CASE WHEN COALESCE(refund_status,'')='refunded' THEN 0 " +
+"ELSE MAX(0,total-COALESCE(refunded_amount,0)) END),0) AS revenue FROM orders " +
+    "WHERE point_id=? AND status='paid'")
     .get(pointId).revenue || 0);
 }
 
