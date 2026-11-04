@@ -245,7 +245,8 @@
     init.headers = Object.assign({}, init.headers || {}, {
       Authorization: 'Bearer ' + token,
     });
-    var response = await fetch(url, init);
+    var reliable = window.HvostMiniAppReliability;
+    var response = await (reliable ? reliable.request : fetch)(url, init);
     var data = await response.json().catch(function() { return {}; });
     if (!response.ok) {
       var error = new Error(data.error || 'Ошибка сервера (' + response.status + ')');
@@ -1721,6 +1722,7 @@
       return chooseRole(activeRole);
     },
     chooseRole: chooseRole,
+    refresh: function() { return activeRole ? chooseRole(activeRole) : renderAll(); },
     roles: order.slice(),
   };
 
