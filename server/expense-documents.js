@@ -33,9 +33,10 @@ db.exec(
   'id INTEGER PRIMARY KEY AUTOINCREMENT,' +
   'expense_id INTEGER NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,' +
   'filename TEXT NOT NULL,storage_name TEXT NOT NULL UNIQUE,' +
-  'mime_type TEXT NOT NULL,size_bytes INTEGER NOT NULL,' +
+  'mime_type TEXT NOT NULL,size_bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,' +
   'uploaded_by_role TEXT NOT NULL,uploaded_by_id INTEGER NOT NULL,' +
-  'uploaded_at TEXT NOT NULL DEFAULT (datetime(\'now\'))' +
+  'uploaded_at TEXT NOT NULL DEFAULT (datetime(\'now\')),' +
+  'UNIQUE(expense_id,sha256)' +
   ')'
 );
 db.exec('CREATE INDEX IF NOT EXISTS idx_expense_documents_expense ON expense_documents(expense_id,id)');
@@ -135,15 +136,6 @@ function checkAccess(req,res,ctx,expense) {
   }
   return payload;
 }
-function removeExpenseFiles(expenseId) {
-  const docs=db.prepare('SELECT storage_name FROM expense_documents WHERE expense_id=?').all(expenseId);
-  // Called AFTER deleting the expense; the FK cascades metadata removal.
-  for(const doc of docs) {
-    try {fs.unlinkSync(path.join(DOCUMENT_DIR,doc.storage_name));} catch(e) {
-      if(e.code!=='ENOENT')console.warn('Expense file cleanup failed:',e.code);
-    }
-  }
-}
 function cleanupAfterDeletedExpense(storageNames) {
   for(const name of storageNames) {
     if(!/^[a-f0-9]{32}\.[a-z0-9]{2,5}$/.test(name))continue;
@@ -171,15 +163,19 @@ function registerExpenseDocumentRoutes(router) {
     const parsed=validateFile(ctx.body);
     if(parsed.error)return sendJson(res,400,{error:parsed.error});
     fs.mkdirSync(DOCUMENT_DIR,{recursive:true,mode:0o700});
+    const hash=crypto.createHash('sha256').update(parsed.buffer).digest('hex');
+    const already=db.prepare('SELECT * FROM expense_documents WHERE expense_id=? AND sha256=?')
+      .get(expense.id,hash);
+    if(already)return sendJson(res,200,{ok:true,already_exists:true,document:safeDocument(already)});
     const storageName=crypto.randomBytes(16).toString('hex')+'.'+parsed.ext;
     const filePath=path.join(DOCUMENT_DIR,storageName);
     fs.writeFileSync(filePath,parsed.buffer,{flag:'wx',mode:0o600});
     try {
       const result=db.prepare(
-        'INSERT INTO expense_documents(expense_id,filename,storage_name,mime_type,size_bytes,uploaded_by_role,uploaded_by_id) ' +
-        'VALUES(?,?,?,?,?,?,?)'
+        'INSERT INTO expense_documents(expense_id,filename,storage_name,mime_type,size_bytes,sha256,uploaded_by_role,uploaded_by_id) ' +
+        'VALUES(?,?,?,?,?,?,?,?)'
       ).run(expense.id,parsed.filename,storageName,parsed.mime_type,
-        parsed.buffer.length,payload.role,payload.id);
+        parsed.buffer.length,hash,payload.role,payload.id);
       const row=db.prepare('SELECT * FROM expense_documents WHERE id=?').get(result.lastInsertRowid);
       sendJson(res,201,{ok:true,document:safeDocument(row)});
     } catch(error) {
