@@ -1688,6 +1688,8 @@ ensureColumn('restock_requests', 'city_id', "TEXT NOT NULL DEFAULT 'krsk'");
 ensureColumn('expenses', 'city_id', "TEXT NOT NULL DEFAULT 'krsk'");
 ensureColumn('expenses', 'investor_name', 'TEXT');
 ensureColumn('expenses', 'source', "TEXT NOT NULL DEFAULT 'admin'");
+// После сохранения траты Telegram может принимать прикреплённые чеки.
+ensureColumn('expense_bot_drafts', 'expense_id', 'INTEGER REFERENCES expenses(id)');
 
 // ── РЕФЕРАЛЬНЫЙ КОД ВЛАДЕЛЬЦА САЛОНА ─────────────────────────────────
 // Раньше приводить новых партнёров (и получать за это бонус) мог только
