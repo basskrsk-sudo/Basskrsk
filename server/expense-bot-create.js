@@ -242,6 +242,10 @@ function setDraftDate(channel, chatId, expenseDate) {
   if (!draft || draft.step !== 'date') {
     return { ok: false, message: 'Черновик траты устарел. Начните заново командой /expense.' };
   }
+  if (!parseDate(expenseDate) || expenseDate > localDate()) {
+    return { ok: false, message: 'Укажите реальную дату не позднее сегодняшней. Можно выбрать любую прошедшую дату.',
+      replyMarkup: dateButtons() };
+  }
   db.prepare(`
     UPDATE expense_bot_drafts
     SET expense_date = ?, step = 'investor', updated_at = datetime('now')
