@@ -4724,6 +4724,39 @@ function opsEscapeHtml(value) {
   });
 }
 
+async function renderSystemHealth() {
+  const target=document.getElementById('system-health-content');
+  if(!target)return;
+  target.textContent='Проверяем сервер…';
+  try {
+    const response=await authFetch('/api/admin/system-health');
+    const info=await response.json();
+    if(!response.ok)throw Error(info.error||'Ошибка получения состояния');
+    const safe=opsEscapeHtml;
+    const n=value=>Number.isFinite(Number(value))?Number(value).toLocaleString('ru-RU'):'—';
+    const values=[
+      ['Сервер Node.js',info.status==='ok'?'🟢 Работает':'🔴 Требует внимания','Работает '+n(Math.floor((info.uptime_seconds||0)/60))+' мин.'],
+      ['База SQLite',info.checks?.database==='ok'?'✅ Работает':'❌ Ошибка',''],
+      ['Хранилище /data',info.checks?.storage==='ok'?'✅ Работает':'❌ Ошибка',''],
+      ['Память',n(info.memory?.rss_mb)+' МБ',info.memory?.limit_mb?'Лимит: '+n(info.memory.limit_mb)+' МБ':'Лимит неизвестен'],
+      ['Место на диске',info.storage_free_mb==null?'—':n(info.storage_free_mb)+' МБ',''],
+      ['Задержка Node.js',info.event_loop_delay_ms==null?'—':n(info.event_loop_delay_ms)+' мс',''],
+    ];
+    const grid=values.map(row=>'<div style="padding:12px;border:1px solid var(--border);border-radius:9px">'+
+      '<small style="color:var(--muted)">'+safe(row[0])+'</small><strong style="display:block;margin:4px 0">'+
+      safe(row[1])+'</strong><small>'+safe(row[2])+'</small></div>').join('');
+    const history=(info.events||[]).slice(0,35).map(event=>'<tr><td>'+safe(event.created_at)+
+      '</td><td>'+safe(event.event_type)+'</td><td>'+safe(event.severity)+'</td><td>'+
+      safe(event.detail)+'</td></tr>').join('');
+    target.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:10px">'+
+      grid+'</div><h3 style="margin:18px 0 8px">История событий</h3>'+
+      '<div style="overflow-x:auto"><table class="admin-table"><thead><tr><th>Время</th>'+
+      '<th>Событие</th><th>Уровень</th><th>Описание</th></tr></thead><tbody>'+
+      (history||'<tr><td colspan="4">Событий пока нет</td></tr>')+'</tbody></table></div>';
+  } catch(error) {
+    target.textContent='Не удалось получить состояние системы: '+error.message;
+  }
+}
 async function loadOperationsCenter() {
   const grid = document.getElementById('ops-grid');
   const summaryEl = document.getElementById('ops-summary');
