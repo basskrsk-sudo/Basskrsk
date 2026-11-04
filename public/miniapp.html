@@ -229,9 +229,9 @@ async function refreshReadOnlyAfterReconnect(){
   renderCartIndicators();
 }
 async function init(){
+  // Keep the profile as a safe loading view before signed Telegram checks.
   if(window.HvostMiniAppReliability)
     window.HvostMiniAppReliability.registerRecovery(refreshReadOnlyAfterReconnect);
-  // Keep the profile as a safe loading view before signed Telegram checks.
   setView('profile');
   if(window.HvostMiniAppIdentity){
     window.HvostMiniAppIdentity.onChange(function(){syncPhoneAccess()});
