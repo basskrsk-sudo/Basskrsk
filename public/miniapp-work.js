@@ -745,7 +745,7 @@
       if (role === 'partner') html += partnerDashboard(data);
       if (role === 'manager') html += managerDashboard(data);
       if (role === 'owner') html += ownerDashboard(data);
-      if (role === 'founder' && window.HvostBusinessFounder) html += window.HvostBusinessFounder.render(data[0]);
+      if (role === 'founder' && window.HvostBusinessFounder) html += window.HvostBusinessFounder.render(data[0],token);
       if (role === 'admin') html += adminDashboard(data,diagnosticData);
       dashboardMarkup = html + dashboardFooter(role);
       root.innerHTML = dashboardMarkup;
