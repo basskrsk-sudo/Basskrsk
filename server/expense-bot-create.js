@@ -42,6 +42,11 @@ function dateButtons() {
         { text: 'Сегодня', callback_data: 'expense:date:today' },
         { text: 'Вчера', callback_data: 'expense:date:yesterday' },
       ],
+      [
+        { text: 'Позавчера', callback_data: 'expense:date:two-days-ago' },
+        { text: '7 дней назад', callback_data: 'expense:date:week-ago' },
+      ],
+      [{ text: '📅 Другая дата', callback_data: 'expense:date:manual' }],
       [{ text: '✕ Отмена', callback_data: 'expense:cancel' }],
     ],
   };
@@ -227,7 +232,7 @@ function startExpenseCreation(channel, chatId) {
   `).run(channel, String(chatId), actor.role, actor.id, actor.name, defaultCityId(), expiresAt);
   return {
     ok: true,
-    message: '💳 Новая трата\n\nВыберите дату или отправьте её сообщением в формате ДД.ММ.ГГГГ.',
+    message: '💳 Новая трата\n\nВыберите дату кнопкой или укажите любую прошедшую дату сообщением в формате ДД.ММ.ГГГГ (например, 02.11.2026).',
     replyMarkup: dateButtons(),
   };
 }
@@ -343,6 +348,20 @@ function handleExpenseCallback(channel, chatId, rawPayload) {
   }
   if (payload === 'expense:date:today') return setDraftDate(channel, chatId, localDate());
   if (payload === 'expense:date:yesterday') return setDraftDate(channel, chatId, addDays(localDate(), -1));
+  if (payload === 'expense:date:two-days-ago') return setDraftDate(channel, chatId, addDays(localDate(), -2));
+  if (payload === 'expense:date:week-ago') return setDraftDate(channel, chatId, addDays(localDate(), -7));
+  if (payload === 'expense:date:manual') {
+    const draft = draftForChat(channel, chatId);
+    if (!draft || draft.step !== 'date') {
+      return { ok: false, message: 'Черновик траты устарел. Начните заново командой /expense.' };
+    }
+    return {
+      ok: true,
+      message: '📅 Отправьте дату фактической оплаты сообщением в формате ДД.ММ.ГГГГ. ' +
+        'Можно указать любое число в прошлом, не только вчера (например, 25.10.2026).',
+      replyMarkup: dateButtons(),
+    };
+  }
   if (payload.startsWith('expense:investor:')) {
     return setDraftInvestor(channel, chatId, payload.slice('expense:investor:'.length));
   }
