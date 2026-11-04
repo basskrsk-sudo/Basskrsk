@@ -5,6 +5,7 @@ const db = require('./db');
 const { localDate } = require('./task-reminders');
 
 const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+const ATTACH_TTL_MS = 2 * 60 * 60 * 1000;
 const INVESTORS = Object.freeze({
   alexey: 'Лакомых Алексей',
   vitaly: 'Соколов Виталий',
@@ -65,6 +66,39 @@ function confirmButtons() {
       [{ text: '✕ Отмена', callback_data: 'expense:cancel' }],
     ],
   };
+}
+
+function attachmentButtons(expenseId) {
+  return { inline_keyboard:[
+    [{text:'📎 Прикрепить чек',callback_data:'expense:attach:help:'+expenseId}],
+    [{text:'✅ Готово, больше файлов нет',callback_data:'expense:attach:done:'+expenseId}],
+  ]};
+}
+
+function attachmentInstructions(expenseId,number) {
+  return [
+    '📎 Прикрепление к трате №'+expenseId,
+    number ? 'Добавлено подтверждающих файлов: '+number+' из 12.' : '',
+    'Нажмите скрепку 📎 рядом с полем сообщения Telegram и пришлите фото чека или документ.',
+    'Можно отправить несколько файлов по очереди: PDF, JPG, PNG, HEIC, Word, Excel и другие разрешённые форматы (до 10 МБ каждый).',
+    'Закончив загрузку, нажмите «✅ Готово». Чек сохранится в закрытом архиве трат.',
+  ].filter(Boolean).join('\n\n');
+}
+
+function activeExpenseAttachment(channel,chatId) {
+  const draft=draftForChat(channel,chatId);
+  if(!draft || draft.step!=='attach' || !draft.expense_id) return null;
+  const active=actorForChat(channel,chatId);
+  if(!active || active.role!==draft.creator_role ||
+      Number(active.id)!==Number(draft.creator_id))return {denied:true};
+  const expense=db.prepare('SELECT id FROM expenses WHERE id=?').get(draft.expense_id);
+  if(!expense)return {denied:true};
+  return {expenseId:expense.id,actor:active};
+}
+
+function attachmentCount(expenseId){
+  return db.prepare('SELECT COUNT(*) AS total FROM expense_documents WHERE expense_id=?')
+    .get(expenseId).total;
 }
 
 function parseDate(value) {
@@ -194,8 +228,18 @@ function confirmationMessage(draft) {
 
 function finishExpenseCreation(channel, chatId) {
   const draft = draftForChat(channel, chatId);
+  if(draft && draft.step==='attach' && draft.expense_id){
+    return {ok:true,created:false,expenseId:draft.expense_id,
+      message:'Трата №'+draft.expense_id+' уже записана.\n\n'+
+        attachmentInstructions(draft.expense_id,attachmentCount(draft.expense_id)),
+      replyMarkup:attachmentButtons(draft.expense_id)};
+  }
   if (!draft || draft.step !== 'confirm' || !draft.expense_date || !draft.investor_name || !draft.amount || !draft.purpose) {
     return { ok: false, message: 'Черновик траты неполный или устарел. Начните заново командой /expense.' };
+  }
+  const actor=actorForChat(channel,chatId);
+  if(!actor || actor.role!==draft.creator_role || Number(actor.id)!==Number(draft.creator_id)){
+    return {ok:false,message:'Нет доступа к сохранению этой траты. Начните заново.'};
   }
   const city = db.prepare('SELECT id, name FROM cities WHERE id = ?').get(draft.city_id);
   const info = db.prepare(`
@@ -210,7 +254,14 @@ function finishExpenseCreation(channel, chatId) {
     draft.creator_name + ' · Telegram',
     draft.city_id
   );
-  cancelExpenseCreation(channel, chatId);
+  // Keep only the post-save attachment state. A repeated Telegram callback
+  // must NEVER create a second expense.
+  db.prepare(`
+    UPDATE expense_bot_drafts SET step='attach',expense_id=?,
+      expires_at=?,updated_at=datetime('now')
+    WHERE channel=? AND chat_id=? AND step='confirm'
+  `).run(Number(info.lastInsertRowid),new Date(Date.now()+ATTACH_TTL_MS).toISOString(),
+    channel,String(chatId));
   return {
     ok: true,
     created: true,
@@ -222,8 +273,10 @@ function finishExpenseCreation(channel, chatId) {
       draft.investor_name,
       draft.purpose,
       city ? 'Город: ' + city.name : '',
+      '',
+      attachmentInstructions(Number(info.lastInsertRowid),0),
     ].filter(Boolean).join('\n'),
-    replyMarkup: expenseButton(),
+    replyMarkup: attachmentButtons(Number(info.lastInsertRowid)),
   };
 }
 
@@ -241,6 +294,23 @@ function handleExpenseCallback(channel, chatId, rawPayload) {
     return setDraftInvestor(channel, chatId, payload.slice('expense:investor:'.length));
   }
   if (payload === 'expense:confirm') return finishExpenseCreation(channel, chatId);
+  const attach=payload.match(/^expense:attach:(help|done):(\d+)$/);
+  if(attach){
+    const current=activeExpenseAttachment(channel,chatId);
+    if(!current || current.denied || String(current.expenseId)!==attach[2]){
+      return {ok:false,message:'Сессия загрузки чека завершена. Начните новую трату через /expense.'};
+    }
+    if(attach[1]==='done'){
+      cancelExpenseCreation(channel,chatId);
+      const total=attachmentCount(current.expenseId);
+      return {ok:true,message:'✅ Трата №'+current.expenseId+' сохранена.\n'+
+        (total?'Подтверждающих документов: '+total+'.':'Подтверждающие документы не прикреплены.')+
+        '\nДокументы также доступны в журнале трат.',
+        replyMarkup:expenseButton()};
+    }
+    return {ok:true,message:attachmentInstructions(current.expenseId,attachmentCount(current.expenseId)),
+      replyMarkup:attachmentButtons(current.expenseId)};
+  }
   return { ok: false, message: 'Неизвестное действие. Начните заново командой /expense.' };
 }
 
@@ -283,6 +353,15 @@ function handleExpenseMessage(channel, chatId, text) {
   if (draft.step === 'confirm') {
     return { ok: false, message: 'Подтвердите сохранение кнопкой под предыдущим сообщением.', replyMarkup: confirmButtons() };
   }
+  if (draft.step === 'attach') {
+    const current=activeExpenseAttachment(channel,chatId);
+    if(!current || current.denied)return {ok:false,message:'Нет доступа к загрузке файлов этой траты.'};
+    if(/^(?:готово|без файла|пропустить)$/i.test(value)) {
+      return handleExpenseCallback(channel,chatId,'expense:attach:done:'+current.expenseId);
+    }
+    return {ok:true,message:attachmentInstructions(current.expenseId,attachmentCount(current.expenseId)),
+      replyMarkup:attachmentButtons(current.expenseId)};
+  }
   return null;
 }
 
@@ -295,4 +374,8 @@ module.exports = {
   parseAmount,
   parseDate,
   startExpenseCreation,
+  activeExpenseAttachment,
+  attachmentButtons,
+  attachmentInstructions,
+  attachmentCount,
 };

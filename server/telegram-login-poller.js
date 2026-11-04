@@ -31,6 +31,7 @@ const {
   handleExpenseMessage,
   startExpenseCreation,
 } = require('./expense-bot-create');
+const { handleExpenseAttachmentMessage } = require('./expense-bot-files');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
 const { recordVerifiedTelegramContact } = require('./miniapp-phone-identity');
@@ -849,7 +850,11 @@ async function processUpdate(update) {
     // Switching actions ends an unfinished custom-date entry.
     if (/^(?:newtsk:|expense:|tsk:\d+:(?:work|status|done):)/.test(callback.data || ''))
       cancelTaskDueInput('telegram',chatId);
-    const result = handleExpenseCallback('telegram', chatId, callback.data)
+    const expenseCallbackInGroup=String(callback.data||'').startsWith('expense:') &&
+      callback.message?.chat?.type && callback.message.chat.type!=='private';
+    const result = (expenseCallbackInGroup
+      ? {ok:false,message:'Траты и чеки можно оформлять только в личном чате с ботом.'}
+      : handleExpenseCallback('telegram', chatId, callback.data))
       || handleTaskCreateCallback('telegram', chatId, callback.data)
       || handleTaskCallback('telegram', chatId, callback.data);
     if (result) {
@@ -902,6 +907,16 @@ async function processUpdate(update) {
       }
     }
     return;
+  }
+  // An expense upload window has priority over club photo drafts. Only its
+  // original verified private chat may attach receipts to the saved expense.
+  if (msg.chat?.type === 'private' &&
+      (msg.document || (Array.isArray(msg.photo) && msg.photo.length))) {
+    const attached=await handleExpenseAttachmentMessage('telegram',msg.chat.id,msg);
+    if(attached){
+      await replyToChat(msg.chat.id,attached.message,attached.replyMarkup);
+      return;
+    }
   }
   if (msg.chat?.type === 'private') {
     const pendingNewProduct = newProductBroadcast.messageInput(msg);

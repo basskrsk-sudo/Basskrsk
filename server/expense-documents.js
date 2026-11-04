@@ -144,6 +144,61 @@ function cleanupAfterDeletedExpense(storageNames) {
     }
   }
 }
+// Shared storage used by both the authenticated web UI and the verified
+// Telegram expense wizard; there is no unauthenticated file-serving endpoint.
+function storeExpenseDocument(expenseId,body,actor) {
+  const expense=expenseForId(expenseId);
+  if (!expense) {
+    const err=new Error('Трата не найдена');
+    err.statusCode=404;
+    throw err;
+  }
+  if (!actor || !['admin','founder','task_assignee'].includes(actor.role) ||
+      !Number.isSafeInteger(Number(actor.id)) || Number(actor.id)<=0) {
+    const err=new Error('Недостаточно прав для прикрепления документов');
+    err.statusCode=403;
+    throw err;
+  }
+  const parsed=validateFile(body);
+  if (parsed.error) {
+    const err=new Error(parsed.error);
+    err.statusCode=400;
+    throw err;
+  }
+  const hash=crypto.createHash('sha256').update(parsed.buffer).digest('hex');
+  const already=db.prepare('SELECT * FROM expense_documents WHERE expense_id=? AND sha256=?')
+    .get(expense.id,hash);
+  if (already) return {document:safeDocument(already),already_exists:true};
+  const count=db.prepare('SELECT COUNT(*) AS n FROM expense_documents WHERE expense_id=?')
+    .get(expense.id).n;
+  if (count>=MAX_FILES_PER_EXPENSE) {
+    const err=new Error('К одной трате можно прикрепить не более 12 файлов');
+    err.statusCode=409;
+    throw err;
+  }
+  fs.mkdirSync(DOCUMENT_DIR,{recursive:true,mode:0o700});
+  const storageName=crypto.randomBytes(16).toString('hex')+'.'+parsed.ext;
+  const filePath=path.join(DOCUMENT_DIR,storageName);
+  fs.writeFileSync(filePath,parsed.buffer,{flag:'wx',mode:0o600});
+  try {
+    const result=db.prepare(
+      'INSERT INTO expense_documents(expense_id,filename,storage_name,mime_type,size_bytes,sha256,uploaded_by_role,uploaded_by_id) ' +
+      'VALUES(?,?,?,?,?,?,?,?)'
+    ).run(expense.id,parsed.filename,storageName,parsed.mime_type,
+      parsed.buffer.length,hash,actor.role,Number(actor.id));
+    const row=db.prepare('SELECT * FROM expense_documents WHERE id=?').get(result.lastInsertRowid);
+    return {document:safeDocument(row),already_exists:false};
+  } catch(error) {
+    try{fs.unlinkSync(filePath);}catch(_){}
+    if(error.code==='SQLITE_CONSTRAINT_UNIQUE'){
+      const duplicate=db.prepare('SELECT * FROM expense_documents WHERE expense_id=? AND sha256=?')
+        .get(expense.id,hash);
+      if(duplicate)return {document:safeDocument(duplicate),already_exists:true};
+    }
+    throw error;
+  }
+}
+
 function registerExpenseDocumentRoutes(router) {
   router.get('/api/expenses/:id/documents',(req,res,ctx)=>{
     const expense=expenseForId(ctx.params.id);
@@ -158,30 +213,13 @@ function registerExpenseDocumentRoutes(router) {
     const payload=checkAccess(req,res,ctx,expense);
     if(!payload)return;
     if(!expense)return sendJson(res,404,{error:'Трата не найдена'});
-    const count=db.prepare('SELECT COUNT(*) AS n FROM expense_documents WHERE expense_id=?').get(expense.id).n;
-    if(count>=MAX_FILES_PER_EXPENSE)return sendJson(res,409,{error:'К одной трате можно прикрепить не более 12 файлов'});
-    const parsed=validateFile(ctx.body);
-    if(parsed.error)return sendJson(res,400,{error:parsed.error});
-    fs.mkdirSync(DOCUMENT_DIR,{recursive:true,mode:0o700});
-    const hash=crypto.createHash('sha256').update(parsed.buffer).digest('hex');
-    const already=db.prepare('SELECT * FROM expense_documents WHERE expense_id=? AND sha256=?')
-      .get(expense.id,hash);
-    if(already)return sendJson(res,200,{ok:true,already_exists:true,document:safeDocument(already)});
-    const storageName=crypto.randomBytes(16).toString('hex')+'.'+parsed.ext;
-    const filePath=path.join(DOCUMENT_DIR,storageName);
-    fs.writeFileSync(filePath,parsed.buffer,{flag:'wx',mode:0o600});
-    try {
-      const result=db.prepare(
-        'INSERT INTO expense_documents(expense_id,filename,storage_name,mime_type,size_bytes,sha256,uploaded_by_role,uploaded_by_id) ' +
-        'VALUES(?,?,?,?,?,?,?,?)'
-      ).run(expense.id,parsed.filename,storageName,parsed.mime_type,
-        parsed.buffer.length,hash,payload.role,payload.id);
-      const row=db.prepare('SELECT * FROM expense_documents WHERE id=?').get(result.lastInsertRowid);
-      sendJson(res,201,{ok:true,document:safeDocument(row)});
-    } catch(error) {
-      try{fs.unlinkSync(filePath);}catch(_){}
+    let saved;
+    try { saved=storeExpenseDocument(expense.id,ctx.body,payload); }
+    catch(error) {
+      if(error.statusCode)return sendJson(res,error.statusCode,{error:error.message});
       throw error;
     }
+    sendJson(res,saved.already_exists?200:201,{ok:true,...saved});
   });
   router.get('/api/expense-documents/:id/download',(req,res,ctx)=>{
     const id=idNumber(ctx.params.id);
@@ -223,5 +261,5 @@ function registerExpenseDocumentRoutes(router) {
 }
 module.exports={
   registerExpenseDocumentRoutes,listExpenseDocuments,cleanupAfterDeletedExpense,
-  validateFile,MAX_FILE_BYTES,MAX_FILES_PER_EXPENSE,DOCUMENT_DIR,
+  validateFile,storeExpenseDocument,MAX_FILE_BYTES,MAX_FILES_PER_EXPENSE,DOCUMENT_DIR,
 };
