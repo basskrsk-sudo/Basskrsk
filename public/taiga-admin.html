@@ -665,6 +665,19 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     <!-- ══ DASHBOARD ══ -->
     <!-- ══ LAUNCH PLAN ══ -->
+    <div id="sec-system-health" style="display:none;">
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+          <span>💓 Состояние системы ХвостМаркет</span>
+          <button type="button" class="row-btn" onclick="renderSystemHealth()">↻ Проверить сейчас</button>
+        </div>
+        <p style="color:var(--muted);font-size:.85rem">
+          Проверки сервера, SQLite, хранилища /data и истории перезапусков.
+          Если Amvera полностью недоступна, внешний GitHub Actions регистрирует инцидент.
+        </p>
+        <div id="system-health-content" role="status" aria-live="polite">Загружаем состояние сервера…</div>
+      </div>
+    </div>
     <div id="sec-launch" style="display:none;">
       <div role="tablist" aria-label="План запуска" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
         <button id="launch-tab-plan" class="section-context-tab active" role="tab" aria-selected="true" aria-controls="launch-panel-plan" onclick="showLaunchTab('plan')">План запуска</button>
@@ -3178,15 +3191,15 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
 }
 
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'qr-analytics', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'telegram-connections', 'point'];
-const titles = { launch: 'План запуска', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', 'qr-analytics':'Аналитика QR', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', 'telegram-connections': 'Telegram — подключения', point: '' };
+const sections = ['launch', 'system-health', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'qr-analytics', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'telegram-connections', 'point'];
+const titles = { launch: 'План запуска', 'system-health': 'Состояние системы', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', 'qr-analytics':'Аналитика QR', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', 'telegram-connections': 'Telegram — подключения', point: '' };
 const sectionGroups = {
   'payout-reports':'reports',
   dashboard:'home', bsc:'strategy', tasks:'tasks', orders:'sales', customers:'sales',
   products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
   points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', 'qr-analytics':'network', leads:'network',
   news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'business-expenses':'finance', 'weekly-reports':'finance',
-  launch:'system', guides:'system', audit:'system', admins:'system', 'telegram-connections':'system',
+  launch:'system', 'system-health':'system', guides:'system', audit:'system', admins:'system', 'telegram-connections':'system',
 };
 titles['payout-reports'] = 'Отчёты партнёрам';
 const contextTabs = {
@@ -3195,7 +3208,7 @@ const contextTabs = {
   network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды'], ['qr-analytics','Аналитика QR'], ['leads','Прозвон']],
   promotion: [['news','Новости'], ['reviews','Отзывы'], ['winback','Возврат клиентов']],
   finance: [['economics','Экономика'], ['business-expenses','Траты бизнеса'], ['weekly-reports','Отчёт ГД']],
-  system: [['launch','План запуска'], ['guides','Инструкции'], ['audit','Журнал действий',true], ['admins','Администраторы',true], ['telegram-connections','Telegram']],
+  system: [['launch','План запуска'], ['system-health','Мониторинг'], ['guides','Инструкции'], ['audit','Журнал действий',true], ['admins','Администраторы',true], ['telegram-connections','Telegram']],
 };
 
 function renderContextTabs(sectionId) {
@@ -3276,6 +3289,7 @@ async function showSection(id) {
   });
 
   if (id === 'launch')      await showLaunchTab(launchActiveTab);
+  if (id === 'system-health') await renderSystemHealth();
   if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo(), loadOperationsCenter()]); renderDashboard(); }
   if (id === 'bsc')         await renderBscDashboard();
   if (id === 'tasks')       await loadTaskLinks();
