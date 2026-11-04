@@ -15,9 +15,22 @@
 <link rel="stylesheet" href="/miniapp-work.css?v=2">
 <link rel="stylesheet" href="/miniapp-home-screen.css">
 <link rel="stylesheet" href="/notification-settings.css">
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<!-- Local MIT-licensed Telegram SDK backup for blocked/intermittent telegram.org on Android. -->
+<!-- Remote Telegram SDK must NOT block HTML parsing. When telegram.org hangs
+     in an iOS/Android WebView, the local SDK can still initialize the app. -->
+<script async src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- MIT-licensed Telegram SDK backup for slow or blocked telegram.org. -->
 <script src="/vendor/telegram-web-app-fallback.js"></script>
+<!-- Dismiss Telegram's native 4-square placeholder before role/API requests.
+     A failed catalog request or later UI bug must never hold the entire app
+     behind Telegram's loading overlay indefinitely. -->
+<script data-hm-ready-bootstrap>
+(function () {
+  try {
+    var telegram = window.Telegram && window.Telegram.WebApp;
+    if (telegram && typeof telegram.ready === 'function') telegram.ready();
+  } catch (_) {}
+})();
+</script>
 <script src="/miniapp-telegram-context.js"></script>
 <style>
 :root{--green:#0b4b39;--green2:#14674b;--leaf:#2a8c62;--text:#193b30;--muted:#718378;--bg:#f7f7f1;--cream:#fffdf8;--gold:#f6c44f;--line:#e7eae1;--shadow:0 5px 22px rgba(12,66,44,.07)}
