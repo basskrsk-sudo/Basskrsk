@@ -1,0 +1,34 @@
+name: HvostMarket site uptime
+
+on:
+  # GitHub schedules may start late; five minutes is not a guaranteed SLA.
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: hvostmarket-uptime
+  cancel-in-progress: false
+
+jobs:
+  verify-public-site:
+    name: Проверка сайта, SQLite, API и Mini App
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check site and manage GitHub incident + Telegram notification
+        run: node scripts/site-uptime-monitor.js
+        env:
+          GH_MONITOR_TOKEN: ${{ github.token }}
+          GH_MONITOR_REPOSITORY: ${{ github.repository }}
+          # Optional GitHub Actions secrets (not stored in source code).
+          HM_MONITOR_TELEGRAM_TOKEN: ${{ secrets.HM_MONITOR_TELEGRAM_TOKEN }}
+          HM_MONITOR_CHAT_ID: ${{ secrets.HM_MONITOR_CHAT_ID }}
