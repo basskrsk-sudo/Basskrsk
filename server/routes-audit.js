@@ -133,7 +133,14 @@ function registerAuditRoutes(router) {
       LIMIT ?
     `).all(limit);
 
-    const events = customerEvents.concat(warehouseEvents, managerEvents, orderPartnerEvents, profileEvents, pointDateEvents, bscEvents)
+    const expenseDateEvents = type && type !== 'expense_date_change' ? [] : db.prepare(
+      "SELECT 'expense_date_change' AS type," +
+      " id,created_at,admin_id,admin_login,reason," +
+      " expense_id,old_date,new_date" +
+      " FROM expense_date_change_log ORDER BY created_at DESC,id DESC LIMIT ?"
+    ).all(limit);
+
+    const events = customerEvents.concat(warehouseEvents, managerEvents, orderPartnerEvents, profileEvents, pointDateEvents, bscEvents, expenseDateEvents)
       .sort((a, b) => {
         const byDate = String(b.created_at).localeCompare(String(a.created_at));
         if (byDate) return byDate;

@@ -1046,7 +1046,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
       <div class="grid-2" style="align-items:start;margin-bottom:1rem;">
         <div class="card"><div class="card-title">По инвесторам</div><div id="biz-exp-by-investor"></div></div>
-        <div class="card"><div class="card-title">Что фиксируется</div><div style="font-size:.82rem;color:var(--muted);line-height:1.65;">Запись хранит дату самой траты, ФИО оплатившего инвестора, сумму, назначение, город, источник и автора внесения. Удаление доступно администратору для исправления ошибочных записей.</div></div>
+        <div class="card"><div class="card-title">Что фиксируется</div><div style="font-size:.82rem;color:var(--muted);line-height:1.65;">Запись хранит дату самой траты, ФИО оплатившего инвестора, сумму, назначение, город, источник и автора внесения. Суперадминистратор может уточнить дату уже сохранённой траты с обязательной причиной; старая и новая даты остаются в журнале действий.</div></div>
       </div>
 
       <div class="card">
@@ -1056,6 +1056,27 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <thead><tr><th>Дата</th><th>Инвестор</th><th>Назначение</th><th>Город</th><th class="r">Сумма</th><th>Источник</th><th>Кто внёс</th><th>Документы</th><th class="r"></th></tr></thead>
             <tbody id="biz-expenses-tbody"></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- Date corrections are accessible only to super-admins; the API checks permissions separately. -->
+    <div id="biz-exp-date-correction-modal" role="dialog" aria-modal="true" aria-labelledby="biz-exp-date-correction-title"
+      style="display:none;position:fixed;inset:0;background:rgba(13,35,24,.65);z-index:10020;align-items:center;justify-content:center;padding:1rem;">
+      <div class="card" style="width:min(100%,440px);max-height:90vh;overflow:auto;background:#fff;color:var(--deep);padding:1.35rem;">
+        <h3 id="biz-exp-date-correction-title" style="margin:0 0 1rem;font-size:1.12rem;">📅 Исправить дату траты</h3>
+        <p id="biz-exp-date-correction-summary" style="font-size:.85rem;margin-bottom:.75rem;color:var(--muted)"></p>
+        <div class="admin-field"><label for="biz-exp-date-correction-value">Фактическая дата оплаты</label>
+          <input type="date" id="biz-exp-date-correction-value" required></div>
+        <div class="admin-field"><label for="biz-exp-date-correction-reason">Причина исправления *</label>
+          <textarea id="biz-exp-date-correction-reason" rows="3" maxlength="500"
+            placeholder="Например: на счёте указано 02.11.2026, а не дата регистрации" style="width:100%;min-height:78px"></textarea></div>
+        <div id="biz-exp-date-correction-error" role="alert" style="display:none;color:#A52236;font-size:.83rem;margin:.6rem 0"></div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap;margin-top:.9rem">
+          <button class="row-btn" onclick="closeBusinessExpenseDateCorrection()">Отмена</button>
+          <button class="row-btn" id="biz-exp-date-correction-save" style="background:var(--forest);color:#fff"
+            onclick="saveBusinessExpenseDateCorrection()">Сохранить дату</button>
         </div>
       </div>
     </div>
@@ -1719,13 +1740,14 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="order_partner_change">Исправление грумера в заказе</option>
               <option value="account_profile_change">Исправление анкет партнёров</option>
               <option value="point_creation_date_backfill">Уточнение дат создания точек</option>
+              <option value="expense_date_change">Исправление даты траты</option>
               <option value="bsc_settings_change">Изменение целей BSC</option>
             </select>
             <button class="row-btn" onclick="renderAuditLog()">↻ Обновить</button>
           </div>
         </div>
         <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
-          История удаления клиентов и складских позиций, уменьшений складских остатков, исправлений грумера в оплаченных заказах, исправлений анкет, уточнений дат создания точек, изменений целей BSC, а также действий менеджеров. Доступна только супер-администраторам.
+          История удаления клиентов и складских позиций, уменьшений складских остатков, исправлений грумера в оплаченных заказах, исправлений анкет, дат создания точек и дат трат, изменений целей BSC, а также действий менеджеров. Доступна только супер-администраторам.
         </p>
         <table class="tbl">
           <thead>
@@ -4149,7 +4171,9 @@ async function renderBusinessExpenses() {
         '<label class="row-btn" style="display:inline-block;cursor:pointer;margin:5px 0">➕ Прикрепить файл' +
           '<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.pptx,.odt,.ods,.txt,.csv,.xml,.rtf,.zip" multiple style="display:none" ' +
           'onchange="uploadBusinessExpenseDocuments(' + Number(e.id) + ',this)"></label></td>' +
-      '<td class="r"><button class="row-btn danger" onclick="deleteBusinessExpense(' + Number(e.id) + ')">✕</button></td>' +
+      '<td class="r" style="min-width:145px;white-space:nowrap">' +
+        (currentAdminRole === 'super' ? '<button class="row-btn" title="Исправить дату траты" data-expense-date-id="' + Number(e.id) + '" data-expense-old-date="' + businessExpenseEsc(e.expense_date) + '" onclick="openBusinessExpenseDateCorrection(this)">📅 Дата</button> ' : '') +
+        '<button class="row-btn danger" onclick="deleteBusinessExpense(' + Number(e.id) + ')">✕</button></td>' +
       '</tr>';
   }).join('');
 }
@@ -4232,6 +4256,69 @@ async function addBusinessExpense() {
   document.getElementById('biz-exp-note').value = '';
   await renderBusinessExpenses();
   if(attachError){error.textContent='Трата №'+data.id+' сохранена, но файл не прикреплён: '+attachError+'. Добавьте файл через журнал.';error.style.display='block';}
+}
+
+let businessExpenseCorrection = null;
+
+function krasnoyarskDateForExpense() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Krasnoyarsk', year:'numeric',month:'2-digit',day:'2-digit'
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map(p => [p.type,p.value]));
+  return value.year+'-'+value.month+'-'+value.day;
+}
+
+function openBusinessExpenseDateCorrection(button) {
+  if (currentAdminRole !== 'super') return alert('Изменять даты трат может только суперадминистратор.');
+  const id = Number(button?.dataset?.expenseDateId);
+  const oldDate = String(button?.dataset?.expenseOldDate || '');
+  if (!Number.isSafeInteger(id) || id < 1 || !/^\d{4}-\d{2}-\d{2}$/.test(oldDate))
+    return alert('Не удалось определить запись. Обновите журнал трат.');
+  businessExpenseCorrection = {id,oldDate};
+  document.getElementById('biz-exp-date-correction-summary').textContent =
+    'Трата №'+id+'. Сейчас указана дата: '+oldDate;
+  const input=document.getElementById('biz-exp-date-correction-value');
+  input.max=krasnoyarskDateForExpense();
+  input.value=oldDate;
+  document.getElementById('biz-exp-date-correction-reason').value='';
+  document.getElementById('biz-exp-date-correction-error').style.display='none';
+  document.getElementById('biz-exp-date-correction-modal').style.display='flex';
+  input.focus();
+}
+
+function closeBusinessExpenseDateCorrection() {
+  document.getElementById('biz-exp-date-correction-modal').style.display='none';
+  businessExpenseCorrection=null;
+}
+
+async function saveBusinessExpenseDateCorrection() {
+  if (currentAdminRole !== 'super' || !businessExpenseCorrection) return;
+  const {id,oldDate}=businessExpenseCorrection;
+  const newDate=document.getElementById('biz-exp-date-correction-value').value;
+  const reason=document.getElementById('biz-exp-date-correction-reason').value.trim();
+  const error=document.getElementById('biz-exp-date-correction-error');
+  error.style.display='none';
+  if (!newDate || newDate > krasnoyarskDateForExpense() || newDate === oldDate ||
+      reason.length < 5 || reason.length > 500) {
+    error.textContent='Выберите другую дату не позднее сегодняшней и укажите причину (не менее 5 символов).';
+    error.style.display='block';
+    return;
+  }
+  const saveButton=document.getElementById('biz-exp-date-correction-save');
+  saveButton.disabled=true;
+  try {
+    const response=await authFetch('/api/economics/expenses/'+id+'/date', {
+      method:'PUT',body:{expense_date:newDate,expected_date:oldDate,reason}
+    });
+    const data=await response.json();
+    if (!response.ok) throw Error(data.error || 'Не удалось исправить дату');
+    closeBusinessExpenseDateCorrection();
+    await renderBusinessExpenses();
+    alert('Дата траты №'+id+' изменена: '+oldDate+' → '+newDate+'. Изменение записано в журнал действий.');
+  } catch (e) {
+    error.textContent=String(e.message||'Не удалось изменить дату');
+    error.style.display='block';
+  } finally {saveButton.disabled=false;}
 }
 
 async function deleteBusinessExpense(id) {
@@ -7729,6 +7816,10 @@ async function renderAuditLog() {
       target = auditEscape(event.point_name || event.point_id || '—');
       details = 'Дата создания: ' + auditEscape(event.local_date || '—') +
         ' · точка ' + auditEscape(event.point_id || '—');
+    } else if (event.type === 'expense_date_change') {
+      action = 'Исправление даты траты';
+      target = 'Трата №' + auditEscape(event.expense_id || '—');
+      details = 'Дата оплаты: ' + auditEscape(event.old_date || '—') + ' → ' + auditEscape(event.new_date || '—');
     } else if (event.type === 'bsc_settings_change') {
       action = 'Изменение BSC';
       target = 'Цели и веса стратегии';

@@ -12,6 +12,7 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { listExpenseDocuments, cleanupAfterDeletedExpense } = require('./expense-documents');
 const { requireAuth, requireSuperAdmin } = require('./routes-auth');
+const { localDate } = require('./task-reminders');
 const {
   calculateUnitEconomics,
   getUnitEconomicsSettings,
@@ -256,6 +257,62 @@ function registerEconomicsRoutes(router) {
       VALUES (?, ?, ?, ?, ?, ?, 'admin', ?)
     `).run(expenseDate, purpose, amountNum, investorName, String(note || '').trim().slice(0, 1000) || null, payload.login || null, cityId);
     sendJson(res, 201, { ok: true, id: info.lastInsertRowid });
+  });
+
+  // PUT /api/economics/expenses/:id/date — change ONLY the accounting
+  // date of an existing expense. Super-admin authorization and a persisted
+  // old->new audit event are mandatory. Never alter amount, owner or evidence.
+  router.put('/api/economics/expenses/:id/date', (req, res, ctx) => {
+    const payload = requireSuperAdmin(req, res, ctx);
+    if (!payload) return;
+    // A previously issued token must not authorize a revoked/demoted admin.
+    const admin = db.prepare(
+      "SELECT id,login FROM admins WHERE id=? AND active=1 AND role='super'"
+    ).get(payload.id);
+    if (!admin) return sendJson(res, 403, {error:'Доступ супер-администратора отозван'});
+
+    const expenseId=Number(ctx.params.id);
+    const newDate=normalizeExpenseDate(ctx.body?.expense_date);
+    const expectedDate=normalizeExpenseDate(ctx.body?.expected_date);
+    const reason=String(ctx.body?.reason||'').trim();
+    if(!Number.isSafeInteger(expenseId)||expenseId<1)
+      return sendJson(res,400,{error:'Некорректный идентификатор траты'});
+    if(!newDate||newDate>localDate())
+      return sendJson(res,400,{error:'Укажите существующую дату не позднее сегодняшней'});
+    if(!expectedDate)
+      return sendJson(res,400,{error:'Нужно указать исходную дату для проверки изменений'});
+    if(reason.length<5||reason.length>500)
+      return sendJson(res,400,{error:'Укажите причину исправления даты (от 5 до 500 символов)'});
+
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const expense=db.prepare(
+        'SELECT id,expense_date FROM expenses WHERE id=?'
+      ).get(expenseId);
+      if(!expense){
+        db.exec('ROLLBACK');
+        return sendJson(res,404,{error:'Трата не найдена'});
+      }
+      if(expense.expense_date!==expectedDate){
+        db.exec('ROLLBACK');
+        return sendJson(res,409,{error:'Дата уже изменена другим пользователем. Обновите журнал трат',
+          actual_date:expense.expense_date});
+      }
+      if(newDate===expense.expense_date){
+        db.exec('ROLLBACK');
+        return sendJson(res,400,{error:'Новая дата совпадает с текущей'});
+      }
+      db.prepare('UPDATE expenses SET expense_date=? WHERE id=?').run(newDate,expenseId);
+      db.prepare(
+        'INSERT INTO expense_date_change_log '+
+        '(expense_id,old_date,new_date,reason,admin_id,admin_login) VALUES(?,?,?,?,?,?)'
+      ).run(expenseId,expense.expense_date,newDate,reason,admin.id,admin.login);
+      db.exec('COMMIT');
+      return sendJson(res,200,{ok:true,id:expenseId,old_date:expense.expense_date,new_date:newDate});
+    } catch(error){
+      try{db.exec('ROLLBACK');}catch(_){}
+      throw error;
+    }
   });
 
   // DELETE /api/economics/expenses/:id — удалить ошибочную запись
