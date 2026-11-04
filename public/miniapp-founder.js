@@ -6,7 +6,8 @@
   var period = '30d';
   var names = { '30d': '30 дней', month: 'Этот месяц', year: 'Этот год' };
   var accessToken='';
-  var root=document.getElementById('workPage');
+  var root=typeof document!=='undefined' && document.getElementById ?
+    document.getElementById('workPage') : null;
   function clean(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
