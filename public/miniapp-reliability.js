@@ -165,7 +165,10 @@
       try {
         var response = await singleRequest(url,init,attempt===0?initial:4000);
         if (retries && attempt===0 && [502,503,504].includes(response.status)) continue;
-        if (response.ok && errorVisible) clear();
+        if (response.status>=500){
+          sendDiagnostic(stage,'failure','server',Date.now()-started);
+          show('Сервер временно недоступен. Проверьте данные и повторите позже.');
+        }else if (response.ok && errorVisible) clear();
         return response;
       } catch (e) {
         if (attempt<retries && ['timeout','network'].includes(e.code)) continue;
