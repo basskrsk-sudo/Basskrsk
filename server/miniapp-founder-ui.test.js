@@ -69,3 +69,27 @@ test('Mini App loads founder modules before workspace loader',()=>{
  const a=html.indexOf('src="/miniapp-founder.js"'),b=html.indexOf('src="/miniapp-founder-admin.js"'),c=html.indexOf('src="/miniapp-work.js"');
  assert.ok(a>0&&b>a&&c>b);
 });
+
+test('founder Mini App shows verified personal expenses with private document action',()=>{
+ const fakeWindow={HvostExpenseEvidence:{fileRows(docs){
+   return '<button data-expense-file-action="download">'+docs.map(x=>x.filename).join('')+'</button>';
+ }}};
+ vm.runInNewContext(client,{window:fakeWindow,document:{getElementById(){return null;}}});
+ const sample={
+  founder:{id:1,full_name:'Лакомых Алексей',share_percent:45},
+  sales:{revenue:0,orders:0,avg_check:0,previous:{},last_six_months:[]},
+  finance:{manual_expenses:0},
+  network:{top_points:[],silent_points:[]},
+  strategy:{scale_gates:[],goal_2031:1000,plan_year:2027},
+  capital:{personal_expenses:[{id:11,expense_date:'2026-11-04',category:'Изготовление стойки',
+    amount:5000,documents:[{id:19,filename:'receipt.pdf'}]}]},
+  tasks:{items:[],initiatives:[]},
+ };
+ const html=fakeWindow.HvostBusinessFounder.render(sample,'server-signed-founder-token');
+ assert.match(html,/Мои траты и подтверждающие документы/);
+ assert.match(html,/Изготовление стойки/);
+ assert.match(html,/data-founder-expense-upload="11"/);
+ assert.match(html,/receipt\.pdf/);
+ assert.doesNotMatch(html,/server-signed-founder-token/);
+ assert.doesNotMatch(html,/Личные траты другого инвестора/);
+});

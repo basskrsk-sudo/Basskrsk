@@ -6,6 +6,7 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth, requireSuperAdmin } = require('./routes-auth');
 const { safeFounder, activeFounder, getFounder, configureFounder, FOUNDER_SLOTS } = require('./business-founders');
+const { listExpenseDocuments } = require('./expense-documents');
 const { buildGrowthPlanDashboard } = require('./growth-plan');
 const { buildOperationsCenter } = require('./routes-operations');
 const { collectWeeklyReport } = require('./weekly-report');
@@ -178,7 +179,14 @@ function investmentSummary(founder) {
     'WHERE investor_name IS NOT NULL AND TRIM(investor_name) != \'\' ' +
     'GROUP BY investor_name ORDER BY total DESC'
   ).all();
+  // A founder only sees documents for their own recorded investments.
+  const personal=db.prepare(
+    'SELECT id,expense_date,category,amount,city_id FROM expenses ' +
+    'WHERE investor_name=? ORDER BY expense_date DESC,id DESC LIMIT 100'
+  ).all(founder.full_name);
+  const evidence=listExpenseDocuments(personal.map(item=>item.id));
   return {
+    personal_expenses:personal.map(item=>({ ...item,documents:evidence[item.id]||[] })),
     planned_total_capital:CAPITAL_PLAN_RUB,
     my_planned_share:Math.round(CAPITAL_PLAN_RUB * safeNumber(founder.share_percent)/100),
     personal_expenses_recorded:investorRows.filter(r=>r.investor_name===founder.full_name)
