@@ -178,7 +178,7 @@ test('a receipt sent on the confirmation screen is queued and saved to the same 
   flow.handleExpenseCallback('telegram',chat,'expense:investor:vitaly');
   flow.handleExpenseMessage('telegram',chat,'16850');
   const preview=flow.handleExpenseMessage('telegram',chat,'Закуп лакомств у Хвостика от 02.11.26');
-  assert.match(preview.message,/16850|16 850/);
+  assert.match(preview.message,/16\s*850/);
   const remote=telegramFetcher(jpg);
   const staged=await handleExpenseAttachmentMessage('telegram',chat,photoMessage(5060),remote.request);
   assert.equal(staged.ok,true,staged.message);
