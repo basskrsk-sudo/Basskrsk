@@ -1,13 +1,6 @@
-// bonus-logic.js — автоматическая проверка и начисление бонуса, когда точка
-// «окупает» бонус: накопленная прямая прибыль компании с этой точки (выручка
-// минус себестоимость, эквайринг, комиссии грумера и менеджера — без учёта
-// общих накладных, это отдельная квартальная история) достигает LAUNCH_BONUS.
-//
-// Если грумера на точке привёл другой грумер ИЛИ владелец салона (по своему
-// реферальному коду) — бонус делится поровну: 1 000 ₽ рефереру (грумеру или
-// владельцу) и 1 000 ₽ менеджеру, который нашёл саму точку. Обе роли внесли
-// вклад — менеджер нашёл точку физически, реферер привёл на неё грумера —
-// поэтому оба получают свою долю, а не только один из них.
+// Начисления за запуск: менеджеру 2 000 ₽ при 2 000 ₽ оплаченной выручки.
+// Рефералу прежние 1 000 ₽ при 2 000 ₽ прямой прибыли. Это независимые
+// условия: бонус менеджера НЕ делится с пригласившим партнёром.
 'use strict';
 
 const db = require('./db');
@@ -21,16 +14,25 @@ const { sendTelegram } = require('./telegram');
 // В прогнозе используем консервативную карточную ставку.
 const FEE_RATE = { card: 0.025, bank_card: 0.025, sbp: 0.007, yookassa: 0.025 };
 
-const LAUNCH_BONUS = 2000;
-const REFERRAL_SPLIT = 1000; // при наличии реферала — каждой стороне по 1000 ₽
+const LAUNCH_BONUS = 2000; // полная премия менеджера
+const MANAGER_REVENUE_THRESHOLD = 2000; // оплаченная выручка за всё время
+const REFERRAL_PROFIT_THRESHOLD = 2000; // прежний порог реферального бонуса
+const REFERRAL_SPLIT = 1000; // отдельная премия пригласившему партнёру
 
 // Прямая прибыль компании с точки за ВСЁ время (без квартальных накладных —
 // те распределяются отдельно, раз в квартал, см. quarterly-bonus.js). Та же
 // формула себестоимости и комиссий, что и там — чтобы цифры не расходились
 // между "когда выплачивать бонус" и "квартальный отчёт по прибыльности".
+function computePointRevenueSoFar(pointId) {
+  return Number(db.prepare("SELECT COALESCE(SUM(CASE WHEN COALESCE(refund_status,'')='refunded' THEN 0 " +
+"ELSE MAX(0,total-COALESCE(refunded_amount,0)) END),0) AS revenue FROM orders " +
+    "WHERE point_id=? AND status='paid'")
+    .get(pointId).revenue || 0);
+}
+
 function computePointProfitSoFar(pointId, partnerRate, managerRate) {
   const orders = db.prepare(`
-    SELECT id, total, payment_method, commission_rate FROM orders WHERE point_id = ? AND status = 'paid'
+    SELECT id, total, payment_method, commission_rate FROM orders WHERE point_id = ? AND status = 'paid' AND COALESCE(refund_status,'') <> 'refunded'
   `).all(pointId);
   if (!orders.length) return 0;
 
@@ -68,79 +70,78 @@ function computePointProfitSoFar(pointId, partnerRate, managerRate) {
 // начислить бонус за точку, к которой относится этот заказ.
 async function checkAndPayManagerBonus(pointId) {
   if (!pointId) return;
-
   const mgrPoint = db.prepare('SELECT * FROM manager_points WHERE point_id = ?').get(pointId);
-  if (!mgrPoint || mgrPoint.bonus_paid) return; // нет привязки к менеджеру или бонус уже начислен
-
-  // На одной точке может работать несколько грумеров. Для расчёта бонуса
-  // сначала берём того, у кого зафиксирован реферальный код: раньше обычный
-  // первый SELECT мог случайно выбрать другого грумера и реферер терял свою
-  // половину бонуса. Если реферала нет ни у кого — используем первого
-  // активного грумера только как резервный источник текущей ставки.
-  const partner = db.prepare(`
-    SELECT * FROM partners
-    WHERE point_id = ? AND active = 1
-    ORDER BY CASE WHEN referred_by_partner_id IS NOT NULL OR referred_by_owner_id IS NOT NULL THEN 0 ELSE 1 END,
-             id
-    LIMIT 1
-  `).get(pointId);
-  const profitSoFar = computePointProfitSoFar(pointId, partner ? partner.commission_rate : 0, mgrPoint.commission_rate);
-  if (profitSoFar < LAUNCH_BONUS) return; // точка ещё не "окупила" бонус
-
-  // A point acquired through a referral link has a locked recipient already
-  // when the point was created. Do not let subsequent groomers overwrite it.
+  if (!mgrPoint) return;
+  const revenueSoFar = computePointRevenueSoFar(pointId);
+  const managerIsDue = !mgrPoint.bonus_paid && revenueSoFar >= MANAGER_REVENUE_THRESHOLD;
   const locked = require('./referral-program').storedReferral(pointId);
+  const partner = db.prepare(
+    "SELECT * FROM partners WHERE point_id=? AND active=1 " +
+    "ORDER BY CASE WHEN referred_by_partner_id IS NOT NULL OR referred_by_owner_id IS NOT NULL " +
+    "THEN 0 ELSE 1 END,id LIMIT 1"
+  ).get(pointId);
   const groomerReferrer = locked
-    ? locked.role==='partner'
+    ? locked.role === 'partner'
       ? db.prepare('SELECT * FROM partners WHERE id=?').get(locked.recipient_id) : null
     : partner && partner.referred_by_partner_id
       ? db.prepare('SELECT * FROM partners WHERE id=?').get(partner.referred_by_partner_id) : null;
   const ownerReferrer = locked
-    ? locked.role==='owner'
+    ? locked.role === 'owner'
       ? db.prepare('SELECT * FROM salon_owners WHERE id=?').get(locked.recipient_id) : null
     : partner && partner.referred_by_owner_id
       ? db.prepare('SELECT * FROM salon_owners WHERE id=?').get(partner.referred_by_owner_id) : null;
   const hasReferrer = !!(groomerReferrer || ownerReferrer);
+  const alreadyAccruedReferral = !!(mgrPoint.referred_groomer_id || mgrPoint.referred_owner_id);
+  const profitSoFar = hasReferrer && !alreadyAccruedReferral
+    ? computePointProfitSoFar(pointId,partner ? partner.commission_rate : 0,mgrPoint.commission_rate)
+    : 0;
+  const referralIsDue = hasReferrer && !alreadyAccruedReferral &&
+    profitSoFar >= REFERRAL_PROFIT_THRESHOLD;
+  if (!managerIsDue && !referralIsDue) return;
 
-  const managerAmount = hasReferrer ? REFERRAL_SPLIT : LAUNCH_BONUS;
-  const groomerAmount = groomerReferrer ? REFERRAL_SPLIT : null;
-  const ownerAmount = ownerReferrer ? REFERRAL_SPLIT : null;
-
-  const accrued = db.prepare(`
-    UPDATE manager_points
-    SET bonus_paid = 1, bonus_accrued_at = datetime('now'), bonus_manager_amount = ?,
-        referred_groomer_id = ?, referred_groomer_amount = ?,
-        referred_owner_id = ?, referred_owner_amount = ?
-    WHERE id = ? AND bonus_paid = 0
-  `).run(
-    managerAmount,
-    groomerReferrer ? groomerReferrer.id : null, groomerAmount,
-    ownerReferrer ? ownerReferrer.id : null, ownerAmount,
-    mgrPoint.id
-  );
-  if (!accrued.changes) return;
-
-  const manager = db.prepare('SELECT * FROM managers WHERE id = ?').get(mgrPoint.manager_id);
-
-  const lines = [
-    '🎉 <b>Бонус за точку «' + mgrPoint.point_name + '»</b>',
-    '',
-    'Точка принесла компании ' + Math.round(profitSoFar) + ' ₽ прибыли (порог ' + LAUNCH_BONUS + ' ₽ пройден) — начислен бонус за запуск.',
-    '',
-  ];
-  if (groomerReferrer) {
-    lines.push('🤝 Грумер-реферал ' + groomerReferrer.full_name + ' (' + groomerReferrer.partner_code + '): ' + groomerAmount + ' ₽');
+  let managerAccrued = false;
+  let referralAccrued = false;
+  // Independent decisions: 2k revenue need not mean 2k direct profit.
+  if (managerIsDue) {
+    const result = db.prepare(
+      "UPDATE manager_points SET bonus_paid=1,bonus_manager_amount=?," +
+      "bonus_accrued_at=datetime('now') WHERE id=? AND bonus_paid=0"
+    ).run(LAUNCH_BONUS,mgrPoint.id);
+    managerAccrued = !!result.changes;
   }
-  if (ownerReferrer) {
-    lines.push('🏠 Владелец-реферал ' + ownerReferrer.full_name + ' (' + ownerReferrer.owner_code + '): ' + ownerAmount + ' ₽');
+  if (referralIsDue) {
+    const result = db.prepare(
+      "UPDATE manager_points SET referred_groomer_id=?,referred_groomer_amount=?," +
+      "referred_owner_id=?,referred_owner_amount=?," +
+      "referral_bonus_accrued_at=datetime('now') " +
+      "WHERE id=? AND referred_groomer_id IS NULL AND referred_owner_id IS NULL"
+    ).run(groomerReferrer ? groomerReferrer.id : null,
+      groomerReferrer ? REFERRAL_SPLIT : null,
+      ownerReferrer ? ownerReferrer.id : null,
+      ownerReferrer ? REFERRAL_SPLIT : null,
+      mgrPoint.id);
+    referralAccrued = !!result.changes;
   }
-  lines.push('🌟 Менеджер ' + (manager ? manager.full_name : '№' + mgrPoint.manager_id) + ': ' + managerAmount + ' ₽');
-  lines.push('');
-  lines.push(hasReferrer
-    ? '→ Точку привёл менеджер, но грумера на ней — реферал по промокоду, поэтому бонус поделён поровну между ними.'
-    : '→ Не забудьте выплатить бонус менеджеру.');
+  if (!managerAccrued && !referralAccrued) return;
 
+  const manager = db.prepare('SELECT * FROM managers WHERE id=?').get(mgrPoint.manager_id);
+  const lines = ['🎉 <b>Начисления за точку «' + mgrPoint.point_name + '»</b>', ''];
+  if (managerAccrued) {
+    lines.push('✅ Накопленная оплаченная выручка: ' + Math.round(revenueSoFar) +
+      ' ₽ (порог ' + MANAGER_REVENUE_THRESHOLD + ' ₽).');
+    lines.push('🌟 Менеджеру ' + (manager ? manager.full_name : '№' + mgrPoint.manager_id) +
+      ': <b>' + LAUNCH_BONUS + ' ₽</b> за запуск — начислено к выплате.');
+  }
+  if (referralAccrued) {
+    lines.push('✅ Прямая прибыль: ' + Math.round(profitSoFar) +
+      ' ₽ (порог ' + REFERRAL_PROFIT_THRESHOLD + ' ₽).');
+    if (groomerReferrer) lines.push('🤝 Пригласившему грумеру ' + groomerReferrer.full_name +
+      ': <b>' + REFERRAL_SPLIT + ' ₽</b> — начислено к выплате.');
+    if (ownerReferrer) lines.push('🏠 Пригласившему владельцу ' + ownerReferrer.full_name +
+      ': <b>' + REFERRAL_SPLIT + ' ₽</b> — начислено к выплате.');
+  }
+  lines.push('', 'Фактическую выплату администратор подтверждает отдельно.');
   await sendTelegram(lines.join('\n')).catch(() => {});
 }
 
-module.exports = { checkAndPayManagerBonus, computePointProfitSoFar, LAUNCH_BONUS, REFERRAL_SPLIT };
+module.exports = { checkAndPayManagerBonus, computePointRevenueSoFar, computePointProfitSoFar, LAUNCH_BONUS, MANAGER_REVENUE_THRESHOLD, REFERRAL_PROFIT_THRESHOLD, REFERRAL_SPLIT };

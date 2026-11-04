@@ -506,7 +506,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
               <span style="font-weight:700;color:var(--muted);">20%</span>
             </div>
             <div style="font-size:.75rem;color:var(--muted);margin-top:.25rem;">
-              + 2 000 ₽ разовый бонус за каждого приведённого партнёра
+              + 1 000 ₽ разовый бонус за каждого приведённого партнёра
             </div>
           </div>
         </div>
@@ -649,9 +649,9 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       <div class="ref-card">
         <div class="ref-title">Мой промокод для привлечения новых точек</div>
         <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Приглашайте партнёров — получайте 1 000 ₽ за каждого</div>
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Бонус за запуск точки — 2 000 ₽ — делится поровну между вами и менеджером, который нашёл саму точку: вам 1 000 ₽, когда точка приглашённого партнёра заработает «Тайге» 2 000 ₽ прибыли.</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">За приглашённого партнёра вам начисляется 1 000 ₽ после достижения новой точкой 2 000 ₽ прямой прибыли. Менеджеру отдельно положено 2 000 ₽ после достижения точкой 2 000 ₽ оплаченной выручки.</div>
         <div class="ref-link-wrap">
-          <span class="ref-link" id="ref-link-text">хвостмаркет.рф/taiga-register.html?ref=GR-001</span>
+          <span class="ref-link" id="ref-link-text">хвостмаркет.рф/partner-invite.html?ref=GR-001</span>
           <button class="copy-btn" onclick="copyLink('ref-link-text', this)">Скопировать</button>
         </div>
       </div>
@@ -670,7 +670,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           </div>
           <div style="display:flex;gap:.75rem;">
             <div style="width:24px;height:24px;border-radius:50%;background:var(--green-bg);color:var(--green-text);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:.75rem;">2</div>
-            <div><strong>Бонус 1 000 ₽</strong> поступает на ваш счёт, когда точка нового партнёра заработает «Тайге» 2 000 ₽ прибыли — вторая половина (1 000 ₽) достаётся менеджеру, который нашёл саму точку.</div>
+            <div><strong>Бонус 1 000 ₽</strong> за приглашение становится доступным к выплате после 2 000 ₽ прямой прибыли новой точки. Менеджеру выплачивается отдельный бонус 2 000 ₽ после 2 000 ₽ выручки.</div>
           </div>
         </div>
       </div>
@@ -716,7 +716,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
         </div>
 
         <div class="field">
-          <label>Сколько новых партнёров могли бы привести (разово, по 2 000 ₽ каждый, когда их точка заработает «Тайге» 2 000 ₽ прибыли)</label>
+          <label>Сколько новых партнёров могли бы привести (разово, по 1 000 ₽ каждый, после 2 000 ₽ прямой прибыли новой точки)</label>
           <input type="number" id="calc-referrals" placeholder="0" value="0" oninput="renderCalculator()">
         </div>
 
@@ -985,7 +985,7 @@ async function renderReferralBonuses() {
     document.getElementById('referral-bonus-list').innerHTML = bonuses.map(function(b) {
       return '<div class="notif"><div class="notif-dot read"></div><div>' +
         '<div class="notif-title">Вы привели ' + b.referred_partner_name + '</div>' +
-        '<div style="font-size:.78rem;color:var(--muted);">Точка «' + b.point_name + '» заработала «Тайге» 2 000 ₽ прибыли — начислено ' + b.referred_groomer_amount.toLocaleString('ru-RU') + ' ₽</div>' +
+        '<div style="font-size:.78rem;color:var(--muted);">Точка «' + b.point_name + '» достигла 2 000 ₽ прямой прибыли — начислено ' + b.referred_groomer_amount.toLocaleString('ru-RU') + ' ₽</div>' +
         '</div></div>';
     }).join('');
   } catch (e) { /* тихо пропускаем, если не удалось загрузить */ }
@@ -1398,7 +1398,7 @@ function renderCalculator() {
   // число точек, которые он мог бы сопровождать — так честнее отражает
   // реальный доход менеджера, курирующего несколько точек одновременно.
   const mgrIncome = isManager ? revenue * mgrRate * mgrPoints : 0;
-  const referralBonus = referrals * 2000;
+  const referralBonus = referrals * 1000;
   const total = partnerIncome + mgrIncome;
   const totalWithBonus = total + referralBonus;
 

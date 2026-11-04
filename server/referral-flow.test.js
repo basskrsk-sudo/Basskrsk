@@ -60,11 +60,11 @@ function pointBody(name,leadId){
   return {name,addr:'ул. Новая, 20',icon:'🐾',city_id:'krsk',lat:56.012,lng:92.882,
     referral_lead_id:leadId};
 }
-function paidOrder(code,pointId,partnerId){
+function paidOrder(code,pointId,partnerId,total=5000){
   db.prepare(
     "INSERT INTO orders (order_code,customer_name,customer_phone,pickup_point,point_id,partner_id,"+
     "subtotal,total,payment_method,status,commission_rate) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
-  ).run(code,'Покупатель','79135555555','Салон',pointId,partnerId,5000,5000,'sbp','paid',0.15);
+  ).run(code,'Покупатель','79135555555','Салон',pointId,partnerId,total,total,'sbp','paid',0.15);
 }
 
 test('new groomer invitation stores verified referrer and protects against self-referral',async()=>{
@@ -141,11 +141,19 @@ test('first groomer automatically inherits locked inviter, but does not mint ext
   assert.equal(partner.referred_by_partner_id,groomerId);
   assert.equal(partner.referred_by_owner_id,null);
   assert.equal(referralSummary('partner',groomerId).count,1);
-  paidOrder('REF-PAID-ONE',point,partner.id);
+  paidOrder('REF-PAID-ONE',point,partner.id,2000);
+  await checkAndPayManagerBonus(point);
+  const early=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(point);
+  assert.equal(early.bonus_paid,1,'manager bonus must be accrued at 2000 RUB revenue');
+  assert.equal(early.bonus_manager_amount,2000,'manager gets full bonus, not half');
+  assert.equal(early.referred_groomer_id,null,'referral threshold still measures direct profit');
+  assert.equal(referralSummary('partner',groomerId).awaiting,1000);
+  paidOrder('REF-PAID-TWO',point,partner.id,3000);
   await checkAndPayManagerBonus(point);
   const mp=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(point);
   assert.equal(mp.bonus_paid,1);
-  assert.equal(mp.bonus_manager_amount,1000);
+  assert.equal(mp.bonus_manager_amount,2000);
+  assert.ok(mp.referral_bonus_accrued_at,'referral accrues on a separate date');
   assert.equal(mp.referred_groomer_id,groomerId);
   assert.equal(mp.referred_groomer_amount,1000);
   const summary=referralSummary('partner',groomerId);
@@ -190,11 +198,48 @@ test('owner code also credits exactly one new point, never somebody else or agai
   assert.equal(correct.status,201,JSON.stringify(correct.body));
   assert.equal(db.prepare('SELECT referred_by_owner_id FROM partners WHERE id=?')
     .get(correct.body.id).referred_by_owner_id,ownerId);
-  paidOrder('REF-OWNER-PAID',point,correct.body.id);
+  paidOrder('REF-OWNER-PAID',point,correct.body.id,2000);
+  await checkAndPayManagerBonus(point);
+  assert.equal(referralSummary('owner',ownerId).awaiting,1000);
+  const early=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(point);
+  assert.equal(early.bonus_manager_amount,2000);
+  paidOrder('REF-OWNER-PAID-2',point,correct.body.id,3000);
   await checkAndPayManagerBonus(point);
   assert.equal(referralSummary('owner',ownerId).payable,1000);
   assert.equal(referralSummary('partner',groomerId).count,1);
   const mp=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(point);
   assert.equal(mp.referred_owner_id,ownerId);
   assert.equal(mp.referred_owner_amount,1000);
+});
+
+test('manager bonus is triggered by 2000 RUB NET paid revenue, never by pending/refunded sales',async()=>{
+  const pt='bonus-threshold-test';
+  oldPoint(pt);
+  const mp=Number(db.prepare(
+    "INSERT INTO manager_points(manager_id,point_id,point_name,point_type) VALUES (?,?,?,?)"
+  ).run(managerId,pt,'Порог по выручке','Груминг').lastInsertRowid);
+  function orderWithStatus(code,total,status,refund_status,refunded_amount=0){
+    db.prepare(
+      "INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,subtotal,total,"+
+      "payment_method,status,refund_status,refunded_amount) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
+    ).run(code,'Клиент','79139999999','Салон',pt,total,total,
+      'sbp',status,refund_status,refunded_amount);
+  }
+  orderWithStatus('THRESHOLD-UNPAID',10000,'pending','none');
+  orderWithStatus('THRESHOLD-REFUNDED',2000,'paid','refunded',2000);
+  orderWithStatus('THRESHOLD-PARTIAL',2500,'paid','partially_refunded',501);
+  assert.equal(require('./bonus-logic').computePointRevenueSoFar(pt),1999);
+  await checkAndPayManagerBonus(pt);
+  assert.equal(db.prepare('SELECT bonus_paid FROM manager_points WHERE id=?').get(mp).bonus_paid,0);
+  orderWithStatus('THRESHOLD-LAST-RUBLE',1,'paid','none');
+  assert.equal(require('./bonus-logic').computePointRevenueSoFar(pt),2000);
+  await checkAndPayManagerBonus(pt);
+  const row=db.prepare('SELECT * FROM manager_points WHERE id=?').get(mp);
+  assert.equal(row.bonus_manager_amount,2000);
+  assert.equal(row.bonus_paid,1);
+  await checkAndPayManagerBonus(pt);
+  assert.equal(db.prepare('SELECT COUNT(*) AS c FROM manager_points WHERE id=? AND bonus_paid=1')
+    .get(mp).c,1);
+  assert.equal(row.referred_owner_amount,null);
+  assert.equal(row.referred_groomer_amount,null);
 });

@@ -1227,6 +1227,7 @@ ensureColumn('partners', 'salon_vk', 'TEXT');
 ensureColumn('partners', 'salon_website', 'TEXT');
 ensureColumn('partners', 'salon_page_published', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('manager_points', 'bonus_manager_amount', 'INTEGER');
+ensureColumn('manager_points', 'referral_bonus_accrued_at', 'TEXT');
 
 // ── СТРАНИЦА ТОЧКИ (салона) — теперь у самой точки, не у партнёра ──────
 // Раньше эти же поля жили на partners — значит, у точки без назначенного
