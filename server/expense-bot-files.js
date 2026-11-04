@@ -3,7 +3,8 @@
 // Reads Telegram-sent receipts only while a verified expense upload session is
 // active. Never exposes bot token or file_path in API/UI responses.
 const {activeExpenseAttachment,attachmentButtons,attachmentInstructions,
-  attachmentCount}=require('./expense-bot-create');
+  attachmentCount,queueExpenseAttachment,pendingSavedExpenseAttachments,
+  markPendingAttachmentStored}=require('./expense-bot-create');
 const {storeExpenseDocument,MAX_FILE_BYTES}=require('./expense-documents');
 
 const TOKEN=process.env.TG_TOKEN || '';
@@ -94,9 +95,17 @@ async function handleExpenseAttachmentMessage(channel,chatId,message,fetchImpl=f
   if(!hasFile)return null;
   if(channel!=='telegram'||!chatId)return null;
   const state=activeExpenseAttachment(channel,chatId);
+  const file=telegramFile(message);
+  if(file && !file.error && Number(file.size)>MAX_FILE_BYTES){
+    const queued=queueExpenseAttachment(channel,chatId,file);
+    if(queued)return {ok:false,message:'Файл больше 10 МБ. Пришлите уменьшенный документ.'};
+  }
+  if(file && !file.error && Number(file.size)<=MAX_FILE_BYTES){
+    const queued=queueExpenseAttachment(channel,chatId,file);
+    if(queued)return queued;
+  }
   if(!state)return null;
   if(state.denied)return {ok:false,message:'Нет доступа к загрузке чеков для этой траты.'};
-  const file=telegramFile(message);
   if(!file||file.error)return {ok:false,message:file?.error||'Не удалось определить тип файла.',
     replyMarkup:attachmentButtons(state.expenseId)};
   if(Number(file.size)>MAX_FILE_BYTES){
@@ -113,6 +122,7 @@ async function handleExpenseAttachmentMessage(channel,chatId,message,fetchImpl=f
       return {ok:false,message:'Сессия прикрепления завершилась. Файл не сохранён.'};
     }
     const saved=storeExpenseDocument(state.expenseId,data,state.actor);
+    markPendingAttachmentStored(channel,chatId,state.expenseId,file.fileId);
     const total=attachmentCount(state.expenseId);
     return {ok:true,attached:true,expenseId:state.expenseId,document:saved.document,
       message:(saved.already_exists?'ℹ️ Этот файл уже прикреплён.':'✅ Документ прикреплён: '+saved.document.filename)+
@@ -125,4 +135,45 @@ async function handleExpenseAttachmentMessage(channel,chatId,message,fetchImpl=f
       replyMarkup:attachmentButtons(state.expenseId)};
   }
 }
-module.exports={handleExpenseAttachmentMessage,readTelegramFile,telegramFile};
+
+async function processPendingExpenseAttachments(channel,chatId,fetchImpl=fetch) {
+  const session=pendingSavedExpenseAttachments(channel,chatId);
+  if(!session || !session.files.length)return null;
+  const results=[];
+  let attached=0,failed=0;
+  for(const file of session.files) {
+    // A revoked account or cancelled session must not finish old downloads.
+    const before=pendingSavedExpenseAttachments(channel,chatId);
+    if(!before || before.expenseId!==session.expenseId ||
+      !before.files.some(entry=>entry.fileId===file.fileId))break;
+    try {
+      const data=await readTelegramFile(file.fileId,file.filename,file.size,fetchImpl);
+      const current=pendingSavedExpenseAttachments(channel,chatId);
+      if(!current || current.expenseId!==session.expenseId ||
+        current.actor.role!==session.actor.role || Number(current.actor.id)!==Number(session.actor.id) ||
+        !current.files.some(entry=>entry.fileId===file.fileId))break;
+      const saved=storeExpenseDocument(session.expenseId,data,current.actor);
+      markPendingAttachmentStored(channel,chatId,session.expenseId,file.fileId);
+      attached++;
+      results.push('✅ '+(saved.already_exists?'Уже прикреплён: ':'Прикреплён: ')+saved.document.filename);
+    } catch(error) {
+      failed++;
+      // Do not delete a failed pending attachment. The user can explicitly
+      // retry it without creating another expense.
+      results.push('⚠️ '+String(file.filename||'Файл').slice(0,80)+': '+
+        String(error.message||'ошибка скачивания').slice(0,140));
+    }
+  }
+  return {
+    ok: failed===0,attached,failed,expenseId:session.expenseId,
+    message:'📎 Документы для траты №'+session.expenseId+
+      '\n'+results.join('\n')+
+      (failed?'\n\nЧасть файлов пока не прикреплена. Нажмите «🔄 Повторить ожидающие файлы» — новую трату создавать не нужно.':
+        '\n\nВсе ожидающие файлы обработаны. Можно прислать дополнительные чеки или нажать «✅ Готово».'),
+    replyMarkup:attachmentButtons(session.expenseId),
+  };
+}
+
+module.exports={handleExpenseAttachmentMessage,processPendingExpenseAttachments,
+  readTelegramFile,telegramFile};
+

@@ -6,6 +6,7 @@ const { localDate } = require('./task-reminders');
 
 const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 const ATTACH_TTL_MS = 2 * 60 * 60 * 1000;
+const MAX_PENDING_ATTACHMENTS = 12;
 const INVESTORS = Object.freeze({
   alexey: 'Лакомых Алексей',
   vitaly: 'Соколов Виталий',
@@ -71,6 +72,7 @@ function confirmButtons() {
 function attachmentButtons(expenseId) {
   return { inline_keyboard:[
     [{text:'📎 Прикрепить чек',callback_data:'expense:attach:help:'+expenseId}],
+    [{text:'🔄 Повторить ожидающие файлы',callback_data:'expense:attach:retry:'+expenseId}],
     [{text:'✅ Готово, больше файлов нет',callback_data:'expense:attach:done:'+expenseId}],
   ]};
 }
@@ -83,6 +85,55 @@ function attachmentInstructions(expenseId,number) {
     'Можно отправить несколько файлов по очереди: PDF, JPG, PNG, HEIC, Word, Excel и другие разрешённые форматы (до 10 МБ каждый).',
     'Закончив загрузку, нажмите «✅ Готово». Чек сохранится в закрытом архиве трат.',
   ].filter(Boolean).join('\n\n');
+}
+
+function parsePendingAttachments(draft) {
+  try {
+    const items = JSON.parse(draft?.pending_attachments || '[]');
+    return Array.isArray(items) ? items.slice(0, MAX_PENDING_ATTACHMENTS) : [];
+  } catch (_) { return []; }
+}
+
+function queueExpenseAttachment(channel,chatId,file) {
+  const draft=draftForChat(channel,chatId);
+  if(!draft || draft.step!=='confirm')return null;
+  const actor=actorForChat(channel,chatId);
+  if(!actor || actor.role!==draft.creator_role || Number(actor.id)!==Number(draft.creator_id))
+    return {ok:false,message:'Нет доступа к файлам этой траты.'};
+  const existing=parsePendingAttachments(draft);
+  if(existing.some(item=>item.fileId===file.fileId)) {
+    return {ok:true,queued:true,message:'ℹ️ Этот файл уже ожидает сохранения.\n\n' +
+      'Нажмите «✅ Записать трату», чтобы прикрепить его.',replyMarkup:confirmButtons()};
+  }
+  if(existing.length>=MAX_PENDING_ATTACHMENTS)
+    return {ok:false,message:'Можно добавить не более 12 подтверждающих файлов к одной трате.',
+      replyMarkup:confirmButtons()};
+  const items=[...existing,{fileId:file.fileId,filename:file.filename,size:file.size||0}];
+  db.prepare("UPDATE expense_bot_drafts SET pending_attachments=?, updated_at=datetime('now') " +
+    "WHERE channel=? AND chat_id=? AND step='confirm'")
+    .run(JSON.stringify(items),channel,String(chatId));
+  return {ok:true,queued:true,
+    message:'✅ Файл принят ('+items.length+' из 12).\n\n' +
+      'Трата пока не записана. Нажмите «✅ Записать трату» — файл автоматически прикрепится после сохранения.',
+    replyMarkup:confirmButtons()};
+}
+
+function pendingSavedExpenseAttachments(channel,chatId) {
+  const state=activeExpenseAttachment(channel,chatId);
+  if(!state || state.denied)return null;
+  const draft=draftForChat(channel,chatId);
+  return {expenseId:state.expenseId,actor:state.actor,files:parsePendingAttachments(draft)};
+}
+
+function markPendingAttachmentStored(channel,chatId,expenseId,fileId) {
+  const state=pendingSavedExpenseAttachments(channel,chatId);
+  if(!state || state.expenseId!==expenseId)return false;
+  const remaining=state.files.filter(file=>file.fileId!==fileId);
+  if(remaining.length===state.files.length)return false;
+  db.prepare("UPDATE expense_bot_drafts SET pending_attachments=?,updated_at=datetime('now') " +
+    "WHERE channel=? AND chat_id=? AND step='attach' AND expense_id=?")
+    .run(JSON.stringify(remaining),channel,String(chatId),expenseId);
+  return true;
 }
 
 function activeExpenseAttachment(channel,chatId) {
@@ -241,6 +292,7 @@ function finishExpenseCreation(channel, chatId) {
   if(!actor || actor.role!==draft.creator_role || Number(actor.id)!==Number(draft.creator_id)){
     return {ok:false,message:'Нет доступа к сохранению этой траты. Начните заново.'};
   }
+  const filesWaiting=parsePendingAttachments(draft).length;
   const city = db.prepare('SELECT id, name FROM cities WHERE id = ?').get(draft.city_id);
   const info = db.prepare(`
     INSERT INTO expenses
@@ -273,6 +325,7 @@ function finishExpenseCreation(channel, chatId) {
       draft.investor_name,
       draft.purpose,
       city ? 'Город: ' + city.name : '',
+      filesWaiting ? '📎 Ожидают автоматического прикрепления: '+filesWaiting : '',
       '',
       attachmentInstructions(Number(info.lastInsertRowid),0),
     ].filter(Boolean).join('\n'),
@@ -294,13 +347,22 @@ function handleExpenseCallback(channel, chatId, rawPayload) {
     return setDraftInvestor(channel, chatId, payload.slice('expense:investor:'.length));
   }
   if (payload === 'expense:confirm') return finishExpenseCreation(channel, chatId);
-  const attach=payload.match(/^expense:attach:(help|done):(\d+)$/);
+  const attach=payload.match(/^expense:attach:(help|done|retry):(\d+)$/);
   if(attach){
     const current=activeExpenseAttachment(channel,chatId);
     if(!current || current.denied || String(current.expenseId)!==attach[2]){
       return {ok:false,message:'Сессия загрузки чека завершена. Начните новую трату через /expense.'};
     }
+    if(attach[1]==='retry'){
+      return {ok:true,retryPending:true,expenseId:current.expenseId,
+        message:'🔄 Повторная попытка прикрепить ожидающие файлы.',
+        replyMarkup:attachmentButtons(current.expenseId)};
+    }
     if(attach[1]==='done'){
+      const remaining=parsePendingAttachments(draftForChat(channel,chatId)).length;
+      if(remaining)return {ok:false,message:'Осталось '+remaining+' неподтверждённых файлов. ' +
+        'Нажмите «🔄 Повторить ожидающие файлы» или отправьте файлы ещё раз.',
+        replyMarkup:attachmentButtons(current.expenseId)};
       cancelExpenseCreation(channel,chatId);
       const total=attachmentCount(current.expenseId);
       return {ok:true,message:'✅ Трата №'+current.expenseId+' сохранена.\n'+
@@ -378,4 +440,7 @@ module.exports = {
   attachmentButtons,
   attachmentInstructions,
   attachmentCount,
+  queueExpenseAttachment,
+  pendingSavedExpenseAttachments,
+  markPendingAttachmentStored,
 };

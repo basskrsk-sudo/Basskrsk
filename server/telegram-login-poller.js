@@ -31,7 +31,7 @@ const {
   handleExpenseMessage,
   startExpenseCreation,
 } = require('./expense-bot-create');
-const { handleExpenseAttachmentMessage } = require('./expense-bot-files');
+const { handleExpenseAttachmentMessage,processPendingExpenseAttachments } = require('./expense-bot-files');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
 const { recordVerifiedTelegramContact } = require('./miniapp-phone-identity');
@@ -874,6 +874,11 @@ async function processUpdate(update) {
         });
       } else {
         await replyToChat(chatId, result.message, result.replyMarkup);
+      }
+      if (result.ok && result.expenseId &&
+          (callback.data === 'expense:confirm' || result.retryPending)) {
+        const pending=await processPendingExpenseAttachments('telegram',chatId);
+        if(pending)await replyToChat(chatId,pending.message,pending.replyMarkup);
       }
       if (result.created && result.task && result.assignee && result.assignee.telegram_chat_id) {
         await replyToChat(

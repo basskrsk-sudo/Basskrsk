@@ -1690,6 +1690,9 @@ ensureColumn('expenses', 'investor_name', 'TEXT');
 ensureColumn('expenses', 'source', "TEXT NOT NULL DEFAULT 'admin'");
 // После сохранения траты Telegram может принимать прикреплённые чеки.
 ensureColumn('expense_bot_drafts', 'expense_id', 'INTEGER REFERENCES expenses(id)');
+// Accept receipts sent while the user is reviewing a Telegram expense, but
+// do not create financial entries until the user confirms the draft.
+ensureColumn('expense_bot_drafts', 'pending_attachments', "TEXT NOT NULL DEFAULT '[]'");
 
 // ── РЕФЕРАЛЬНЫЙ КОД ВЛАДЕЛЬЦА САЛОНА ─────────────────────────────────
 // Раньше приводить новых партнёров (и получать за это бонус) мог только

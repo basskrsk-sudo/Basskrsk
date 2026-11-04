@@ -8,7 +8,7 @@ process.env.DATA_DIR=fs.mkdtempSync(path.join(os.tmpdir(),'hm-expense-telegram-f
 process.env.TG_TOKEN='test-telegram-token';
 const db=require('./db');
 const flow=require('./expense-bot-create');
-const {handleExpenseAttachmentMessage,readTelegramFile}=require('./expense-bot-files');
+const {handleExpenseAttachmentMessage,processPendingExpenseAttachments,readTelegramFile}=require('./expense-bot-files');
 const {DOCUMENT_DIR,MAX_FILE_BYTES}=require('./expense-documents');
 
 const chat='640010002';
@@ -169,4 +169,99 @@ test('Telegram polling routes a photo to expense storage and replies in the priv
   assert.ok(calls.some(url=>url.endsWith('/sendMessage')));
   assert.ok(calls.some(url=>url.endsWith('/getFile')));
   flow.handleExpenseCallback('telegram',chat,'expense:attach:done:'+saved.expenseId);
+});
+
+
+test('a receipt sent on the confirmation screen is queued and saved to the same expense',async()=>{
+  assert.equal(flow.startExpenseCreation('telegram',chat).ok,true);
+  flow.handleExpenseMessage('telegram',chat,'04.11.2026');
+  flow.handleExpenseCallback('telegram',chat,'expense:investor:vitaly');
+  flow.handleExpenseMessage('telegram',chat,'16850');
+  const preview=flow.handleExpenseMessage('telegram',chat,'Закуп лакомств у Хвостика от 02.11.26');
+  assert.match(preview.message,/16\s*850/);
+  const remote=telegramFetcher(jpg);
+  const staged=await handleExpenseAttachmentMessage('telegram',chat,photoMessage(5060),remote.request);
+  assert.equal(staged.ok,true,staged.message);
+  assert.equal(staged.queued,true);
+  assert.match(staged.message,/Файл принят/);
+  assert.equal(remote.calls.length,0,'do not download anything before expense confirmation');
+  const draft=db.prepare('SELECT * FROM expense_bot_drafts WHERE chat_id=?').get(chat);
+  assert.equal(draft.step,'confirm');
+  assert.equal(JSON.parse(draft.pending_attachments).length,1);
+  const repeated=await handleExpenseAttachmentMessage('telegram',chat,photoMessage(5060),remote.request);
+  assert.match(repeated.message,/уже ожидает/);
+  assert.equal(JSON.parse(db.prepare('SELECT pending_attachments FROM expense_bot_drafts WHERE chat_id=?').get(chat).pending_attachments).length,1);
+  const before=db.prepare('SELECT COUNT(*) AS count FROM expenses').get().count;
+  const saved=flow.handleExpenseCallback('telegram',chat,'expense:confirm');
+  assert.equal(saved.created,true);
+  assert.match(saved.message,/Ожидают автоматического прикрепления: 1/);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expenses').get().count,before+1);
+  const imported=await processPendingExpenseAttachments('telegram',chat,remote.request);
+  assert.equal(imported.attached,1,imported.message);
+  assert.equal(imported.failed,0);
+  assert.equal(flow.attachmentCount(saved.expenseId),1);
+  assert.equal(JSON.parse(db.prepare('SELECT pending_attachments FROM expense_bot_drafts WHERE chat_id=?').get(chat).pending_attachments).length,0);
+  assert.equal(await processPendingExpenseAttachments('telegram',chat,remote.request),null);
+  assert.equal(flow.handleExpenseCallback('telegram',chat,'expense:confirm').created,false);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expenses').get().count,before+1);
+  const done=flow.handleExpenseCallback('telegram',chat,'expense:attach:done:'+saved.expenseId);
+  assert.equal(done.ok,true);
+});
+
+test('a failed staged receipt is preserved and can be retried without a second expense',async()=>{
+  assert.equal(flow.startExpenseCreation('telegram',chat).ok,true);
+  flow.handleExpenseMessage('telegram',chat,'04.11.2026');
+  flow.handleExpenseCallback('telegram',chat,'expense:investor:vitaly');
+  flow.handleExpenseMessage('telegram',chat,'100');
+  flow.handleExpenseMessage('telegram',chat,'Тестовая трата с подтверждением');
+  const staged=await handleExpenseAttachmentMessage('telegram',chat,docMessage('Счет.pdf'),telegramFetcher(pdf).request);
+  assert.equal(staged.queued,true);
+  const saved=flow.handleExpenseCallback('telegram',chat,'expense:confirm');
+  const broken=await processPendingExpenseAttachments('telegram',chat,async()=>{throw Error('Сеть недоступна')});
+  assert.equal(broken.failed,1);
+  assert.match(broken.message,/Повторить ожидающие файлы/);
+  assert.equal(flow.attachmentCount(saved.expenseId),0);
+  assert.equal(flow.handleExpenseCallback('telegram',chat,'expense:attach:done:'+saved.expenseId).ok,false);
+  const retry=flow.handleExpenseCallback('telegram',chat,'expense:attach:retry:'+saved.expenseId);
+  assert.equal(retry.retryPending,true);
+  const good=await processPendingExpenseAttachments('telegram',chat,telegramFetcher(pdf,'documents/file_7.pdf').request);
+  assert.equal(good.attached,1,good.message);
+  assert.equal(flow.attachmentCount(saved.expenseId),1);
+  assert.equal(flow.handleExpenseCallback('telegram',chat,'expense:attach:done:'+saved.expenseId).ok,true);
+});
+
+test('actual Telegram poller accepts pre-confirm photo and uploads it after confirmation',async()=>{
+  assert.equal(flow.startExpenseCreation('telegram',chat).ok,true);
+  flow.handleExpenseMessage('telegram',chat,'04.11.2026');
+  flow.handleExpenseCallback('telegram',chat,'expense:investor:vitaly');
+  flow.handleExpenseMessage('telegram',chat,'300');
+  flow.handleExpenseMessage('telegram',chat,'Загрузка чека до сохранения');
+  const {processUpdate}=require('./telegram-login-poller');
+  const originalFetch=global.fetch;
+  const called=[];
+  global.fetch=async url=>{
+    const name=String(url);
+    called.push(name);
+    if(name.endsWith('/getFile'))return {
+      ok:true,json:async()=>({ok:true,result:{file_path:'photos/file_31.jpg',file_size:jpg.length}})};
+    if(name.includes('/file/bot'))return {
+      ok:true,headers:{get:()=>String(jpg.length)},arrayBuffer:async()=>jpg,body:null};
+    if(name.endsWith('/sendMessage') || name.endsWith('/answerCallbackQuery'))
+      return {ok:true,json:async()=>({ok:true,result:{}})};
+    throw Error('Unexpected Telegram call: '+name);
+  };
+  try {
+    await processUpdate({message:photoMessage(8831)});
+    assert.equal(called.some(x=>x.endsWith('/getFile')),false);
+    await processUpdate({callback_query:{
+      id:'confirm-pre-upload',data:'expense:confirm',
+      message:{chat:{id:Number(chat),type:'private'}},from:{id:Number(chat)},
+    }});
+  } finally {global.fetch=originalFetch;}
+  const expense=db.prepare("SELECT id FROM expenses WHERE category='Загрузка чека до сохранения' ORDER BY id DESC LIMIT 1").get();
+  assert.ok(expense);
+  assert.equal(flow.attachmentCount(expense.id),1,'receipt should be automatically saved');
+  assert.ok(called.some(x=>x.endsWith('/getFile')));
+  assert.ok(called.some(x=>x.endsWith('/sendMessage')));
+  flow.handleExpenseCallback('telegram',chat,'expense:attach:done:'+expense.id);
 });
