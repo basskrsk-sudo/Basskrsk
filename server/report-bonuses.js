@@ -19,14 +19,15 @@ function getBonuses(db, role, recipientId) {
   const field = role === 'owner' ? 'referred_owner' : 'referred_groomer';
   const where = manager ? 'mp.manager_id' : `mp.${field}_id`;
   const amount = manager ? 'COALESCE(mp.bonus_manager_amount, 2000)' : `mp.${field}_amount`;
+  const accruedAt = manager ? 'mp.bonus_accrued_at' : 'COALESCE(mp.referral_bonus_accrued_at,mp.bonus_accrued_at)';
   const paidTable = manager ? 'manager_launch_bonus_payouts' : 'referral_bonus_payouts';
   const paidCondition = manager ? '' : ' AND bp.role = ?';
   const pending = db.prepare(`SELECT mp.id AS manager_point_id, mp.point_id, mp.point_name,
-    ${amount} AS amount, mp.bonus_accrued_at AS accrued_at
+    ${amount} AS amount, ${accruedAt} AS accrued_at
     FROM manager_points mp LEFT JOIN ${paidTable} bp ON bp.manager_point_id = mp.id${paidCondition}
     WHERE ${where} = ? AND mp.bonus_paid = 1 AND bp.id IS NULL AND ${amount} > 0
     ORDER BY mp.id`).all(...(manager ? [recipientId] : [role, recipientId]));
-  const paid = db.prepare(`SELECT bp.*, mp.bonus_accrued_at AS accrued_at
+  const paid = db.prepare(`SELECT bp.*, ${accruedAt} AS accrued_at
     FROM ${paidTable} bp LEFT JOIN manager_points mp ON mp.id = bp.manager_point_id
     WHERE ${manager ? 'bp.manager_id = ?' : 'bp.role = ? AND bp.recipient_id = ?'} ORDER BY bp.paid_at, bp.id`)
     .all(...(manager ? [recipientId] : [role, recipientId]));
@@ -65,7 +66,8 @@ function createReferralBonusPayout(db, role, managerPointId, recipientId, expect
       (role,manager_point_id,recipient_id,recipient_name,recipient_code,point_id,point_name,amount,paid_by_admin_id,paid_by_admin_login)
       VALUES (?,?,?,?,?,?,?,?,?,?)`).run(role,managerPointId,recipientId,person.full_name,person.code,point.point_id,point.point_name,amount,admin.id||null,admin.login||null);
     const payout = db.prepare('SELECT * FROM referral_bonus_payouts WHERE id = ?').get(Number(info.lastInsertRowid));
-    const report = snapshotBonusPayout(db,role,person,payout,admin.id,'referral_bonus',point.bonus_accrued_at);
+    const report = snapshotBonusPayout(db,role,person,payout,admin.id,'referral_bonus',
+      point.referral_bonus_accrued_at || point.bonus_accrued_at);
     db.exec('COMMIT');
     return { payout, report };
   } catch(error) { try {db.exec('ROLLBACK');} catch(_) {} throw error; }
