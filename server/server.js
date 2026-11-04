@@ -59,6 +59,7 @@ const { registerTaskPageRoutes } = require('./routes-task-page');
 const { registerMiniAppTaskRoutes, ensureTaskAccountBindings } = require('./routes-miniapp-tasks');
 const { registerMiniAppManagerMessageRoutes } = require('./miniapp-manager-messages');
 const { registerOperationsRoutes } = require('./routes-operations');
+const { registerSiteHealthRoutes, startHealthWatcher } = require('./site-health');
 const { registerPointLaunchRoutes } = require('./routes-point-launch');
 const { registerPartnerClubRoutes } = require('./routes-partner-club');
 
@@ -145,6 +146,7 @@ registerTaskPageRoutes(router);
 registerMiniAppTaskRoutes(router);
 registerMiniAppManagerMessageRoutes(router);
 registerOperationsRoutes(router);
+registerSiteHealthRoutes(router);
 registerPointLaunchRoutes(router);
 registerPartnerClubRoutes(router);
 
@@ -285,6 +287,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
+  startHealthWatcher();
   console.log(`Тайга: сервер запущен на порту ${PORT} (Node.js ${process.version})`);
   require('./deployment-notification').notifyDeployment(PORT).catch((err) => console.error('Deployment notification:', err.message));
   require('./backup').scheduleBackups();
