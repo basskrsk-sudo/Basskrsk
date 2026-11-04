@@ -140,5 +140,8 @@ test('the admin interface exposes edit controls only to super-admin and lists au
   assert.match(html,/\/api\/economics\/expenses\/'\+id\+'\/date/);
   assert.match(html,/event.type === 'expense_date_change'/);
   assert.match(html,/value="expense_date_change"/);
+  const inline=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  assert.ok(inline.length,'at least one admin inline script');
+  for(const match of inline) assert.doesNotThrow(()=>new Function(match[1]));
   assert.ok(localDate() >= '2026-11-04','test expects known historical fixture date');
 });
