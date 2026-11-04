@@ -202,8 +202,25 @@
       sendDiagnostic('runtime','failure','runtime',Date.now()-openedAt);
     });
   }
-  if (typeof document.addEventListener==='function')
-    document.addEventListener('DOMContentLoaded',function(){if(isOffline())show('Нет интернета. Проверьте подключение.');});
+  function refreshPreviouslyInstalledServiceWorker(){
+    // Some users open the Mini App in a browser profile with an older
+    // site-wide SW. Update it without registering one for new Telegram users.
+    try {
+      var service=navigator && navigator.serviceWorker;
+      if(service && typeof service.getRegistrations==='function'){
+        service.getRegistrations().then(function(registrations){
+          (registrations||[]).forEach(function(reg){
+            if(reg && typeof reg.update==='function')reg.update().catch(function(){});
+          });
+        }).catch(function(){});
+      }
+    }catch(_){}
+  }
+  if(typeof document.addEventListener==='function')
+    document.addEventListener('DOMContentLoaded',function(){
+      refreshPreviouslyInstalledServiceWorker();
+      if(isOffline())show('Нет интернета. Проверьте подключение.');
+    });
   window.HvostMiniAppReliability={
     request:request,registerRecovery:registerRecovery,retry:retry,
     report:sendDiagnostic,markReady:function(){sendDiagnostic('startup','success','ok',Date.now()-openedAt);},
