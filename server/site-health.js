@@ -4,7 +4,6 @@
 // Public endpoints expose only "ok"/"error"; internal metrics require an
 // active admin account. Independent outage detection lives in GitHub Actions.
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const db = require('./db');
 const { sendJson } = require('./http-utils');
@@ -23,6 +22,8 @@ let currentHealth = null;
 let lastHealthAt = 0;
 let lastSample = null;
 let previousSampleAt = BOOTED_AT;
+let previousCpuUsage = process.cpuUsage();
+let highCpuSamples = 0;
 let watcher = null;
 let lastPruneDay = '';
 const lastAlerts = new Map();
@@ -31,7 +32,7 @@ const states = new Map();
 db.exec("CREATE TABLE IF NOT EXISTS site_health_events (" +
   "id INTEGER PRIMARY KEY AUTOINCREMENT," +
   "event_type TEXT NOT NULL CHECK(event_type IN (" +
-    "'startup','restart_gap','recovered','database','storage','memory','disk','event_loop'))," +
+    "'startup','restart_gap','recovered','database','storage','memory','disk','cpu','event_loop'))," +
   "severity TEXT NOT NULL CHECK(severity IN ('info','warning','critical'))," +
   "detail TEXT NOT NULL," +
   "created_at TEXT NOT NULL DEFAULT (datetime('now')))");
@@ -113,6 +114,7 @@ function metrics() {
       limit_mb:limit?Math.round(limit/1048576):null},
     storage_free_mb:Number.isFinite(free)?Math.round(free/1048576):null,
     event_loop_delay_ms:lastSample ? lastSample.event_loop_delay_ms : null,
+    cpu_percent:lastSample ? lastSample.cpu_percent : null,
     sampled_at:lastSample ? lastSample.time : null,
   };
 }
@@ -139,17 +141,25 @@ function transition(type, bad, severity, detail) {
 }
 function sample() {
   const now = Date.now();
-  const delay = Math.max(0,now-previousSampleAt-SAMPLE_INTERVAL_MS);
+  const elapsedMs = Math.max(1, now - previousSampleAt);
+  const delay = Math.max(0,elapsedMs-SAMPLE_INTERVAL_MS);
   previousSampleAt=now;
+  const cpuNow=process.cpuUsage();
+  const elapsedCpu=(cpuNow.user-previousCpuUsage.user)+(cpuNow.system-previousCpuUsage.system);
+  previousCpuUsage=cpuNow;
+  const cpuPercent=Math.min(10000,Math.round(elapsedCpu/elapsedMs/10));
+  highCpuSamples=cpuPercent>=90 ? highCpuSamples+1 : 0;
   const health=healthProbe(true),memory=process.memoryUsage();
   const cap=limitMemory(),free=storageFreeBytes();
-  lastSample={time:new Date(now).toISOString(),event_loop_delay_ms:Math.round(delay)};
+  lastSample={time:new Date(now).toISOString(),event_loop_delay_ms:Math.round(delay),cpu_percent:cpuPercent};
   transition('database',health.checks.database!=='ok','critical','SQLite не отвечает на проверку');
   transition('storage',health.checks.storage!=='ok','critical','Постоянное хранилище недоступно для записи');
   transition('memory',!!(cap && memory.rss/cap>=WARNING_RSS_RATIO),'warning',
     'Потребление памяти контейнера выше 85% доступного лимита');
   transition('disk',Number.isFinite(free)&&free<WARNING_DISK_BYTES,'warning',
     'В постоянном хранилище осталось менее 100 МБ');
+  transition('cpu',highCpuSamples>=2,'warning',
+    'Нагрузка Node.js на одно ядро выше 90% два измерения подряд');
   transition('event_loop',delay>1500,'warning',
     'Задержка обработки событий Node.js более 1,5 секунды');
   try {
@@ -172,7 +182,10 @@ function startHealthWatcher() {
     if (prev) {
       const gap=Date.now()-Date.parse(prev.last_seen_at);
       if (Number.isFinite(gap)&&gap>180000&&gap<30*24*3600000)
+      {
         appendEvent('restart_gap','warning','После перезапуска обнаружен перерыв наблюдения более 3 минут');
+        void alert('restart_gap','warning','Сервер перезапущен после перерыва наблюдения более 3 минут.');
+      }
     }
   } catch (_) {}
   appendEvent('startup','info','Процесс Node.js запущен');
