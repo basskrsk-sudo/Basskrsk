@@ -723,8 +723,13 @@
       var normalCalls=endpoints[role].map(function(url) { return fetchJSON(url, token); });
       var wantsTasks=!!(taskPanel && (role==='founder'||role==='manager'));
       if (wantsTasks) normalCalls.push(fetchJSON('/api/miniapp/tasks',token));
+      var wantDiagnostics = role === 'admin';
+      if(wantDiagnostics)normalCalls.push(fetchJSON('/api/miniapp/diagnostics-summary',token));
       var results = await Promise.allSettled(normalCalls);
       if (mySerial !== serial || role !== activeRole) return;
+      var diagnosticResponse=wantDiagnostics ? results.pop() : null;
+      var diagnosticData=diagnosticResponse && diagnosticResponse.status==='fulfilled'
+        ? diagnosticResponse.value : null;
       var taskResponse=wantsTasks ? results.pop() : null;
       taskData=taskResponse && taskResponse.status==='fulfilled' &&
         taskResponse.value && taskResponse.value.actor ? taskResponse.value : null;
@@ -741,7 +746,7 @@
       if (role === 'manager') html += managerDashboard(data);
       if (role === 'owner') html += ownerDashboard(data);
       if (role === 'founder' && window.HvostBusinessFounder) html += window.HvostBusinessFounder.render(data[0]);
-      if (role === 'admin') html += adminDashboard(data);
+      if (role === 'admin') html += adminDashboard(data,diagnosticData);
       dashboardMarkup = html + dashboardFooter(role);
       root.innerHTML = dashboardMarkup;
       if (role === 'admin' && currentUser && currentUser.role === 'super' && window.HvostBusinessFounderAdmin) window.HvostBusinessFounderAdmin.populate();
@@ -1463,7 +1468,7 @@
       adminRegistrationBusy = false;
     }
   }
-  function adminDashboard(data) {
+  function adminDashboard(data,diagnostics) {
     var allPoints = data[0] && data[0].points || [];
     // Match the founder network counter: only current, non-hub minimarkets.
     var points = allPoints.filter(function(p) {
@@ -1482,6 +1487,22 @@
       stat('Выручка последних заказов', data[1] ? rub(revenue) : '—', 'Оплаченные среди 100 последних') +
       stat('Сигналы контроля', data[2] ? number((ops.summary || {}).total || issues.length) : '—', 'Операционные вопросы') +
       '</div>';
+    // Read-only 7-day aggregate metrics. No names, phones, IDs or tokens.
+    var diag=diagnostics && diagnostics.summary || null;
+    var platformRows=diagnostics && diagnostics.rows || [];
+    var failures=platformRows.filter(function(row){return row.result==='failure';});
+    var reliabilityContent=diag
+      ? '<div class="work-stats">' +
+          stat('Успешных запусков',number(diag.successful_launches),'За последние 7 дней') +
+          stat('Ошибок',number(diag.reported_errors),'Отправленных приложением') +
+        '</div>' +
+        rows(failures.slice(0,7).map(function(row) {
+          return line(row.stage+' · '+row.code,
+            row.platform+' · '+row.day+' · версия '+row.build,
+            number(row.occurrences));
+        }))
+      : '<p class="work-note">Телеметрия пока недоступна. Запуск и работа кабинетов от неё не зависят.</p>';
+    html += surface('🩺 Надёжность Mini App',reliabilityContent);
     html += surface('📦 Центральный склад',
       '<button class="work-primary" type="button" data-work-action="admin-wh-open">' +
       '📦 Добавить или удалить товар</button>' +
