@@ -96,3 +96,30 @@ test('Telegram-команда /expense сохраняет подтверждён
   assert.equal(expense.amount, 7000);
   assert.ok(requests.some((request) => request.url.endsWith('/sendMessage') && /Трата записана/.test(request.body.text)));
 });
+
+
+test('Telegram provides older date shortcuts and a manual date before yesterday',()=>{
+  const started=startExpenseCreation('telegram','501');
+  assert.equal(started.ok,true);
+  assert.match(JSON.stringify(started.replyMarkup),/expense:date:two-days-ago/);
+  assert.match(JSON.stringify(started.replyMarkup),/expense:date:week-ago/);
+  assert.match(JSON.stringify(started.replyMarkup),/expense:date:manual/);
+  const manual=handleExpenseCallback('telegram','501','expense:date:manual');
+  assert.equal(manual.ok,true);
+  assert.match(manual.message,/ДД.ММ.ГГГГ/);
+  const future=handleExpenseMessage('telegram','501','31.12.2999');
+  assert.equal(future.ok,false);
+  assert.match(future.message,/не позднее сегодняшней/);
+  const previous=handleExpenseMessage('telegram','501','02.11.2026');
+  assert.equal(previous.ok,true,previous.message);
+  assert.match(previous.message,/2026-11-02/);
+
+  const again=startExpenseCreation('telegram','501');
+  assert.equal(again.ok,true);
+  const twoDays=handleExpenseCallback('telegram','501','expense:date:two-days-ago');
+  assert.equal(twoDays.ok,true);
+  const again2=startExpenseCreation('telegram','501');
+  assert.equal(again2.ok,true);
+  const week=handleExpenseCallback('telegram','501','expense:date:week-ago');
+  assert.equal(week.ok,true);
+});
