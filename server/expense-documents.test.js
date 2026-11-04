@@ -69,3 +69,26 @@ test('deleting expense also removes private physical attachment',async()=>{
   assert.equal(fs.existsSync(path.join(DOCUMENT_DIR,row.storage_name)),false);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_documents').get().n,0);
 });
+
+test('private receipts are not accessible through another founder or a salon owner',async()=>{
+  db.prepare('UPDATE business_founders SET login=?,password_hash=?,phone=?,active=1 WHERE id=?')
+    .run('second-proof-owner',hashPassword('long-test-only-value'),'79131230002',2);
+  const first=Number(db.prepare(
+    'INSERT INTO expenses(expense_date,category,amount,investor_name,city_id) VALUES(?,?,?,?,?)'
+  ).run('2026-11-04','Стойка',3000,'Лакомых Алексей','krsk').lastInsertRowid);
+  const saved=await request('POST','/api/expenses/'+first+'/documents',founder,{
+    filename:'receipt.pdf',data_base64:pdf.toString('base64'),
+  });
+  assert.equal(saved.status,201);
+  const id=saved.body.document.id;
+  const other=signToken({role:'founder',id:2});
+  const salon=signToken({role:'owner',id:1});
+  assert.equal((await request('GET','/api/expenses/'+first+'/documents',other)).status,404);
+  assert.equal((await request('GET','/api/expense-documents/'+id+'/download',other)).status,404);
+  assert.equal((await request('GET','/api/expense-documents/'+id+'/download',salon)).status,401);
+  assert.equal((await request('DELETE','/api/expense-documents/'+id,other)).status,404);
+  assert.equal((await request('GET','/api/expense-documents/'+id+'/download',admin)).status,200);
+  const listing=await request('GET','/api/economics/expenses',admin);
+  assert.equal(listing.body.expenses.find(x=>x.id===first).documents[0].filename,'receipt.pdf');
+  assert.equal(listing.body.expenses.find(x=>x.id===first).documents[0].storage_name,undefined);
+});
