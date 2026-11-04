@@ -139,6 +139,10 @@ test('GitHub workflow schedules checks every five minutes and limits permissions
   assert.match(text,/cancel-in-progress: false/);
   assert.match(text,/HM_MONITOR_TELEGRAM_TOKEN/);
   assert.match(text,/HM_MONITOR_CHAT_ID/);
+  assert.match(text,/test_notification:/);
+  assert.match(text,/if: \$\{\{ github.event_name == 'workflow_dispatch' && inputs.test_notification \}\}/);
+  assert.match(text,/if: \$\{\{ github.event_name != 'workflow_dispatch' \|\| !inputs.test_notification \}\}/);
+  assert.match(text,/Тест Telegram не пройден/);
   assert.doesNotMatch(text,/bot\d{6,}:/);
 });
 
