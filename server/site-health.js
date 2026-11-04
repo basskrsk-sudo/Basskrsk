@@ -24,6 +24,7 @@ let lastHealthAt = 0;
 let lastSample = null;
 let previousSampleAt = BOOTED_AT;
 let watcher = null;
+let lastPruneDay = '';
 const lastAlerts = new Map();
 const states = new Map();
 
@@ -156,10 +157,13 @@ function sample() {
       'ON CONFLICT(id) DO UPDATE SET last_seen_at=excluded.last_seen_at,boot_id=excluded.boot_id')
       .run(new Date(now).toISOString(),bootId);
   } catch (e) { console.warn('[health] heartbeat unavailable:',e.code||'unknown'); }
-  // Limit history to 90 days; not executed on each public request.
-  if (now%12 < 2) try {
-    db.prepare("DELETE FROM site_health_events WHERE created_at < datetime('now','-90 days')").run();
-  } catch (_) {}
+  // Limit history to 90 days. Pruning once per UTC day avoids churn.
+  const day = new Date(now).toISOString().slice(0,10);
+  if (day !== lastPruneDay) {
+    lastPruneDay = day;
+    try { db.prepare("DELETE FROM site_health_events WHERE created_at < datetime('now','-90 days')").run(); }
+    catch (_) {}
+  }
 }
 function startHealthWatcher() {
   if (watcher) return;
