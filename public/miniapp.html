@@ -204,7 +204,33 @@ if(!tg||!tg.initData){
   return;
 }
 try{var d=await api('/api/miniapp/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})});state.verified=true;state.user=d.user;state.name=d.user.first_name||'';el('hello').textContent='Привет, '+state.name+'!';el('appMode').textContent='● Telegram'}catch(e){el('appMode').textContent='Нет входа';toast(e.message)}if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.init(tg,state.verified?state.user:null)}
+async function refreshReadOnlyAfterReconnect(){
+  // Only refetch and revalidate: never duplicate payment or inventory writes.
+  if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.refresh();
+  syncPhoneAccess();
+  if(state.paymentUncertain&&state.pendingCode){
+    await checkPaymentReturn(state.pendingCode);
+    return;
+  }
+  if(state.view==='work'&&window.HvostMiniAppWork&&isPhoneAccessUnlocked()){
+    await window.HvostMiniAppWork.refresh();
+    return;
+  }
+  var data=await Promise.all([api('/api/products'),api('/api/points')]);
+  state.products=data[0].products||[];
+  state.points=data[1].points||[];
+  if(!currentPoint()){
+    if(state.points.length===1)selectPoint(state.points[0].id);
+    else{state.pointId='';el('pointName').textContent='Выбрать салон';}
+  }
+  if(state.view==='shop')renderProducts();
+  if(state.view==='cart')renderCart();
+  if(state.view==='checkout')renderCheckout();
+  renderCartIndicators();
+}
 async function init(){
+  if(window.HvostMiniAppReliability)
+    window.HvostMiniAppReliability.registerRecovery(refreshReadOnlyAfterReconnect);
   // Keep the profile as a safe loading view before signed Telegram checks.
   setView('profile');
   if(window.HvostMiniAppIdentity){
@@ -240,6 +266,7 @@ async function init(){
   }
   if(validPayment)await checkPaymentReturn(resultCode);
   renderCartIndicators();
+  if(window.HvostMiniAppReliability)window.HvostMiniAppReliability.markReady();
 }
 el('pointButton').addEventListener('click',showPointSheet);el('cartFloat').addEventListener('click',function(){setView('cart')});el('searchBox').addEventListener('input',function(e){state.search=e.target.value;renderProducts()});el('sheetCover').addEventListener('click',function(e){if(e.target===el('sheetCover'))hideSheet()});
 document.addEventListener('click',function(e){var t=e.target.closest('button');if(!t)return;if(t.hasAttribute('data-close')){hideSheet();return}if(t.hasAttribute('data-view')){
