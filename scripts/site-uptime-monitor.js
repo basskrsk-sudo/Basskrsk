@@ -5,6 +5,8 @@
 // persistent incident ledger across scheduled workflow runs.
 const BASE_URL = 'https://хвостмаркет.рф';
 const INCIDENT_TITLE = '[Мониторинг] ХвостМаркет — сайт недоступен';
+const PENDING_TELEGRAM = '<!-- hm-telegram-alert:pending -->';
+const SENT_TELEGRAM = '<!-- hm-telegram-alert:sent -->';
 const PROBES = [
   {name:'Сайт',path:'/',verify:(body)=>/<html/i.test(body) && /Хвост|Маркет/i.test(body)},
   {name:'SQLite и хранилище',path:'/api/health',
@@ -61,6 +63,7 @@ function renderIssueBody(failures,checkedAt) {
     'Проверьте Amvera → Логи приложения / Мониторинг / последние деплои.',
     'Этот инцидент будет закрыт автоматически после двух успешных проверок.',
     'Это внешний контроль из GitHub, а не диагностика непосредственно внутри Amvera.',
+    '', PENDING_TELEGRAM,
   ].join('\n');
 }
 function incidentMessage(failures,issueUrl) {
@@ -126,6 +129,14 @@ async function run({fetchImpl=fetch,api,notify,wait=ms=>new Promise(r=>setTimeou
 
   if(failures.length) {
     if(existing) {
+      // If the GitHub Telegram secret was missing at first detection, deliver
+      // the still-open incident after credentials are configured, at most once.
+      if(String(existing.body||'').includes(PENDING_TELEGRAM)) {
+        const notification=await notify(incidentMessage(failures,existing.html_url));
+        if(notification.sent)await api('PATCH','/issues/'+existing.number,{
+          body:String(existing.body).replace(PENDING_TELEGRAM,SENT_TELEGRAM)});
+        else logger.warn('Open incident is awaiting optional Telegram credentials.');
+      }
       logger.log('Site remains unavailable. Open incident #'+existing.number+
         '; checks failed: '+failures.map(x=>x.name).join(', '));
       return {status:'still_down',incident:existing.number,failures};
@@ -136,7 +147,9 @@ async function run({fetchImpl=fetch,api,notify,wait=ms=>new Promise(r=>setTimeou
     });
     logger.log('Opened site outage incident #'+incident.number);
     const notification=await notify(incidentMessage(failures,incident.html_url));
-    if(!notification.sent) logger.warn('Telegram notification not sent; GitHub incident remains recorded.');
+    if(notification.sent)await api('PATCH','/issues/'+incident.number,{
+      body:String(incident.body||'').replace(PENDING_TELEGRAM,SENT_TELEGRAM)});
+    else logger.warn('Telegram not configured; GitHub incident remains recorded and will be retried.');
     return {status:'down',incident:incident.number,failures,notified:notification.sent};
   }
   // A single successful scan cannot override an open incident; both need
@@ -151,7 +164,8 @@ async function run({fetchImpl=fetch,api,notify,wait=ms=>new Promise(r=>setTimeou
     const age=Date.parse(existing.created_at);
     const minutes=Number.isFinite(age)?Math.max(1,Math.round((now().getTime()-age)/60000)):null;
     logger.log('Closed recovered incident #'+existing.number);
-    const notification=await notify(recoveredMessage(existing.html_url,minutes));
+    const notification=String(existing.body||'').includes(PENDING_TELEGRAM)
+      ? {sent:false} : await notify(recoveredMessage(existing.html_url,minutes));
     if(!notification.sent)logger.warn('Recovery Telegram notification was not sent; incident is closed in GitHub.');
     return {status:'recovered',incident:existing.number,notified:notification.sent};
   }
@@ -175,7 +189,9 @@ async function main() {
     chatId:process.env.HM_MONITOR_CHAT_ID||'',
   });
   const result=await run({api,notify});
-  if(['down','still_down'].includes(result.status))process.exitCode=1;
+  // One failed run surfaces a new incident; subsequent checks do not spam
+  // GitHub workflow-failure emails. The open issue remains the source of truth.
+  if(result.status==='down')process.exitCode=1;
 }
 if(require.main===module)main().catch(e=>{
   // Never log secrets, private response bodies, or arbitrary URLs.
