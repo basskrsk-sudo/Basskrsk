@@ -555,6 +555,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 </style>
 <script src="config.js"></script>
 <script src="payout-schedule.js"></script>
+<script src="/expense-evidence.js"></script>
 <script src="telegram-connect.js?v=38"></script>
 <link rel="stylesheet" href="/notification-settings.css">
 </head>
@@ -1024,6 +1025,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div class="admin-field" style="margin-bottom:0;"><label>Город *</label><select id="biz-exp-city"></select></div>
           <div class="admin-field" style="margin-bottom:0;grid-column:span 2;"><label>Назначение *</label><input type="text" id="biz-exp-purpose" placeholder="Например: закуп лакомств или изготовление стойки"></div>
           <div class="admin-field" style="margin-bottom:0;"><label>Примечание</label><input type="text" id="biz-exp-note" placeholder="Необязательно"></div>
+          <div class="admin-field" style="margin-bottom:0;grid-column:span 2;"><label>Подтверждающие файлы (необязательно, до 12 файлов по 10 МБ)</label><input type="file" id="biz-exp-evidence-files" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.pptx,.odt,.ods,.txt,.csv,.xml,.rtf,.zip" multiple style="width:100%;max-width:100%;padding:7px;border:1px dashed var(--border);border-radius:8px"></div>
           <button class="row-btn" style="height:38px;background:var(--forest);color:#fff;" onclick="addBusinessExpense()">Добавить трату</button>
         </div>
         <div id="biz-exp-form-error" style="display:none;margin-top:.7rem;padding:.6rem .75rem;border-radius:6px;background:#FDECEA;color:#9B2335;font-size:.8rem;"></div>
@@ -1038,7 +1040,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="card-title"><span>Журнал трат <span id="biz-exp-table-count" style="font-size:.72rem;font-weight:400;color:var(--muted);"></span></span></div>
         <div style="overflow-x:auto;">
           <table class="tbl" style="min-width:980px;">
-            <thead><tr><th>Дата</th><th>Инвестор</th><th>Назначение</th><th>Город</th><th class="r">Сумма</th><th>Источник</th><th>Кто внёс</th><th class="r"></th></tr></thead>
+            <thead><tr><th>Дата</th><th>Инвестор</th><th>Назначение</th><th>Город</th><th class="r">Сумма</th><th>Источник</th><th>Кто внёс</th><th>Документы</th><th class="r"></th></tr></thead>
             <tbody id="biz-expenses-tbody"></tbody>
           </table>
         </div>
@@ -4114,7 +4116,7 @@ async function renderBusinessExpenses() {
 
   const tbody = document.getElementById('biz-expenses-tbody');
   if (!data.expenses.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:var(--muted);">Трат за выбранный период пока нет.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="padding:1.5rem;text-align:center;color:var(--muted);">Трат за выбранный период пока нет.</td></tr>';
     return;
   }
   tbody.innerHTML = data.expenses.map(function(e) {
@@ -4127,6 +4129,12 @@ async function renderBusinessExpenses() {
       '<td class="r" style="font-weight:700;color:var(--deep);white-space:nowrap;">' + Number(e.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
       '<td><span class="stock-pill ' + (e.source === 'telegram' ? 'stock-ok' : '') + '">' + source + '</span></td>' +
       '<td style="color:var(--muted);">' + businessExpenseEsc(e.created_by || '—') + '</td>' +
+      '<td style="min-width:230px">' +
+        (window.HvostExpenseEvidence ?
+          window.HvostExpenseEvidence.fileRows(e.documents || [],{allowDelete:true}) : '—') +
+        '<label class="row-btn" style="display:inline-block;cursor:pointer;margin:5px 0">➕ Прикрепить файл' +
+          '<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.pptx,.odt,.ods,.txt,.csv,.xml,.rtf,.zip" multiple style="display:none" ' +
+          'onchange="uploadBusinessExpenseDocuments(' + Number(e.id) + ',this)"></label></td>' +
       '<td class="r"><button class="row-btn danger" onclick="deleteBusinessExpense(' + Number(e.id) + ')">✕</button></td>' +
       '</tr>';
   }).join('');
@@ -4140,6 +4148,38 @@ function resetBusinessExpenseFilters() {
   renderBusinessExpenses();
 }
 
+async function uploadBusinessExpenseDocuments(expenseId,input){
+  if(!input || !input.files || !input.files.length)return;
+  if(!window.HvostExpenseEvidence)return alert('Загрузка документов недоступна. Обновите страницу.');
+  input.disabled=true;
+  try {
+    await window.HvostExpenseEvidence.upload(expenseId,input.files,adminToken);
+    await renderBusinessExpenses();
+  }catch(error){
+    alert('Трата №'+expenseId+' сохранена. Ошибка вложения: '+error.message+
+      '. Уже прикреплённые файлы не удалены. Вы можете повторить загрузку в журнале.');
+    await renderBusinessExpenses();
+  }finally{input.disabled=false;input.value='';}
+}
+document.addEventListener('click',async function(event){
+  var action=event.target && event.target.closest('[data-expense-file-action]');
+  if(!action || !document.getElementById('sec-business-expenses') ||
+     document.getElementById('sec-business-expenses').style.display==='none')return;
+  var id=Number(action.dataset.expenseDocId),filename=action.dataset.expenseDocName;
+  if(!Number.isSafeInteger(id)||id<=0||!window.HvostExpenseEvidence)return;
+  event.preventDefault();
+  var type=action.dataset.expenseFileAction;
+  if(type==='delete'&&!confirm('Удалить подтверждающий файл «'+filename+'»?'))return;
+  action.disabled=true;
+  try{
+    if(type==='download')await window.HvostExpenseEvidence.download(id,filename,adminToken);
+    else if(type==='delete'){
+      await window.HvostExpenseEvidence.remove(id,adminToken);
+      await renderBusinessExpenses();
+    }
+  }catch(error){alert('Не удалось обработать документ: '+error.message);}
+  finally{action.disabled=false;}
+});
 async function addBusinessExpense() {
   const payload = {
     expense_date: document.getElementById('biz-exp-date').value,
@@ -4158,15 +4198,26 @@ async function addBusinessExpense() {
   }
   const res = await authFetch('/api/economics/expenses', { method:'POST', body:payload });
   const data = await res.json();
+  const evidenceInput=document.getElementById('biz-exp-evidence-files');
   if (!res.ok) {
     error.textContent = data.error || 'Не удалось сохранить трату.';
     error.style.display = 'block';
     return;
   }
+  // Expense is committed first. Receipt upload errors must not cause a second
+  // expense to be created: preserve the new ID and let admin retry by row.
+  var attachError='';
+  if(evidenceInput && evidenceInput.files && evidenceInput.files.length){
+    try{
+      await window.HvostExpenseEvidence.upload(data.id,evidenceInput.files,adminToken);
+    }catch(e){attachError=e.message;}
+  }
+  if(evidenceInput)evidenceInput.value='';
   document.getElementById('biz-exp-amount').value = '';
   document.getElementById('biz-exp-purpose').value = '';
   document.getElementById('biz-exp-note').value = '';
   await renderBusinessExpenses();
+  if(attachError){error.textContent='Трата №'+data.id+' сохранена, но файл не прикреплён: '+attachError+'. Добавьте файл через журнал.';error.style.display='block';}
 }
 
 async function deleteBusinessExpense(id) {
