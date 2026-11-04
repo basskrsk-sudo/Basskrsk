@@ -141,3 +141,34 @@ test('GitHub workflow schedules checks every five minutes and limits permissions
   assert.match(text,/HM_MONITOR_CHAT_ID/);
   assert.doesNotMatch(text,/bot\d{6,}:/);
 });
+
+test('Telegram delivery can resume after the secrets are added without duplicating incidents',async()=>{
+  const gh=issuesApi(),state={statuses:{'/api/health':503}};
+  let enabled=false;
+  const messages=[];
+  const opts={
+    api:gh.api,wait:immediate,logger:log,fetchImpl:fakeFetch(state),
+    notify:async text=>{
+      if(!enabled)return {sent:false,configured:false};
+      messages.push(text);return {sent:true};
+    },
+  };
+  const first=await run(opts);
+  assert.equal(first.status,'down');
+  assert.equal(first.notified,false);
+  assert.equal(gh.issues.length,1);
+  assert.match(gh.issues[0].body,/hm-telegram-alert:pending/);
+  enabled=true;
+  const second=await run(opts);
+  assert.equal(second.status,'still_down');
+  assert.equal(messages.length,1);
+  assert.match(gh.issues[0].body,/hm-telegram-alert:sent/);
+  assert.equal(gh.issues.length,1);
+  await run(opts);
+  assert.equal(messages.length,1,'must not send a repeated down alert once acknowledged');
+  state.statuses={};
+  const recovered=await run(opts);
+  assert.equal(recovered.status,'recovered');
+  assert.equal(messages.length,2);
+  assert.match(messages[1],/восстановлен/);
+});
