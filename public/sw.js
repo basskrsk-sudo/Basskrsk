@@ -1,75 +1,55 @@
-// sw.js — общий service worker для всех панелей (админка/грумер/менеджер).
-// Кэшируется только статическая оболочка (HTML/иконки/JS-библиотеки).
-// Запросы к /api/ ВСЕГДА идут напрямую в сеть, без кэша — там живые данные
-// (заказы, остатки, токены авторизации), кэшировать их нельзя ни в коем случае.
-
-const CACHE_NAME = 'hvostmarket-shell-v64-warehouse-decrease-20261026';
+// Versioned static assets only: never cache authenticated HTML or APIs.
+// A stale page returned by an older service worker could strand Telegram Mini App
+// on an incompatible bundle after rollout. Offline access is read-only at best.
+const CACHE_NAME = 'hvostmarket-shell-v65-reliability-20261104';
 const SHELL_FILES = [
-  '/taiga-admin.html',
-  '/taiga-groomer.html',
-  '/taiga-manager.html',
-  '/taiga-warehouse.html',
-  '/config.js',
-  '/qrcode.min.js',
-  '/salon-photo-gallery.js',
-  '/payout-schedule.js',
-  '/payout-schedule.css',
-  '/telegram-connect.js',
-  '/telegram-connect.css',
-  '/max-connect.js',
   '/favicon.svg',
   '/favicon.ico',
-  '/images/hvostmarket-logo-v3-transparent.png',
-  '/images/hvostmarket-mark-v3-transparent.png',
-  '/images/mascot/catalog-v2.png',
-  '/images/mascot/product.png',
-  '/images/mascot/cart-full.png',
-  '/images/mascot/cart-empty.png',
-  '/images/mascot/checkout.png',
-  '/images/mascot/order-success.png',
-  '/images/mascot/locations.png',
-  '/images/mascot/bones.png',
-  '/images/mascot/not-found.png',
   '/images/icons/icon-192.png',
   '/images/icons/icon-512.png',
 ];
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_FILES)).catch(() => {})
-  );
+self.addEventListener('install', function(event){
+  event.waitUntil(caches.open(CACHE_NAME).then(function(cache){
+    return Promise.all(SHELL_FILES.map(function(url){
+      return fetch(url).then(function(res){
+        return res.ok ? cache.put(url,res) : null;
+      }).catch(function(){});
+    }));
+  }).catch(function(){}));
   self.skipWaiting();
 });
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((names) =>
-      Promise.all(names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n)))
-    )
-  );
+self.addEventListener('activate',function(event){
+  event.waitUntil(caches.keys().then(function(names){
+    return Promise.all(names.filter(function(name){
+      return name.startsWith('hvostmarket-shell-') && name!==CACHE_NAME;
+    }).map(function(name){return caches.delete(name);}));
+  }));
   self.clients.claim();
 });
-
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-
-  // API-запросы — никогда не кэшируем, всегда напрямую в сеть.
-  if (url.pathname.startsWith('/api/')) {
-    return; // не перехватываем — браузер сам сходит в сеть как обычно
-  }
-
-  // Только GET-запросы имеет смысл кэшировать.
-  if (event.request.method !== 'GET') return;
-
-  // Статика: сеть в приоритете (чтобы не залипнуть на старой версии после
-  // обновления сайта), а кэш — как резерв на случай обрыва связи.
+self.addEventListener('fetch',function(event){
+  var request=event.request;
+  if(request.method!=='GET')return;
+  var url=new URL(request.url);
+  if(url.origin!==self.location.origin)return;
+  // Never intercept navigation, Mini App login shells, private accounts, or
+  // config and SW scripts. Returning old HTML/JS may leak stale role state.
+  if(request.mode==='navigate' || url.pathname.startsWith('/api/') ||
+      url.pathname.endsWith('.html') || url.pathname==='/config.js' ||
+      url.pathname==='/sw.js')return;
+  var isIcon=SHELL_FILES.includes(url.pathname);
+  var version=url.searchParams.get('v');
+  // The server generates SHA-256 20-char asset versions.
+  var isImmutable=/^[a-f0-9]{20}$/.test(version||'') &&
+    /\.(?:js|css|png|jpg|jpeg|webp|svg|woff2|ico)$/.test(url.pathname);
+  if(!isIcon && !isImmutable)return;
   event.respondWith(
-    fetch(event.request)
-      .then((res) => {
-        const resClone = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
-        return res;
-      })
-      .catch(() => caches.match(event.request))
+    fetch(request).then(function(response){
+      if(response && response.ok && response.type!=='opaque'){
+        var copy=response.clone();
+        caches.open(CACHE_NAME).then(function(cache){return cache.put(request,copy);}).catch(function(){});
+      }
+      return response;
+    }).catch(function(){return caches.match(request);})
   );
 });
