@@ -725,8 +725,13 @@
       if (wantsTasks) normalCalls.push(fetchJSON('/api/miniapp/tasks',token));
       var wantDiagnostics = role === 'admin';
       if(wantDiagnostics)normalCalls.push(fetchJSON('/api/miniapp/diagnostics-summary',token));
+      var wantSystemHealth=role==='admin';
+      if(wantSystemHealth)normalCalls.push(fetchJSON('/api/admin/system-health',token));
       var results = await Promise.allSettled(normalCalls);
       if (mySerial !== serial || role !== activeRole) return;
+      var systemResponse=wantSystemHealth ? results.pop() : null;
+      var systemData=systemResponse && systemResponse.status==='fulfilled'
+        ? systemResponse.value : null;
       var diagnosticResponse=wantDiagnostics ? results.pop() : null;
       var diagnosticData=diagnosticResponse && diagnosticResponse.status==='fulfilled'
         ? diagnosticResponse.value : null;
@@ -746,7 +751,7 @@
       if (role === 'manager') html += managerDashboard(data);
       if (role === 'owner') html += ownerDashboard(data);
       if (role === 'founder' && window.HvostBusinessFounder) html += window.HvostBusinessFounder.render(data[0],token);
-      if (role === 'admin') html += adminDashboard(data,diagnosticData);
+      if (role === 'admin') html += adminDashboard(data,diagnosticData,systemData);
       dashboardMarkup = html + dashboardFooter(role);
       root.innerHTML = dashboardMarkup;
       if (role === 'admin' && currentUser && currentUser.role === 'super' && window.HvostBusinessFounderAdmin) window.HvostBusinessFounderAdmin.populate();
@@ -1468,7 +1473,7 @@
       adminRegistrationBusy = false;
     }
   }
-  function adminDashboard(data,diagnostics) {
+  function adminDashboard(data,diagnostics,systemHealth) {
     var allPoints = data[0] && data[0].points || [];
     // Match the founder network counter: only current, non-hub minimarkets.
     var points = allPoints.filter(function(p) {
@@ -1502,6 +1507,29 @@
             number(row.occurrences));
         }))
       : '<p class="work-note">Телеметрия пока недоступна. Запуск и работа кабинетов от неё не зависят.</p>';
+    var health=systemHealth || {};
+    var good=health.status==='ok';
+    var healthContent=health.status
+      ? '<div class="work-stats">'+
+          stat('Node.js',good?'Работает':'Требует внимания',
+            'Запущен '+number(Math.floor((health.uptime_seconds||0)/60))+' мин. назад')+
+          stat('SQLite',health.checks && health.checks.database==='ok'?'Работает':'Ошибка',
+            'Проверка доступности БД')+
+          stat('Хранилище',health.checks && health.checks.storage==='ok'?'Работает':'Ошибка',
+            'Возможность записи /data')+
+          stat('Память',health.memory ? number(health.memory.rss_mb)+' МБ':'—',
+            health.memory && health.memory.limit_mb ? 'Лимит: '+number(health.memory.limit_mb)+' МБ':'Лимит не определён')+
+        '</div>'+
+        '<p class="work-note">Свободно на диске: '+(health.storage_free_mb==null?'—':number(health.storage_free_mb)+' МБ')+
+          ' · Задержка Node.js: '+(health.event_loop_delay_ms==null?'—':number(health.event_loop_delay_ms)+' мс')+'</p>'+
+        rows((health.events||[]).slice(0,7).map(function(event){
+          return line(event.severity==='critical'?'🔴 '+event.event_type:
+            event.severity==='warning'?'🟠 '+event.event_type:'✅ '+event.event_type,
+            date(event.created_at)+' · '+event.detail, null);
+        }))
+      : '<p class="work-note">Данные контроля сервера пока недоступны. '
+        + 'Попробуйте обновить кабинет.</p>';
+    html += surface('💓 Состояние системы',healthContent);
     html += surface('🩺 Надёжность Mini App',reliabilityContent);
     html += surface('📦 Центральный склад',
       '<button class="work-primary" type="button" data-work-action="admin-wh-open">' +
