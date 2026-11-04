@@ -1688,6 +1688,20 @@ ensureColumn('restock_requests', 'city_id', "TEXT NOT NULL DEFAULT 'krsk'");
 ensureColumn('expenses', 'city_id', "TEXT NOT NULL DEFAULT 'krsk'");
 ensureColumn('expenses', 'investor_name', 'TEXT');
 ensureColumn('expenses', 'source', "TEXT NOT NULL DEFAULT 'admin'");
+// Permanent, append-only correction ledger. No cascading foreign key to
+// expenses: financial audit must survive an expense being deleted later.
+db.exec(
+  'CREATE TABLE IF NOT EXISTS expense_date_change_log (' +
+  'id INTEGER PRIMARY KEY AUTOINCREMENT,' +
+  'expense_id INTEGER NOT NULL,' +
+  'old_date TEXT NOT NULL,new_date TEXT NOT NULL,' +
+  'reason TEXT NOT NULL,admin_id INTEGER NOT NULL,admin_login TEXT NOT NULL,' +
+  "created_at TEXT NOT NULL DEFAULT (datetime('now'))" +
+  ')'
+);
+db.exec('CREATE INDEX IF NOT EXISTS idx_expense_date_change_log_created ' +
+  'ON expense_date_change_log(created_at DESC,id DESC)');
+
 // После сохранения траты Telegram может принимать прикреплённые чеки.
 ensureColumn('expense_bot_drafts', 'expense_id', 'INTEGER REFERENCES expenses(id)');
 // Accept receipts sent while the user is reviewing a Telegram expense, but
