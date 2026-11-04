@@ -8,6 +8,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
+const { createDatabaseSnapshot } = require('./database-snapshot');
 const db = require('./db');
 const { sendEmail } = require('./email');
 const { getRestorePaths, validateDatabaseFile } = require('./database-restore');
@@ -21,11 +23,11 @@ async function sendDatabaseBackup() {
     return { ok: false, skipped: true };
   }
 
-  const tempPath = path.join(path.dirname(db.DB_PATH), 'backup-tmp-' + Date.now() + '.db');
+  const tempPath = path.join(path.dirname(db.DB_PATH), 'backup-tmp-' + randomUUID() + '.db');
   try {
     // VACUUM INTO — создаёт полноценный, консистентный снимок базы отдельным
     // файлом прямо средствами SQLite, безопасно при параллельной работе сервера.
-    db.exec(`VACUUM INTO '${tempPath.replace(/'/g, "''")}'`);
+    await createDatabaseSnapshot(db.DB_PATH, tempPath);
     const fileBuffer = fs.readFileSync(tempPath);
     const sizeKb = Math.round(fileBuffer.length / 1024);
 
@@ -80,15 +82,15 @@ function registerBackupRoutes(router) {
   // безопасный снимок через VACUUM INTO, что и у email-версии выше, просто
   // отдаётся сразу как файл. Удобно перед заливкой новой версии сайта —
   // один клик в админке, файл сразу на компьютере.
-  router.get('/api/backup/download', (req, res, ctx) => {
+  router.get('/api/backup/download', async (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
 
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const tempPath = path.join(path.dirname(db.DB_PATH), 'backup-dl-' + Date.now() + '.db');
+    const tempPath = path.join(path.dirname(db.DB_PATH), 'backup-dl-' + randomUUID() + '.db');
     try {
       if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      db.exec(`VACUUM INTO '${tempPath.replace(/'/g, "''")}'`);
+      await createDatabaseSnapshot(db.DB_PATH, tempPath);
       const stat = fs.statSync(tempPath);
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
@@ -114,7 +116,7 @@ function registerBackupRoutes(router) {
   // копию текущего состояния и кладём загрузку в pending. После ответа
   // процесс завершается; на следующем запуске database-restore.js установит
   // pending-файл до открытия основного SQLite-соединения.
-  router.post('/api/backup/restore', (req, res, ctx) => {
+  router.post('/api/backup/restore', async (req, res, ctx) => {
     const payload = ctx.authenticatedPayload || requireSuperAdmin(req, res, ctx);
     if (!payload) return;
 
@@ -129,14 +131,14 @@ function registerBackupRoutes(router) {
     const paths = getRestorePaths();
     const uploadPath = path.join(paths.dataDir, 'restore-upload-' + Date.now() + '.db');
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const safetyBackupPath = path.join(paths.dataDir, 'taiga-before-restore-' + stamp + '-' + Date.now() + '.db');
+    const safetyBackupPath = path.join(paths.dataDir, 'taiga-before-restore-' + stamp + '-' + randomUUID() + '.db');
 
     try {
       fs.mkdirSync(paths.dataDir, { recursive: true });
       fs.writeFileSync(uploadPath, ctx.rawBody, { mode: 0o600 });
       validateDatabaseFile(uploadPath);
 
-      db.exec(`VACUUM INTO '${safetyBackupPath.replace(/'/g, "''")}'`);
+      await createDatabaseSnapshot(db.DB_PATH, safetyBackupPath);
       if (fs.existsSync(paths.pending)) fs.unlinkSync(paths.pending);
       fs.renameSync(uploadPath, paths.pending);
 
