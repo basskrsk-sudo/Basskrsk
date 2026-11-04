@@ -10,6 +10,7 @@
 
 const db = require('./db');
 const { sendJson } = require('./http-utils');
+const { listExpenseDocuments, cleanupAfterDeletedExpense } = require('./expense-documents');
 const { requireAuth, requireSuperAdmin } = require('./routes-auth');
 const {
   calculateUnitEconomics,
@@ -215,8 +216,9 @@ function registerEconomicsRoutes(router) {
       GROUP BY COALESCE(NULLIF(TRIM(investor_name), ''), 'Не указан')
       ORDER BY total DESC, investor_name
     `).all(...params);
+    const documents=listExpenseDocuments(rows.map(row=>row.id));
     sendJson(res, 200, {
-      expenses: rows,
+      expenses: rows.map(row=>({ ...row,documents:documents[row.id]||[] })),
       summary: {
         total: rows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
         entries_count: rows.length,
@@ -260,7 +262,9 @@ function registerEconomicsRoutes(router) {
   router.delete('/api/economics/expenses/:id', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
+    const documents=db.prepare('SELECT storage_name FROM expense_documents WHERE expense_id=?').all(ctx.params.id);
     db.prepare('DELETE FROM expenses WHERE id = ?').run(ctx.params.id);
+    cleanupAfterDeletedExpense(documents.map(doc=>doc.storage_name));
     sendJson(res, 200, { ok: true });
   });
 }
