@@ -32,6 +32,7 @@
 })();
 </script>
 <script src="/miniapp-telegram-context.js"></script>
+<script src="/miniapp-reliability.js"></script>
 <style>
 :root{--green:#0b4b39;--green2:#14674b;--leaf:#2a8c62;--text:#193b30;--muted:#718378;--bg:#f7f7f1;--cream:#fffdf8;--gold:#f6c44f;--line:#e7eae1;--shadow:0 5px 22px rgba(12,66,44,.07)}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Manrope,system-ui,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent}button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.5}a{color:var(--green2)}.app{margin:auto;max-width:540px;min-height:100vh;padding-bottom:calc(83px + env(safe-area-inset-bottom,0px))}.hide{display:none!important}
@@ -123,7 +124,7 @@ function applyTelegramChromeColors(){
   try{tg.setHeaderColor(TELEGRAM_NATIVE_HEADER_COLOR)}catch(_){}
   try{tg.setBackgroundColor('#f7f7f1')}catch(_){}
 }
-var state = {products:[],points:[],pointId:'',category:'all',search:'',view:'shop',cart:[],partners:[],advisor:'',name:'',phone:'',email:'',promo:'',promoValid:false,promoInfo:null,promoKey:'',verified:false,user:null,selectedProduct:null,selectedVariant:null,pendingCode:''};
+var state = {products:[],points:[],pointId:'',category:'all',search:'',view:'shop',cart:[],partners:[],advisor:'',name:'',phone:'',email:'',promo:'',promoValid:false,promoInfo:null,promoKey:'',verified:false,user:null,selectedProduct:null,selectedVariant:null,pendingCode:'',paymentUncertain:false};
 var CATEGORY = {all:'Все',treats:'🦴 Лакомства',toys:'🧸 Игрушки',accessories:'🎀 Аксессуары',care:'🫧 Уход'};
 function el(id){return document.getElementById(id)}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -139,7 +140,7 @@ function totalQty(){return state.cart.reduce(function(a,i){return a+i.qty},0)}
 function subtotal(){return state.cart.reduce(function(a,i){return a+i.price*i.qty},0)}
 function persistPoint(){try{localStorage.setItem('hm_miniapp_point',String(state.pointId))}catch(_){}}
 function readPoint(){try{return localStorage.getItem('hm_miniapp_point')||''}catch(_){return ''}}
-async function api(url,options){var r=await fetch(url,Object.assign({cache:'no-store'},options||{}));var data=await r.json().catch(function(){return {}});if(!r.ok)throw new Error(data.error||'Ошибка сервера ('+r.status+')');return data}
+async function api(url,options){var r=await (window.HvostMiniAppReliability?window.HvostMiniAppReliability.request:fetch)(url,Object.assign({cache:'no-store'},options||{}));var data=await r.json().catch(function(){return {}});if(!r.ok){var err=new Error(data.error||'Ошибка сервера ('+r.status+')');err.status=r.status;if(r.status>=500)err.code='server';throw err}return data}
 function setView(view,skipWorkRender){if(view==='work'&&!isPhoneAccessUnlocked())view='profile';state.view=view;['shop','cart','checkout','profile','work','result'].forEach(function(v){el(v+'Page').classList.toggle('hide',v!==view)});el('navigation').classList.toggle('hide',view==='result');el('header').classList.toggle('hide',view==='result'||view==='work'||view==='profile');Array.from(document.querySelectorAll('.tab')).forEach(function(btn){btn.classList.toggle('on',btn.dataset.view===view)});renderCartIndicators();if(view==='shop')renderProducts();if(view==='cart')renderCart();if(view==='checkout')renderCheckout();if(view==='profile')renderProfile();if(view==='work'&&!skipWorkRender&&window.HvostMiniAppWork)window.HvostMiniAppWork.render();window.scrollTo(0,0)}
 function isPhoneAccessUnlocked(){return !!(window.HvostMiniAppIdentity&&window.HvostMiniAppIdentity.getStatus().verified)}
 function syncPhoneAccess(){
@@ -187,12 +188,28 @@ function checkoutTotal(){return subtotal()-(state.promoValid?Math.round(subtotal
 function renderCheckout(){var point=currentPoint();if(!point||!state.cart.length){setView('cart');return}el('checkoutPage').innerHTML='<h1 class="page-title">Оформление заказа</h1><div class="block"><div class="checkout-point">📍 '+esc(point.name)+'<small>'+esc(point.addr||'Самовывоз после оплаты')+'</small></div><label class="form-label" for="buyerName">Как к вам обращаться?</label><input id="buyerName" class="form-field" autocomplete="given-name" placeholder="Ваше имя" maxlength="100" value="'+esc(state.name)+'"><label class="form-label" for="buyerPhone">Номер телефона *</label><input id="buyerPhone" class="form-field" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 999 123-45-67" value="'+esc(state.phone)+'"><p class="hint">Телефон нужен для оформления покупки. Telegram не передаёт его автоматически.</p><label class="form-label" for="advisorSelect">Кто помог выбрать товар? *</label><select id="advisorSelect" class="form-field"><option value="">— Выберите —</option>'+state.partners.map(function(p){return '<option value="'+esc(p.id)+'" '+(String(p.id)===state.advisor?'selected':'')+'>'+esc(p.full_name)+'</option>'}).join('')+'<option value="self" '+(state.advisor==='self'?'selected':'')+'>Выбрал всё сам</option></select><label class="form-label" for="promoInput">Промокод (если есть)</label><div style="display:flex;gap:8px"><input id="promoInput" class="form-field" placeholder="Промокод" value="'+esc(state.promo)+'"><button type="button" id="promoApply" class="btn btn-light" style="width:auto">Применить</button></div><div id="promoMessage">'+(state.promoValid?'<div class="ok">Промокод применён: скидка 20% на товары</div>':'')+'</div></div><div class="block"><div class="total-row"><span>Товары</span><strong>'+money(subtotal())+'</strong></div>'+(state.promoValid?'<div class="total-row"><span>Промокод −20%</span><strong>−'+money(Math.round(subtotal()*.2))+'</strong></div>':'')+'<div class="total-row" style="border-top:1px solid var(--line);padding-top:12px"><span>К оплате</span><b>'+money(checkoutTotal())+'</b></div><div id="checkoutError" class="error hide"></div><button class="btn btn-gold" type="button" id="payButton" '+(!state.verified?'disabled':'')+'>Оплатить '+money(checkoutTotal())+' →</button><div class="secure">🔒 ЮKassa · СБП и банковские карты</div>'+(!state.verified?'<p class="hint" style="text-align:center">Оплата доступна после запуска через подключённого Telegram-бота. Сейчас открыт режим просмотра.</p>':'')+'</div>'}
 async function applyPromo(){state.promo=el('promoInput').value.trim();state.phone=el('buyerPhone').value;state.name=el('buyerName').value;state.advisor=el('advisorSelect').value;state.promoValid=false;state.promoKey='';if(!state.promo){renderCheckout();return false}var phone=cleanPhone(state.phone);if(!phone){el('promoMessage').innerHTML='<div class="error">Сначала укажите корректный номер телефона</div>';return false}try{var result=await api('/api/first-purchase-promo/validate?code='+encodeURIComponent(state.promo)+'&phone='+encodeURIComponent(phone)+'&point_id='+encodeURIComponent(state.pointId));if(!result.valid){el('promoMessage').innerHTML='<div class="error">'+esc(result.error||'Промокод не подходит для этой покупки')+'</div>';return false}state.promoValid=true;state.promoInfo=result;state.promoKey=promoKey();renderCheckout();toast('Промокод применён');return true}catch(e){el('promoMessage').innerHTML='<div class="error">'+esc(e.message)+'</div>';return false}}
 async function reloadStock(){var d=await api('/api/products');state.products=d.products||[];var updated=[];for(var i of state.cart){var p=state.products.find(function(x){return String(x.id)===String(i.productId)});var v=p&&(p.variants||[]).find(function(x){return String(x.id)===String(i.variantId)});if(!v||!v.active||pointStock(v)<i.qty||Number(v.price)!==i.price)return false;updated.push(i)}return true}
-async function pay(){if(!state.verified){toast('Откройте приложение через Telegram-бота');return}if(!currentPoint()||!state.cart.length)return;state.name=el('buyerName').value.trim();state.phone=el('buyerPhone').value;state.advisor=el('advisorSelect').value;state.promo=el('promoInput').value.trim();var phone=cleanPhone(state.phone);if(!phone){showCheckoutError('Введите корректный номер мобильного телефона');return}if(!state.advisor){showCheckoutError('Укажите, кто помог выбрать товар, или «Выбрал всё сам»');return}if(state.promo){if(!state.promoValid||state.promoKey!==promoKey()){var ok=await applyPromo();if(!ok){showCheckoutError('Промокод нужно проверить перед оплатой');return}}}else{state.promoValid=false;state.promoKey=''}
-var button=el('payButton');button.disabled=true;button.textContent='Проверяем остатки…';
-try{if(!await reloadStock()){state.cart=[];renderCartIndicators();setView('shop');toast('Наличие или цена изменились — выберите товары заново');return}button.textContent='Создаём платёж…';var orderCode='TMA-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);var point=currentPoint();var data=await api('/api/create-payment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:orderCode,amount:checkoutTotal(),method:'yookassa',customerPhone:phone,customerEmail:state.email||null,customerName:state.name||state.user&&state.user.first_name||'Клиент',customerLname:'',pickupPoint:point.name+(point.addr?' — '+point.addr:''),pointId:point.id,partnerId:state.advisor==='self'?null:Number(state.advisor),advisorSelection:state.advisor==='self'?'self':null,comment:null,bonesUsed:0,fulfillmentType:'pickup',deliveryAddress:null,cityId:null,referralCode:null,promoCode:state.promoValid?state.promo.trim().toUpperCase():null,confirmationMode:'redirect',returnPath:'/miniapp.html',cartItems:state.cart.map(function(i){return {variantId:i.variantId,qty:i.qty}})})});state.pendingCode=orderCode;if(data.demo){showResult('paid',orderCode);return}if(!data.confirmation_url||!/^https:\/\//i.test(data.confirmation_url))throw new Error('Платёж создан, но ссылка ЮKassa отсутствует. Обратитесь в поддержку с номером '+orderCode);window.location.assign(data.confirmation_url)}catch(e){showCheckoutError(e.message);button.disabled=false;button.textContent='Повторить оплату · '+money(checkoutTotal())}}
+async function pay(){if(state.paymentUncertain&&state.pendingCode){showResult('pending',state.pendingCode);return}if(!state.verified){toast('Откройте приложение через Telegram-бота');return}if(!currentPoint()||!state.cart.length)return;state.name=el('buyerName').value.trim();state.phone=el('buyerPhone').value;state.advisor=el('advisorSelect').value;state.promo=el('promoInput').value.trim();var phone=cleanPhone(state.phone);if(!phone){showCheckoutError('Введите корректный номер мобильного телефона');return}if(!state.advisor){showCheckoutError('Укажите, кто помог выбрать товар, или «Выбрал всё сам»');return}if(state.promo){if(!state.promoValid||state.promoKey!==promoKey()){var ok=await applyPromo();if(!ok){showCheckoutError('Промокод нужно проверить перед оплатой');return}}}else{state.promoValid=false;state.promoKey=''}
+var button=el('payButton');var paymentRequestStarted=false;button.disabled=true;button.textContent='Проверяем остатки…';
+try{if(!await reloadStock()){state.cart=[];renderCartIndicators();setView('shop');toast('Наличие или цена изменились — выберите товары заново');return}button.textContent='Создаём платёж…';var orderCode='TMA-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);var point=currentPoint();state.pendingCode=orderCode;paymentRequestStarted=true;var data=await api('/api/create-payment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:orderCode,amount:checkoutTotal(),method:'yookassa',customerPhone:phone,customerEmail:state.email||null,customerName:state.name||state.user&&state.user.first_name||'Клиент',customerLname:'',pickupPoint:point.name+(point.addr?' — '+point.addr:''),pointId:point.id,partnerId:state.advisor==='self'?null:Number(state.advisor),advisorSelection:state.advisor==='self'?'self':null,comment:null,bonesUsed:0,fulfillmentType:'pickup',deliveryAddress:null,cityId:null,referralCode:null,promoCode:state.promoValid?state.promo.trim().toUpperCase():null,confirmationMode:'redirect',returnPath:'/miniapp.html',cartItems:state.cart.map(function(i){return {variantId:i.variantId,qty:i.qty}})})});state.paymentUncertain=false;if(data.demo){showResult('paid',orderCode);return}if(!data.confirmation_url||!/^https:\/\//i.test(data.confirmation_url))throw new Error('Платёж создан, но ссылка ЮKassa отсутствует. Обратитесь в поддержку с номером '+orderCode);window.location.assign(data.confirmation_url)}catch(e){if(paymentRequestStarted&&e&&['timeout','network','offline','server'].includes(e.code)&&state.pendingCode){state.paymentUncertain=true;showResult('pending',state.pendingCode);toast('Связь прервалась. Проверьте статус заказа перед новой оплатой.');return}state.pendingCode='';showCheckoutError(e.message);button.disabled=false;button.textContent='Повторить оплату · '+money(checkoutTotal())}}
 function showCheckoutError(message){var x=el('checkoutError');if(x){x.textContent=message;x.classList.remove('hide')}else toast(message)}
-function showResult(status,code){state.view='result';setView('result');if(status==='paid')state.cart=[];renderCartIndicators();var paid=status==='paid';el('resultPage').innerHTML='<div class="block profile-hero" style="margin-top:30px"><div style="font-size:59px">'+(paid?'✅':'⏳')+'</div><h2>'+(paid?'Оплата прошла!':'Проверяем оплату')+'</h2><p>'+(paid?'Спасибо за покупку! Заберите товар с полки выбранного минимаркета.':'Если вы уже оплатили заказ, подтвердим статус после ответа платёжного сервиса.')+'</p><div class="ok" style="margin:17px 0">Заказ № '+esc(code)+'</div>'+(paid?'<button class="btn btn-gold" type="button" data-action="shop">Продолжить покупки</button>':'<button class="btn btn-gold" id="statusAgain" type="button">Проверить статус</button>')+'</div>'}
-async function checkPaymentReturn(code){setView('result');el('resultPage').innerHTML='<div class="empty" style="margin-top:40px">⏳ Проверяем оплату…</div>';try{var d=await api('/api/order-payment-status/'+encodeURIComponent(code));showResult(d.paid?'paid':'pending',code)}catch(e){showResult('pending',code);toast(e.message)}}
+function showResult(status,code){
+ state.view='result';setView('result');
+ var paid=status==='paid',failed=status==='failed';
+ if(paid)state.cart=[];
+ renderCartIndicators();
+ var title=paid?'Оплата прошла!':failed?'Платёж отменён':'Проверяем оплату';
+ var msg=paid?'Спасибо за покупку! Заберите товар с полки выбранного минимаркета.':
+   failed?'Этот платёж не состоялся. Вы можете вернуться к оформлению нового заказа.':
+   'Если создание платежа прервалось, не нажимайте оплату повторно: сначала проверьте статус этого заказа.';
+ var action=paid?'<button class="btn btn-gold" type="button" data-action="shop">Продолжить покупки</button>':
+   failed?'<button class="btn btn-gold" type="button" data-action="shop">Вернуться в магазин</button>':
+   '<button class="btn btn-gold" id="statusAgain" type="button">Проверить статус заказа</button>';
+ el('resultPage').innerHTML='<div class="block profile-hero" style="margin-top:30px">'+
+   '<div style="font-size:59px">'+(paid?'✅':failed?'❌':'⏳')+'</div>'+
+   '<h2>'+title+'</h2><p>'+msg+'</p><div class="ok" style="margin:17px 0">'+
+   'Заказ № '+esc(code)+'</div>'+action+'</div>';
+}
+async function checkPaymentReturn(code){setView('result');el('resultPage').innerHTML='<div class="empty" style="margin-top:40px">⏳ Проверяем оплату…</div>';try{var d=await api('/api/order-payment-status/'+encodeURIComponent(code));if(d.paid)state.paymentUncertain=false;if(d.status==='failed'){state.paymentUncertain=false;state.pendingCode=''}showResult(d.paid?'paid':d.status==='failed'?'failed':'pending',code)}catch(e){showResult('pending',code);toast(e.message)}}
 function renderProfile(){if(window.HvostMiniAppCustomer)return window.HvostMiniAppCustomer.render(state.user,state.verified);var name=state.user?state.user.first_name+(state.user.last_name?' '+state.user.last_name:''):'Гость';el('profilePage').innerHTML='<h1 class="page-title">Мой профиль</h1><div class="block profile-hero"><div class="avatar">🐾</div><h2>'+esc(name)+'</h2><p>'+(state.verified?'✅ Вход через Telegram подтверждён':'Режим просмотра — откройте через Telegram')+'</p></div><div class="block"><b>📍 Мой минимаркет</b><p class="muted">'+esc(currentPoint()?currentPoint().name:'Не выбран')+'</p><button class="btn btn-light" type="button" data-action="points">Сменить минимаркет</button></div><div class="block"><b>История заказов и косточки</b><p class="muted">Появятся после безопасной привязки аккаунта покупателя по номеру телефона. Telegram-аккаунт сам по себе не даёт доступ к покупкам по номеру.</p></div><p style="font-size:12px;text-align:center"><a href="/privacy-policy.html" target="_blank" rel="noopener">Политика конфиденциальности</a> · <a href="/purchase-guide.html" target="_blank" rel="noopener">Как покупать</a></p>'}
 async function auth(){if(tg){applyTelegramChromeColors();try{tg.ready();tg.expand();if(typeof tg.onEvent==='function')tg.onEvent('themeChanged',applyTelegramChromeColors)}catch(_){}}
 if(!tg||!tg.initData){
@@ -203,8 +220,34 @@ if(!tg||!tg.initData){
   return;
 }
 try{var d=await api('/api/miniapp/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})});state.verified=true;state.user=d.user;state.name=d.user.first_name||'';el('hello').textContent='Привет, '+state.name+'!';el('appMode').textContent='● Telegram'}catch(e){el('appMode').textContent='Нет входа';toast(e.message)}if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.init(tg,state.verified?state.user:null)}
+async function refreshReadOnlyAfterReconnect(){
+  // Only refetch and revalidate: never duplicate payment or inventory writes.
+  if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.refresh();
+  syncPhoneAccess();
+  if(state.paymentUncertain&&state.pendingCode){
+    await checkPaymentReturn(state.pendingCode);
+    return;
+  }
+  if(state.view==='work'&&window.HvostMiniAppWork&&isPhoneAccessUnlocked()){
+    await window.HvostMiniAppWork.refresh();
+    return;
+  }
+  var data=await Promise.all([api('/api/products'),api('/api/points')]);
+  state.products=data[0].products||[];
+  state.points=data[1].points||[];
+  if(!currentPoint()){
+    if(state.points.length===1)selectPoint(state.points[0].id);
+    else{state.pointId='';el('pointName').textContent='Выбрать салон';}
+  }
+  if(state.view==='shop')renderProducts();
+  if(state.view==='cart')renderCart();
+  if(state.view==='checkout')renderCheckout();
+  renderCartIndicators();
+}
 async function init(){
   // Keep the profile as a safe loading view before signed Telegram checks.
+  if(window.HvostMiniAppReliability)
+    window.HvostMiniAppReliability.registerRecovery(refreshReadOnlyAfterReconnect);
   setView('profile');
   if(window.HvostMiniAppIdentity){
     window.HvostMiniAppIdentity.onChange(function(){syncPhoneAccess()});
@@ -223,10 +266,12 @@ async function init(){
     if(view==='shop'||!!query.get('point'))setView('shop');
     // Old ?view=work links safely show the phone and role picker too.
   }
+  var catalogLoaded=false;
   try{
     var data=await Promise.all([api('/api/products'),api('/api/points')]);
     state.products=data[0].products||[];
     state.points=data[1].points||[];
+    catalogLoaded=true;
     var old=readPoint();
     var preset=query.get('point');
     var chosen=state.points.find(function(p){return String(p.id)===String(preset||old)});
@@ -239,6 +284,7 @@ async function init(){
   }
   if(validPayment)await checkPaymentReturn(resultCode);
   renderCartIndicators();
+  if(catalogLoaded&&window.HvostMiniAppReliability)window.HvostMiniAppReliability.markReady();
 }
 el('pointButton').addEventListener('click',showPointSheet);el('cartFloat').addEventListener('click',function(){setView('cart')});el('searchBox').addEventListener('input',function(e){state.search=e.target.value;renderProducts()});el('sheetCover').addEventListener('click',function(e){if(e.target===el('sheetCover'))hideSheet()});
 document.addEventListener('click',function(e){var t=e.target.closest('button');if(!t)return;if(t.hasAttribute('data-close')){hideSheet();return}if(t.hasAttribute('data-view')){

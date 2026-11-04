@@ -59,7 +59,8 @@
   }
   async function post(path, body) {
     if (!telegram || !telegram.initData) throw new Error(telegramUnavailable());
-    var response = await fetch(path, {
+    var reliable = window.HvostMiniAppReliability;
+    var response = await (reliable ? reliable.request : fetch)(path, {
       method: 'POST',
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
@@ -117,7 +118,7 @@
     return copy();
   }
   async function waitForConsent() {
-    for (var i = 0; i < 16; i++) {
+    for (var i = 0; i < 8; i++) {
       await new Promise(function(resolve) { setTimeout(resolve, 1200); });
       await refresh();
       if (identity.verified) return copy();

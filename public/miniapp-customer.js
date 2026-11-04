@@ -130,7 +130,8 @@
     return content + shortcutAction();
   }
   function secureFetch(path, token) {
-    return fetch(path, {
+    var reliable = window.HvostMiniAppReliability;
+    return (reliable ? reliable.request : fetch)(path, {
       cache: 'no-store',
       headers: { Authorization: 'Bearer ' + token },
     }).then(async function(response) {

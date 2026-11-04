@@ -17,6 +17,7 @@ const { Router, readBinaryBody, parseJsonBody, sendJson } = require('./http-util
 const { registerAuthRoutes, requireSuperAdmin } = require('./routes-auth');
 const { registerTelegramConnectionRoutes } = require('./routes-telegram-connections');
 const { registerMiniAppRoutes } = require('./routes-miniapp');
+const { registerMiniAppDiagnosticRoutes } = require('./miniapp-diagnostics');
 const { registerMiniAppAdminRegistrationRoutes } = require('./routes-miniapp-admin-registration');
 const { registerMiniAppAdminWarehouseRoutes } = require('./routes-miniapp-admin-warehouse');
 const { registerNotificationPreferenceRoutes } = require('./routes-notification-preferences');
@@ -101,6 +102,7 @@ const router = new Router();
 registerAuthRoutes(router);
 registerTelegramConnectionRoutes(router);
 registerMiniAppRoutes(router);
+registerMiniAppDiagnosticRoutes(router);
 registerMiniAppAdminRegistrationRoutes(router);
 registerMiniAppAdminWarehouseRoutes(router);
 registerNotificationPreferenceRoutes(router);
