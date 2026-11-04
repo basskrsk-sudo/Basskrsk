@@ -118,8 +118,24 @@ test('main Mini App uses fallback before initializing roles and shows retry inst
   const localBackup=html.indexOf('<script src="/vendor/telegram-web-app-fallback.js"></script>');
   const bridge=html.indexOf('<script src="/miniapp-telegram-context.js"></script>');
   const roles=html.indexOf('<script src="/miniapp-identity.js"></script>');
-  const official=html.indexOf('<script src="https://telegram.org/js/telegram-web-app.js"></script>');
-  assert.ok(official>=0 && official<localBackup && localBackup<bridge && bridge<roles);
+  const official=html.indexOf('<script async src="https://telegram.org/js/telegram-web-app.js"></script>');
+  const bootstrap=html.indexOf('<script data-hm-ready-bootstrap>');
+  assert.ok(official>=0 && official<localBackup && localBackup<bootstrap &&
+    bootstrap<bridge && bridge<roles,
+    'local Telegram readiness bootstrap must run before identity or role APIs');
+  const bootstrapScript=html.match(/<script data-hm-ready-bootstrap>([\s\S]*?)<\/script>/);
+  assert.ok(bootstrapScript,'native Telegram loader must have its own early ready signal');
+  let called=0;
+  vm.runInNewContext(bootstrapScript[1],{
+    window:{Telegram:{WebApp:{ready(){called++;}}}},
+  });
+  assert.equal(called,1,'successful local SDK initialization immediately hides native 4-square loader');
+  assert.doesNotThrow(()=>{
+    vm.runInNewContext(bootstrapScript[1],{window:{Telegram:{WebApp:{ready(){throw Error('unavailable');}}}}});
+  },'a failing native bridge cannot block the rest of the page');
+  assert.doesNotThrow(()=>{
+    vm.runInNewContext(bootstrapScript[1],{window:{}});
+  },'browser without Telegram must still render standalone storefront');
   const localSdkPath=path.join(__dirname,'../public/vendor/telegram-web-app-fallback.js');
   const localSdk=fs.readFileSync(localSdkPath,'utf8');
   const license=fs.readFileSync(path.join(__dirname,'../public/vendor/telegram-web-app-LICENSE.txt'),'utf8');
