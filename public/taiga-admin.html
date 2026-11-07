@@ -4827,7 +4827,8 @@ async function renderSystemHealth() {
       ['Хранилище /data',info.checks?.storage==='ok'?'✅ Работает':'❌ Ошибка',''],
       ['Память',n(info.memory?.rss_mb)+' МБ',info.memory?.limit_mb?'Лимит: '+n(info.memory.limit_mb)+' МБ':'Лимит неизвестен'],
       ['Место на диске',info.storage_free_mb==null?'—':n(info.storage_free_mb)+' МБ',''],
-      ['Задержка Node.js',info.event_loop_delay_ms==null?'—':n(info.event_loop_delay_ms)+' мс',''],
+      ['Event loop: максимум',info.event_loop_delay_ms==null?'—':n(info.event_loop_delay_ms)+' мс','p99: '+(info.event_loop_p99_ms==null?'—':n(info.event_loop_p99_ms)+' мс')],
+      ['Отклонение таймера',info.sample_schedule_drift_ms==null?'—':n(info.sample_schedule_drift_ms)+' мс','Не равно задержке запросов'],
       ['Нагрузка CPU',info.cpu_percent==null?'—':n(info.cpu_percent)+' %','Приблизительно, на одно ядро'],
     ];
     const grid=values.map(row=>'<div style="padding:12px;border:1px solid var(--border);border-radius:9px">'+
