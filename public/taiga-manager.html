@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="payout-schedule.css">
 <link rel="stylesheet" href="telegram-connect.css?v=38">
 <link rel="stylesheet" href="cabinet-navigation.css?v=46">
+<link rel="stylesheet" href="manager-leads.css?v=1">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 html { font-size: 16px; }
@@ -361,6 +362,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
   <button class="nav-item" data-group="points" onclick="showSec('points')"><span class="nav-dot"></span> Точки и продажи</button>
   <button class="nav-item" data-group="income" onclick="showSec('earnings')"><span class="nav-dot"></span> Доход</button>
   <button class="nav-item" data-group="growth" onclick="showSec('recruit')"><span class="nav-dot"></span> Развитие сети</button>
+  <button class="nav-item" data-group="leads" onclick="showSec('leads')"><span class="nav-dot"></span> 📞 Прозвон</button>
   <button class="nav-item" data-group="profile" onclick="showSec('profile')"><span class="nav-dot"></span> Профиль</button>
   <div class="sidebar-footer">
     <span>v1.0</span>
@@ -700,6 +702,9 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       </div>
     </div>
 
+    <!-- CRM PROZVON: exactly the same backend as in the admin cabinet. -->
+    <div class="page-sec" id="sec-leads"><div id="manager-leads-panel"></div></div>
+
     <!-- ══ CALCULATOR ══ -->
     <div class="page-sec" id="sec-calculator">
       <div class="card" style="max-width:520px;">
@@ -882,6 +887,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 </div>
 
 <script src="salon-photo-gallery.js?v=70"></script>
+<script src="manager-leads.js?v=1"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 let MY_POINTS = [];
@@ -1398,8 +1404,8 @@ document.getElementById('l-login').addEventListener('keydown',e=>{if(e.key==='En
 document.getElementById('l-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 
 // ── NAV ──────────────────────────────────────────────────────────────
-const SECS={home:'Главная',points:'Мои точки',orders:'Заказы',stock:'Остатки на точках',partners:'Партнёры на точках',restock:'Пополнение',earnings:'Доход',recruit:'Привлечение точек',calculator:'Калькулятор дохода',qr:'QR-коды для точек',profile:'Профиль'};
-const MANAGER_SECTION_GROUPS={home:'home',points:'points',orders:'points',stock:'points',partners:'points',restock:'points',qr:'points',earnings:'income',calculator:'income',recruit:'growth',profile:'profile'};
+const SECS={home:'Главная',points:'Мои точки',orders:'Заказы',stock:'Остатки на точках',partners:'Партнёры на точках',restock:'Пополнение',earnings:'Доход',recruit:'Привлечение точек',leads:'Прозвон партнёров',calculator:'Калькулятор дохода',qr:'QR-коды для точек',profile:'Профиль'};
+const MANAGER_SECTION_GROUPS={home:'home',points:'points',orders:'points',stock:'points',partners:'points',restock:'points',qr:'points',earnings:'income',calculator:'income',recruit:'growth',leads:'leads',profile:'profile'};
 HvostCabinetNavigation.init({sidebarId:'manager-sidebar',overlayId:'manager-sidebar-overlay',tabsId:'manager-context-tabs',initialSection:'home',sectionGroups:MANAGER_SECTION_GROUPS,tabs:{points:[['points','Точки'],['orders','Заказы'],['stock','Остатки'],['partners','Партнёры'],['restock','Пополнение'],['qr','QR-коды']],income:[['earnings','Начисления'],['calculator','Калькулятор']]}});
 function showSec(id){
   currentSec=id;
@@ -1419,6 +1425,7 @@ function renderSec(id){
   if(id==='earnings')renderEarnings();
   if(id==='restock') { renderRestock(); renderManagerCustomerRestock(); }
   if(id==='recruit') loadPointsForRegistrationForms();
+  if(id==='leads' && window.HvostManagerLeads) window.HvostManagerLeads.mount(document.getElementById('manager-leads-panel'), { token:getMgrToken });
   if(id==='calculator') renderCalculator();
   if(id==='qr') qrInitSection();
 }
