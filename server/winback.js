@@ -14,6 +14,7 @@
 'use strict';
 
 const db = require('./db');
+const { createSingleFlightJob } = require('./single-flight-job');
 const { sendToChat } = require('./telegram');
 const { preference } = require('./notification-preferences');
 const { awardBones } = require('./bones');
@@ -82,8 +83,12 @@ async function runWinbackCheck() {
 function scheduleWinback() {
   // Первая проверка — вскоре после старта сервера (не мгновенно, чтобы не
   // мешать запуску), дальше — раз в сутки, как и остальные плановые задачи.
-  setTimeout(() => { runWinbackCheck().catch((e) => console.warn('Win-back: ошибка проверки:', e.message)); }, 5 * 60 * 1000);
-  setInterval(() => { runWinbackCheck().catch((e) => console.warn('Win-back: ошибка проверки:', e.message)); }, 24 * 60 * 60 * 1000);
+  const run = createSingleFlightJob(
+    () => runWinbackCheck(),
+    (error) => console.warn('Win-back: ошибка проверки:', error.message)
+  );
+  setTimeout(run, 5 * 60 * 1000);
+  setInterval(run, 24 * 60 * 60 * 1000);
   console.log(`Win-back рассылка настроена: клиенты без заказов ${WINBACK_INACTIVE_DAYS}+ дней, проверка раз в сутки`);
 }
 

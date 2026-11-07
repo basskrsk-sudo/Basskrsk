@@ -307,3 +307,14 @@ test('canceled payment reaches administrator immediately, only once per type', a
   assert.equal((await sendUnpaidOrderAlert(id,'failed','ЮKassa: отмена',opts)).skipped,true);
   assert.equal(send.calls.length,1);
 });
+
+
+test('pending-order polling uses a partial index instead of scanning paid order history',()=>{
+  const row=db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_orders_pending_notification_scan'"
+  ).get();
+  assert.ok(row?.sql,'expected the partial index for the 15-second poller');
+  assert.match(row.sql,/WHERE status='pending' AND reservation_status='active'/);
+  // The indexed condition matches the actual scheduled query verbatim.
+  assert.ok(!row.sql.includes("status='paid'"));
+});

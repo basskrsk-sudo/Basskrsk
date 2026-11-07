@@ -2,6 +2,7 @@
 'use strict';
 
 const db = require('./db');
+const { createSingleFlightJob } = require('./single-flight-job');
 const { sendToChat } = require('./telegram');
 const { sendMaxMessage } = require('./max-bot');
 const { taskButtons } = require('./task-bot-actions');
@@ -139,8 +140,12 @@ async function runTaskReminderCheck(now = new Date()) {
 function scheduleTaskReminders() {
   if (schedulerStarted) return;
   schedulerStarted = true;
-  const first = setTimeout(() => runTaskReminderCheck().catch((error) => console.warn('Поручения: ошибка напоминаний:', error.message)), 30000);
-  const interval = setInterval(() => runTaskReminderCheck().catch((error) => console.warn('Поручения: ошибка напоминаний:', error.message)), 10 * 60 * 1000);
+  const run = createSingleFlightJob(
+    () => runTaskReminderCheck(),
+    (error) => console.warn('Поручения: ошибка напоминаний:', error.message)
+  );
+  const first = setTimeout(run, 30000);
+  const interval = setInterval(run, 10 * 60 * 1000);
   if (typeof first.unref === 'function') first.unref();
   if (typeof interval.unref === 'function') interval.unref();
 }

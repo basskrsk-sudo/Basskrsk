@@ -1521,7 +1521,9 @@
             health.memory && health.memory.limit_mb ? 'Лимит: '+number(health.memory.limit_mb)+' МБ':'Лимит не определён')+
         '</div>'+
         '<p class="work-note">Свободно на диске: '+(health.storage_free_mb==null?'—':number(health.storage_free_mb)+' МБ')+
-          ' · Задержка Node.js: '+(health.event_loop_delay_ms==null?'—':number(health.event_loop_delay_ms)+' мс')+
+          ' · Event loop (макс): '+(health.event_loop_delay_ms==null?'—':number(health.event_loop_delay_ms)+' мс')+
+          ' · p99: '+(health.event_loop_p99_ms==null?'—':number(health.event_loop_p99_ms)+' мс')+
+          ' · Отклонение таймера: '+(health.sample_schedule_drift_ms==null?'—':number(health.sample_schedule_drift_ms)+' мс')+
           ' · CPU: '+(health.cpu_percent==null?'—':number(health.cpu_percent)+'%')+'</p>'+
         rows((health.events||[]).slice(0,7).map(function(event){
           return line(event.severity==='critical'?'🔴 '+event.event_type:

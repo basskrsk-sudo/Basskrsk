@@ -68,3 +68,45 @@ test('font replacement updates stylesheet version and its parent HTML validator'
     assert.match(css.body.toString(), /font\.woff2\?v=[a-f0-9]{20}/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+
+test('warm HTML and CSS requests reuse prepared output without repetitive hashing', () => {
+  const crypto = require('node:crypto');
+  const originalHash = crypto.createHash;
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hm-static-perf-'));
+  try {
+    fs.mkdirSync(path.join(dir,'fonts'));
+    fs.writeFileSync(path.join(dir,'fonts/site.woff2'),'font-one');
+    fs.writeFileSync(path.join(dir,'style.css'),"@font-face{src:url('/fonts/site.woff2')}");
+    fs.writeFileSync(path.join(dir,'index.html'),'<link href="style.css" rel="stylesheet"><h1>Hi</h1>');
+    const cache=createStaticCache(dir);
+    const page=path.join(dir,'index.html'),req={method:'GET',url:'/',headers:{}};
+    let hashCount=0;
+    crypto.createHash=function(...args){hashCount++;return originalHash.apply(this,args);};
+    const first=cache.response(page,req,'text/html');
+    const hashAfterFirst=hashCount;
+    assert.ok(hashAfterFirst>0,'cold request must prepare and hash representations');
+    for(let i=0;i<40;i++){
+      const cached=cache.response(page,req,'text/html');
+      assert.equal(cached.body,first.body,'must reuse the same prepared Buffer');
+      assert.equal(cached.headers.ETag,first.headers.ETag);
+    }
+    assert.equal(hashCount,hashAfterFirst,'warm HTML requests must not repeat SHA256');
+    const css=path.join(dir,'style.css');
+    const firstCss=cache.response(css,{...req,url:'/style.css'},'text/css');
+    const hashesAfterCss=hashCount;
+    for(let i=0;i<20;i++){
+      const warm=cache.response(css,{...req,url:'/style.css'},'text/css');
+      assert.equal(warm.body,firstCss.body);
+    }
+    assert.equal(hashCount,hashesAfterCss,'warm CSS requests must not repeat SHA256');
+    fs.writeFileSync(path.join(dir,'fonts/site.woff2'),'font-two-with-new-content');
+    const next=cache.response(page,req,'text/html');
+    assert.notEqual(next.headers.ETag,first.headers.ETag,'changed nested font invalidates parent HTML');
+    assert.notEqual(next.body,first.body);
+    assert.ok(hashCount>hashesAfterCss,'dependency changes must trigger re-render');
+  } finally {
+    crypto.createHash=originalHash;
+    fs.rmSync(dir,{recursive:true,force:true});
+  }
+});

@@ -1331,6 +1331,10 @@ ensureColumn('orders', 'reservation_expires_at', 'TEXT');
 ensureColumn('orders', 'inventory_source_type', 'TEXT');
 ensureColumn('orders', 'inventory_source_id', 'TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS idx_orders_active_reservations ON orders(reservation_status, reservation_expires_at)');
+// Polled every 15 seconds: index only relevant pending reservations, not
+// historical paid orders. Keeps the scan small as network sales grow.
+db.exec("CREATE INDEX IF NOT EXISTS idx_orders_pending_notification_scan " +
+  "ON orders(created_at,id) WHERE status='pending' AND reservation_status='active'");
 
 // Игра «Поймай косточку» заменена викториной о собаках — старые таблицы
 // на уже развёрнутых серверах больше не используются нигде в коде, чистим их.

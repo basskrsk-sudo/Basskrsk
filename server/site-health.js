@@ -5,6 +5,7 @@
 // active admin account. Independent outage detection lives in GitHub Actions.
 const fs = require('node:fs');
 const path = require('node:path');
+const { monitorEventLoopDelay } = require('node:perf_hooks');
 const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireActiveAdmin } = require('./routes-auth');
@@ -24,6 +25,8 @@ let lastSample = null;
 let previousSampleAt = BOOTED_AT;
 let previousCpuUsage = process.cpuUsage();
 let highCpuSamples = 0;
+const loopHistogram = monitorEventLoopDelay({resolution:20});
+let loopState={slowSamples:0,healthySamples:0,warning:false};
 let watcher = null;
 let lastPruneDay = '';
 const lastAlerts = new Map();
@@ -114,6 +117,9 @@ function metrics() {
       limit_mb:limit?Math.round(limit/1048576):null},
     storage_free_mb:Number.isFinite(free)?Math.round(free/1048576):null,
     event_loop_delay_ms:lastSample ? lastSample.event_loop_delay_ms : null,
+    event_loop_p99_ms:lastSample ? lastSample.event_loop_p99_ms : null,
+    event_loop_max_ms:lastSample ? lastSample.event_loop_max_ms : null,
+    sample_schedule_drift_ms:lastSample ? lastSample.sample_schedule_drift_ms : null,
     cpu_percent:lastSample ? lastSample.cpu_percent : null,
     sampled_at:lastSample ? lastSample.time : null,
   };
@@ -139,6 +145,19 @@ function transition(type, bad, severity, detail) {
   if (!bad && previous === true) appendEvent('recovered','info','Восстановлено: ' + type);
   states.set(type,!!bad);
 }
+// The scheduler timer's drift is not the same as Node's event-loop latency.
+// Two consecutive abnormal minute-long samples avoid noise from isolated
+// scheduler slippage, while an extreme >=5s pause is reported immediately.
+// Two clean samples are required before declaring a recovery.
+function nextLoopState(previous,maxMs,p99Ms) {
+  const abnormal=maxMs>1500 || p99Ms>750;
+  const slowSamples=abnormal?previous.slowSamples+1:0;
+  const healthySamples=abnormal?0:previous.healthySamples+1;
+  const warning=maxMs>=5000 ||
+    (previous.warning ? healthySamples<2 : slowSamples>=2);
+  return {slowSamples,healthySamples,warning};
+}
+
 function sample() {
   const now = Date.now();
   const elapsedMs = Math.max(1, now - previousSampleAt);
@@ -151,7 +170,16 @@ function sample() {
   highCpuSamples=cpuPercent>=90 ? highCpuSamples+1 : 0;
   const health=healthProbe(true),memory=process.memoryUsage();
   const cap=limitMemory(),free=storageFreeBytes();
-  lastSample={time:new Date(now).toISOString(),event_loop_delay_ms:Math.round(delay),cpu_percent:cpuPercent};
+  // Direct runtime histogram instead of subtracting setInterval timestamps.
+  const maxLoopDelayMs=Math.round(loopHistogram.max/1e6);
+  const p99LoopDelayMs=Math.round(loopHistogram.percentile(99)/1e6);
+  loopHistogram.reset();
+  loopState=nextLoopState(loopState,maxLoopDelayMs,p99LoopDelayMs);
+  const rssMb=Math.round(memory.rss/1048576);
+  lastSample={time:new Date(now).toISOString(),
+    event_loop_delay_ms:maxLoopDelayMs,event_loop_max_ms:maxLoopDelayMs,
+    event_loop_p99_ms:p99LoopDelayMs,sample_schedule_drift_ms:Math.round(delay),
+    cpu_percent:cpuPercent};
   transition('database',health.checks.database!=='ok','critical','SQLite не отвечает на проверку');
   transition('storage',health.checks.storage!=='ok','critical','Постоянное хранилище недоступно для записи');
   transition('memory',!!(cap && memory.rss/cap>=WARNING_RSS_RATIO),'warning',
@@ -160,8 +188,10 @@ function sample() {
     'В постоянном хранилище осталось менее 100 МБ');
   transition('cpu',highCpuSamples>=2,'warning',
     'Нагрузка Node.js на одно ядро выше 90% два измерения подряд');
-  transition('event_loop',delay>1500,'warning',
-    'Задержка обработки событий Node.js более 1,5 секунды');
+  transition('event_loop',loopState.warning,'warning',
+    'Задержка Node.js: максимум '+maxLoopDelayMs+' мс, p99 '+p99LoopDelayMs+
+    ' мс; CPU '+cpuPercent+'%, RAM '+rssMb+' МБ. '+ 
+    'Проверьте длительные синхронные операции.');
   try {
     db.prepare('INSERT INTO site_health_heartbeat(id,last_seen_at,boot_id) VALUES(1,?,?) '+
       'ON CONFLICT(id) DO UPDATE SET last_seen_at=excluded.last_seen_at,boot_id=excluded.boot_id')
@@ -189,6 +219,7 @@ function startHealthWatcher() {
     }
   } catch (_) {}
   appendEvent('startup','info','Процесс Node.js запущен');
+  loopHistogram.enable();
   previousSampleAt=Date.now()-SAMPLE_INTERVAL_MS;
   sample();
   previousSampleAt=Date.now();
@@ -215,4 +246,4 @@ function registerSiteHealthRoutes(router) {
   });
 }
 module.exports={registerSiteHealthRoutes,healthProbe,metrics,recentEvents,
-  sample,startHealthWatcher,limitMemory,storageFreeBytes,appendEvent};
+  sample,startHealthWatcher,limitMemory,storageFreeBytes,appendEvent,nextLoopState};

@@ -11,6 +11,10 @@ test('admin Mini App retrieves health from authenticated route without adding it
   assert.match(ui,/if \(role === 'admin'\) html \+= adminDashboard\(data,diagnosticData,systemData\)/);
   assert.match(ui,/surface\('💓 Состояние системы',healthContent\)/);
   assert.match(ui,/event_loop_delay_ms/);
+  assert.match(ui,/event_loop_p99_ms/);
+  assert.match(ui,/sample_schedule_drift_ms/);
+  assert.match(html,/Event loop: максимум/);
+  assert.match(html,/Отклонение таймера/);
   assert.match(ui,/cpu_percent/);
 });
 test('full administration System navigation includes a reachable monitoring page',()=>{
