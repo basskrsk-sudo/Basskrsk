@@ -52,6 +52,26 @@ function authorLabel(payload) {
   return 'Администратор';
 }
 
+
+/* The admin and manager cabinets share these same rows. Manager access is
+ * scoped on every API request, not only in the browser's table filters. */
+function activeManager(payload, res) {
+  if (payload.role !== 'manager') return null;
+  const manager = db.prepare('SELECT id, city_id FROM managers WHERE id = ? AND active = 1').get(payload.id);
+  if (!manager) sendJson(res, 401, { error: 'Менеджер отключён или не найден' });
+  return manager;
+}
+function canReadLead(payload, manager, lead) {
+  return payload.role === 'admin' ||
+    (Number(lead.assigned_manager_id) === Number(payload.id) && lead.assigned_manager_id != null) ||
+    (lead.assigned_manager_id == null && manager && manager.city_id != null &&
+      String(lead.city_id) === String(manager.city_id));
+}
+function canEditLead(payload, lead) {
+  return payload.role === 'admin' ||
+    (lead.assigned_manager_id != null && Number(lead.assigned_manager_id) === Number(payload.id));
+}
+
 function serializeLead(row) {
   const notesCount = db.prepare('SELECT COUNT(*) AS c FROM partner_lead_notes WHERE lead_id = ?').get(row.id).c;
   const lastNote = db.prepare('SELECT note, author, created_at FROM partner_lead_notes WHERE lead_id = ? ORDER BY id DESC LIMIT 1').get(row.id);
@@ -131,8 +151,15 @@ function registerPartnerLeadRoutes(router) {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
     if (!payload) return;
     const { status, city_id, q } = ctx.query || {};
+    const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
+    if (payload.role === 'manager' && !manager) return;
     let sql = 'SELECT * FROM partner_leads WHERE 1=1';
     const args = [];
+    // Assigned leads from any city + unassigned leads in the manager's own city.
+    if (manager) {
+      sql += ' AND (assigned_manager_id = ? OR (assigned_manager_id IS NULL AND city_id = ?))';
+      args.push(payload.id, manager.city_id == null ? '__no_manager_city__' : manager.city_id);
+    }
     if (status && STATUSES.includes(status)) { sql += ' AND status = ?'; args.push(status); }
     if (city_id) { sql += ' AND city_id = ?'; args.push(city_id); }
     if (q && q.trim()) {
@@ -151,6 +178,9 @@ function registerPartnerLeadRoutes(router) {
     if (!payload) return;
     const row = db.prepare('SELECT * FROM partner_leads WHERE id = ?').get(ctx.params.id);
     if (!row) return sendJson(res, 404, { error: 'Лид не найден' });
+    const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
+    if (payload.role === 'manager' && !manager) return;
+    if (!canReadLead(payload, manager, row)) return sendJson(res, 403, { error: 'Нет доступа к заведению' });
     const notes = db.prepare('SELECT * FROM partner_lead_notes WHERE lead_id = ? ORDER BY id DESC').all(ctx.params.id);
     sendJson(res, 200, { lead: serializeLead(row), notes });
   });
@@ -160,7 +190,12 @@ function registerPartnerLeadRoutes(router) {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
     if (!payload) return;
     const b = ctx.body || {};
-    if (!b.salon_name || !b.salon_name.trim()) {
+    const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
+    if (payload.role === 'manager' && !manager) return;
+    if (manager && manager.city_id == null) {
+      return sendJson(res, 400, { error: 'У менеджера не указан город. Обратитесь к администратору.' });
+    }
+    if (!b.salon_name || !String(b.salon_name).trim()) {
       return sendJson(res, 400, { error: 'Укажите название заведения' });
     }
     const category = CATEGORIES.includes(b.category) ? b.category : null;
@@ -170,15 +205,15 @@ function registerPartnerLeadRoutes(router) {
         (salon_name, category, city_id, address, contact_name, phone, status, next_contact_date, assigned_manager_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      b.salon_name.trim(),
+      String(b.salon_name).trim(),
       category,
-      b.city_id || null,
+      manager ? manager.city_id : (b.city_id || null),
       b.address || null,
       b.contact_name || null,
       b.phone || null,
       status,
       b.next_contact_date || null,
-      b.assigned_manager_id || null,
+      manager ? payload.id : (b.assigned_manager_id || null),
     );
     // Первая заметка — необязательная, но удобно сразу зафиксировать, откуда лид
     if (b.note && b.note.trim()) {
@@ -194,6 +229,9 @@ function registerPartnerLeadRoutes(router) {
     if (!payload) return;
     const existing = db.prepare('SELECT * FROM partner_leads WHERE id = ?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Лид не найден' });
+    const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
+    if (payload.role === 'manager' && !manager) return;
+    if (!canEditLead(payload, existing)) return sendJson(res, 403, { error: 'Редактировать можно только свои заведения' });
     const b = ctx.body || {};
     if (b.status !== undefined && !STATUSES.includes(b.status)) {
       return sendJson(res, 400, { error: 'Недопустимый статус' });
@@ -208,15 +246,15 @@ function registerPartnerLeadRoutes(router) {
         updated_at = datetime('now')
       WHERE id = ?
     `).run(
-      b.salon_name !== undefined ? b.salon_name.trim() : existing.salon_name,
+      b.salon_name !== undefined ? String(b.salon_name).trim() : existing.salon_name,
       b.category !== undefined ? b.category : existing.category,
-      b.city_id !== undefined ? b.city_id : existing.city_id,
+      manager ? existing.city_id : (b.city_id !== undefined ? b.city_id : existing.city_id),
       b.address !== undefined ? b.address : existing.address,
       b.contact_name !== undefined ? b.contact_name : existing.contact_name,
       b.phone !== undefined ? b.phone : existing.phone,
       b.status !== undefined ? b.status : existing.status,
       b.next_contact_date !== undefined ? b.next_contact_date : existing.next_contact_date,
-      b.assigned_manager_id !== undefined ? b.assigned_manager_id : existing.assigned_manager_id,
+      manager ? payload.id : (b.assigned_manager_id !== undefined ? b.assigned_manager_id : existing.assigned_manager_id),
       ctx.params.id,
     );
     // Смена статуса — сама по себе значимое событие, фиксируем в истории
@@ -232,12 +270,39 @@ function registerPartnerLeadRoutes(router) {
     sendJson(res, 200, { ok: true });
   });
 
+
+  // POST /api/partner-leads/:id/claim - manager accepts a free lead in their city.
+  router.post('/api/partner-leads/:id/claim', (req, res, ctx) => {
+    const payload = requireAuth(['manager'])(req, res, ctx);
+    if (!payload) return;
+    const manager = activeManager(payload, res);
+    if (!manager) return;
+    if (manager.city_id == null) return sendJson(res, 400, { error: 'Укажите город менеджера в админке' });
+    const lead = db.prepare('SELECT * FROM partner_leads WHERE id = ?').get(ctx.params.id);
+    if (!lead) return sendJson(res, 404, { error: 'Лид не найден' });
+    if (!canReadLead(payload, manager, lead)) return sendJson(res, 403, { error: 'Нет доступа к заведению' });
+    if (Number(lead.assigned_manager_id) === Number(payload.id) && lead.assigned_manager_id != null) {
+      return sendJson(res, 200, { ok: true, already_assigned: true });
+    }
+    const updated = db.prepare(
+      "UPDATE partner_leads SET assigned_manager_id = ?, updated_at = datetime('now') " +
+      "WHERE id = ? AND assigned_manager_id IS NULL AND city_id = ?"
+    ).run(payload.id, ctx.params.id, manager.city_id);
+    if (!updated.changes) return sendJson(res, 409, { error: 'Заведение уже закреплено за другим менеджером' });
+    db.prepare('INSERT INTO partner_lead_notes (lead_id, author, note) VALUES (?, ?, ?)')
+      .run(ctx.params.id, authorLabel(payload), 'Взял заведение в работу');
+    sendJson(res, 200, { ok: true });
+  });
+
   // POST /api/partner-leads/:id/notes — добавить запись в историю звонков
   router.post('/api/partner-leads/:id/notes', (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
     if (!payload) return;
-    const existing = db.prepare('SELECT id FROM partner_leads WHERE id = ?').get(ctx.params.id);
+    const existing = db.prepare('SELECT * FROM partner_leads WHERE id = ?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Лид не найден' });
+    const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
+    if (payload.role === 'manager' && !manager) return;
+    if (!canEditLead(payload, existing)) return sendJson(res, 403, { error: 'Записи доступны только для своих заведений' });
     const note = (ctx.body && ctx.body.note || '').trim();
     if (!note) return sendJson(res, 400, { error: 'Пустая запись' });
     const info = db.prepare('INSERT INTO partner_lead_notes (lead_id, author, note) VALUES (?, ?, ?)')
