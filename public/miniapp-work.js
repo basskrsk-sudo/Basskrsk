@@ -1124,6 +1124,21 @@
       managerRegistrationBusy = false;
     }
   }
+  // Calls belong to the same partner_leads CRM as the admin's Prozzvon tab.
+  function openManagerLeads() {
+    if (activeRole !== 'manager' || !currentUser || !getToken('manager') ||
+        !phoneRoleAvailable('manager')) return;
+    root.innerHTML = dashboardHeader('manager') +
+      '<button type="button" class="work-back" data-work-action="manager-leads-back">← В кабинет менеджера</button>' +
+      '<div id="workManagerLeads"></div>';
+    if (window.HvostManagerLeads) {
+      window.HvostManagerLeads.mount(document.getElementById('workManagerLeads'), {
+        token: function () { return getToken('manager'); }
+      });
+    } else {
+      document.getElementById('workManagerLeads').innerHTML = problem('Раздел прозвона не загрузился. Обновите страницу.');
+    }
+  }
   function managerDashboard(data) {
     // manager.points is a legacy payout/referral ledger, not the live network.
     // Only the server-verified canonical points directory may drive this panel.
@@ -1146,6 +1161,9 @@
     html += surface('📍 Новые минимаркеты',
       '<button type="button" class="work-primary" data-work-action="manager-point-new">➕ Добавить минимаркет</button>' +
       '<p class="work-note">Точка автоматически закрепится за вами, появится на карте и будет доступна для регистрации сотрудников.</p>');
+    html += surface('📞 Прозвон потенциальных партнёров',
+      '<button type="button" class="work-primary" data-work-action="manager-leads-open">Открыть прозвон →</button>' +
+      '<p class="work-note">Общая с админкой база: звонки, договорённости и следующий контакт.</p>');
     html += surface('➕ Регистрация сотрудников',
       '<div class="work-register-actions">' +
       '<button class="work-primary" type="button" data-work-action="manager-reg-groomer">✂️ Добавить грумера</button>' +
@@ -1647,6 +1665,8 @@
     if (action === 'admin-reg-retry' && activeRole === 'admin' && adminRegistrationKind)
       return openAdminRegistration(adminRegistrationKind);
     if (action === 'admin-reg-back' && activeRole === 'admin') return closeAdminRegistration();
+    if (action === 'manager-leads-open' && activeRole === 'manager') return openManagerLeads();
+    if (action === 'manager-leads-back' && activeRole === 'manager') return chooseRole('manager');
     if (action === 'manager-point-new' && activeRole === 'manager') return openManagerNewPoint();
     if (action === 'manager-point-retry' && activeRole === 'manager' && managerNewPointMode === 'form')
       return openManagerNewPoint();
