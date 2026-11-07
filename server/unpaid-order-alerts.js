@@ -4,6 +4,7 @@
 'use strict';
 
 const db = require('./db');
+const { createSingleFlightJob } = require('./single-flight-job');
 const { sendToChat } = require('./telegram');
 const { connectedChatId, findManagerAndPoint } = require('./order-notifications');
 
@@ -293,7 +294,8 @@ let schedulerStarted = false;
 function scheduleUnpaidOrderAlerts() {
   if (schedulerStarted) return;
   schedulerStarted = true;
-  const run = () => runUnpaidOrderAlertCheck().catch(
+  const run = createSingleFlightJob(
+    () => runUnpaidOrderAlertCheck(),
     (error) => console.warn('Неоплаченные заказы: ошибка проверки:', error.message)
   );
   const first = setTimeout(run, 3000);
