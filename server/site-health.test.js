@@ -9,7 +9,7 @@ process.env.DATA_DIR=dir;
 process.env.TOKEN_SECRET='healthcheck-test-token';
 const db=require('./db');
 const {signToken}=require('./auth');
-const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,appendEvent}=require('./site-health');
+const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,appendEvent,nextLoopState}=require('./site-health');
 const routes=new Map(),router={get:(name,handler)=>routes.set(name,handler)};
 registerSiteHealthRoutes(router);
 function call(pathname,role,id){
@@ -87,4 +87,34 @@ test('only active admin can inspect process metrics and persistent restart log',
   assert.equal(r.data.events.some(x=>x.path||x.user_id||x.token),false);
   assert.equal(r.data.events.some(x=>String(x.detail).includes(dir)),false);
   assert.ok(metrics().timestamp);
+});
+
+
+test('event-loop alerts are based on actual histogram latency and remain quiet on single spikes',()=>{
+  let state={slowSamples:0,healthySamples:0,warning:false};
+  state=nextLoopState(state,1550,25);
+  assert.equal(state.warning,false,'one slow tick must not spam Telegram');
+  state=nextLoopState(state,60,22);
+  assert.equal(state.warning,false,'clean tick resets transient warning');
+  state=nextLoopState(state,1600,35);
+  state=nextLoopState(state,1800,27);
+  assert.equal(state.warning,true,'repeated pauses should alert');
+  state=nextLoopState(state,50,22);
+  assert.equal(state.warning,true,'one recovery sample is not sufficient');
+  state=nextLoopState(state,50,22);
+  assert.equal(state.warning,false,'second clean sample recovers');
+  state=nextLoopState(state,5200,100);
+  assert.equal(state.warning,true,'extreme pause alerts immediately');
+  const state2=nextLoopState({slowSamples:0,healthySamples:0,warning:false},150,800);
+  assert.equal(state2.warning,false,'a single high p99 reading should not trigger');
+  assert.equal(nextLoopState(state2,155,900).warning,true,'two high p99 readings trigger');
+});
+
+test('diagnostics expose both timer drift and measured event-loop latency',()=>{
+  startHealthWatcher();
+  const sample=metrics();
+  assert.ok(Number.isFinite(sample.event_loop_max_ms));
+  assert.ok(Number.isFinite(sample.event_loop_p99_ms));
+  assert.ok(Number.isFinite(sample.sample_schedule_drift_ms));
+  assert.equal(sample.event_loop_delay_ms,sample.event_loop_max_ms,'legacy field tracks actual maximum');
 });
