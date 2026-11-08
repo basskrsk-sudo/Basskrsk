@@ -118,15 +118,19 @@ function wcDateKey(value) {
   return Number.isFinite(time)&&new Date(time).toISOString().slice(0,10)===value?time:null;
 }
 function wcLocalToday() {
-  return new Intl.DateTimeFormat('en-CA',{
+  // Never rely on locale-specific separators: mobile Safari may render
+  // en-CA as M/D/YYYY instead of ISO.
+  const parts=new Intl.DateTimeFormat('en-GB',{
     timeZone:'Asia/Krasnoyarsk',year:'numeric',month:'2-digit',day:'2-digit'
-  }).format(new Date());
+  }).formatToParts(new Date());
+  const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  return values.year+'-'+values.month+'-'+values.day;
 }
 function wcValidateDates(dates) {
   const values={};
   for(const [key,value] of Object.entries(dates)){
     const parsed=wcDateKey(value);
-    if(parsed===null)throw Error('Выберите корректные даты начала и конца обоих периодов.');
+    if(parsed===null||Number(value.slice(0,4))<2020)throw Error('Выберите корректные даты не ранее 2020 года.');
     values[key]=parsed;
   }
   const day=86400000;
