@@ -199,7 +199,7 @@ test('custom comparison accepts independent ranges and normalizes unequal period
   assert.deepEqual([result.current.avg_daily_orders,result.previous.avg_daily_orders],[1,1]);
   assert.equal(result.changes.avg_daily_revenue.percent,0);
   assert.equal(result.current.expenses,175);
-  assert.equal(result.previous.expenses,100);
+  assert.equal(result.previous.expenses,0,'expense on Oct 23 must not leak into Oct 22');
   assert.equal(result.daily.length,2);
   assert.deepEqual(result.daily.map(d=>d.date),['2026-10-29','2026-10-30']);
   assert.deepEqual(result.daily.map(d=>d.previous_date),['2026-10-22',null]);
@@ -212,6 +212,17 @@ test('custom comparison accepts independent ranges and normalizes unequal period
   assert.equal(result.products.find(p=>p.name==='Сердце говяжье').current_units,1);
 });
 
+test('date windows include the last day and exclude adjacent dates',()=>{
+  const report=readComparison({now:NOW,city:'krsk',custom:{
+    current_start:'2026-10-29',current_end:'2026-10-30',
+    previous_start:'2026-10-22',previous_end:'2026-10-23',
+  }});
+  assert.equal(report.previous.expenses,100,'October 23 is included in the baseline');
+  assert.equal(report.current.expenses,175);
+  assert.equal(report.period.equal_length,true);
+  assert.deepEqual(report.daily.map(r=>r.previous_date),['2026-10-22','2026-10-23']);
+});
+
 test('a distant custom comparison uses only the two selected windows, not dates between them',()=>{
   const custom={
     current_start:'2026-10-30',current_end:'2026-10-30',
@@ -221,7 +232,7 @@ test('a distant custom comparison uses only the two selected windows, not dates 
   assert.deepEqual([result.current.revenue,result.previous.revenue],[200,300]);
   assert.deepEqual([result.current.paid_orders,result.previous.paid_orders],[1,1]);
   assert.equal(result.current.expenses,0);
-  assert.equal(result.previous.expenses,100);
+  assert.equal(result.previous.expenses,0,'baseline includes only Oct 22, not Oct 23');
   assert.equal(result.daily.length,1);
   assert.equal(result.period.equal_length,true);
   assert.doesNotMatch(result.calculation_note,/Периоды разной длины/);
