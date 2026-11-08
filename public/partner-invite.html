@@ -26,12 +26,21 @@ a{color:#186b49}
 <main><div class="top">🐾 ХВОСТМАРКЕТ</div>
 <section class="card" id="formCard">
 <span class="pill">🤝 Приглашение от партнёра</span>
-<h1>Откройте минимаркет для питомцев в своём салоне</h1>
+<h1>Откройте минимаркет для питомцев на своей площадке</h1>
 <p>Оставьте заявку на подключение. Наш менеджер согласует размещение и зарегистрирует вашу новую точку в ХвостМаркете.</p>
 <p class="small" id="refNote">Проверяем реферальную ссылку…</p>
 <form id="inviteForm">
-<label for="salon">Название груминг-салона или клиники *</label>
-<input id="salon" name="salon" required maxlength="120" autocomplete="organization" placeholder="Например, Дог Стиль">
+<label for="category">Тип площадки *</label>
+<select id="category" name="category" required>
+  <option value="">Выберите тип заведения</option>
+  <option value="groomer">Груминг-салон</option>
+  <option value="vet">Ветеринарная клиника</option>
+  <option value="training_center">Кинологический центр / центр дрессировки</option>
+  <option value="kennel">Кинолог / питомник</option>
+  <option value="other">Другое</option>
+</select>
+<label for="salon">Название заведения *</label>
+<input id="salon" name="salon" required maxlength="120" autocomplete="organization" placeholder="Например, Кинологический центр «Друг»">
 <label for="city">Город *</label>
 <select id="city" name="city" required><option value="">Загружаем города…</option></select>
 <label for="person">Ваше имя и фамилия *</label>
@@ -44,7 +53,7 @@ a{color:#186b49}
 </form>
 </section>
 <section class="card success" id="success">
-<h1>✅ Заявка получена!</h1><p>Менеджер ХвостМаркета свяжется с вами и поможет подключить новый салон. Реферальное приглашение сохранено.</p>
+<h1>✅ Заявка получена!</h1><p>Менеджер ХвостМаркета свяжется с вами и поможет подключить новую площадку. Реферальное приглашение сохранено.</p>
 <p id="ticket"></p><a href="/">Перейти в магазин ХвостМаркет</a>
 </section>
 <div class="foot">Привлёкший вас партнёр получит право на бонус 1 000 ₽ после запуска новой точки и достижения ею 2 000 ₽ прямой прибыли. Переход по ссылке или заявка сами по себе не означают выплату.</div>
@@ -72,13 +81,14 @@ a{color:#186b49}
     var err=document.getElementById('error'),btn=document.getElementById('send');
     err.textContent='';
     var phone=document.getElementById('phone').value.trim();
+    if(!document.getElementById('category').value){err.textContent='Выберите тип площадки.';return;}
     if(phone.replace(/\D/g,'').length!==11){err.textContent='Проверьте номер телефона.';return;}
     if(!code||!document.getElementById('consent').checked){err.textContent='Необходимо реферальное приглашение и согласие на обработку данных.';return;}
     btn.disabled=true;
     try{
       var r=await fetch('/api/partner-leads/public',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({salon_name:document.getElementById('salon').value.trim(),
-          category:'groomer',city_id:document.getElementById('city').value,
+          category:document.getElementById('category').value,city_id:document.getElementById('city').value,
           contact_name:document.getElementById('person').value.trim(),phone:phone,referral_code:code})});
       var data=await r.json();
       if(!r.ok)throw Error(data.error||'Не удалось отправить заявку');

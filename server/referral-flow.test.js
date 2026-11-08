@@ -243,3 +243,22 @@ test('manager bonus is triggered by 2000 RUB NET paid revenue, never by pending/
   assert.equal(row.referred_owner_amount,null);
   assert.equal(row.referred_groomer_amount,null);
 });
+
+
+test('public partner application saves a canine training center in shared call CRM',async()=>{
+  const name='Учебный центр для собак — тест заявок';
+  const response=await request('POST','/api/partner-leads/public',null,null,{
+    salon_name:name,category:'training_center',city_id:'krsk',
+    contact_name:'Директор Центра',phone:'79139980011'
+  },{},'cynology-public-test');
+  assert.equal(response.status,201,JSON.stringify(response.body));
+  const lead=db.prepare('SELECT * FROM partner_leads WHERE salon_name=?').get(name);
+  assert.ok(lead,'new center request should enter partner-leads CRM');
+  assert.equal(lead.category,'training_center');
+  assert.equal(lead.city_id,'krsk');
+  assert.equal(lead.status,'to_call');
+  assert.equal(lead.referral_code,null,'uninvited request must not gain referral bonus');
+  assert.equal(lead.contact_name,'Директор Центра');
+  const note=db.prepare('SELECT note FROM partner_lead_notes WHERE lead_id=?').get(lead.id);
+  assert.match(note.note,/Стать партнёром/);
+});
