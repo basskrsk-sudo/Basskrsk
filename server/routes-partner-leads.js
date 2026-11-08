@@ -16,7 +16,7 @@ const CATEGORIES = ['groomer', 'vet', 'training_center', 'kennel', 'hotel', 'oth
 const CATEGORY_LABEL = {
   groomer: 'Груминг-салон',
   vet: 'Ветклиника',
-  training_center: 'Центр дрессировки',
+  training_center: 'Кинологический центр / центр дрессировки',
   kennel: 'Кинолог / питомник',
   hotel: 'Зоогостиница',
   other: 'Другое',
