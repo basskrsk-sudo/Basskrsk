@@ -1097,7 +1097,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <select id="wc-city" aria-label="Выберите город" class="pm-select" style="min-width:140px;max-width:230px;color:var(--deep);background:#fff;" onchange="renderWeekComparison()">
               <option value="">Вся сеть</option>
             </select>
-            <button class="row-btn" title="Более ранняя неделя" onclick="changeWeekComparison(1)">← Ранее</button>
+            <button class="row-btn" id="wc-earlier" title="Более ранняя неделя" onclick="changeWeekComparison(1)">← Ранее</button>
             <button class="row-btn" id="wc-next" title="На неделю ближе к текущей" onclick="changeWeekComparison(-1)" disabled>Позже →</button>
             <button class="row-btn" onclick="renderWeekComparison()" title="Обновить данные">↻ Обновить</button>
           </div>
