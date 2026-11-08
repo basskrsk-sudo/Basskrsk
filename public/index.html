@@ -1984,6 +1984,18 @@
     <article class="partner-benefit-mini"><span>📊</span><strong>Прозрачный доход</strong><p>Продажи и начисления видны в личном кабинете.</p></article>
   </div>
 
+  <section class="sec" id="partner-cynology" aria-labelledby="partner-cynology-title" style="max-width:1180px;padding-top:1.6rem;padding-bottom:0;">
+    <div style="background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:clamp(1.2rem,3vw,2rem);display:flex;align-items:flex-start;gap:1.1rem;flex-wrap:wrap;box-shadow:var(--shadow);">
+      <span style="font-size:2rem;" aria-hidden="true">🐕‍🦺</span>
+      <div style="flex:1 1 280px;min-width:0;">
+        <h2 id="partner-cynology-title" style="font-size:1.25rem;color:var(--forest);margin-bottom:.65rem;">Специальное предложение кинологическим центрам</h2>
+        <p style="color:var(--text);line-height:1.6;margin-bottom:.65rem;">Лакомства для поощрения нужны во время тренировок. Минимаркет позволит посетителям докупить их до или после занятия, без отдельной поездки в зоомагазин.</p>
+        <p style="color:var(--muted);line-height:1.6;margin-bottom:.95rem;">Вместе с тренерами подберём подходящий ассортимент, согласуем размещение и условия пилота. Стойку, оплату по QR-коду и пополнение организует ХвостМаркет.</p>
+        <button class="btn-primary" type="button" onclick="proposeTrainingCenter()">Предложить свой центр →</button>
+      </div>
+    </div>
+  </section>
+
   <section class="sec" style="max-width:1180px;padding-top:42px;padding-bottom:22px;">
     <div class="sec-head">
       <h2>Минимаркеты уже работают у наших партнёров</h2>
@@ -7052,6 +7064,12 @@ function renderPublicCalculator() {
     </div>` : ''}
     ${!isOwner && !isPartner ? '<p style="color:var(--muted);margin:0;">Отметьте хотя бы одну роль, чтобы увидеть расчёт.</p>' : ''}
   `;
+}
+
+function proposeTrainingCenter() {
+  const select = document.getElementById('pf-category');
+  if (select) select.value = 'training_center';
+  document.getElementById('partnerFormAnchor')?.scrollIntoView({ behavior: 'smooth' });
 }
 
 async function submitPartnerForm() {
