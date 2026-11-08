@@ -1089,7 +1089,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div style="max-width:760px;">
             <div style="font-size:.76rem;text-transform:uppercase;letter-spacing:.07em;color:rgba(255,255,255,.72)">Аналитика продаж и расходов</div>
             <h2 style="font-size:1.45rem;margin:.4rem 0 .55rem">Неделя к неделе</h2>
-            <p style="font-size:.85rem;line-height:1.6;color:rgba(255,255,255,.85)">Сравнение двух завершённых недель (понедельник — воскресенье, Красноярск). Данные обновляются из базы без создания PDF и без рассылок.</p>
+            <p style="font-size:.85rem;line-height:1.6;color:rgba(255,255,255,.85)">Сравнивайте две завершённые недели или задавайте любые два прошлых периода. Все даты — по Красноярску. Данные пересчитываются из базы без создания файлов и рассылок.</p>
             <p id="wc-period" style="font-size:.88rem;font-weight:700;margin:.7rem 0 0;color:#F2D68C">Загружаем период…</p>
           </div>
           <div style="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap">
@@ -1102,11 +1102,44 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <button class="row-btn" onclick="renderWeekComparison()" title="Обновить данные">↻ Обновить</button>
           </div>
         </div>
+        <div style="margin-top:1rem;padding:1rem;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);border-radius:11px;">
+          <div style="font-size:.85rem;font-weight:700;margin-bottom:.65rem;">📅 Настроить даты сравнения</div>
+          <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:stretch;">
+            <fieldset style="flex:1 1 245px;min-width:0;border:1px solid rgba(255,255,255,.27);border-radius:9px;padding:.55rem .65rem;">
+              <legend style="font-size:.78rem;padding:0 .35rem;">Период А · сравниваемый</legend>
+              <div style="display:flex;gap:.45rem;flex-wrap:wrap;">
+                <label style="flex:1 1 115px;font-size:.72rem;">С
+                  <input id="wc-current-start" type="date" style="width:100%;box-sizing:border-box;padding:.47rem .35rem;margin-top:.2rem;border-radius:6px;border:1px solid #B5CEC0;color:#1C3A2F;background:white;" aria-label="Начало периода А">
+                </label>
+                <label style="flex:1 1 115px;font-size:.72rem;">По
+                  <input id="wc-current-end" type="date" style="width:100%;box-sizing:border-box;padding:.47rem .35rem;margin-top:.2rem;border-radius:6px;border:1px solid #B5CEC0;color:#1C3A2F;background:white;" aria-label="Конец периода А">
+                </label>
+              </div>
+            </fieldset>
+            <fieldset style="flex:1 1 245px;min-width:0;border:1px solid rgba(255,255,255,.27);border-radius:9px;padding:.55rem .65rem;">
+              <legend style="font-size:.78rem;padding:0 .35rem;">Период Б · базовый</legend>
+              <div style="display:flex;gap:.45rem;flex-wrap:wrap;">
+                <label style="flex:1 1 115px;font-size:.72rem;">С
+                  <input id="wc-previous-start" type="date" style="width:100%;box-sizing:border-box;padding:.47rem .35rem;margin-top:.2rem;border-radius:6px;border:1px solid #B5CEC0;color:#1C3A2F;background:white;" aria-label="Начало периода Б">
+                </label>
+                <label style="flex:1 1 115px;font-size:.72rem;">По
+                  <input id="wc-previous-end" type="date" style="width:100%;box-sizing:border-box;padding:.47rem .35rem;margin-top:.2rem;border-radius:6px;border:1px solid #B5CEC0;color:#1C3A2F;background:white;" aria-label="Конец периода Б">
+                </label>
+              </div>
+            </fieldset>
+          </div>
+          <div style="display:flex;align-items:center;gap:.6rem;margin-top:.75rem;flex-wrap:wrap;">
+            <button class="row-btn" type="button" style="background:#F2D68C;color:#1C3A2F;font-weight:700;" onclick="applyWeekComparisonDates()">Сравнить выбранные даты</button>
+            <button class="row-btn" type="button" onclick="resetWeekComparisonDates()">↺ Последние завершённые недели</button>
+            <span style="font-size:.75rem;color:rgba(255,255,255,.82);">До 31 дня на период. Базовый период должен быть раньше сравниваемого.</span>
+          </div>
+          <div id="wc-length-warning" role="status" style="margin-top:.55rem;font-size:.79rem;color:#FFE2A2;display:none;"></div>
+        </div>
         <div id="wc-feedback" role="status" aria-live="polite" style="margin-top:.7rem;font-size:.82rem;min-height:1.1rem"></div>
       </div>
       <div class="kpi-grid" id="wc-kpis" aria-live="polite"></div>
       <div class="card" style="margin-bottom:1rem">
-        <div class="card-title">Выручка по дням недели <span style="font-weight:400;font-size:.76rem;color:var(--muted)">после возвратов, ₽</span></div>
+        <div class="card-title">Выручка по дням сравниваемых периодов <span style="font-weight:400;font-size:.76rem;color:var(--muted)">после возвратов, ₽</span></div>
         <div id="wc-daily" style="overflow-x:auto"></div>
       </div>
       <div class="card" style="margin-bottom:1rem">
