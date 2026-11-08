@@ -11,7 +11,7 @@ const db=require('./db');
 const {Router}=require('./http-utils');
 const {signToken}=require('./auth');
 const {registerWeeklyReportRoutes}=require('./routes-weekly-reports');
-const {readComparison,weekForOffset,percentChange}=require('./week-over-week');
+const {readComparison,weekForOffset,percentChange,customComparisonPeriod}=require('./week-over-week');
 const NOW=new Date('2026-11-08T00:00:00.000Z');
 const period=weekForOffset(0,NOW);
 
@@ -177,4 +177,136 @@ test('admin week comparison tab is reachable and rendered through separate scrip
   assert.match(js,/function renderWeekComparison\(\)/);
   assert.match(js,/function changeWeekComparison\(delta\)/);
   assert.doesNotThrow(()=>new Function(js));
+});
+
+
+test('custom comparison accepts independent ranges and normalizes unequal periods',()=>{
+  const custom={
+    current_start:'2026-10-29',current_end:'2026-10-30',
+    previous_start:'2026-10-22',previous_end:'2026-10-22',
+  };
+  const period=customComparisonPeriod(custom,NOW);
+  assert.equal(period.start_utc,'2026-10-28 17:00:00');
+  assert.equal(period.end_utc_exclusive,'2026-10-30 17:00:00');
+  assert.deepEqual([period.current_days,period.previous_days],[2,1]);
+  assert.equal(period.equal_length,false);
+  assert.equal(period.mode,'custom');
+
+  const result=readComparison({now:NOW,custom,city:'krsk'});
+  assert.deepEqual([result.current.revenue,result.previous.revenue],[600,300]);
+  assert.deepEqual([result.current.paid_orders,result.previous.paid_orders],[2,1]);
+  assert.deepEqual([result.current.avg_daily_revenue,result.previous.avg_daily_revenue],[300,300]);
+  assert.deepEqual([result.current.avg_daily_orders,result.previous.avg_daily_orders],[1,1]);
+  assert.equal(result.changes.avg_daily_revenue.percent,0);
+  assert.equal(result.current.expenses,175);
+  assert.equal(result.previous.expenses,100);
+  assert.equal(result.daily.length,2);
+  assert.deepEqual(result.daily.map(d=>d.date),['2026-10-29','2026-10-30']);
+  assert.deepEqual(result.daily.map(d=>d.previous_date),['2026-10-22',null]);
+  assert.equal(result.daily[1].previous,null);
+  assert.equal(result.daily[1].previous_orders,null);
+  assert.equal(result.daily.reduce((sum,d)=>sum+Number(d.current||0),0),600);
+  assert.equal(result.daily.reduce((sum,d)=>sum+Number(d.previous||0),0),300);
+  assert.match(result.calculation_note,/Периоды разной длины/);
+  assert.equal(result.products.find(p=>p.name==='Лёгкое говяжье').previous_units,1);
+  assert.equal(result.products.find(p=>p.name==='Сердце говяжье').current_units,1);
+});
+
+test('a distant custom comparison uses only the two selected windows, not dates between them',()=>{
+  const custom={
+    current_start:'2026-10-30',current_end:'2026-10-30',
+    previous_start:'2026-10-22',previous_end:'2026-10-22',
+  };
+  const result=readComparison({now:NOW,custom,city:'krsk'});
+  assert.deepEqual([result.current.revenue,result.previous.revenue],[200,300]);
+  assert.deepEqual([result.current.paid_orders,result.previous.paid_orders],[1,1]);
+  assert.equal(result.current.expenses,0);
+  assert.equal(result.previous.expenses,100);
+  assert.equal(result.daily.length,1);
+  assert.equal(result.period.equal_length,true);
+  assert.doesNotMatch(result.calculation_note,/Периоды разной длины/);
+});
+
+test('custom comparison date validation rejects malformed, impossible, future, overlapping and long ranges',()=>{
+  const good={
+    current_start:'2026-10-29',current_end:'2026-10-30',
+    previous_start:'2026-10-22',previous_end:'2026-10-22',
+  };
+  const bad=[
+    [{current_start:''},/дату начала/],
+    [{current_start:'2026-02-30'},/Некорректная календарная дата/],
+    [{current_end:'2026-10-28'},/окончания/],
+    [{previous_end:'2026-10-24',previous_start:'2026-10-25'},/окончания/],
+    [{previous_end:'2026-10-29'},/пересечения/],
+    [{current_start:'2026-09-01',current_end:'2026-10-02'},/31 дня/],
+    [{current_end:'2999-01-01'},/2020–2100/],
+    [{current_start:'2026-11-08',current_end:'2026-11-09'},/будущие даты/],
+    [{previous_start:'2019-01-01'},/2020–2100/],
+  ];
+  for(const [patch,expected] of bad){
+    assert.throws(()=>customComparisonPeriod({...good,...patch},NOW),expected,JSON.stringify(patch));
+  }
+});
+
+test('custom date API enforces complete fields and accepts dates without mutating data',()=>{
+  const {Router}=require('./http-utils');
+  const {signToken}=require('./auth');
+  const {registerWeeklyReportRoutes}=require('./routes-weekly-reports');
+  const router=new Router();
+  registerWeeklyReportRoutes(router);
+  const query={
+    city:'krsk',
+    current_start:'2026-10-29',current_end:'2026-10-30',
+    previous_start:'2026-10-22',previous_end:'2026-10-22',
+  };
+  function request(params){
+    const match=router.match('GET','/api/weekly-reports/comparison');
+    const req={headers:{authorization:'Bearer '+signToken({id:99100,role:'admin'})}};
+    const res={status:0,data:null,headers:{},
+      setHeader(k,v){this.headers[k]=v;},
+      writeHead(code,headers){this.status=code;Object.assign(this.headers,headers||{});return this;},
+      end(raw){this.data=JSON.parse(raw);},
+    };
+    match.handler(req,res,{params:match.params,query:params});
+    return res;
+  }
+  assert.equal(request({current_start:query.current_start}).status,400);
+  assert.equal(request({...query,previous_end:'2026-10-29'}).status,400);
+  assert.equal(request({...query,current_end:'2099-01-01'}).status,400);
+  const before=db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n;
+  const result=request(query);
+  assert.equal(result.status,200,JSON.stringify(result.data));
+  assert.equal(result.data.period.mode,'custom');
+  assert.equal(result.data.period.current_days,2);
+  assert.equal(result.data.period.previous_days,1);
+  assert.equal(result.data.offset,null);
+  assert.equal(result.data.current.revenue,600);
+  assert.equal(result.headers['Cache-Control'],'private, no-store');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n,before);
+});
+
+test('admin UI contains both range selectors and date controls validate correctly on mobile',()=>{
+  const vm=require('node:vm');
+  const html=fs.readFileSync(path.join(__dirname,'../public/taiga-admin.html'),'utf8');
+  const js=fs.readFileSync(path.join(__dirname,'../public/week-over-week.js'),'utf8');
+  for(const id of ['wc-current-start','wc-current-end','wc-previous-start','wc-previous-end',
+    'wc-length-warning','wc-earlier']){
+    assert.match(html,new RegExp('id="'+id+'"'));
+  }
+  assert.match(html,/onclick="applyWeekComparisonDates\(\)"/);
+  assert.match(html,/onclick="resetWeekComparisonDates\(\)"/);
+  assert.match(js,/params\.set\(key,value\)/);
+  assert.match(js,/avg_daily_revenue/);
+  assert.match(js,/wcValidateDates/);
+  assert.doesNotThrow(()=>new Function(js));
+  const context=vm.createContext({});
+  vm.runInContext(js,context);
+  const valid=vm.runInContext(
+    "wcValidateDates({current_start:'2026-10-29',current_end:'2026-10-30',"+
+    "previous_start:'2026-10-22',previous_end:'2026-10-22'})",context);
+  assert.equal(valid.current_days,2);
+  assert.equal(valid.previous_days,1);
+  assert.throws(()=>vm.runInContext(
+    "wcValidateDates({current_start:'2026-10-29',current_end:'2026-10-30',"+
+    "previous_start:'2026-10-29',previous_end:'2026-10-29'})",context),/пересечение/);
 });
