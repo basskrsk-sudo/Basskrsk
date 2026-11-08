@@ -1335,6 +1335,9 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_orders_active_reservations ON orders(res
 // historical paid orders. Keeps the scan small as network sales grow.
 db.exec("CREATE INDEX IF NOT EXISTS idx_orders_pending_notification_scan " +
   "ON orders(created_at,id) WHERE status='pending' AND reservation_status='active'");
+// Weekly comparison loads bounded date ranges from both payment and product history.
+// This index also helps existing time-window reporting as the order table grows.
+db.exec('CREATE INDEX IF NOT EXISTS idx_orders_created_at_weekly ON orders(created_at,id)');
 
 // Игра «Поймай косточку» заменена викториной о собаках — старые таблицы
 // на уже развёрнутых серверах больше не используются нигде в коде, чистим их.
@@ -1692,6 +1695,8 @@ ensureColumn('restock_requests', 'city_id', "TEXT NOT NULL DEFAULT 'krsk'");
 ensureColumn('expenses', 'city_id', "TEXT NOT NULL DEFAULT 'krsk'");
 ensureColumn('expenses', 'investor_name', 'TEXT');
 ensureColumn('expenses', 'source', "TEXT NOT NULL DEFAULT 'admin'");
+// Week-over-week reports and finance screen filter historical expenses by payment date.
+db.exec('CREATE INDEX IF NOT EXISTS idx_expenses_date_city_weekly ON expenses(expense_date,city_id)');
 // Permanent, append-only correction ledger. No cascading foreign key to
 // expenses: financial audit must survive an expense being deleted later.
 db.exec(

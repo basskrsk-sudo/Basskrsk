@@ -1081,6 +1081,66 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
     </div>
 
+
+    <!-- ══ СРАВНЕНИЕ НЕДЕЛЬ — ЖИВОЙ ОТЧЁТ ══ -->
+    <div id="sec-week-comparison" style="display:none;">
+      <div class="card" style="margin-bottom:1rem;background:linear-gradient(135deg,var(--forest),var(--deep));color:#fff;border:0;">
+        <div style="display:flex;gap:1rem;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;">
+          <div style="max-width:760px;">
+            <div style="font-size:.76rem;text-transform:uppercase;letter-spacing:.07em;color:rgba(255,255,255,.72)">Аналитика продаж и расходов</div>
+            <h2 style="font-size:1.45rem;margin:.4rem 0 .55rem">Неделя к неделе</h2>
+            <p style="font-size:.85rem;line-height:1.6;color:rgba(255,255,255,.85)">Сравнение двух завершённых недель (понедельник — воскресенье, Красноярск). Данные обновляются из базы без создания PDF и без рассылок.</p>
+            <p id="wc-period" style="font-size:.88rem;font-weight:700;margin:.7rem 0 0;color:#F2D68C">Загружаем период…</p>
+          </div>
+          <div style="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap">
+            <label for="wc-city" style="font-size:.8rem">Город</label>
+            <select id="wc-city" aria-label="Выберите город" class="pm-select" style="min-width:140px;max-width:230px;color:var(--deep);background:#fff;" onchange="renderWeekComparison()">
+              <option value="">Вся сеть</option>
+            </select>
+            <button class="row-btn" title="Более ранняя неделя" onclick="changeWeekComparison(1)">← Ранее</button>
+            <button class="row-btn" id="wc-next" title="На неделю ближе к текущей" onclick="changeWeekComparison(-1)" disabled>Позже →</button>
+            <button class="row-btn" onclick="renderWeekComparison()" title="Обновить данные">↻ Обновить</button>
+          </div>
+        </div>
+        <div id="wc-feedback" role="status" aria-live="polite" style="margin-top:.7rem;font-size:.82rem;min-height:1.1rem"></div>
+      </div>
+      <div class="kpi-grid" id="wc-kpis" aria-live="polite"></div>
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-title">Выручка по дням недели <span style="font-weight:400;font-size:.76rem;color:var(--muted)">после возвратов, ₽</span></div>
+        <div id="wc-daily" style="overflow-x:auto"></div>
+      </div>
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-title">Результаты точек <span id="wc-points-count" style="font-weight:400;font-size:.76rem;color:var(--muted)"></span></div>
+        <div style="overflow-x:auto">
+          <table class="tbl" style="min-width:630px">
+            <thead><tr><th>Точка</th><th class="r">Текущая, ₽</th><th class="r">Предыдущая, ₽</th><th class="r">Разница</th><th class="r">Динамика</th><th class="r">Заказов</th></tr></thead>
+            <tbody id="wc-points"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-title">Товары по объёму продаж</div>
+        <div style="overflow-x:auto">
+          <table class="tbl" style="min-width:630px">
+            <thead><tr><th>Товар</th><th class="r">Штук сейчас</th><th class="r">Было</th><th class="r">Изменение</th><th class="r">Выручка сейчас*</th></tr></thead>
+            <tbody id="wc-products"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Внесённые расходы по категориям</div>
+        <div style="overflow-x:auto">
+          <table class="tbl" style="min-width:620px">
+            <thead><tr><th>Назначение</th><th class="r">Сейчас, ₽</th><th class="r">Было, ₽</th><th class="r">Разница, ₽</th></tr></thead>
+            <tbody id="wc-expenses"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:1rem">
+        <p id="wc-note" style="font-size:.77rem;line-height:1.55;color:var(--muted)">* Доли товарной выручки являются оценочными. Расчётный результат не равен налоговой прибыли.</p>
+      </div>
+    </div>
+
     <!-- ══ ЕЖЕНЕДЕЛЬНЫЙ ОТЧЁТ ДЛЯ ПЛАНЁРКИ ГД ══ -->
     <div id="sec-weekly-reports" style="display:none;">
       <div class="card" style="margin-bottom:1rem;background:linear-gradient(135deg,var(--forest),var(--deep));border:none;color:#fff;">
@@ -2558,6 +2618,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
 <script src="salon-photo-gallery.js?v=70"></script>
 <script src="telegram-connections.js?v=1"></script>
+    <script src="/week-over-week.js"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 // (Старый демонстрационный список точек убран — нигде не использовался,
@@ -3213,14 +3274,14 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
 }
 
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'system-health', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'qr-analytics', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'telegram-connections', 'point'];
-const titles = { launch: 'План запуска', 'system-health': 'Состояние системы', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', 'qr-analytics':'Аналитика QR', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', 'telegram-connections': 'Telegram — подключения', point: '' };
+const sections = ['launch', 'system-health', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'week-comparison', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'qr-analytics', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'telegram-connections', 'point'];
+const titles = { launch: 'План запуска', 'system-health': 'Состояние системы', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'week-comparison': 'Неделя к неделе', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', 'qr-analytics':'Аналитика QR', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', 'telegram-connections': 'Telegram — подключения', point: '' };
 const sectionGroups = {
   'payout-reports':'reports',
   dashboard:'home', bsc:'strategy', tasks:'tasks', orders:'sales', customers:'sales',
   products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
   points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', 'qr-analytics':'network', leads:'network',
-  news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'business-expenses':'finance', 'weekly-reports':'finance',
+  news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'business-expenses':'finance', 'week-comparison':'finance', 'weekly-reports':'finance',
   launch:'system', 'system-health':'system', guides:'system', audit:'system', admins:'system', 'telegram-connections':'system',
 };
 titles['payout-reports'] = 'Отчёты партнёрам';
@@ -3229,7 +3290,7 @@ const contextTabs = {
   inventory: [['products','Каталог'], ['stock','На точках'], ['warehouse','Центральный склад'], ['restock','Перемещения']],
   network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды'], ['qr-analytics','Аналитика QR'], ['leads','Прозвон']],
   promotion: [['news','Новости'], ['reviews','Отзывы'], ['winback','Возврат клиентов']],
-  finance: [['economics','Экономика'], ['business-expenses','Траты бизнеса'], ['weekly-reports','Отчёт ГД']],
+  finance: [['economics','Экономика'], ['business-expenses','Траты бизнеса'], ['week-comparison','Неделя к неделе'], ['weekly-reports','Отчёт ГД']],
   system: [['launch','План запуска'], ['system-health','Мониторинг'], ['guides','Инструкции'], ['audit','Журнал действий',true], ['admins','Администраторы',true], ['telegram-connections','Telegram']],
 };
 
@@ -3317,6 +3378,7 @@ async function showSection(id) {
   if (id === 'tasks')       await loadTaskLinks();
   if (id === 'economics')   await renderEconomics();
   if (id === 'business-expenses') await renderBusinessExpenses();
+  if (id === 'week-comparison') await renderWeekComparison();
   if (id === 'weekly-reports') await renderWeeklyReports();
   if (id === 'payout-reports') await openPayoutReports('partner');
   if (id === 'orders')      { await loadOrders(); renderOrders(); }
@@ -4673,6 +4735,7 @@ async function saveBscSettings() {
   alert('Цели и веса сохранены. Общий индекс пересчитан.');
 }
 
+// Read-only two-week comparison UI (functions defined in /week-over-week.js).
 // ── ОТЧЁТ ДЛЯ ПЛАНЁРКИ ГД ─────────────────────────────────────────
 function weeklyReportEscape(value) {
   return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

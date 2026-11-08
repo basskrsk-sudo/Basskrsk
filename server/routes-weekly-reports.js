@@ -3,7 +3,8 @@
 
 const fs = require('node:fs');
 const { sendJson } = require('./http-utils');
-const { requireAuth } = require('./routes-auth');
+const { requireAuth, requireActiveAdmin } = require('./routes-auth');
+const { readComparison } = require('./week-over-week');
 const {
   createWeeklyReport,
   customPeriod,
@@ -22,6 +23,27 @@ function safeRecord(record) {
 }
 
 function registerWeeklyReportRoutes(router) {
+  // Live, read-only business comparison, unlike the PDF/Excel generator.
+  // A limited time window and city filtering keep the API lightweight.
+  router.get('/api/weekly-reports/comparison', (req, res, ctx) => {
+    if (!requireActiveAdmin(req, res, ctx)) return;
+    const query=ctx.query||{};
+    const rawOffset=String(query.offset ?? '0');
+    if (!/^(0|[1-9][0-9]?)$/.test(rawOffset) || Number(rawOffset)>52)
+      return sendJson(res,400,{error:'Можно сравнивать не более 52 завершённых недель назад'});
+    const city=String(query.city||'').trim();
+    if (city && !/^[a-zA-Z0-9_-]{1,64}$/.test(city))
+      return sendJson(res,400,{error:'Некорректный код города'});
+    try {
+      const comparison=readComparison({offset:Number(rawOffset),city});
+      res.setHeader('Cache-Control','private, no-store');
+      sendJson(res,200,comparison);
+    } catch(error) {
+      if (error instanceof RangeError) return sendJson(res,400,{error:error.message});
+      throw error;
+    }
+  });
+
   router.get('/api/weekly-reports', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
