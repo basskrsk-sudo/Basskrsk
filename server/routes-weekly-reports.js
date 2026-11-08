@@ -34,8 +34,13 @@ function registerWeeklyReportRoutes(router) {
     const city=String(query.city||'').trim();
     if (city && !/^[a-zA-Z0-9_-]{1,64}$/.test(city))
       return sendJson(res,400,{error:'Некорректный код города'});
+    const fields=['current_start','current_end','previous_start','previous_end'];
+    const provided=fields.filter(key=>Object.prototype.hasOwnProperty.call(query,key));
+    if(provided.length && provided.length!==fields.length)
+      return sendJson(res,400,{error:'Укажите начало и конец обоих периодов'});
+    const custom=provided.length ? Object.fromEntries(fields.map(key=>[key,query[key]])) : null;
     try {
-      const comparison=readComparison({offset:Number(rawOffset),city});
+      const comparison=readComparison({offset:Number(rawOffset),city,custom});
       res.setHeader('Cache-Control','private, no-store');
       sendJson(res,200,comparison);
     } catch(error) {

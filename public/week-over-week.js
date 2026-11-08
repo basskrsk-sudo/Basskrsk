@@ -4,6 +4,7 @@
 // Telegram publishing or background polling takes place in this section.
 let weekComparisonOffset=0;
 let weekComparisonRequest=0;
+let weekComparisonCustomDates=null;
 
 function wcEsc(value) {
   return String(value == null ? '' : value)
@@ -34,13 +35,13 @@ function wcDelta(change,lowerIsBetter=false) {
 function wcMetric(label,data,key,{money=false,lowerIsBetter=false,suffix=''}={}) {
   const metric=data.changes?.[key]||{};
   const number=Number(data.current?.[key]||0);
-  const value=money?wcMoney(number):wcNum(number,key==='conversion_pct'?1:0)+suffix;
+  const value=money?wcMoney(number):wcNum(number,['conversion_pct','avg_daily_orders'].includes(key)?1:0)+suffix;
   return '<div class="kpi-card" style="min-width:0">'+
     '<div class="kpi-label">'+wcEsc(label)+'</div>'+
     '<div class="kpi-value" style="font-size:clamp(1.2rem,2.8vw,1.9rem)">'+wcEsc(value)+'</div>'+
     '<div class="kpi-delta" style="display:flex;gap:.35rem;flex-wrap:wrap">'+
        wcDelta(metric,lowerIsBetter) +
-       '<span style="font-size:.75rem;color:var(--muted)">('+wcEsc(money?wcMoney(metric.previous):wcNum(metric.previous,key==='conversion_pct'?1:0)+suffix)+
+       '<span style="font-size:.75rem;color:var(--muted)">('+wcEsc(money?wcMoney(metric.previous):wcNum(metric.previous,['conversion_pct','avg_daily_orders'].includes(key)?1:0)+suffix)+
        ' ранее)</span></div></div>';
 }
 function wcRows(name,rows,renderRow,colspan) {
@@ -54,24 +55,29 @@ function wcBars(data) {
   if(!target)return;
   const names=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
   const daily=data.daily||[];
+  const weekly=data.period?.mode==='completed-week';
   const top=Math.max(1,...daily.flatMap(x=>[Number(x.current||0),Number(x.previous||0)]));
   const bars=daily.map(d=>{
     const c=Math.max(2,Math.round(Number(d.current||0)/top*126));
     const p=Math.max(2,Math.round(Number(d.previous||0)/top*126));
-    const cur='Нов.: '+d.date+' · '+wcMoney(d.current)+' · '+wcNum(d.current_orders)+' заказов';
-    const prev='Ранее: '+d.previous_date+' · '+wcMoney(d.previous)+' · '+wcNum(d.previous_orders)+' заказов';
-    return '<div style="min-width:68px;flex:1;display:flex;flex-direction:column;align-items:center;gap:5px" role="group" aria-label="'+wcEsc(names[d.weekday])+'">'+
-      '<div style="height:135px;display:flex;align-items:end;justify-content:center;gap:5px">'+
-      '<div title="'+wcEsc(prev)+'" aria-label="'+wcEsc(prev)+'" style="width:24px;height:'+p+'px;border-radius:4px 4px 0 0;background:#B9CBC1"></div>'+
-      '<div title="'+wcEsc(cur)+'" aria-label="'+wcEsc(cur)+'" style="width:24px;height:'+c+'px;border-radius:4px 4px 0 0;background:#2D7655"></div></div>'+
-      '<b style="font-size:.8rem">'+wcEsc(names[d.weekday])+'</b>'+
-      '<small style="text-align:center;color:var(--muted);font-size:.7rem">'+wcEsc(wcNum(d.current))+'</small></div>';
+    const label=weekly?names[d.weekday]:'День '+(d.weekday+1);
+    const cur=d.date?'А: '+d.date+' · '+wcMoney(d.current)+' · '+wcNum(d.current_orders)+' заказов':'Отсутствует в периоде А';
+    const prev=d.previous_date?'Б: '+d.previous_date+' · '+wcMoney(d.previous)+' · '+wcNum(d.previous_orders)+' заказов':'Отсутствует в периоде Б';
+    const oldBar=d.previous==null?'':'<div title="'+wcEsc(prev)+'" aria-label="'+wcEsc(prev)+'" style="width:22px;height:'+p+'px;border-radius:4px 4px 0 0;background:#B9CBC1"></div>';
+    const newBar=d.current==null?'':'<div title="'+wcEsc(cur)+'" aria-label="'+wcEsc(cur)+'" style="width:22px;height:'+c+'px;border-radius:4px 4px 0 0;background:#2D7655"></div>';
+    return '<div style="min-width:58px;flex:1;display:flex;flex-direction:column;align-items:center;gap:5px" role="group" aria-label="'+wcEsc(label)+'">'+
+      '<div style="height:135px;display:flex;align-items:end;justify-content:center;gap:4px">'+oldBar+newBar+'</div>'+
+      '<b style="font-size:.77rem">'+wcEsc(label)+'</b>'+
+      '<small style="text-align:center;color:var(--muted);font-size:.67rem">'+
+       (d.date?wcEsc(d.date.slice(5)):'—')+' / '+(d.previous_date?wcEsc(d.previous_date.slice(5)):'—')+'</small></div>';
   }).join('');
   target.innerHTML='<div style="display:flex;gap:1rem;align-items:center;margin-bottom:.6rem;font-size:.79rem;flex-wrap:wrap">'+
-    '<span><span style="display:inline-block;width:10px;height:10px;background:#2D7655;border-radius:2px"></span> Сравниваемая неделя</span>'+
-    '<span><span style="display:inline-block;width:10px;height:10px;background:#B9CBC1;border-radius:2px"></span> Предыдущая неделя</span></div>'+
-    '<div style="display:flex;gap:8px;min-width:550px;align-items:end">'+bars+'</div>';
+    '<span><span style="display:inline-block;width:10px;height:10px;background:#2D7655;border-radius:2px"></span> Период А</span>'+
+    '<span><span style="display:inline-block;width:10px;height:10px;background:#B9CBC1;border-radius:2px"></span> Период Б</span>'+
+    (!data.period?.equal_length?'<span style="color:#8F5315">— = отсутствующий день</span>':'')+'</div>'+
+    '<div style="display:flex;gap:8px;min-width:'+Math.max(550,daily.length*66)+'px;align-items:end">'+bars+'</div>';
 }
+
 function wcFillCities(cities,selected) {
   const select=document.getElementById('wc-city');
   if(!select)return;
@@ -85,12 +91,92 @@ function wcFillCities(cities,selected) {
   });
   select.value=current;
 }
+const WC_DATE_FIELDS={
+  current_start:'wc-current-start',
+  current_end:'wc-current-end',
+  previous_start:'wc-previous-start',
+  previous_end:'wc-previous-end',
+};
+function wcSetDateFields(period) {
+  const values={
+    current_start:period.start_local,current_end:period.end_local,
+    previous_start:period.previous_start_local,previous_end:period.previous_end_local,
+  };
+  for(const [key,id] of Object.entries(WC_DATE_FIELDS)){
+    const input=document.getElementById(id);
+    if(input)input.value=values[key]||'';
+  }
+}
+function wcDateValues() {
+  return Object.fromEntries(Object.entries(WC_DATE_FIELDS).map(([key,id])=>[
+    key,String(document.getElementById(id)?.value||''),
+  ]));
+}
+function wcDateKey(value) {
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return null;
+  const time=Date.parse(value+'T00:00:00Z');
+  return Number.isFinite(time)&&new Date(time).toISOString().slice(0,10)===value?time:null;
+}
+function wcLocalToday() {
+  // Never rely on locale-specific separators: mobile Safari may render
+  // en-CA as M/D/YYYY instead of ISO.
+  const parts=new Intl.DateTimeFormat('en-GB',{
+    timeZone:'Asia/Krasnoyarsk',year:'numeric',month:'2-digit',day:'2-digit'
+  }).formatToParts(new Date());
+  const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  return values.year+'-'+values.month+'-'+values.day;
+}
+function wcValidateDates(dates) {
+  const values={};
+  for(const [key,value] of Object.entries(dates)){
+    const parsed=wcDateKey(value);
+    if(parsed===null||Number(value.slice(0,4))<2020)throw Error('Выберите корректные даты не ранее 2020 года.');
+    values[key]=parsed;
+  }
+  const day=86400000;
+  const aDays=Math.round((values.current_end-values.current_start)/day)+1;
+  const bDays=Math.round((values.previous_end-values.previous_start)/day)+1;
+  if(aDays<1||bDays<1)throw Error('Дата окончания периода должна быть не раньше даты начала.');
+  if(aDays>31||bDays>31)throw Error('Каждый период может включать не более 31 дня.');
+  if(dates.current_end>wcLocalToday()||dates.previous_end>wcLocalToday())
+    throw Error('Нельзя сравнивать будущие даты.');
+  if(values.previous_end>=values.current_start)
+    throw Error('Базовый период Б должен закончиться до начала периода А; пересечение не допускается.');
+  return {current_days:aDays,previous_days:bDays};
+}
+function applyWeekComparisonDates() {
+  const feedback=document.getElementById('wc-feedback');
+  const dates=wcDateValues();
+  try{
+    wcValidateDates(dates);
+    weekComparisonCustomDates=dates;
+    renderWeekComparison();
+  }catch(e){
+    if(feedback)feedback.textContent='⚠ '+String(e.message||'Проверьте даты');
+  }
+}
+function resetWeekComparisonDates() {
+  weekComparisonOffset=0;
+  weekComparisonCustomDates=null;
+  renderWeekComparison();
+}
+
 function wcRender(data) {
   document.getElementById('wc-period').textContent=
     data.period.start_local+' — '+data.period.end_local+
     '  против  '+data.period.previous_start_local+' — '+data.period.previous_end_local;
   const next=document.getElementById('wc-next');
-  if(next)next.disabled=weekComparisonOffset===0;
+  if(next)next.disabled=!!weekComparisonCustomDates||weekComparisonOffset===0;
+  const earlier=document.getElementById('wc-earlier');
+  if(earlier)earlier.disabled=!!weekComparisonCustomDates||weekComparisonOffset===52;
+  wcSetDateFields(data.period);
+  const warning=document.getElementById('wc-length-warning');
+  if(warning) {
+    warning.style.display=data.period.equal_length?'none':'block';
+    warning.textContent=data.period.equal_length?'':'⚠ Периоды разной длины: А — '+
+      data.period.current_days+' дн., Б — '+data.period.previous_days+
+      ' дн. Для объективного сравнения смотрите среднедневные показатели.';
+  }
   const kpis=document.getElementById('wc-kpis');
   if(kpis)kpis.innerHTML=[
     wcMetric('Выручка',data,'revenue',{money:true}),
@@ -102,6 +188,8 @@ function wcRender(data) {
     wcMetric('Расчётный результат*',data,'estimated_profit',{money:true}),
     wcMetric('Конверсия в оплату',data,'conversion_pct',{suffix:'%'}),
     wcMetric('Возвраты',data,'refunds',{money:true,lowerIsBetter:true}),
+    wcMetric('Выручка в день',data,'avg_daily_revenue',{money:true}),
+    wcMetric('Заказов в день',data,'avg_daily_orders'),
   ].join('');
   wcBars(data);
   const pts=data.points||[];
@@ -128,8 +216,8 @@ function wcRender(data) {
     '<td class="r">'+wcEsc(wcDifference(e.delta))+' ₽</td></tr>',4);
   const note=document.getElementById('wc-note');
   if(note)note.textContent='* '+String(data.calculation_note||'').trim()+
-    ' Если предыдущая неделя имеет нулевую базу, процент роста не рассчитывается. '+
-    'Новые отчётные данные учитывают только завершённые недели.';
+    ' При нулевой базе процент роста не рассчитывается. '+
+    'Если периоды имеют разную длительность, для сопоставления темпов используйте показатели за день.';
 }
 
 async function renderWeekComparison() {
@@ -141,6 +229,9 @@ async function renderWeekComparison() {
   feedback.textContent='Обновляем сравнение…';
   const params=new URLSearchParams({offset:String(weekComparisonOffset)});
   if(city)params.set('city',city);
+  if(weekComparisonCustomDates){
+    for(const [key,value] of Object.entries(weekComparisonCustomDates))params.set(key,value);
+  }
   try {
     const response=await authFetch('/api/weekly-reports/comparison?'+params.toString());
     const data=await response.json();
@@ -156,6 +247,7 @@ async function renderWeekComparison() {
 }
 
 function changeWeekComparison(delta) {
+  if(weekComparisonCustomDates)return;
   const next=weekComparisonOffset+delta;
   if(!Number.isInteger(next)||next<0||next>52)return;
   weekComparisonOffset=next;
