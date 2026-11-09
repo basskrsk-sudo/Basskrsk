@@ -4,12 +4,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { execFileSync } = require('node:child_process');
+const { convertImage } = require('./image-converter');
 const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth, requireActiveAdmin, requireSuperAdmin, tryAuth } = require('./routes-auth');
 const { reverseAndDeleteOrdersBy } = require('./order-reversal');
-const { getReviewSummary } = require('./routes-reviews');
+const { buildCatalog } = require('./product-catalog');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
 const { writeSalonPagesSnapshot } = require('./salon-page-storage');
@@ -42,56 +42,12 @@ function normalizeSalonPhotoUrls(value, legacyPhoto) {
   return normalized;
 }
 
-function productWithVariantsAndStock(product, includeCost, includeInactiveVariants) {
-  const variants = db.prepare(
-    includeCost
-      ? 'SELECT id, weight, price, cost_price, active FROM product_variants WHERE product_id = ? ORDER BY sort_order'
-      : 'SELECT id, weight, price, active FROM product_variants WHERE product_id = ? ORDER BY sort_order'
-  ).all(product.id).filter((v) => includeInactiveVariants || v.active);
-  const variantIds = variants.map((v) => v.id);
-  const stockRows = variantIds.length
-    ? db.prepare(
-        `SELECT variant_id, point_id, qty FROM stock WHERE variant_id IN (${variantIds.map(() => '?').join(',')})`
-      ).all(...variantIds)
-    : [];
-  const stockByVariant = {};
-  for (const row of stockRows) {
-    if (!stockByVariant[row.variant_id]) stockByVariant[row.variant_id] = {};
-    stockByVariant[row.variant_id][row.point_id] = row.qty;
-  }
-  return {
-    id: product.id,
-    slug: product.slug,
-    name: product.name,
-    category: product.category,
-    icon: product.icon,
-    badge: product.badge,
-    img: product.img,
-    desc: product.desc,
-    comp: (() => { try { return JSON.parse(product.comp); } catch (e) { return []; } })(),
-    pet_suitability: product.pet_suitability || '',
-    purpose: product.purpose || '',
-    restrictions: product.restrictions || '',
-    active: !!product.active,
-    archived: !!product.archived_at,
-    archived_at: product.archived_at || null,
-    ...getReviewSummary(product.id),
-    variants: variants.map((v) => Object.assign({
-      id: v.id,
-      weight: v.weight,
-      price: v.price,
-      active: !!v.active,
-      stock: stockByVariant[v.id] || {},
-    }, includeCost ? { cost_price: v.cost_price } : {})),
-  };
-}
-
 function registerProductRoutes(router) {
   // POST /api/products/upload-image — загрузка фото товара (админ или кладовщик).
   // Картинка приходит base64 в JSON-теле (без multipart — сервер без внешних
   // библиотек), сжимается и приводится к единому размеру через ImageMagick,
   // сохраняется в public/images/uploads/.
-  router.post('/api/products/upload-image', (req, res, ctx) => {
+  router.post('/api/products/upload-image', async (req, res, ctx) => {
     const payload = requireAuth(['admin', 'warehouse'])(req, res, ctx);
     if (!payload) return;
     const { data } = ctx.body || {};
@@ -136,15 +92,8 @@ function registerProductRoutes(router) {
       // в stderr при каждом вызове) — пробуем современную команду первой,
       // откатываемся на `convert` только если именно её нет в системе
       // (ENOENT), а не если она есть, но упала по другой причине.
-      try {
-        execFileSync('magick', [tempPath, '-auto-orient', '-resize', '800x800>', '-quality', '85', finalPath]);
-      } catch (magickErr) {
-        if (magickErr.code === 'ENOENT') {
-          execFileSync('convert', [tempPath, '-auto-orient', '-resize', '800x800>', '-quality', '85', finalPath]);
-        } else {
-          throw magickErr;
-        }
-      }
+      // Spawn ImageMagick asynchronously: uploads must not stall Node.js requests.
+      await convertImage([tempPath, '-auto-orient', '-resize', '800x800>', '-quality', '85', finalPath]);
       fs.unlinkSync(tempPath);
     } catch (e) {
       try { fs.unlinkSync(tempPath); } catch (e2) {}
@@ -156,6 +105,7 @@ function registerProductRoutes(router) {
       // его декодировать). Раньше сообщение не показывало этого и все сбои
       // выглядели одинаково как "файл не подходит", без возможности понять, что
       // конкретно случилось.
+      if (e.statusCode === 503) return sendJson(res, 503, {error:'Обработка фотографий временно занята. Повторите попытку позже.'});
       const rawError = (e.stderr ? e.stderr.toString() : '') || e.message || '';
       const isUnsupportedFormat = /no decode delegate|improper image header|not authorized/i.test(rawError);
       const friendlyMessage = isUnsupportedFormat
@@ -193,12 +143,8 @@ function registerProductRoutes(router) {
     const salesByProduct = new Map(
       salesRows.map((row) => [Number(row.product_id), Number(row.sales_count) || 0])
     );
-    const products = rows
-      .map((p) => Object.assign(
-        productWithVariantsAndStock(p, !!adminPayload, includeInactive),
-        { sales_count: salesByProduct.get(Number(p.id)) || 0 }
-      ))
-      .filter((p) => includeInactive || p.variants.length > 0); // товар без единого видимого веса — скрыт целиком
+    // Three bulk reads replace the former variants/stock/reviews N+1 pattern.
+    const products = buildCatalog(rows, !!adminPayload, includeInactive, salesByProduct);
     sendJson(res, 200, { products });
   });
 
@@ -669,7 +615,7 @@ function registerProductRoutes(router) {
   // POST /api/points/:id/salon-photos — загрузка одного файла в галерею.
   // Клиент вызывает маршрут последовательно для каждого выбранного файла;
   // итоговый порядок и список сохраняются общим PUT страницы салона.
-  router.post('/api/points/:id/salon-photos', (req, res, ctx) => {
+  router.post('/api/points/:id/salon-photos', async (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager', 'partner', 'owner'])(req, res, ctx);
     if (!payload) return;
     const point = db.prepare('SELECT * FROM points WHERE id = ?').get(ctx.params.id);
@@ -722,14 +668,13 @@ function registerProductRoutes(router) {
     try {
       fs.writeFileSync(tempPath, buffer);
       const args = [tempPath, '-auto-orient', '-resize', '1600x1200>', '-quality', '84', finalPath];
-      try {
-        execFileSync('magick', args);
-      } catch (magickError) {
-        if (magickError.code === 'ENOENT') execFileSync('convert', args);
-        else throw magickError;
-      }
+      await convertImage(args);
       fs.unlinkSync(tempPath);
     } catch (error) {
+      if (error.statusCode === 503) {
+        try { fs.unlinkSync(tempPath); } catch (_) {}
+        return sendJson(res, 503, {error:'Обработка фотографий временно занята. Повторите попытку позже.'});
+      }
       // В некоторых сборках Amvera ImageMagick установлен без рабочего
       // JPEG/WebP-делегата. Галерея не должна из-за этого переставать работать:
       // сохраняем уже проверенный исходник (новый клиент предварительно сам
@@ -1084,4 +1029,4 @@ function registerProductRoutes(router) {
   });
 }
 
-module.exports = { registerProductRoutes, productWithVariantsAndStock };
+module.exports = { registerProductRoutes };
