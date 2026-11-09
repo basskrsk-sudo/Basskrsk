@@ -23,6 +23,7 @@ const { registerMiniAppAdminWarehouseRoutes } = require('./routes-miniapp-admin-
 const { registerNotificationPreferenceRoutes } = require('./routes-notification-preferences');
 const { registerBusinessFounderRoutes } = require('./routes-business-founders');
 const { registerProductRoutes } = require('./routes-products');
+const { registerGiftRoutes } = require('./routes-gifts');
 const { registerQrAnalyticsRoutes } = require('./routes-qr-analytics');
 const { registerQrWeeklyTelegramRoutes, scheduleWeeklyQrTelegramReport } = require('./qr-weekly-telegram');
 const { registerSampleQrRoutes } = require('./routes-sample-qr');
@@ -110,6 +111,7 @@ registerMiniAppAdminWarehouseRoutes(router);
 registerNotificationPreferenceRoutes(router);
 registerBusinessFounderRoutes(router);
 registerProductRoutes(router);
+registerGiftRoutes(router);
 registerQrAnalyticsRoutes(router);
 registerQrWeeklyTelegramRoutes(router);
 registerSampleQrRoutes(router);
@@ -278,6 +280,12 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Cache-Control', 'no-store');
     return serveStatic(req, res, '/tasks.html');
+  }
+  // Printed gift tickets have one-use URLs; only the gift workflow can redeem them.
+  if ((req.method === 'GET' || req.method === 'HEAD') && /^\/gift\/[A-Za-z0-9_-]{24}\/?$/.test(pathname)) {
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Cache-Control', 'no-store');
+    return serveStatic(req, res, '/gift.html');
   }
   if ((req.method === 'GET' || req.method === 'HEAD') && (pathname === '/p' || pathname.startsWith('/p/'))) {
     return serveStatic(req, res, '/p.html');
