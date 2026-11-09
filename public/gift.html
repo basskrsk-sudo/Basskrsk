@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1C3A2F">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Стрижка со вкусом — подарок от ХвостМаркета</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+:root{--forest:#1C3A2F;--green:#2D5A3F;--cream:#F7F3EC;--gold:#E8A84A;--line:#e4e0d6;--text:#2a291f}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--text);font:15px/1.48 system-ui,-apple-system,Arial,sans-serif}
+.wrap{max-width:490px;margin:auto;padding:25px 18px 60px}.brand{display:flex;align-items:center;gap:12px;color:var(--forest);font-size:21px;font-weight:800}
+.brand img{width:48px;height:48px;object-fit:contain}.hero{margin-top:20px;border-radius:20px;background:var(--forest);color:white;padding:23px;position:relative;overflow:hidden}
+.hero .eyebrow{color:#ffce74;font-weight:800;font-size:12px;letter-spacing:.07em}.hero h1{font-size:29px;line-height:1.1;margin:9px 0 11px}
+.hero p{margin:0;color:#e6f1e7}.hero .weight{font-size:35px;font-weight:850;margin:12px 0 2px}.card{margin-top:15px;background:white;border:1px solid var(--line);padding:20px;border-radius:18px;box-shadow:0 8px 25px #1c3a2f10}
+.card h2{font-size:18px;margin:0 0 12px}.points{padding:0;margin:0;list-style:none;counter-reset:step}.points li{position:relative;padding:0 0 17px 39px;counter-increment:step}.points li:last-child{padding-bottom:0}
+.points li:before{content:counter(step);position:absolute;top:0;left:0;border-radius:50%;background:#ecf4ea;color:var(--forest);font-weight:800;display:grid;place-items:center;width:27px;height:27px}
+label.field{display:block;font-weight:700;margin-bottom:8px}.phone{width:100%;height:48px;border:1px solid #b5c8b7;padding:0 14px;font-size:16px;border-radius:10px;outline:none}
+.phone:focus{border-color:var(--green);box-shadow:0 0 0 3px #2d5a3f22}.check{display:flex;align-items:flex-start;gap:11px;margin:17px 0;font-size:13px;color:#3b4b3d}
+.check input{width:19px;height:19px;flex:0 0 19px;accent-color:var(--green);margin:0}.check a{color:var(--green)}
+button.action,.action-link{width:100%;padding:15px;display:block;border:0;border-radius:12px;background:var(--green);color:white;font-size:15px;font-weight:800;text-align:center;text-decoration:none;cursor:pointer}
+button.action:disabled{opacity:.55;cursor:wait}.muted{font-size:12px;color:#66766c}.error{color:#9c2b24;background:#fff0ee;border-radius:10px;padding:12px;margin-top:12px}
+.good{background:#eaf6e9;color:#195b38;border-radius:13px;padding:15px;margin-top:13px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="brand"><img src="/images/hvostmarket-mark-v4-transparent.webp" alt=""> ХвостМаркет</div>
+  <div class="hero">
+    <div class="eyebrow">🎁 ПОДАРОК ЗА СТРИЖКУ</div>
+    <h1>Стрижка<br>со вкусом</h1>
+    <p>Натуральное сушёное говяжье лёгкое</p>
+    <div class="weight">30 г · 0 ₽</div>
+    <p>Бесплатно для вашего хвостика 🐾</p>
+  </div>
+  <section class="card" id="loading" role="status">Проверяем подарочную карточку…</section>
+  <section class="card" id="unavailable" hidden>
+    <h2>Получение сейчас недоступно</h2>
+    <div id="unavailableMessage" class="error" role="alert"></div>
+    <p class="muted">Если вам только что выдали карточку после стрижки, обратитесь к грумеру.</p>
+  </section>
+  <section class="card" id="formSection" hidden>
+    <h2>Ваш подарок ждёт вас!</h2>
+    <p id="pointName"></p>
+    <p id="deadline" class="muted"></p>
+    <h2>Как покупать в ХвостМаркете</h2>
+    <ol class="points">
+      <li>Выберите понравившееся лакомство на полке ХвостМаркета.</li>
+      <li>Отсканируйте QR-код и укажите телефон. Для обычной покупки оплатите товар через СБП.</li>
+      <li>После подтверждения оплаты заберите товар с полки. <b>Сейчас оплата не нужна — ваш подарок бесплатный.</b></li>
+    </ol>
+    <hr style="border:0;border-top:1px solid var(--line);margin:21px 0">
+    <form id="giftForm">
+      <label class="field" for="phone">Ваш номер телефона</label>
+      <input id="phone" class="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 900 000-00-00" required maxlength="25">
+      <p class="muted">Номер нужен для учёта выдачи подарка. Ввод номера сам по себе не подтверждает владение им и не подписывает на рассылки.</p>
+      <label class="check"><input id="readGuide" type="checkbox" required> <span>Я ознакомился(ась), как работает покупка через QR-код.</span></label>
+      <label class="check"><input id="readPrivacy" type="checkbox" required> <span>Я согласен(на) на обработку моего номера телефона для оформления подарка по <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer">политике обработки персональных данных</a>. Согласие на рекламу не требуется.</span></label>
+      <button id="submit" class="action" type="submit">🎁 Получить бесплатно</button>
+      <div id="formError" class="error" role="alert" hidden></div>
+    </form>
+  </section>
+  <section class="card" id="success" hidden>
+    <h2>🎉 Подарок оформлен!</h2>
+    <div class="good"><strong>Заберите одну упаковку говяжьего лёгкого 30 г</strong> с подарочной полки ХвостМаркета.</div>
+    <p id="successPoint"></p>
+    <p class="muted">Вторая выдача по этому QR-коду невозможна. Спасибо, что познакомились с ХвостМаркетом!</p>
+    <a id="catalogLink" class="action-link" href="/">Посмотреть другие лакомства →</a>
+  </section>
+</main>
+<script>
+(function(){
+  'use strict';
+  var token=location.pathname.split('/').filter(Boolean)[1] || '';
+  var info=null,loading=document.getElementById('loading');
+  function show(id) {
+    ['loading','unavailable','formSection','success'].forEach(function(x){document.getElementById(x).hidden=x!==id});
+  }
+  function fail(msg){document.getElementById('unavailableMessage').textContent=msg;show('unavailable')}
+  async function getData(res){
+    try{return await res.json()}catch(_){return {}}
+  }
+  if(!/^[A-Za-z0-9_-]{24}$/.test(token)){fail('Некорректный QR-код');return}
+  fetch('/api/gifts/'+encodeURIComponent(token),{cache:'no-store'})
+    .then(async function(res){
+      var data=await getData(res);
+      if(!res.ok)throw new Error(data.error||'Подарок недоступен');
+      info=data;
+      document.getElementById('pointName').textContent='📍 '+data.point_name+', '+data.point_addr;
+      document.getElementById('deadline').textContent='Получить до '+data.ends_on+' включительно.';
+      var known=localStorage.getItem('taiga_known_phone') || '';
+      if(/^79\d{9}$/.test(known))document.getElementById('phone').value='+'+known;
+      show('formSection');
+    }).catch(function(e){fail(e.message||'Ошибка загрузки карточки')});
+  function normalize(value){
+    var d=String(value||'').replace(/\D/g,'');
+    if(d.length===10 && d[0]==='9')d='7'+d;
+    if(d.length===11 && d[0]==='8')d='7'+d.slice(1);
+    return /^79\d{9}$/.test(d)?d:null;
+  }
+  document.getElementById('giftForm').addEventListener('submit',async function(e){
+    e.preventDefault();
+    var phone=normalize(document.getElementById('phone').value),err=document.getElementById('formError'),btn=document.getElementById('submit');
+    err.hidden=true;
+    if(!phone){err.textContent='Введите мобильный номер РФ';err.hidden=false;return}
+    btn.disabled=true;btn.textContent='Оформляем подарок…';
+    try{
+      var res=await fetch('/api/gifts/'+encodeURIComponent(token)+'/redeem',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({phone:phone,guide_seen:document.getElementById('readGuide').checked,privacy_acknowledged:document.getElementById('readPrivacy').checked})
+      });
+      var data=await getData(res);
+      if(!res.ok)throw new Error(data.error||'Не удалось оформить подарок');
+      localStorage.setItem('taiga_known_phone',phone);
+      document.getElementById('successPoint').textContent='📍 '+data.point_name;
+      show('success');
+    }catch(error){err.textContent=error.message;err.hidden=false}
+    finally{btn.disabled=false;btn.textContent='🎁 Получить бесплатно'}
+  });
+})();
+</script>
+</body>
+</html>

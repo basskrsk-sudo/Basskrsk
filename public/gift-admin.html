@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Стрижка со вкусом — управление подарками</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+:root{--deep:#1c3a2f;--green:#28734d;--gold:#efbd57;--line:#dedbd0;--mute:#62736b}
+*{box-sizing:border-box}body{font:14px/1.45 system-ui,-apple-system,Arial,sans-serif;background:#f5f4ef;color:#183328;margin:0}
+main{max-width:1100px;margin:auto;padding:26px 18px 70px}header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:23px;flex-wrap:wrap}
+h1{margin:0;font-size:25px}h2{font-size:18px;margin:0 0 12px}.panel{background:white;border:1px solid var(--line);border-radius:17px;padding:21px;margin-bottom:16px;box-shadow:0 2px 13px #1c3a2f0b}
+.muted{color:var(--mute);font-size:12px}.primary,.danger,.outline{border:0;border-radius:9px;padding:11px 15px;font-weight:700;cursor:pointer}
+.primary{background:var(--deep);color:white}.danger{background:#a43a31;color:white}.outline{background:white;color:var(--deep);border:1px solid #a6bbae}
+button:disabled{opacity:.5;cursor:wait}.layout{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px}
+label{font-weight:700;display:block;font-size:12px;margin-bottom:6px}
+input,select{width:100%;height:43px;font-size:14px;padding:8px 11px;border:1px solid #bdcbbb;border-radius:9px;background:white;color:inherit}
+a{color:var(--green)}.stat{border:1px solid var(--line);padding:12px;border-radius:11px}.stat b{font-size:23px;display:block}
+.notice{padding:13px;background:#fff6df;border-radius:10px;border:1px solid #f4e0a1;font-size:13px;margin:10px 0}
+.error{color:#a52b22;margin-top:9px}.good{color:var(--green);margin-top:9px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;text-align:left;min-width:660px}th,td{padding:11px;border-bottom:1px solid var(--line);font-size:12px;vertical-align:middle}
+th{color:var(--mute)}.row-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:15px}.status{font-size:12px;font-weight:800}
+#cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:12px}
+.gift-card{padding:13px;border-radius:10px;border:1px dashed #a7baae;display:flex;gap:12px;align-items:center;background:#fff;break-inside:avoid;min-height:150px}
+.gift-card .qr{flex:0 0 122px;width:122px;height:122px;display:grid;place-items:center}
+.gift-card .qr canvas,.gift-card .qr img{width:122px!important;height:122px!important}
+.gift-copy{font-size:11px}.gift-copy strong{font-size:15px}.gift-copy small{display:block;margin:5px 0;color:#526d5b}.gift-copy a{overflow-wrap:anywhere;font-size:10px}
+#cardBlock[hidden]{display:none!important}
+@page{size:A4;margin:10mm}
+@media print{
+ body{background:white}header,.panel,.noprint{display:none!important}
+ main{max-width:none;padding:0;margin:0}
+ #cardBlock{display:block!important}
+ #cards{display:grid;grid-template-columns:repeat(2,1fr);gap:5mm}
+ .gift-card{width:88mm;height:54mm;page-break-inside:avoid;overflow:hidden;padding:3mm;border:1px dashed #777}
+ .gift-card .qr{flex:0 0 38mm;width:38mm;height:38mm}
+ .gift-card .qr canvas,.gift-card .qr img{width:38mm!important;height:38mm!important}
+ .gift-copy{font-size:9pt}.gift-copy strong{font-size:11pt}
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>🎁 Стрижка со вкусом</h1><div class="muted">ХвостМаркет · управление подарками 30 г</div></div>
+    <a href="/taiga-admin.html" class="outline" style="text-decoration:none">← Вернуться в админку</a>
+  </header>
+  <div class="panel">
+    <h2>Статус акции</h2>
+    <div class="layout">
+      <div class="stat"><span class="muted">Кампания</span><b id="campaignStatus">Загрузка…</b></div>
+      <div class="stat"><span class="muted">Подарочный товар</span><b>Говяжье лёгкое · 30 г</b><span class="muted" id="variantInfo"></span></div>
+      <div class="stat"><span class="muted">Цена для клиента</span><b>0 ₽</b><span class="muted">Без ЮKassa и комиссий</span></div>
+    </div>
+    <div class="row-actions">
+      <button id="toggle" class="primary" type="button" disabled>Загрузка…</button>
+      <button id="reload" class="outline" type="button">Обновить данные</button>
+    </div>
+    <div class="notice">При установке системы акция <strong>выключена</strong>. Сначала получите у производителя корректно упакованные пробники 30 г, заведите их на склад и распределите по точкам. Затем подготовьте QR-карточки и отдельно включите акцию. Участие не активирует рассылки.</div>
+    <p id="statusMessage" role="status"></p>
+  </div>
+  <div class="panel">
+    <h2>Подготовка физического товара</h2>
+    <p class="muted">Упакуйте говяжье лёгкое по 30 г, промаркируйте и примите на центральный склад. Отправьте подарки грумеру, после фактической передачи подтвердите количество для конкретного салона.</p>
+    <form id="intakeForm">
+      <div class="layout">
+        <div><label for="intakeCity">Городской склад</label><select id="intakeCity" required></select></div>
+        <div><label for="intakeQty">Получено упаковок 30 г</label><input id="intakeQty" type="number" min="1" max="20000" step="1" value="50" required></div>
+        <div><label for="intakeNote">Накладная / основание</label><input id="intakeNote" minlength="6" maxlength="500" placeholder="Партия от производителя №..." required></div>
+        <div style="align-self:center"><label style="display:flex;gap:8px;align-items:center"><input id="intakeConfirmed" style="width:18px;height:18px" type="checkbox" required> Физически принято</label></div>
+      </div>
+      <div class="row-actions"><button id="intakeButton" class="primary" type="submit">Оприходовать подарки</button></div>
+    </form>
+    <p id="intakeMessage" role="status"></p>
+    <p class="muted" id="warehouseSummary">Загружаем остатки городских складов…</p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <h2>Передача подарков на полку салона</h2>
+    <form id="transferForm">
+      <div class="layout">
+        <div><label for="transferPoint">Салон</label><select id="transferPoint" required></select></div>
+        <div><label for="transferQty">Передано упаковок</label><input id="transferQty" type="number" min="1" max="20000" step="1" value="50" required></div>
+        <div><label for="transferNote">Основание / комментарий</label><input id="transferNote" minlength="8" maxlength="500" placeholder="Передано менеджером после доставки" required></div>
+        <div style="align-self:center"><label style="display:flex;gap:8px;align-items:center"><input id="transferConfirmed" style="width:18px;height:18px" type="checkbox" required> Физически доставлено в салон</label></div>
+      </div>
+      <div class="row-actions"><button id="transferButton" class="primary" type="submit">Подтвердить передачу со склада</button></div>
+    </form>
+    <p id="transferMessage" role="status"></p>
+  </div>
+  <div class="panel">
+    <h2>Подготовить отдельные карточки с QR-кодом</h2>
+    <p class="muted">Одна карточка — один бесплатный подарок после одной стрижки. QR уникальный, повторное использование заблокировано. Код привязан к конкретному салону и датам акции.</p>
+    <form id="batchForm">
+      <div class="layout">
+        <div><label for="point">Салон</label><select id="point" required></select></div>
+        <div><label for="start">Дата начала</label><input type="date" id="start" required></div>
+        <div><label for="end">Дата окончания</label><input type="date" id="end" required></div>
+        <div><label for="count">Карточек (1–200)</label><input type="number" min="1" max="200" step="1" value="50" id="count" required></div>
+      </div>
+      <div class="row-actions"><button class="primary" id="create" type="submit">Создать QR-карточки</button></div>
+      <p class="muted">⚠️ Секретные QR-коды будут доступны для печати сразу после создания. Позже по безопасности они не отображаются снова. Сохраните распечатку; при потере отзовите тираж.</p>
+    </form>
+    <p id="batchMessage" role="status"></p>
+  </div>
+  <div class="panel">
+    <h2>Контроль выдачи и остатков</h2>
+    <div class="scroll"><table><thead><tr><th>Салон</th><th>Остаток подарков</th><th>Карточки</th></tr></thead><tbody id="points"></tbody></table></div>
+    <p class="muted">Остаток показывает упакованные подарочные 30 г на полке данного салона. Получение по QR уменьшает остаток на одну единицу. Подарки не учитываются как продажи.</p>
+  </div>
+  <div class="panel">
+    <h2>История тиражей</h2>
+    <div class="scroll"><table><thead><tr><th>Салон</th><th>Даты</th><th>Выпущено</th><th>Получено</th><th>Уникальных телефонов</th><th>Отозвано</th><th></th></tr></thead><tbody id="batches"></tbody></table></div>
+  </div>
+  <section id="cardBlock" hidden>
+    <div class="noprint">
+      <h2>Карточки подготовлены</h2>
+      <p>Печатайте карточки сразу. Не пересылайте список уникальных ссылок в общие чаты.</p>
+      <button id="print" type="button" class="primary">🖨 Распечатать карточки</button>
+      <p id="printMessage" class="muted"></p>
+    </div>
+    <div id="cards"></div>
+  </section>
+</main>
+<script src="/qrcode.min.js"></script>
+<script>
+(function(){
+ 'use strict';
+ var token=localStorage.getItem('taiga_admin_token'),campaign=null,latest=null,batchIds={};
+ if(!token){
+   document.getElementById('statusMessage').textContent='Сначала войдите в админку ХвостМаркета.';
+   document.getElementById('batchForm').hidden=true;
+   return;
+ }
+ function el(id){return document.getElementById(id)}
+ function put(id,s){el(id).textContent=String(s)}
+ async function api(path,options){
+   options=options||{};options.headers=Object.assign({'Authorization':'Bearer '+token},options.headers||{});
+   if(options.body){options.headers['Content-Type']='application/json';options.body=JSON.stringify(options.body)}
+   var r=await fetch(path,options),data;
+   try{data=await r.json()}catch(_){data={}}
+   if(r.status===401){token=null;throw new Error('Сессия истекла. Войдите в админку заново.')}
+   if(!r.ok)throw new Error(data.error||'Не удалось выполнить запрос');
+   return data;
+ }
+ function cell(row,text){var td=document.createElement('td');td.textContent=String(text);row.appendChild(td);return td}
+ function dateNow(){
+   var pts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Krasnoyarsk',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+   var p=k=>pts.find(v=>v.type===k).value;return p('year')+'-'+p('month')+'-'+p('day');
+ }
+ el('start').value=dateNow();el('end').value=dateNow();
+ async function refresh(){
+  try {
+   var data=await api('/api/gifts/admin');
+   campaign=data.campaign;
+   put('campaignStatus',campaign.active?'АКТИВНА':'ВЫКЛЮЧЕНА');
+   put('variantInfo','SKU #'+campaign.variant_id+' · для склада и распределения');
+   el('toggle').disabled=false;
+   el('toggle').textContent=campaign.active?'⏸ Остановить акцию':'▶ Включить акцию';
+   var point=el('point'),old=point.value;point.replaceChildren();
+   for(var p of data.points){
+      if(p.active){var option=new Option(p.name+' · '+p.addr,p.id);point.add(option)}
+   }
+   if(Array.from(point.options).some(x=>x.value===old))point.value=old;
+   var transferPoint=el('transferPoint'),lastPoint=transferPoint.value;transferPoint.replaceChildren();
+   for(var p of data.points){if(p.active)transferPoint.add(new Option(p.name+' · '+p.addr,p.id))}
+   if(Array.from(transferPoint.options).some(x=>x.value===lastPoint))transferPoint.value=lastPoint;
+   var cityControl=el('intakeCity'),lastCity=cityControl.value;cityControl.replaceChildren();
+   for(var city of data.cities)cityControl.add(new Option(city.name,city.id));
+   if(Array.from(cityControl.options).some(x=>x.value===lastCity))cityControl.value=lastCity;
+   put('warehouseSummary','На городских складах: '+data.cities.map(c=>c.name+': '+c.gift_warehouse_stock+' уп.').join(' · '));
+   var body=el('points');body.replaceChildren();
+   for(var p of data.points){
+      var tr=document.createElement('tr');cell(tr,p.name);cell(tr,p.gift_stock+' шт.');cell(tr,'По тиражам ниже');body.appendChild(tr);
+   }
+   var tbl=el('batches');tbl.replaceChildren();
+   for(var b of data.batches){
+      var tr=document.createElement('tr');cell(tr,b.point_name);cell(tr,b.starts_on+' — '+b.ends_on);
+      cell(tr,b.issued);cell(tr,b.redeemed||0);cell(tr,b.unique_phones||0);cell(tr,b.revoked||0);
+      var td=document.createElement('td');
+      if(b.issued>(b.redeemed||0)+(b.revoked||0)){
+       var btn=document.createElement('button');btn.textContent='Отозвать';btn.type='button';btn.className='danger';btn.dataset.batchId=b.id;
+       td.appendChild(btn);
+      } tr.appendChild(td);tbl.appendChild(tr);
+   }
+  } catch(e){put('statusMessage',e.message);el('statusMessage').className='error'}
+ }
+ el('reload').onclick=refresh;
+ async function submitStock(e,type){
+   e.preventDefault();
+   var intake=type==='intake',btn=el(intake?'intakeButton':'transferButton');
+   var msgId=intake?'intakeMessage':'transferMessage';
+   var payload=intake?
+     {city_id:el('intakeCity').value,qty:Number(el('intakeQty').value),supplier_note:el('intakeNote').value,physical_received:el('intakeConfirmed').checked}:
+     {point_id:el('transferPoint').value,qty:Number(el('transferQty').value),note:el('transferNote').value,physical_delivered:el('transferConfirmed').checked};
+   if(!Number.isSafeInteger(payload.qty)||payload.qty<1||payload.qty>20000){
+     put(msgId,'Количество должно быть целым числом от 1 до 20000');return;
+   }
+   if(!confirm(intake?'Товар физически получен? Записать приход '+payload.qty+' упаковок?':
+      'Подтверждаете физическую доставку '+payload.qty+' упаковок в выбранный салон?'))return;
+   btn.disabled=true;
+   try{
+      await api(intake?'/api/gifts/admin/intake':'/api/gifts/admin/transfer',{method:'POST',body:payload});
+      put(msgId,intake?'Приход успешно проведён':'Подарки переданы на остаток салона');
+      el(msgId).className='good';
+      if(intake)el('intakeConfirmed').checked=false;
+      else el('transferConfirmed').checked=false;
+      await refresh();
+   }catch(err){put(msgId,err.message);el(msgId).className='error'}
+   finally{btn.disabled=false}
+ }
+ el('intakeForm').addEventListener('submit',function(e){submitStock(e,'intake')});
+ el('transferForm').addEventListener('submit',function(e){submitStock(e,'transfer')});
+ el('toggle').onclick=async function(){
+    if(!campaign)return;
+    var active=!Boolean(campaign.active);
+    if(!confirm(active?'Запустить выдачу подарков по действующим карточкам?':'Остановить получение подарков на всех точках?'))return;
+    el('toggle').disabled=true;
+    try{await api('/api/gifts/admin/active',{method:'PUT',body:{active}});put('statusMessage',active?'Акция включена':'Акция остановлена');el('statusMessage').className='good'}
+    catch(e){put('statusMessage',e.message);el('statusMessage').className='error'}
+    await refresh();
+ };
+ el('batches').addEventListener('click',async function(e){
+    var btn=e.target.closest('button[data-batch-id]');if(!btn)return;
+    if(!confirm('Отозвать все неиспользованные карточки этого тиража? Действие необратимо.'))return;
+    btn.disabled=true;
+    try{var data=await api('/api/gifts/admin/batches/'+encodeURIComponent(btn.dataset.batchId)+'/revoke',{method:'POST'});put('statusMessage','Отозвано карточек: '+data.revoked);await refresh()}
+    catch(err){put('statusMessage',err.message);el('statusMessage').className='error';btn.disabled=false}
+ });
+ el('batchForm').addEventListener('submit',async function(e){
+    e.preventDefault();
+    if(!el('point').value)return;
+    var count=Number(el('count').value);
+    var start=el('start').value,end=el('end').value;
+    if(!(count>=1 && count<=200 && Number.isSafeInteger(count))){put('batchMessage','Введите количество от 1 до 200');return}
+    if(!confirm('Выпустить '+count+' уникальных подарочных карточек для '+el('point').selectedOptions[0].text+'?'))return;
+    var btn=el('create');btn.disabled=true;
+    put('batchMessage','Формируем карточки…');
+    try{
+      if(typeof QRCode!=='function')throw new Error('Библиотека QR-кодов не загрузилась. Повторите позже.');
+      var r=await api('/api/gifts/admin/batches',{method:'POST',body:{point_id:el('point').value,starts_on:start,ends_on:end,count}});
+      put('batchMessage','Готово: '+r.cards.length+' карточек. Распечатайте их сейчас.');
+      el('batchMessage').className='good';el('cardBlock').hidden=false;
+      var container=el('cards');container.replaceChildren();
+      for(var i=0;i<r.cards.length;i++){
+        var card=document.createElement('div');card.className='gift-card';
+        var qr=document.createElement('div');qr.className='qr';card.appendChild(qr);
+        var copy=document.createElement('div');copy.className='gift-copy';
+        var h=document.createElement('strong');h.textContent='✂️ Стрижка со вкусом';copy.appendChild(h);
+        var text=document.createElement('small');text.textContent='🎁 Говяжье лёгкое 30 г БЕСПЛАТНО после стрижки';copy.appendChild(text);
+        var how=document.createElement('small');how.textContent='Сканируйте QR, укажите телефон, узнайте как покупать и заберите подарок с полки ХвостМаркета.';copy.appendChild(how);
+        var validity=document.createElement('small');validity.textContent=start+' — '+end;copy.appendChild(validity);
+        var num=document.createElement('small');num.textContent='Карточка '+(i+1)+'/'+r.cards.length;copy.appendChild(num);
+        card.appendChild(copy);container.appendChild(card);
+        new QRCode(qr,{text:new URL(r.cards[i],location.origin).href,width:122,height:122,colorDark:'#1c3a2f',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+      }
+      put('printMessage','Печать на листах А4, по две карточки в ряд. Коды не сохраняются открытым текстом на сервере.');
+      await refresh();
+      el('cardBlock').scrollIntoView({behavior:'smooth'});
+    }catch(err){put('batchMessage',err.message);el('batchMessage').className='error'}
+    finally{btn.disabled=false}
+ });
+ el('print').onclick=function(){window.print()};
+ refresh();
+})();
+</script>
+</body>
+</html>
