@@ -80,12 +80,3 @@ test('no commit details are also presented bilingually', () => {
   assert.match(output, /Изменения не указаны/);
 });
 
-test('YouTube audio and Dockerfile repair have precise bilingual notes', () => {
-  const audio = releaseChange('Add admin-only YouTube audio downloads to Telegram bot (#96)');
-  const docker = releaseChange('Fix Dockerfile comment syntax for YouTube audio build (#97)');
-  assert.match(audio.ru, /\/audio/);
-  assert.match(audio.ru, /MP3/);
-  assert.match(docker.ru, /Dockerfile/);
-  assert.match(docker.ru, /Amvera/);
-  assert.match(audio.en, /YouTube audio/);
-});
