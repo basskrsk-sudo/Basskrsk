@@ -160,6 +160,7 @@
   function openAll() {
     clearGroomerPromos();
     if(window.HvostAdminWarehouse)window.HvostAdminWarehouse.close(true);
+    if(window.HvostAdminProductCreate)window.HvostAdminProductCreate.close(true);
     activeRole = '';
     currentUser = null;
     restockItems = [];
@@ -424,6 +425,7 @@
   async function chooseRole(role) {
     clearGroomerPromos();
     if(window.HvostAdminWarehouse)window.HvostAdminWarehouse.close(true);
+    if(window.HvostAdminProductCreate)window.HvostAdminProductCreate.close(true);
     if (!phoneStatus().verified) { renderAll(); return; }
     if (role === 'salon') return chooseCombinedSalon();
     if (!Object.prototype.hasOwnProperty.call(CONFIG, role)) return;
@@ -1552,6 +1554,11 @@
         + 'Попробуйте обновить кабинет.</p>';
     html += surface('💓 Состояние системы',healthContent);
     html += surface('🩺 Надёжность Mini App',reliabilityContent);
+    html += surface('🏷️ Каталог товаров',
+      '<button class="work-primary" type="button" data-work-action="admin-product-create">' +
+      '➕ Создать новый товар</button>' +
+      '<p class="work-note">Карточка для единого каталога: фото, название, категория, фасовка и цена. ' +
+      'Приход на центральный склад оформляется отдельно.</p>');
     html += surface('📦 Центральный склад',
       '<button class="work-primary" type="button" data-work-action="admin-wh-open">' +
       '📦 Добавить или удалить товар</button>' +
@@ -1653,6 +1660,11 @@
     });
     if (action === 'admin-wh-open' && activeRole === 'admin' && adminRegisterAuthorized() &&
         window.HvostAdminWarehouse) return window.HvostAdminWarehouse.open({
+          token:getToken('admin'),isValid:adminRegisterAuthorized,
+          onBack:function(){return chooseRole('admin');},
+        });
+    if (action === 'admin-product-create' && activeRole === 'admin' && adminRegisterAuthorized() &&
+        window.HvostAdminProductCreate) return window.HvostAdminProductCreate.open({
           token:getToken('admin'),isValid:adminRegisterAuthorized,
           onBack:function(){return chooseRole('admin');},
         });
