@@ -4,22 +4,42 @@
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let data = '';
+    // Accumulate raw chunks once rather than repeatedly concatenating strings.
+    // This avoids quadratic copying and transient UTF-8 decoding overhead.
+    const chunks = [];
     let size = 0;
-    // Base64 примерно на треть больше исходного файла. 22 МБ позволяют
-    // принять фото до 15 МБ, не ослабляя лимит для произвольных запросов.
+    let settled = false;
     const MAX = 22 * 1024 * 1024;
+    const declaredLength = Number(req.headers['content-length'] || 0);
+    if (declaredLength > MAX) {
+      const err = new Error('Тело запроса слишком большое');
+      err.statusCode = 413;
+      req.resume();
+      reject(err);
+      return;
+    }
     req.on('data', (chunk) => {
+      if (settled) return;
       size += chunk.length;
       if (size > MAX) {
-        reject(new Error('Тело запроса слишком большое'));
-        req.destroy();
+        settled = true;
+        const err = new Error('Тело запроса слишком большое');
+        err.statusCode = 413;
+        reject(err);
+        req.resume();
         return;
       }
-      data += chunk;
+      chunks.push(chunk);
     });
-    req.on('end', () => resolve(data));
-    req.on('error', reject);
+    req.on('end', () => {
+      if (!settled) {
+        settled = true;
+        resolve(Buffer.concat(chunks, size).toString('utf8'));
+      }
+    });
+    req.on('error', (err) => {
+      if (!settled) { settled = true; reject(err); }
+    });
   });
 }
 
@@ -85,7 +105,8 @@ function sendJson(res, statusCode, payload) {
 // Простой роутер: маршруты вида '/api/products/:id' с методом.
 class Router {
   constructor() {
-    this.routes = []; // { method, pattern: RegExp, keys: string[], handler }
+    this.routes = []; // Keep registration order for compatibility.
+    this.routesByMethod = new Map();
   }
 
   add(method, path, handler) {
@@ -105,7 +126,10 @@ class Router {
           .join('/') +
         '/?$'
     );
-    this.routes.push({ method, pattern, keys, handler });
+    const route = { method, pattern, keys, handler };
+    this.routes.push(route);
+    if (!this.routesByMethod.has(method)) this.routesByMethod.set(method, []);
+    this.routesByMethod.get(method).push(route);
   }
 
   get(path, handler) { this.add('GET', path, handler); }
@@ -114,8 +138,7 @@ class Router {
   delete(path, handler) { this.add('DELETE', path, handler); }
 
   match(method, pathname) {
-    for (const r of this.routes) {
-      if (r.method !== method) continue;
+    for (const r of this.routesByMethod.get(method) || []) {
       const m = r.pattern.exec(pathname);
       if (!m) continue;
       const params = {};
