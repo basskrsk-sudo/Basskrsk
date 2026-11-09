@@ -51,6 +51,7 @@ const { collectNoGroomerReport, formatNoGroomerReport, buildNoGroomerCsv } = req
 const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
 const newProductBroadcast = require('./new-product-broadcast');
 const tierApprovals = require('./partner-tier-approvals');
+const youtubeAudio = require('./youtube-audio');
 let lastUpdateId = 0;
 let polling = false;
 
@@ -99,6 +100,7 @@ async function configureBotProfile() {
       { command: 'tierapprovals', description: 'Согласовать изменение процента грумера' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
       { command: 'newproduct', description: '📷 Рассылка о новом товаре' },
+      { command: 'audio', description: '🎧 MP3 с YouTube (только супер-админ)' },
       { command: 'cancel', description: 'Отменить текущее действие' },
       { command: 'help', description: 'Как пользоваться ботом' },
       { command: 'chatid', description: 'Показать ID текущей группы' },
@@ -145,7 +147,7 @@ function buildWelcomeMessage() {
     '',
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /stock — остатки центрального склада; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
-    'Супер-администратору: /newproduct — рассылка новинки с фотографией и предпросмотром; /tierapprovals — заявки на снижение процента грумеров.',
+    'Супер-администратору: /newproduct — рассылка новинки с фотографией и предпросмотром; /tierapprovals — заявки на снижение процента грумеров; /audio ссылка — аудио с YouTube.',
     '',
     'Для быстрого входа в Mini App подтвердите свой номер Telegram — увидите зарегистрированные кабинеты без ввода пароля. Для админки нужна предварительная привязка Telegram из аккаунта сайта.',
   ].join('\n');
@@ -169,6 +171,7 @@ function botActionButtons(chatId) {
   }
   if (chatId && tierApprovals.activeSuperAdmin(chatId)) {
     keyboard.push([{ text: '📉 Согласования комиссий', callback_data: 'tier:list' }]);
+    keyboard.push([{ text: '🎧 Аудио с YouTube', callback_data: 'youtube:help' }]);
   }
   if (chatId && require('./routes-partner-club').isClubModerator(chatId)) {
     keyboard.push([{ text: '🐾 Сообщение партнёрам', callback_data: 'club:new' }]);
@@ -618,6 +621,23 @@ function rememberChatForAccount(record, chatId) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (callback.data === 'youtube:help') {
+      const chat = callback.message?.chat;
+      const allowed = chat?.type === 'private' &&
+        String(chat.id) === String(callback.from?.id) &&
+        Boolean(tierApprovals.activeSuperAdmin(chat.id));
+      try {
+        await callBotApi('answerCallbackQuery', {
+          callback_query_id: callback.id,
+          text: allowed ? 'Отправьте ссылку на YouTube' : 'Нет доступа',
+          show_alert: !allowed,
+        });
+      } catch (error) { console.warn('[youtube-audio] Callback:', error.message); }
+      if (allowed) await replyToChat(chat.id,
+        '🎧 Отправьте ссылку на одно видео YouTube или команду /audio ссылка. ' +
+        'Получите MP3 прямо в этот чат. Максимальная длительность — 40 минут.');
+      return;
+    }
     if (/^tier:(?:list|(?:approve|reject):\d+)$/.test(callback.data || '')) {
       const chat = callback.message?.chat;
       const allowed = chat?.type === 'private' &&
@@ -940,6 +960,25 @@ async function processUpdate(update) {
   }
   if (!msg.text) return;
   const text = msg.text.trim();
+  const audioRequest = msg.chat.type === 'private' ? youtubeAudio.parseAudioRequest(text) : null;
+  if (audioRequest) {
+    if (String(msg.chat.id) !== String(msg.from?.id) ||
+        !tierApprovals.activeSuperAdmin(msg.chat.id)) {
+      await replyToChat(msg.chat.id, '🔒 Скачивание аудио доступно только подключённому супер-администратору.');
+      return;
+    }
+    if (!audioRequest.url) {
+      await replyToChat(msg.chat.id,
+        '🎧 Пришлите ссылку на одно видео YouTube. Например: /audio https://youtu.be/dQw4w9WgXcQ');
+      return;
+    }
+    const job = youtubeAudio.startAudioJob({
+      chatId: msg.chat.id, videoUrl: audioRequest.url,
+      botToken: TG_TOKEN, reply: replyToChat,
+    });
+    if (!job.ok) await replyToChat(msg.chat.id, job.message);
+    return;
+  }
   if (msg.chat.type === 'private' && /^\/newproduct(?:@\w+)?$/i.test(text)) {
     await replyNewProduct(msg.chat.id, newProductBroadcast.startBroadcast(msg.chat.id));
     return;
