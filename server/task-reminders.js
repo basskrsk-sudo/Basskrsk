@@ -2,13 +2,11 @@
 'use strict';
 
 const db = require('./db');
-const { createSingleFlightJob } = require('./single-flight-job');
 const { sendToChat } = require('./telegram');
 const { sendMaxMessage } = require('./max-bot');
 const { taskButtons } = require('./task-bot-actions');
 
 const TIME_ZONE = 'Asia/Krasnoyarsk';
-let schedulerStarted = false;
 
 function localParts(value = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -138,16 +136,8 @@ async function runTaskReminderCheck(now = new Date()) {
 }
 
 function scheduleTaskReminders() {
-  if (schedulerStarted) return;
-  schedulerStarted = true;
-  const run = createSingleFlightJob(
-    () => runTaskReminderCheck(),
-    (error) => console.warn('Поручения: ошибка напоминаний:', error.message)
-  );
-  const first = setTimeout(run, 30000);
-  const interval = setInterval(run, 10 * 60 * 1000);
-  if (typeof first.unref === 'function') first.unref();
-  if (typeof interval.unref === 'function') interval.unref();
+  // Compatibility export; never create a timer for daily PDFs or MAX reports.
+  return { enabled: false, mode: 'telegram-approval' };
 }
 
 module.exports = {

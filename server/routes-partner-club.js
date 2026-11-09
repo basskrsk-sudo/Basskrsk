@@ -266,7 +266,17 @@ function registerPartnerClubRoutes(router){
  router.get('/api/admin/partner-club/analytics',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const p=ctx.query.period||'yesterday';if(!['today','yesterday','week'].includes(p))return sendJson(res,400,{error:'Недопустимый период'});sendJson(res,200,analytics(p));});
  router.get('/api/admin/partner-club/top-products',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const period=ctx.query.period||'week';if(!['week','all'].includes(period))return sendJson(res,400,{error:'Недопустимый период'});sendJson(res,200,topProducts(period));});
  router.get('/api/admin/partner-club/events',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const limit=Math.min(100,Math.max(1,Number(ctx.query.limit)||30));sendJson(res,200,{events:db.prepare('SELECT * FROM partner_club_events ORDER BY id DESC LIMIT ?').all(limit),delivery_enabled:false});});
- router.post('/api/admin/partner-club/generate-report',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const type=ctx.body?.type;if(!['daily','weekly','top_products_week','top_products_all'].includes(type))return sendJson(res,400,{error:'Неизвестный тип отчёта'});const result=type.startsWith('top_products_')?topProductsMessage(type==='top_products_week'?'week':'all'):report(type);const key='report:'+type+':'+(type==='daily'?new Date(Date.now()-86400000).toISOString().slice(0,10):new Date().toISOString().slice(0,10));const created=queue(key,type,result.message);sendJson(res,200,{created,message:result.message,stats:result.stats,delivered:false});});
+ router.post('/api/admin/partner-club/generate-report',async(req,res,ctx)=>{
+    if(!auth(req,res,ctx))return;
+    const mapped={daily:'clubdaily',weekly:'clubweekly',top_products_week:'clubtopweek',top_products_all:'clubtopall'};
+    const type=mapped[ctx.body?.type];
+    if(!type)return sendJson(res,400,{error:'Неизвестный тип отчёта'});
+    const reviewer=reviewerForClub();
+    if(!reviewer)return sendJson(res,409,{error:'Сначала подключите личный Telegram модератора Клуба партнёров'});
+    const approval=await require('./report-approvals').requestReport(reviewer,type);
+    sendJson(res,approval.ok?202:502,approval.ok?{ok:true,pending:true,message:approval.message}:{error:approval.error});
+  });
+
 }
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_delivery_log(event_id INTEGER PRIMARY KEY, delivered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_reviews(event_id INTEGER PRIMARY KEY, state TEXT NOT NULL DEFAULT 'pending', reviewer_chat_id TEXT, edited_message TEXT, requested_at TEXT, claimed_at TEXT)");
@@ -654,4 +664,15 @@ async function sendClubUpdates(){
  }catch(e){console.warn('Partner club moderation:',e.message)}finally{workerBusy=false}
 }
 function startPartnerClubWorker(){const timer=setInterval(()=>sendClubUpdates().catch(e=>console.warn('Partner club:',e.message)),30000);timer.unref?.()}
-module.exports={registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,handleClubCallback,handleClubEdit,isClubModerator,startClubPost,handleClubPostInput,cancelClubInput,handleClubPhotoMessage,handleClubPhotoCallback,sendClubReviewPreview};
+function generateApprovedClubReport(type,{approved=false}={}){
+  if(!approved)return {ok:false,error:'Сначала подтвердите формирование в Telegram'};
+  const types={clubdaily:'daily',clubweekly:'weekly',clubtopweek:'top_products_week',clubtopall:'top_products_all'};
+  const selected=types[type];
+  if(!selected)return {ok:false,error:'Неизвестный отчёт'};
+  const result=selected.startsWith('top_products_')
+    ?topProductsMessage(selected==='top_products_week'?'week':'all'):report(selected);
+  const key='report:'+selected+':'+new Date().toISOString().slice(0,10);
+  return {ok:true,created:queue(key,selected,result.message),message:result.message};
+}
+
+module.exports={generateApprovedClubReport,registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,handleClubCallback,handleClubEdit,isClubModerator,startClubPost,handleClubPostInput,cancelClubInput,handleClubPhotoMessage,handleClubPhotoCallback,sendClubReviewPreview};

@@ -25,7 +25,7 @@ const { registerBusinessFounderRoutes } = require('./routes-business-founders');
 const { registerProductRoutes } = require('./routes-products');
 const { registerGiftRoutes } = require('./routes-gifts');
 const { registerQrAnalyticsRoutes } = require('./routes-qr-analytics');
-const { registerQrWeeklyTelegramRoutes, scheduleWeeklyQrTelegramReport } = require('./qr-weekly-telegram');
+const { registerQrWeeklyTelegramRoutes } = require('./qr-weekly-telegram');
 const { registerSampleQrRoutes } = require('./routes-sample-qr');
 const { registerReviewRoutes } = require('./routes-reviews');
 const { registerPartnerRoutes } = require('./routes-partners');
@@ -338,7 +338,7 @@ server.listen(PORT, () => {
   setInterval(() => { checkAllPartnerTiers().catch((e) => console.warn('Ошибка ежесуточной проверки уровней:', e.message)); }, 24 * 60 * 60 * 1000);
 
   require('./winback').scheduleWinback();
-  require('./task-reminders').scheduleTaskReminders();
-  scheduleWeeklyQrTelegramReport();
+  // PDF task digests and QR analytics run only after Telegram approval.
+  console.log('Автоматическое формирование отчётов отключено; запросы — через Telegram.');
   require('./unpaid-order-alerts').scheduleUnpaidOrderAlerts();
 });

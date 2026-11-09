@@ -11,7 +11,6 @@ const TIME_ZONE = 'Asia/Krasnoyarsk';
 const LOCAL_OFFSET_MS = 7 * 60 * 60 * 1000; // Krasnoyarsk has no DST.
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REPORT_DIR = path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'reports', 'qr-weekly');
-let started = false;
 let inFlight = false;
 db.exec(`
  CREATE TABLE IF NOT EXISTS qr_weekly_telegram_schedule (
@@ -163,6 +162,7 @@ function getDelivery(weekStart){
  return db.prepare('SELECT * FROM qr_weekly_telegram_delivery WHERE week_start=?').get(weekStart)||null;
 }
 async function sendWeeklyQrReport(options={}){
+ if(options.approved!==true)return {ok:false,skipped:true,reason:'Подтвердите формирование отчёта в Telegram'};
  if(inFlight)return {ok:false,busy:true,error:'Отправка уже выполняется'};
  const now=options.now||new Date(), week=previousCompletedWeek(now);
  if(!options.manual){
@@ -205,8 +205,8 @@ async function sendWeeklyQrReport(options={}){
 function getStatus(now=new Date()){
  const w=previousCompletedWeek(now);
  const last=db.prepare('SELECT * FROM qr_weekly_telegram_delivery ORDER BY week_start DESC LIMIT 1').get()||null;
- return {enabled:true,time_zone:TIME_ZONE,schedule:'Каждый понедельник в 09:00 по Красноярску',
-   next_run_utc:nextDue(now),last_report:last,last_completed_week:{start:w.weekStart,end:w.weekEnd},
+ return {enabled:false,time_zone:TIME_ZONE,schedule:'Автоотчёты отключены — подтверждение в Telegram',
+   next_run_utc:null,last_report:last,last_completed_week:{start:w.weekStart,end:w.weekEnd},
    telegram_configured:!!process.env.TG_TOKEN&&!!process.env.TG_CHAT_ID,
    destination:'Служебный Telegram-чат, указанный в TG_CHAT_ID'};
 }
@@ -217,20 +217,22 @@ function registerQrWeeklyTelegramRoutes(router){
  });
  router.get('/api/admin/qr-weekly-telegram/preview',(req,res,ctx)=>{
    if(!requireSuperAdmin(req,res,ctx))return;
-   const report=readWeeklyPointStats(previousCompletedWeek());
-   sendJson(res,200,{text:makeSummary(report).replace(/<\/?b>/g,''),week:report.week,points:report.points.length,totals:report.totals});
+   sendJson(res,409,{error:'Расчётный предпросмотр отключён. Запросите отчёт в Telegram.'});
  });
  router.post('/api/admin/qr-weekly-telegram/send-now',async(req,res,ctx)=>{
-   if(!requireSuperAdmin(req,res,ctx))return;
-   const result=await sendWeeklyQrReport({manual:true});
-   sendJson(res,result.ok?200:result.busy?409:502,result);
+   const admin=requireSuperAdmin(req,res,ctx);
+   if(!admin)return;
+   const account=db.prepare("SELECT telegram_chat_id FROM admins WHERE id=? AND role='super' AND active=1").get(admin.id);
+   if(!account?.telegram_chat_id)
+     return sendJson(res,409,{error:'Сначала привяжите личный Telegram к супер-администратору'});
+   const approval=await require('./report-approvals').requestReport(account.telegram_chat_id,'qrweek');
+   sendJson(res,approval.ok?202:502,approval.ok?{ok:true,pending:true,message:approval.message}:{error:approval.error});
  });
+
 }
 function scheduleWeeklyQrTelegramReport(){
- if(started)return;started=true;
- const check=()=>sendWeeklyQrReport().catch(err=>console.warn('QR weekly schedule:',err.message));
- const initial=setTimeout(check,35000),interval=setInterval(check,60*1000);
- initial.unref?.();interval.unref?.();
+  // No background scheduling: user confirmation via Telegram is mandatory.
+  return {enabled:false,mode:'telegram-approval'};
 }
 module.exports={TIME_ZONE,previousCompletedWeek,readWeeklyPointStats,makeSummary,buildCsv,
  getStatus,sendWeeklyQrReport,registerQrWeeklyTelegramRoutes,scheduleWeeklyQrTelegramReport};
