@@ -3,6 +3,7 @@
 const db = require('./db');
 const fs = require('node:fs');
 const path = require('node:path');
+const { performance } = require('node:perf_hooks');
 const { sendTelegram, sendTelegramDocument } = require('./telegram');
 const { requireSuperAdmin } = require('./routes-auth');
 const { sendJson } = require('./http-utils');
@@ -52,6 +53,14 @@ function russianDate(localYmd) {
  return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(Date.UTC(y,m-1,d)));
 }
 function readWeeklyPointStats(week) {
+ // Measure the individual synchronous stages so future event-loop stalls
+ // can be correlated with a particular QR-report query in Amvera logs.
+ let stageStartedAt=performance.now();
+ function noteSlowStage(name){
+   const elapsedMs=performance.now()-stageStartedAt;
+   if(elapsedMs>=500)console.warn('[qr-weekly] Slow '+name+': '+Math.round(elapsedMs)+' ms');
+   stageStartedAt=performance.now();
+ }
  const range=[week.startUtc,week.endExclusiveUtc];
  const qr=db.prepare(`
  SELECT point_id,
@@ -61,10 +70,12 @@ function readWeeklyPointStats(week) {
  COUNT(DISTINCT CASE WHEN event_type='payment_created' THEN order_code ELSE NULL END) payments
  FROM qr_funnel_events WHERE created_at>=? AND created_at<? GROUP BY point_id
  `).all(...range);
+ noteSlowStage('funnel-events query');
  const samples=db.prepare(`
  SELECT point_id,COUNT(*) scans FROM sample_qr_scans
  WHERE created_at>=? AND created_at<? GROUP BY point_id
  `).all(...range);
+ noteSlowStage('sample-scans query');
  // EXISTS prevents duplicate counting for multi-product orders.
  const sold=db.prepare(`
  SELECT o.point_id,COUNT(*) paid_orders,COALESCE(SUM(o.total),0) revenue
@@ -76,7 +87,9 @@ function readWeeklyPointStats(week) {
    AND e.created_at>=? AND e.created_at<?)
  GROUP BY o.point_id
  `).all(...range,...range);
+ noteSlowStage('paid-QR-orders query');
  const known=db.prepare('SELECT id,name,active FROM points WHERE COALESCE(is_hub,0)=0').all();
+ noteSlowStage('points lookup');
  const pointsById=new Map(known.map(p=>[String(p.id),{id:String(p.id),name:p.name,active:!!p.active,
    opens:0,visits:0,checkouts:0,payments:0,paid_orders:0,revenue:0,sample_scans:0}]));
  function get(id) {
@@ -95,6 +108,7 @@ function readWeeklyPointStats(week) {
    if(p.opens||p.sample_scans)totals.active_points++;
    for(const k of ['opens','visits','checkouts','payments','paid_orders','revenue','sample_scans'])totals[k]+=p[k];
  }
+ noteSlowStage('result aggregation');
  return {week,points,totals};
 }
 function makeSummary(report) {
@@ -159,10 +173,16 @@ async function sendWeeklyQrReport(options={}){
  if(!process.env.TG_TOKEN||!process.env.TG_CHAT_ID)return {ok:false,error:'TG_TOKEN или TG_CHAT_ID не настроены в Amvera'};
  inFlight=true;
  try{
+   // The scheduler checks every minute for retries. Previously it rebuilt
+   // the entire weekly report BEFORE discovering that both Telegram messages
+   // were already delivered. That left several synchronous SQLite scans
+   // running every minute for the rest of the week.
+   let record=getDelivery(week.weekStart);
+   if(record?.summary_sent_at&&record.file_sent_at)
+     return {ok:true,skipped:true,week:week.weekStart,message:'Отчёт уже доставлен'};
    const report=readWeeklyPointStats(week);
    db.prepare('INSERT OR IGNORE INTO qr_weekly_telegram_delivery(week_start,week_end) VALUES(?,?)').run(week.weekStart,week.weekEnd);
-   let record=getDelivery(week.weekStart);
-   if(record.summary_sent_at&&record.file_sent_at)return {ok:true,skipped:true,week:week.weekStart,message:'Отчёт уже доставлен'};
+   record=getDelivery(week.weekStart);
    if(!record.summary_sent_at){
      const sent=await sendTelegram(makeSummary(report));
      if(!sent?.ok||sent.data?.ok===false)throw new Error('Telegram не подтвердил отправку сообщения: '+(sent?.data?.description||sent?.error||'нет ответа'));
