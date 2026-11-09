@@ -1860,10 +1860,28 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
         <table class="tbl">
           <thead>
-            <tr><th>ФИО</th><th>Логин</th><th>Роль</th><th>Статус</th><th class="r">Действие</th></tr>
+            <tr><th>ФИО</th><th>Логин</th><th>Телефон / Telegram</th><th>Роль</th><th>Статус</th><th class="r">Действие</th></tr>
           </thead>
           <tbody id="admins-tbody"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Модалка изменения номера (только супер-админ). -->
+    <div id="admin-phone-modal" role="dialog" aria-modal="true" aria-labelledby="admin-phone-title" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:100;padding:1rem;">
+      <div style="background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:410px;">
+        <h3 id="admin-phone-title" style="margin-bottom:.7rem;">Номер телефона администратора</h3>
+        <p id="admin-phone-person" style="font-size:.86rem;color:var(--muted);margin-bottom:.9rem;"></p>
+        <div class="admin-field">
+          <label for="am-phone-input">Номер телефона</label>
+          <input type="tel" id="am-phone-input" autocomplete="tel" inputmode="tel" placeholder="+7 999 123-45-67">
+        </div>
+        <p style="font-size:.79rem;line-height:1.5;color:var(--muted);margin-top:.5rem;">Для входа без пароля администратор подтверждает этот номер собственным контактом в Telegram. Если изменить или очистить номер, старая Telegram-привязка сбрасывается.</p>
+        <div id="am-phone-error" role="alert" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.5rem .7rem;border-radius:6px;margin-top:.8rem;"></div>
+        <div style="display:flex;gap:.6rem;margin-top:1rem;">
+          <button type="button" class="row-btn" style="flex:1;" onclick="closeAdminPhoneModal()">Отмена</button>
+          <button type="button" class="row-btn" style="flex:1;background:var(--forest);color:#fff;" onclick="saveAdminPhone()">Сохранить</button>
+        </div>
       </div>
     </div>
 
@@ -1874,6 +1892,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div id="admin-create-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.5rem .7rem;border-radius:6px;margin-bottom:.8rem;"></div>
         <div class="admin-field"><label>ФИО</label><input type="text" id="am-create-name"></div>
         <div class="admin-field"><label>Логин</label><input type="text" id="am-create-login" autocomplete="off"></div>
+        <div class="admin-field"><label>Телефон для Telegram Mini App (необязательно)</label><input type="tel" id="am-create-phone" autocomplete="tel" inputmode="tel" placeholder="+7 999 123-45-67"></div>
         <div class="admin-field"><label>Пароль</label><div class="password-input-wrap"><input type="password" id="am-create-password" autocomplete="new-password"><button type="button" class="password-visibility-btn" onclick="togglePasswordVisibility('am-create-password',this)" aria-label="Показать пароль" title="Показать пароль">👁️</button></div></div>
         <div class="admin-field" style="display:flex;align-items:center;gap:.5rem;">
           <input type="checkbox" id="am-create-super" style="width:auto;">
@@ -7946,34 +7965,46 @@ async function renderAuditLog() {
 }
 
 let adminsList = [];
+let editingAdminPhoneId = null;
+
+function displayAdminPhone(phone) {
+  const value = String(phone || '').replace(/\D/g, '');
+  return /^79\d{9}$/.test(value)
+    ? '+7 (' + value.slice(1,4) + ') ' + value.slice(4,7) + '-' + value.slice(7,9) + '-' + value.slice(9)
+    : (phone || 'Не указан');
+}
 
 async function renderAdmins() {
+  const tbody = document.getElementById('admins-tbody');
   const res = await authFetch('/api/admins');
   if (!res.ok) {
-    // Обычный админ (не супер) сюда попасть не должен — но на всякий случай
-    // не ломаем страницу, если как-то дёрнули напрямую.
-    document.getElementById('admins-tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;">Доступно только супер-админу</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">Доступно только супер-админу</td></tr>';
     return;
   }
   const data = await res.json();
   adminsList = data.admins || [];
   document.getElementById('admins-count').textContent = adminsList.length + ' чел.';
-  document.getElementById('admins-tbody').innerHTML = adminsList.map(function(a) {
+  tbody.innerHTML = adminsList.map(function(a) {
+    const phoneLabel = a.phone ? displayAdminPhone(a.phone) : 'Не указан';
     return '<tr>' +
-      '<td style="font-weight:500;">' + (a.full_name || '—') + '</td>' +
-      '<td style="font-family:monospace;">' + a.login + '</td>' +
+      '<td style="font-weight:500;">' + auditEscape(a.full_name || '—') + '</td>' +
+      '<td style="font-family:monospace;">' + auditEscape(a.login) + '</td>' +
+      '<td>' + auditEscape(phoneLabel) + '<br><small style="color:var(--muted);">' +
+        (a.telegram_connected ? 'Telegram подключён' : 'Telegram не подключён') + '</small></td>' +
       '<td>' + (a.role === 'super' ? '⭐ Супер-админ' : 'Админ') + '</td>' +
       '<td><span class="toggle-pill ' + (a.active ? 'stock-ok' : 'stock-low') + '">' + (a.active ? '🟢 Активен' : '⚪ Отключён') + '</span></td>' +
       '<td class="r">' +
-        '<button class="row-btn" onclick="toggleAdminActive(' + a.id + ')">' + (a.active ? 'Отключить' : 'Включить') + '</button> ' +
-        '<button class="row-btn" onclick="resetAdminPassword(' + a.id + ', \'' + (a.full_name || a.login).replace(/'/g, "\\'") + '\')">Сбросить пароль</button>' +
+        '<button class="row-btn" onclick="openAdminPhoneModal(' + Number(a.id) + ')">📱 Телефон</button> ' +
+        '<button class="row-btn" onclick="toggleAdminActive(' + Number(a.id) + ')">' + (a.active ? 'Отключить' : 'Включить') + '</button> ' +
+        '<button class="row-btn" onclick="resetAdminPassword(' + Number(a.id) + ')">Сбросить пароль</button>' +
       '</td></tr>';
-  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;">Администраторов пока нет</td></tr>';
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">Администраторов пока нет</td></tr>';
 }
 
 function openAdminModal() {
   document.getElementById('am-create-name').value = '';
   document.getElementById('am-create-login').value = '';
+  document.getElementById('am-create-phone').value = '';
   document.getElementById('am-create-password').value = '';
   resetPasswordVisibility('am-create-password');
   document.getElementById('am-create-super').checked = false;
@@ -7985,16 +8016,18 @@ function closeAdminModal() { document.getElementById('admin-create-modal').style
 async function saveAdminForm() {
   const full_name = document.getElementById('am-create-name').value.trim();
   const login = document.getElementById('am-create-login').value.trim();
+  const phone = document.getElementById('am-create-phone').value.trim();
   const password = document.getElementById('am-create-password').value;
   const role = document.getElementById('am-create-super').checked ? 'super' : 'admin';
   const errEl = document.getElementById('admin-create-error');
-
   if (!login || !password || password.length < 6) {
     errEl.textContent = 'Заполните логин и пароль (не короче 6 символов).';
     errEl.style.display = 'block';
     return;
   }
-  const res = await authFetch('/api/admins', { method: 'POST', body: { login, password, full_name, role } });
+  const res = await authFetch('/api/admins', {
+    method: 'POST', body: { login, password, full_name, role, phone },
+  });
   const data = await res.json();
   if (!res.ok) {
     errEl.textContent = data.error || 'Не удалось создать администратора.';
@@ -8005,8 +8038,43 @@ async function saveAdminForm() {
   await renderAdmins();
 }
 
+function openAdminPhoneModal(id) {
+  const admin = adminsList.find(function(a) { return Number(a.id) === Number(id); });
+  if (!admin) return;
+  editingAdminPhoneId = Number(id);
+  document.getElementById('admin-phone-person').textContent =
+    (admin.full_name || admin.login) + ' · ' + (admin.role === 'super' ? 'Супер-админ' : 'Администратор');
+  document.getElementById('am-phone-input').value = admin.phone ? displayAdminPhone(admin.phone) : '';
+  document.getElementById('am-phone-error').style.display = 'none';
+  document.getElementById('admin-phone-modal').style.display = 'flex';
+  document.getElementById('am-phone-input').focus();
+}
+function closeAdminPhoneModal() {
+  editingAdminPhoneId = null;
+  document.getElementById('admin-phone-modal').style.display = 'none';
+}
+
+async function saveAdminPhone() {
+  const admin = adminsList.find(function(a) { return Number(a.id) === editingAdminPhoneId; });
+  if (!admin) return;
+  const phone = document.getElementById('am-phone-input').value.trim();
+  const errEl = document.getElementById('am-phone-error');
+  if (!phone && admin.phone && !confirm('Удалить номер администратора? Telegram-привязка будет сброшена.')) return;
+  const res = await authFetch('/api/admins/' + admin.id, {
+    method: 'PUT', body: { phone },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    errEl.textContent = data.error || 'Не удалось сохранить номер.';
+    errEl.style.display = 'block';
+    return;
+  }
+  closeAdminPhoneModal();
+  await renderAdmins();
+}
+
 async function toggleAdminActive(id) {
-  const a = adminsList.find(function(x) { return x.id === id; });
+  const a = adminsList.find(function(x) { return Number(x.id) === Number(id); });
   if (!a) return;
   const res = await authFetch('/api/admins/' + id, { method: 'PUT', body: { active: !a.active } });
   const data = await res.json();
@@ -8014,8 +8082,10 @@ async function toggleAdminActive(id) {
   await renderAdmins();
 }
 
-async function resetAdminPassword(id, name) {
-  if (!confirm('Сбросить пароль для «' + name + '»? Старый пароль перестанет работать.')) return;
+async function resetAdminPassword(id) {
+  const a = adminsList.find(function(x) { return Number(x.id) === Number(id); });
+  if (!a) return;
+  if (!confirm('Сбросить пароль для «' + (a.full_name || a.login) + '»? Старый пароль перестанет работать.')) return;
   const res = await authFetch('/api/admins/' + id + '/reset-password', { method: 'POST' });
   const data = await res.json();
   if (!res.ok) { alert('Не удалось сбросить пароль: ' + (data.error || 'неизвестная ошибка')); return; }

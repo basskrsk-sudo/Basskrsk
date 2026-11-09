@@ -75,13 +75,19 @@ function verifiedPhoneForUser(userId, now = Math.floor(Date.now() / 1000)) {
 
 function accountMatchesForRole(role, phone, userId) {
   if (role === 'admin') {
-    // Admins have no phone column. Prior connection must have been made from
-    // the authenticated admin website account; phone alone never grants admin.
+    // Super-admin grants Mini App eligibility by storing the administrator's
+    // phone. Telegram must independently verify ownership of that number.
+    // Preserve password-authenticated legacy Telegram links without a phone.
     return db.prepare(
-      'SELECT id, login, full_name, role FROM admins WHERE active = 1 AND telegram_chat_id = ?'
-    ).all(String(userId)).map(row => ({
+      'SELECT id, login, full_name, role, phone, telegram_chat_id FROM admins WHERE active = 1'
+    ).all().filter(row => {
+      const linked = String(row.telegram_chat_id || '') === String(userId);
+      return row.phone
+        ? registeredPhoneMatch(row.phone, phone) && (!row.telegram_chat_id || linked)
+        : linked;
+    }).map(row => ({
       role, id: row.id, login: row.login, name: row.full_name || row.login,
-      adminRole: row.role,
+      phone: row.phone || null, adminRole: row.role,
     }));
   }
   const table = ACCOUNT_TABLES[role];
@@ -196,14 +202,40 @@ function issueTelegramAccountSession(userId, role, now = Math.floor(Date.now() /
   if (!matched.verified) return null;
   const account = matched.accounts.find(a => a.role === role);
   if (!account) return null;
+  let adminAuthVersion = null;
+  if (role === 'admin') {
+    // Recheck the live record before granting the privileged session. A
+    // changed number, deactivation or conflicting Telegram binding denies it.
+    const current = db.prepare(
+      'SELECT role, active, phone, telegram_chat_id, miniapp_auth_version FROM admins WHERE id = ?'
+    ).get(account.id);
+    if (!current || Number(current.active) !== 1) return null;
+    const linked = String(current.telegram_chat_id || '') === String(userId);
+    if (current.phone) {
+      if (!registeredPhoneMatch(current.phone, matched.phone) ||
+          (current.telegram_chat_id && !linked)) return null;
+      if (!linked) {
+        // First verified Telegram owner claims the admin binding atomically.
+        // Another Telegram profile cannot take over this account silently.
+        const result = db.prepare(
+          "UPDATE admins SET telegram_chat_id = ? WHERE id = ? AND active = 1 " +
+          "AND phone = ? AND (telegram_chat_id IS NULL OR telegram_chat_id = '')"
+        ).run(String(userId), account.id, current.phone);
+        if (result.changes !== 1) return null;
+      }
+    } else if (!linked) {
+      return null; // Legacy administrator linked on the authenticated website.
+    }
+    account.adminRole = current.role;
+    adminAuthVersion = Number(current.miniapp_auth_version || 0);
+  }
   const token = signToken({
     role: account.role,
     id: account.id,
     ...(account.login ? { login: account.login } : {}),
-    ...(role === 'admin' ? { adminRole: account.adminRole } : {}),
+    ...(role === 'admin' ? { adminRole: account.adminRole, miniappAuthVersion: adminAuthVersion } : {}),
   });
-  // Keep service notifications directed to the verified registered phone's
-  // Telegram owner. Admin links remain password-authenticated and unchanged.
+  // Passwordless staff roles are linked only after proof of Telegram ownership.
   if (role !== 'admin') {
     bindTelegramAccount(role,account.id,userId);
   }
