@@ -6,10 +6,6 @@
 // release-notes footer. New changes should carry "Release-notes-ru: ..." in
 // the commit body so full meaning can be preserved without a translator key.
 const LEGACY_RU = new Map(Object.entries({
-  'Add admin-only YouTube audio downloads to Telegram bot (#96)':
-    'Супер-администратор может отправить команду /audio со ссылкой на YouTube и получить MP3 в личном чате Telegram. Добавлены ограничения длительности и размера, очередь загрузки и автоматическая очистка файлов.',
-  'Fix Dockerfile comment syntax for YouTube audio build (#97)':
-    'Исправлены комментарии в Dockerfile: устранена ошибка сборки Amvera «unknown instruction: //».',
   'fix(test): validate Russian missing-date prompt with literal text':
     'Исправлена проверка русскоязычного запроса недостающих дат создания точек.',
   'feat(business): include monthly sales and revenue for every point in complete registry CSV':
