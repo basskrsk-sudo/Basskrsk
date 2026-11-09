@@ -27,7 +27,7 @@ test('already delivered weekly QR report skips SQLite aggregation on every subse
   // This is an isolated, temporary test database — not production data.
   db.exec('DROP TABLE qr_funnel_events');
   for(const offsetSeconds of [0,60,120,300]){
-    const result=await sendWeeklyQrReport({now:new Date(now.getTime()+offsetSeconds*1000)});
+    const result=await sendWeeklyQrReport({approved:true,now:new Date(now.getTime()+offsetSeconds*1000)});
     assert.equal(result.ok,true,JSON.stringify(result));
     assert.equal(result.skipped,true);
     assert.equal(result.week,week.weekStart);
@@ -43,8 +43,20 @@ test('already delivered weekly QR report skips SQLite aggregation on every subse
 
 test('QR report is not sent early before the Monday schedule',async()=>{
   const before=new Date('2026-11-09T01:59:59.000Z');
-  const result=await sendWeeklyQrReport({now:before});
+  const result=await sendWeeklyQrReport({approved:true,now:before});
   assert.equal(result.ok,false);
   assert.equal(result.skipped,true);
   assert.equal(result.reason,'Время отчёта ещё не наступило');
+});
+
+test('QR analytics cannot be aggregated without explicit approval',async()=>{
+  const result=await sendWeeklyQrReport({manual:true});
+  assert.equal(result.ok,false);
+  assert.equal(result.skipped,true);
+  assert.match(result.reason,/Подтвердите/);
+});
+test('scheduler compatibility entry point is disabled',()=>{
+  const {scheduleWeeklyQrTelegramReport,getStatus}=require('./qr-weekly-telegram');
+  assert.equal(scheduleWeeklyQrTelegramReport().enabled,false);
+  assert.equal(getStatus().enabled,false);
 });

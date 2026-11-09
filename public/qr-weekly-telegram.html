@@ -15,18 +15,18 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f5ef;padding:16px;
 </style></head><body><main>
 <a href="/taiga-admin.html">← В админку ХвостМаркета</a>
 <h1>📊 Еженедельная QR-аналитика</h1>
-<p class="muted">Автоматический отчёт по точкам в служебный Telegram-бот ХвостМаркета. Общая группа партнёров эти отчёты не получает.</p>
+<p class="muted">Автоматические отчёты выключены. Запросите сводку и подтвердите формирование в личном Telegram.</p>
 <section class="panel">
-<h2>Расписание</h2>
-<p><span class="pill">Каждый понедельник · 09:00 · Красноярск</span></p>
+<h2>Режим формирования</h2>
+<p><span class="pill">Только по согласованию в Telegram</span></p>
 <div id="schedule">Проверка настроек…</div>
 <button id="refresh" class="secondary">↻ Обновить состояние</button>
 </section>
 <section class="panel">
 <h2>Проверить отчёт</h2>
-<p class="muted">Сначала можно посмотреть сводку за последнюю завершённую неделю без отправки. Для теста нажмите «Отправить в Telegram»: придёт сообщение и CSV-файл по всем точкам. Повторная отправка за ту же неделю не создаст дублей.</p>
-<button id="preview">Показать предпросмотр</button>
-<button id="send">Отправить отчёт сейчас</button>
+<p class="muted">Нажмите «Запросить отчёт», затем подтвердите формирование в Telegram. До подтверждения статистика не собирается.</p>
+<button id="preview" hidden>Предпросмотр отключён</button>
+<button id="send">Запросить отчёт в Telegram</button>
 <div id="action" class="status" aria-live="polite"></div>
 <pre id="previewText" hidden></pre>
 </section>
@@ -49,7 +49,7 @@ async function loadStatus(){
  try{
  const d=await api('/api/admin/qr-weekly-telegram/status');
  const last=d.last_report;
- $('schedule').textContent='Следующее отправление: '+krsk(d.next_run_utc)+'. Telegram: '+(d.telegram_configured?'настроен':'не настроен')+'. '+(last?'Последний отчёт: '+last.week_start+' — '+last.week_end+'; сообщение: '+(last.summary_sent_at?'отправлено':'не отправлено')+'; CSV: '+(last.file_sent_at?'отправлен':'не отправлен')+'.':'Отчётов ещё не отправляли.');
+ $('schedule').textContent='Автоматическая отправка отключена. Telegram: '+(d.telegram_configured?'настроен':'не настроен')+'. '+(last?'Последний отчёт: '+last.week_start+' — '+last.week_end+'; сообщение: '+(last.summary_sent_at?'отправлено':'не отправлено')+'; CSV: '+(last.file_sent_at?'отправлен':'не отправлен')+'.':'Отчётов ещё не отправляли.');
  $('send').disabled=!d.telegram_configured;
  }catch(e){$('schedule').textContent='Ошибка: '+e.message;$('send').disabled=true}
 }
@@ -60,9 +60,9 @@ $('preview').onclick=async()=>{
  catch(e){$('action').textContent='Ошибка: '+e.message}
 };
 $('send').onclick=async()=>{
- if(!confirm('Отправить отчёт за последнюю завершённую неделю в служебный Telegram?'))return;
- $('send').disabled=true;$('action').textContent='Отправка в Telegram…';
- try{const d=await api('/api/admin/qr-weekly-telegram/send-now',{method:'POST',body:'{}'});$('action').textContent=d.skipped?'Этот отчёт уже был отправлен.':'✅ Отчёт и CSV отправлены за неделю '+d.week+' — '+d.week_end;await loadStatus()}
+ if(!confirm('Запросить формирование QR-отчёта через личный Telegram?'))return;
+ $('send').disabled=true;$('action').textContent='Отправляем запрос на согласование…';
+ try{const d=await api('/api/admin/qr-weekly-telegram/send-now',{method:'POST',body:'{}'});$('action').textContent=d.message||'✅ Подтвердите формирование в Telegram.';await loadStatus()}
  catch(e){$('action').textContent='Ошибка: '+e.message;$('send').disabled=false}
 };
 loadStatus();

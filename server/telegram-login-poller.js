@@ -51,6 +51,7 @@ const { collectNoGroomerReport, formatNoGroomerReport, buildNoGroomerCsv } = req
 const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
 const newProductBroadcast = require('./new-product-broadcast');
 const tierApprovals = require('./partner-tier-approvals');
+const reportApprovals = require('./report-approvals');
 let lastUpdateId = 0;
 let polling = false;
 
@@ -88,6 +89,7 @@ async function configureBotProfile() {
       { command: 'phone', description: '🔐 Подтвердить свой номер для кабинета' },
       { command: 'tasks', description: 'Мои активные поручения' },
       { command: 'taskpdf', description: 'Свежий PDF моих поручений' },
+      { command: 'reports', description: '📊 Отчёты: сформировать после подтверждения' },
       { command: 'newtask', description: 'Создать новую задачу' },
       { command: 'expense', description: 'Добавить трату бизнеса' },
       { command: 'salesweek', description: 'Отчёт по продажам за 7 дней' },
@@ -167,6 +169,9 @@ function botActionButtons(chatId) {
       keyboard.push([{ text: '📷 Рассылка о новинке', callback_data: 'newprod:new' }]);
     }
   }
+  if (chatId && (adminCanReadSales(chatId) || require('./task-daily-digest').assigneeByTelegram(chatId))) {
+    keyboard.push([{ text: '📊 Отчёты по запросу', callback_data: 'report:menu' }]);
+  }
   if (chatId && tierApprovals.activeSuperAdmin(chatId)) {
     keyboard.push([{ text: '📉 Согласования комиссий', callback_data: 'tier:list' }]);
   }
@@ -201,6 +206,12 @@ async function replyNewProduct(chatId, result) {
 async function sendTaskInbox(chatId) {
   const result = taskPageMessage(getTaskPage('telegram', chatId));
   await replyToChat(chatId, result.message, result.replyMarkup || undefined);
+}
+
+async function requestBotReport(chatId,type,params={}) {
+  const result=await reportApprovals.requestReport(chatId,type,params);
+  if(!result.ok)await replyToChat(chatId,'🔒 '+result.error);
+  return result;
 }
 
 async function sendFreshTaskPdf(chatId) {
@@ -615,9 +626,90 @@ function rememberChatForAccount(record, chatId) {
   }
 }
 
+
+async function executeApprovedReport({chatId,type,params}) {
+  if(type==='salesweek')return sendSalesWeekReport(chatId);
+  if(type==='business')return sendBusinessYearReport(chatId,params.year);
+  if(type==='businesspoints')return sendBusinessPointsOnly(chatId,params.year);
+  if(type==='stock')return sendWarehouseStockReport(chatId,params.citySelector||'');
+  if(type==='nogroomer')return sendNoGroomerReport(chatId,params.days);
+  if(type==='payouts')return sendPayoutBriefs(chatId);
+  if(type==='taskpdf')return sendFreshTaskPdf(chatId);
+  if(type==='qrweek'){
+    const result=await require('./qr-weekly-telegram').sendWeeklyQrReport({manual:true,approved:true});
+    if(!result.ok)throw Error(result.error||result.reason||'QR-отчёт не сформирован');
+    await replyToChat(chatId,result.skipped?'QR-отчёт за неделю уже отправлен.':
+      '✅ QR-отчёт подтверждён и отправлен в служебный Telegram.');
+    return;
+  }
+  if(type==='gdweek'){
+    const admin=db.prepare("SELECT id,login FROM admins WHERE active=1 AND telegram_chat_id=? LIMIT 1").get(String(chatId));
+    if(!admin)throw Error('Аккаунт администратора отключён');
+    const reports=require('./weekly-report');
+    const period=params.start&&params.end?reports.customPeriod(params.start,params.end):null;
+    const created=await reports.createWeeklyReport(admin,{period,skipTelegram:!!params.skipTelegram});
+    await replyToChat(chatId,'✅ Отчёт ГД за '+created.report.period.start_local+' — '+
+      created.report.period.end_local+' сформирован. PDF и Excel находятся в архиве админки.'+
+      (created.telegram.status==='sent'?' Файлы отправлены в служебный чат.':''));
+    return;
+  }
+  if(['clubdaily','clubweekly','clubtopweek','clubtopall'].includes(type)){
+    const result=require('./routes-partner-club').generateApprovedClubReport(type,{approved:true});
+    if(!result.ok)throw Error(result.error||'Не удалось сформировать отчёт для Клуба партнёров');
+    await replyToChat(chatId,result.created?
+      '✅ Сводка сформирована и добавлена в очередь Клуба партнёров. Публикация по отдельному согласованию.':
+      'Такая сводка уже есть в очереди Клуба партнёров.');
+    return;
+  }
+  throw Error('Неизвестный тип отчёта');
+}
+
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+
+    if (/^report:(?:menu|new:[a-z]+|(?:yes|no):[0-9]+)$/.test(callback.data||'')) {
+      const data=callback.data||'',chat=callback.message?.chat;
+      const allowed=chat?.type==='private' && String(chat.id)===String(callback.from?.id);
+      try {
+        await callBotApi('answerCallbackQuery',{
+          callback_query_id:callback.id,
+          text:allowed?'Проверяем запрос':'Откройте личный чат с ботом',
+          show_alert:!allowed,
+        });
+      } catch(error) {
+        console.warn('[reports] Не удалось подтвердить нажатие:',error.message);
+      }
+      if(!allowed)return;
+      if(data==='report:menu'){
+        const menu=reportApprovals.menu(chat.id);
+        await replyToChat(chat.id,menu.message,menu.reply_markup);
+        return;
+      }
+      if(data.startsWith('report:new:')){
+        await requestBotReport(chat.id,data.slice('report:new:'.length));
+        return;
+      }
+      const match=data.match(/^report:(yes|no):([0-9]+)$/);
+      const decision=reportApprovals.decideReport(chat.id,match[1],match[2]);
+      if(!decision.ok || decision.cancelled){
+        await replyToChat(chat.id,decision.message);
+        return;
+      }
+      const approved=decision.request;
+      await replyToChat(chat.id,'⏳ Подтверждено. Формирую отчёт по актуальным данным.');
+      let success=false;
+      try {
+        await executeApprovedReport(approved);
+        success=true;
+      } catch(error) {
+        console.error('[reports] Ошибка формирования:',approved.type,error);
+        await replyToChat(chat.id,'⚠️ Не удалось сформировать отчёт. Проверьте журнал сервера и запросите новый.');
+      } finally {
+        reportApprovals.finishReport(approved.id,success);
+      }
+      return;
+    }
     if (/^tier:(?:list|(?:approve|reject):\d+)$/.test(callback.data || '')) {
       const chat = callback.message?.chat;
       const allowed = chat?.type === 'private' &&
@@ -716,7 +808,7 @@ async function processUpdate(update) {
         text: allowed ? 'Собираем актуальные остатки' : 'Нет доступа',
         show_alert: !allowed,
       });
-      if (allowed) await sendWarehouseStockReport(chat.id);
+      if (allowed) await requestBotReport(chat.id,'stock');
       return;
     }
     if (callback.data === 'sales:nogroomer') {
@@ -727,7 +819,7 @@ async function processUpdate(update) {
         text: allowed ? 'Собираем заказы без грумера' : 'Нет доступа',
         show_alert: !allowed,
       });
-      if (allowed) await sendNoGroomerReport(chat.id);
+      if (allowed) await requestBotReport(chat.id,'nogroomer');
       return;
     }
     if (callback.data === 'payouts:prepare') {
@@ -738,7 +830,7 @@ async function processUpdate(update) {
         text: allowed ? 'Готовим справки к выплатам' : 'Нет доступа',
         show_alert: !allowed,
       });
-      if (allowed) await sendPayoutBriefs(chat.id);
+      if (allowed) await requestBotReport(chat.id,'payouts');
       return;
     }
     if (callback.data === 'sales:businesspoints') {
@@ -749,7 +841,7 @@ async function processUpdate(update) {
         text: allowed ? 'Собираем реестр всех точек' : 'Нет доступа',
         show_alert: !allowed,
       });
-      if (allowed) await sendBusinessPointsOnly(chat.id);
+      if (allowed) await requestBotReport(chat.id,'businesspoints');
       return;
     }
     if (callback.data === 'sales:business') {
@@ -760,7 +852,7 @@ async function processUpdate(update) {
         text: allowed ? 'Собираем годовой отчёт' : 'Нет доступа',
         show_alert: !allowed,
       });
-      if (allowed) await sendBusinessYearReport(chat.id);
+      if (allowed) await requestBotReport(chat.id,'business');
       return;
     }
     if (callback.data === 'sales:week') {
@@ -769,7 +861,7 @@ async function processUpdate(update) {
       await callBotApi('answerCallbackQuery', {
         callback_query_id: callback.id, text: allowed ? 'Формируем отчёт' : 'Нет доступа', show_alert: !allowed,
       });
-      if (allowed) await sendSalesWeekReport(chat.id);
+      if (allowed) await requestBotReport(chat.id,'salesweek');
       return;
     }
     if (callback.data === 'club:new') {
@@ -940,6 +1032,11 @@ async function processUpdate(update) {
   }
   if (!msg.text) return;
   const text = msg.text.trim();
+  if (msg.chat.type==='private' && /^\/reports(?:@\w+)?$/i.test(text)) {
+    const menu=reportApprovals.menu(msg.chat.id);
+    await replyToChat(msg.chat.id,menu.message,menu.reply_markup);
+    return;
+  }
   if (msg.chat.type === 'private' && /^\/newproduct(?:@\w+)?$/i.test(text)) {
     await replyNewProduct(msg.chat.id, newProductBroadcast.startBroadcast(msg.chat.id));
     return;
@@ -1019,7 +1116,7 @@ async function processUpdate(update) {
       await replyToChat(msg.chat.id,
         'Формат: /stock — все города, /stock krsk — склад Красноярска.');
     } else {
-      await sendWarehouseStockReport(msg.chat.id, citySelector);
+      await requestBotReport(msg.chat.id,'stock',{citySelector});
     }
     return;
   }
@@ -1029,13 +1126,13 @@ async function processUpdate(update) {
       await replyToChat(msg.chat.id,
         'Используйте /nogroomer — за всё время, /nogroomer 7 или /nogroomer 30.');
     } else {
-      await sendNoGroomerReport(msg.chat.id,
-        noGroomerCommand[1] ? Number(noGroomerCommand[1]) : undefined);
+      await requestBotReport(msg.chat.id,'nogroomer',
+        noGroomerCommand[1] ? {days:Number(noGroomerCommand[1])} : {});
     }
     return;
   }
   if (/^\/(?:payouts|payoutbrief)(?:@\w+)?$/i.test(text) || /^справк[аи] (?:для |к )?выплат[аым]?$/i.test(text)) {
-    await sendPayoutBriefs(msg.chat.id);
+    await requestBotReport(msg.chat.id,'payouts');
     return;
   }
   const businessPointsCommand = text.match(/^\/businesspoints(?:@\w+)?(?:\s+(.+))?$/i);
@@ -1045,7 +1142,7 @@ async function processUpdate(update) {
       await replyToChat(msg.chat.id,
         'Формат: /businesspoints — текущий год, /businesspoints 2025 — выбранный год.');
     } else {
-      await sendBusinessPointsOnly(msg.chat.id, arg ? Number(arg) : undefined);
+      await requestBotReport(msg.chat.id,'businesspoints',arg?{year:Number(arg)}:{});
     }
     return;
   }
@@ -1056,12 +1153,12 @@ async function processUpdate(update) {
       await replyToChat(msg.chat.id,
         'Формат: /business — текущий год, /business 2025 — полный выбранный год.');
     } else {
-      await sendBusinessYearReport(msg.chat.id, arg ? Number(arg) : undefined);
+      await requestBotReport(msg.chat.id,'business',arg?{year:Number(arg)}:{});
     }
     return;
   }
   if (/^\/(?:salesweek|sales_week)(?:@\w+)?$/i.test(text) || /^отч[её]т(?: по продажам)? за неделю$/i.test(text)) {
-    await sendSalesWeekReport(msg.chat.id);
+    await requestBotReport(msg.chat.id,'salesweek');
     return;
   }
   if (/^\/newtask(?:@\w+)?$/i.test(text) || /^новая задача$/i.test(text)) {
@@ -1085,15 +1182,16 @@ async function processUpdate(update) {
     const dateCancelled = cancelTaskDueInput('telegram', msg.chat.id);
     const newProductCancelled = newProductBroadcast.cancelDraft(msg.chat.id);
     const clubPhotoCancelled = require('./routes-partner-club').cancelClubInput(msg.chat.id);
+    const reportCancelled = reportApprovals.cancelPendingReports(msg.chat.id);
     await replyToChat(
       msg.chat.id,
-      createCancelled || expenseCancelled || statusCancelled || dateCancelled || newProductCancelled || clubPhotoCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
+      createCancelled || expenseCancelled || statusCancelled || dateCancelled || newProductCancelled || clubPhotoCancelled || reportCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
       botActionButtons(msg.chat.id)
     );
     return;
   }
   if (/^\/taskpdf(?:@\w+)?$/i.test(text)) {
-    await sendFreshTaskPdf(msg.chat.id);
+    await requestBotReport(msg.chat.id,'taskpdf');
     return;
   }
   if (/^\/tasks(?:@\w+)?$/i.test(text) || /^мои поручения$/i.test(text)) {

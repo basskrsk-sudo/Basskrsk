@@ -2,6 +2,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth, requireActiveAdmin } = require('./routes-auth');
 const { readComparison } = require('./week-over-week');
@@ -60,28 +61,24 @@ function registerWeeklyReportRoutes(router) {
   });
 
   router.post('/api/weekly-reports', async (req, res, ctx) => {
-    const payload = requireAuth(['admin'])(req, res, ctx);
-    if (!payload) return;
+    const admin = requireAuth(['admin'])(req, res, ctx);
+    if (!admin) return;
     try {
       const body = ctx.body || {};
-      // Период необязателен: без start/end — предыдущая завершённая неделя,
-      // как раньше. customPeriod сам проверяет формат и границы дат.
-      let period = null;
-      if (body.start || body.end) {
-        period = customPeriod(String(body.start || ''), String(body.end || ''));
-      }
-      const result = await createWeeklyReport(payload, {
-        period,
-        skipTelegram: body.skip_telegram === true,
-      });
-      sendJson(res, 201, {
-        ok: true,
-        report: safeRecord(result.record),
-        telegram: result.telegram,
-      });
-    } catch (error) {
-      console.error('[weekly-report] Не удалось сформировать отчёт:', error);
-      sendJson(res, 500, { error: 'Не удалось сформировать отчёт: ' + error.message });
+      if (!!body.start !== !!body.end) return sendJson(res,400,{error:'Укажите обе даты периода'});
+      if (body.start && body.end) customPeriod(String(body.start),String(body.end));
+      const account=db.prepare('SELECT telegram_chat_id FROM admins WHERE id=? AND active=1').get(admin.id);
+      if (!account?.telegram_chat_id)
+        return sendJson(res,409,{error:'Сначала подключите личный Telegram в кабинете администратора'});
+      const params={...(body.start?{start:String(body.start),end:String(body.end)}:{}),
+        skipTelegram:body.skip_telegram===true};
+      const approval=await require('./report-approvals').requestReport(account.telegram_chat_id,'gdweek',params);
+      if(!approval.ok)return sendJson(res,502,{error:approval.error});
+      sendJson(res,202,{ok:true,pending_approval:true,message:approval.message});
+    } catch(error) {
+      const clientError=error instanceof RangeError;
+      if(!clientError)console.error('[weekly-report] Ошибка запроса согласования:',error.message);
+      sendJson(res,clientError?400:500,{error:clientError?error.message:'Не удалось запросить отчёт'});
     }
   });
 

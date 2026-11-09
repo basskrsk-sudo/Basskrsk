@@ -1195,7 +1195,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <input type="checkbox" id="wr-send-telegram" checked style="width:15px;height:15px;accent-color:var(--amber);">
               Отправить файлы в служебный Telegram
             </label>
-            <button id="weekly-report-generate" class="add-product-btn" style="background:var(--amber);color:#fff;min-width:230px;" onclick="generateWeeklyReport()">Сформировать отчёт</button>
+            <button id="weekly-report-generate" class="add-product-btn" style="background:var(--amber);color:#fff;min-width:230px;" onclick="generateWeeklyReport()">Запросить формирование в Telegram</button>
           </div>
         </div>
         <div id="weekly-report-message" style="display:none;margin-top:1rem;padding:.75rem .9rem;border-radius:8px;background:rgba(255,255,255,.12);font-size:.82rem;line-height:1.5;"></div>
@@ -4867,10 +4867,10 @@ async function generateWeeklyReport() {
   const originalText = button.textContent;
   button.disabled = true;
   button.style.opacity = '.65';
-  button.textContent = 'Собираем аналитику…';
+  button.textContent = 'Запрашиваем подтверждение…';
   message.style.display = 'block';
   message.style.color = '#fff';
-  message.textContent = 'Формируем Excel и PDF. Обычно это занимает несколько секунд.';
+  message.textContent = 'Отправляем запрос в Telegram. Excel и PDF пока не создаются.';
   try {
     const start = document.getElementById('wr-date-start').value;
     const end = document.getElementById('wr-date-end').value;
@@ -4882,14 +4882,7 @@ async function generateWeeklyReport() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Не удалось сформировать отчёт.');
-    const telegramText = data.telegram && data.telegram.status === 'sent'
-      ? 'Файлы отправлены в служебный Telegram.'
-      : (data.telegram && data.telegram.status === 'skipped'
-        ? 'Отправка в Telegram пропущена — файлы сохранены в архиве ниже.'
-        : (data.telegram && data.telegram.status === 'failed'
-          ? 'Файлы сохранены, но Telegram сообщил об ошибке отправки.'
-          : 'Файлы сохранены. Служебный Telegram не настроен.'));
-    message.textContent = '✓ Отчёт за ' + data.report.week_start + ' — ' + data.report.week_end + ' готов. ' + telegramText;
+    message.textContent = '✅ Запрос отправлен в личный Telegram. Подтвердите кнопкой «Сформировать». PDF и Excel появятся в архиве после формирования.';
     await renderWeeklyReports();
   } catch (error) {
     message.style.color = '#FFD0D0';
