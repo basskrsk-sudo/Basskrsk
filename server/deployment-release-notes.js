@@ -6,6 +6,10 @@
 // release-notes footer. New changes should carry "Release-notes-ru: ..." in
 // the commit body so full meaning can be preserved without a translator key.
 const LEGACY_RU = new Map(Object.entries({
+  'Add admin-only YouTube audio downloads to Telegram bot (#96)':
+    'Супер-администратор может отправить команду /audio со ссылкой на YouTube и получить MP3 в личном чате Telegram. Добавлены ограничения длительности и размера, очередь загрузки и автоматическая очистка файлов.',
+  'Fix Dockerfile comment syntax for YouTube audio build (#97)':
+    'Исправлены комментарии в Dockerfile: устранена ошибка сборки Amvera «unknown instruction: //».',
   'fix(test): validate Russian missing-date prompt with literal text':
     'Исправлена проверка русскоязычного запроса недостающих дат создания точек.',
   'feat(business): include monthly sales and revenue for every point in complete registry CSV':
@@ -125,18 +129,11 @@ function footer(message, code) {
   return match ? match[1].trim() : null;
 }
 function fallbackRussian(subject) {
-  const match = String(subject).match(/^([a-z]+)(?:\(([^)]+)\))?!?:\s*(.+)$/i);
-  const type = match?.[1]?.toLowerCase() || '';
-  const scope = match?.[2]?.toLowerCase() || '';
-  const description = match?.[3] || subject;
-  const action = TYPE_RU[type] || 'Изменения';
-  const scopeLabel = SCOPE_RU[scope] || 'системы';
-  const theme = THEMES.find(([pattern]) => pattern.test(description));
-  // For unannotated future commits a conservative topical summary is safer
-  // than a fabricated word-for-word translation. English retains the detail.
-  return action + ' в разделе «' + scopeLabel + '»' +
-    (theme ? ' — ' + theme[1] : '') + '.';
+  // Do not present generic category labels as descriptions of actual changes.
+  // Without a reviewed translation, keep the exact source subject visible.
+  return 'Русское описание не указано в коммите. Оригинал: ' + firstLine(subject);
 }
+
 function releaseChange(message) {
   const subject = firstLine(message) || 'Change description unavailable';
   const providedEnglish = footer(message, 'en');

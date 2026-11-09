@@ -24,12 +24,12 @@ test('old commits use meaningful Russian descriptions', () => {
   assert.match(result.ru, /точки/);
 });
 
-test('unknown commit types are summarized in Russian without inventing details', () => {
+test('unknown commits preserve exact details instead of vague Russian templates', () => {
   const result = releaseChange('feat(unknown): improve special <component> & handling');
   assert.equal(result.en, 'feat(unknown): improve special <component> & handling');
-  assert.match(result.ru, /Добавлена возможность/);
-  assert.ok(!result.ru.includes('<component>'));
-  assert.match(fallbackRussian('fix(checkout): broken discount'), /Исправлена работа/);
+  assert.match(result.ru, /Русское описание не указано/);
+  assert.match(result.ru, /special <component> & handling/);
+  assert.match(fallbackRussian('fix(checkout): broken discount'), /broken discount/);
 });
 
 test('Cyrillic source commit titles retain Russian detail but get an English category', () => {
@@ -78,4 +78,14 @@ test('no commit details are also presented bilingually', () => {
   const output = formatBilingualTelegramChanges([]).join('\n');
   assert.match(output, /No changes were listed/);
   assert.match(output, /Изменения не указаны/);
+});
+
+test('YouTube audio and Dockerfile repair have precise bilingual notes', () => {
+  const audio = releaseChange('Add admin-only YouTube audio downloads to Telegram bot (#96)');
+  const docker = releaseChange('Fix Dockerfile comment syntax for YouTube audio build (#97)');
+  assert.match(audio.ru, /\/audio/);
+  assert.match(audio.ru, /MP3/);
+  assert.match(docker.ru, /Dockerfile/);
+  assert.match(docker.ru, /Amvera/);
+  assert.match(audio.en, /YouTube audio/);
 });
