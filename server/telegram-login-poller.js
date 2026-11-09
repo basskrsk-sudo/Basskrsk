@@ -1160,18 +1160,24 @@ async function processUpdate(update) {
 }
 
 async function pollOnce() {
-  if (!TG_TOKEN) return;
+  if (!TG_TOKEN) return false;
   try {
     const res = await fetch(
       `https://api.telegram.org/bot${TG_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=25`,
       { signal: AbortSignal.timeout(30000) }
     );
     const data = await res.json();
-    if (!data.ok || !Array.isArray(data.result)) return;
+    if (!res.ok || !data.ok || !Array.isArray(data.result)) {
+      // A revoked token, webhook conflict or Telegram rate limit can respond
+      // immediately. Without backoff the loop floods the API and burns CPU.
+      console.warn('Опрос Telegram: API ответил ошибкой', res.status, data.error_code || '');
+      return false;
+    }
     for (const update of data.result) {
       lastUpdateId = Math.max(lastUpdateId, update.update_id);
       await processUpdate(update);
     }
+    return true;
   } catch (e) {
     // Тихо игнорируем отдельные сбои опроса (сеть моргнула и т.п.) — просто
     // попробуем снова на следующей итерации, ничего не роняем.
@@ -1179,6 +1185,7 @@ async function pollOnce() {
     // ECONNREFUSED/ETIMEDOUT) — без неё "fetch failed" ничего не говорит о
     // реальной причине.
     console.warn('Опрос Telegram: сбой (пробуем снова):', e.message, e.cause ? '| причина: ' + JSON.stringify({ code: e.cause.code, errno: e.cause.errno, syscall: e.cause.syscall, address: e.cause.address }) : '(без деталей)');
+    return false;
   }
 }
 
@@ -1194,8 +1201,14 @@ async function startPolling() {
   require('./telegram-connection-alerts').startBotConnectionAlertWorker();
   await configureBotProfile();
   console.log('Опрос Telegram для входа в личный кабинет запущен');
+  let failures = 0;
   while (polling) {
-    await pollOnce();
+    const ok = await pollOnce();
+    if (ok) { failures = 0; continue; }
+    failures = Math.min(failures + 1, 5);
+    // Retry after 2, 4, 8, 16, then 30 seconds on repeated failures.
+    if (polling) await new Promise(resolve =>
+      setTimeout(resolve, Math.min(30000, 1000 * 2 ** failures)));
   }
 }
 

@@ -153,6 +153,14 @@ registerPointLaunchRoutes(router);
 registerPartnerClubRoutes(router);
 
 const staticCache = createStaticCache(PUBLIC_DIR);
+// Image/file POST bodies are base64 encoded and can hold tens of megabytes
+// until conversion completes. Admit only one such request per Node process.
+let activeHeavyUploads = 0;
+function isHeavyUpload(method, pathname) {
+  return method === 'POST' && (pathname === '/api/products/upload-image' ||
+    /^\/api\/points\/[^/]+\/salon-photos\/?$/.test(pathname) ||
+    /^\/api\/expenses\/\d+\/documents\/?$/.test(pathname));
+}
 
 function serveStatic(req, res, pathname) {
   const decoded = decodeURIComponent(pathname);
@@ -199,9 +207,16 @@ function serveStatic(req, res, pathname) {
       return;
     }
     try {
-      const result = staticCache.response(filePath, req, MIME[ext] || 'application/octet-stream');
+      const result = staticCache.response(filePath, req, MIME[ext] || 'application/octet-stream', stat);
       res.writeHead(result.status, result.headers);
-      res.end(result.status === 304 || req.method === 'HEAD' ? undefined : result.body);
+      if (result.status === 304 || req.method === 'HEAD') return res.end();
+      if (result.streamPath) {
+        const stream = fs.createReadStream(result.streamPath);
+        stream.on('error', (error) => { if (!res.destroyed) res.destroy(error); });
+        stream.pipe(res);
+      } else {
+        res.end(result.body);
+      }
     } catch (error) {
       res.writeHead(500, { 'Cache-Control': 'no-store' });
       res.end('Не удалось загрузить страницу');
@@ -239,6 +254,14 @@ const server = http.createServer(async (req, res) => {
   if (pathname.startsWith('/api/')) {
     const match = router.match(req.method, pathname);
     if (!match) return sendJson(res, 404, { error: 'Маршрут не найден' });
+    const heavyUpload = isHeavyUpload(req.method, pathname);
+    if (heavyUpload && activeHeavyUploads >= 1) {
+      // Reject before reading another 10–22 MiB JSON body.
+      res.setHeader('Retry-After', '3');
+      req.resume();
+      return sendJson(res, 503, { error: 'Загрузка файла занята. Повторите попытку через несколько секунд.' });
+    }
+    if (heavyUpload) activeHeavyUploads++;
     try {
       let body = {};
       let rawBody = null;
@@ -255,7 +278,10 @@ const server = http.createServer(async (req, res) => {
       await match.handler(req, res, { params: match.params, query, body, rawBody, authenticatedPayload });
     } catch (e) {
       const status = e.statusCode || 500;
-      sendJson(res, status, { error: e.message || 'Внутренняя ошибка сервера' });
+      if (!res.destroyed && !res.headersSent)
+        sendJson(res, status, { error: e.message || 'Внутренняя ошибка сервера' });
+    } finally {
+      if (heavyUpload) activeHeavyUploads--;
     }
     return;
   }

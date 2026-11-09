@@ -4,6 +4,26 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+// Keep only a bounded number of bytes in Node's heap. Public documents and
+// large pictures are served from disk; their content hashes stay in metadata.
+const DEFAULT_CACHE_BYTES = 6 * 1024 * 1024;
+const DEFAULT_ASSET_BYTES = 256 * 1024;
+
+function digestFile(filePath) {
+  const hash = crypto.createHash('sha256');
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  try {
+    let n;
+    while ((n = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+      hash.update(buffer.subarray(0, n));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return hash.digest('hex').slice(0, 20);
+}
+
 function digest(body) {
   return crypto.createHash('sha256').update(body).digest('hex').slice(0, 20);
 }
@@ -15,19 +35,62 @@ function matchesEtag(header, etag) {
   });
 }
 
-function createStaticCache(publicDir) {
+function createStaticCache(publicDir, { maxCacheBytes = DEFAULT_CACHE_BYTES, maxAssetBytes = DEFAULT_ASSET_BYTES } = {}) {
   const files = new Map();
   const rendering = new Set();
   const MISSING = '__missing__';
+  const maxResidentBytes = Math.max(0, Number(maxCacheBytes) || 0);
+  const maxBufferedAssetBytes = Math.max(0, Number(maxAssetBytes) || 0);
+  let cachedBytes = 0;
 
-  function read(filePath) {
-    const stat = fs.statSync(filePath);
-    const stamp = stat.mtimeMs + ':' + stat.ctimeMs + ':' + stat.size;
-    const old = files.get(filePath);
-    if (old && old.stamp === stamp) return old;
-    const body = fs.readFileSync(filePath);
-    const entry = { stamp, body, version: digest(body), rendered: null };
+  function entryBytes(entry) {
+    return (entry.body ? entry.body.length : 0) +
+      (entry.rendered ? entry.rendered.body.length : 0);
+  }
+
+  function trim(protectedPath) {
+    // Evict only byte buffers, not tiny ETag metadata. The protected file may
+    // temporarily exceed a tiny test budget while its HTML is being rendered.
+    for (const [filePath, entry] of files) {
+      if (cachedBytes <= maxResidentBytes) break;
+      if (filePath === protectedPath || rendering.has(filePath)) continue;
+      cachedBytes -= entryBytes(entry);
+      entry.body = null;
+      entry.rendered = null;
+    }
+  }
+
+  function remember(filePath, entry) {
+    const previous = files.get(filePath);
+    if (previous) cachedBytes -= entryBytes(previous);
+    files.delete(filePath);
     files.set(filePath, entry);
+    cachedBytes += entryBytes(entry);
+    trim(filePath);
+  }
+
+  function read(filePath, statHint = null) {
+    const stat = statHint || fs.statSync(filePath);
+    const stamp = stat.mtimeMs + ':' + stat.ctimeMs + ':' + stat.size;
+    const ext = path.extname(filePath).toLowerCase();
+    const needsBody = stat.size <= maxBufferedAssetBytes || ext === '.html' || ext === '.css';
+    const old = files.get(filePath);
+    if (old && old.stamp === stamp) {
+      // A hit moves metadata to the newest position in our LRU order.
+      files.delete(filePath);
+      files.set(filePath, old);
+      if (needsBody && old.body === null) {
+        old.body = fs.readFileSync(filePath);
+        cachedBytes += old.body.length;
+        trim(filePath);
+      }
+      return old;
+    }
+    // Hash large assets in fixed 64 KiB chunks instead of keeping whole PDFs
+    // and photos resident indefinitely. Preserve strong ETags and ?v= hashes.
+    const body = needsBody ? fs.readFileSync(filePath) : null;
+    const entry = { stamp, body, version: body ? digest(body) : digestFile(filePath), rendered: null };
+    remember(filePath, entry);
     return entry;
   }
 
@@ -64,8 +127,8 @@ function createStaticCache(publicDir) {
     return result;
   }
 
-  function rendered(filePath) {
-    const entry = read(filePath);
+  function rendered(filePath, statHint = null) {
+    const entry = read(filePath, statHint);
     // Avoid dependency cycles in stylesheets. Circular references still serve
     // the original file without blocking all HTTP requests.
     if (rendering.has(filePath)) return { body: entry.body, version: entry.version };
@@ -77,15 +140,20 @@ function createStaticCache(publicDir) {
     try {
       const dependencies = new Map();
       const body = Buffer.from(versionHtml(entry.body.toString('utf8'), dependencies));
-      entry.rendered = {body,version:digest(body),dependencies};
-      return entry.rendered;
+      const next = {body,version:digest(body),dependencies};
+      if (entry.rendered) cachedBytes -= entry.rendered.body.length;
+      entry.rendered = next;
+      cachedBytes += body.length;
+      trim(filePath);
+      return next;
     } finally {
       rendering.delete(filePath);
+      trim(filePath);
     }
   }
 
-  function response(filePath, req, mime) {
-    const entry = read(filePath);
+  function response(filePath, req, mime, statHint = null) {
+    const entry = read(filePath, statHint);
     const name = path.basename(filePath);
     const html = path.extname(filePath) === '.html';
     const css = path.extname(filePath) === '.css';
@@ -95,7 +163,7 @@ function createStaticCache(publicDir) {
     const noStore = privatePage || name === 'miniapp.html' ||
       name === 'config.js' || name === 'sw.js';
     // Cache transformed HTML/CSS bytes and ETags; revalidate asset stamps.
-    const representation = html || css ? rendered(filePath) : entry;
+    const representation = html || css ? rendered(filePath, statHint) : entry;
     const body = representation.body;
     const representationVersion = representation.version;
     const etag = '"' + representationVersion + '"';
@@ -107,10 +175,14 @@ function createStaticCache(publicDir) {
     };
     if (!noStore) headers.ETag = etag;
     const notModified = !noStore && ['GET', 'HEAD'].includes(req.method) && matchesEtag(req.headers['if-none-match'], etag);
-    return { status: notModified ? 304 : 200, headers, body };
+    return { status: notModified ? 304 : 200, headers, body, streamPath: body === null ? filePath : null };
   }
 
-  return { response, versionHtml };
+  function stats() {
+    return { resident_bytes: cachedBytes, limit_bytes: maxResidentBytes, entries: files.size,
+      streamed_assets: [...files.values()].filter(entry => entry.body === null).length };
+  }
+  return { response, versionHtml, stats };
 }
 
 module.exports = { createStaticCache, matchesEtag };
