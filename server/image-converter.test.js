@@ -72,3 +72,15 @@ test('excess image uploads receive 503 instead of saturating container memory',a
   release();
   await Promise.all([active,queued1,queued2]);
 });
+
+
+test('photo conversion caps ImageMagick RAM, mapped memory and threads',async()=>{
+  const seen=[];
+  const convert=createImageConverter(async(_command,_args,options)=>{seen.push(options);});
+  await convert(['image.jpg','image.webp']);
+  assert.equal(seen.length,1);
+  assert.equal(seen[0].env.MAGICK_MEMORY_LIMIT,'64MiB');
+  assert.equal(seen[0].env.MAGICK_MAP_LIMIT,'128MiB');
+  assert.equal(seen[0].env.MAGICK_DISK_LIMIT,'256MiB');
+  assert.equal(seen[0].env.MAGICK_THREAD_LIMIT,'1');
+});

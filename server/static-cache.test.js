@@ -110,3 +110,39 @@ test('warm HTML and CSS requests reuse prepared output without repetitive hashin
     fs.rmSync(dir,{recursive:true,force:true});
   }
 });
+
+
+test('large static files are streamed with stable ETags and no retained file bodies', () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hm-static-stream-'));
+  try {
+    const pdf=path.join(dir,'guide.pdf');
+    fs.writeFileSync(pdf,Buffer.alloc(1024,7));
+    const cache=createStaticCache(dir,{maxCacheBytes:256,maxAssetBytes:128});
+    const req={method:'GET',url:'/guide.pdf',headers:{}};
+    const first=cache.response(pdf,req,'application/pdf');
+    assert.equal(first.status,200);
+    assert.equal(first.body,null);
+    assert.equal(first.streamPath,pdf);
+    assert.equal(cache.stats().resident_bytes,0);
+    const check=cache.response(pdf,{...req,headers:{'if-none-match':first.headers.ETag}},'application/pdf');
+    assert.equal(check.status,304);
+    fs.writeFileSync(pdf,Buffer.alloc(1024,8));
+    const changed=cache.response(pdf,req,'application/pdf');
+    assert.notEqual(changed.headers.ETag,first.headers.ETag);
+    assert.equal(cache.stats().resident_bytes,0);
+  } finally { fs.rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('small assets are LRU-limited without losing their content on the next request', () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hm-static-bounded-'));
+  try {
+    const cache=createStaticCache(dir,{maxCacheBytes:140,maxAssetBytes:120});
+    const paths=['a.js','b.js','c.js'].map(name=>path.join(dir,name));
+    paths.forEach((p,i)=>fs.writeFileSync(p,String(i).repeat(90)));
+    const req={method:'GET',url:'/a.js',headers:{}};
+    paths.forEach(p=>assert.equal(cache.response(p,req,'application/javascript').body.length,90));
+    assert.ok(cache.stats().resident_bytes<=140);
+    assert.equal(cache.response(paths[0],req,'application/javascript').body.toString(),'0'.repeat(90));
+    assert.ok(cache.stats().resident_bytes<=140);
+  } finally { fs.rmSync(dir,{recursive:true,force:true}); }
+});

@@ -12,7 +12,16 @@ function createImageConverter(run=defaultRun) {
   let active=false;
   const queue=[];
   async function processFile(args) {
-    const options={timeout:30000,maxBuffer:128*1024};
+    // ImageMagick uses a separate process and can otherwise consume most of
+    // a small Amvera container while decoding high-resolution phone photos.
+    // Spill pixel cache to disk and avoid parallel image-processing threads.
+    const options={timeout:30000,maxBuffer:128*1024,env:{
+      ...process.env,
+      MAGICK_MEMORY_LIMIT:'64MiB',
+      MAGICK_MAP_LIMIT:'128MiB',
+      MAGICK_DISK_LIMIT:'256MiB',
+      MAGICK_THREAD_LIMIT:'1',
+    }};
     try { await run('magick',args,options); }
     catch (error) {
       if (error.code!=='ENOENT') throw error;
