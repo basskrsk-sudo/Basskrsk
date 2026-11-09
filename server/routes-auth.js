@@ -8,6 +8,7 @@ const { sendJson } = require('./http-utils');
 const { safeFounder } = require('./business-founders');
 const { telegramStartLink } = require('./telegram-bot-identity');
 const { bindTelegramAccount } = require('./telegram-connection-alerts');
+const { normalizeRussianPhone } = require('./miniapp-phone-identity');
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // час на использование ссылки
 
@@ -29,6 +30,34 @@ function phonesMatch(a, b) {
   const da = String(a || '').replace(/\D/g, '').slice(-10);
   const db_ = String(b || '').replace(/\D/g, '').slice(-10);
   return da.length === 10 && da === db_;
+}
+
+// An administrator's phone is configured by the super-admin, not by the
+// Mini App user. Telegram's own-contact proof is checked separately.
+function adminPhoneFromInput(value) {
+  if (value === null || (typeof value === 'string' && !value.trim())) {
+    return { valid: true, phone: null };
+  }
+  if (typeof value !== 'string') return { valid: false };
+  const phone = normalizeRussianPhone(value);
+  return { valid: !!phone && /^79\d{9}$/.test(phone), phone };
+}
+function adminPhoneConflict(phone, excludeId = null) {
+  if (!phone) return false;
+  return !!db.prepare(
+    'SELECT id FROM admins WHERE phone = ? AND (? IS NULL OR id != ?) LIMIT 1'
+  ).get(phone, excludeId, excludeId);
+}
+
+function validActiveAdminClaims(payload) {
+  const account = db.prepare(
+    'SELECT role, active, miniapp_auth_version FROM admins WHERE id = ?'
+  ).get(payload.id);
+  if (!account || Number(account.active) !== 1) return false;
+  if (payload.adminRole && payload.adminRole !== account.role) return false;
+  if (Object.prototype.hasOwnProperty.call(payload, 'miniappAuthVersion') &&
+      Number(payload.miniappAuthVersion) !== Number(account.miniapp_auth_version || 0)) return false;
+  return true;
 }
 
 function registerAuthRoutes(router) {
@@ -82,7 +111,13 @@ function registerAuthRoutes(router) {
       if (point) user.city_id = point.city_id;
     }
 
-    const token = signToken({ role, id: user.id, login: user.login, adminRole: role === 'admin' ? user.role : undefined });
+    const token = signToken({
+      role, id: user.id, login: user.login,
+      adminRole: role === 'admin' ? user.role : undefined,
+      // New administrator sessions carry a revocation version. Older tokens
+      // without the claim stay compatible until their normal 12h expiry.
+      ...(role === 'admin' ? { miniappAuthVersion: Number(user.miniapp_auth_version || 0) } : {}),
+    });
     const { password_hash, telegram_chat_id, max_chat_id, ...safeUser } = user;
     if (role === 'founder') Object.assign(safeUser, safeFounder(user), { phone: undefined });
     safeUser.telegram_connected = !!telegram_chat_id;
@@ -636,7 +671,11 @@ function registerAuthRoutes(router) {
   // GET /api/admins — список всех админов
   router.get('/api/admins', (req, res, ctx) => {
     if (!requireSuperAdmin(req, res, ctx)) return;
-    const rows = db.prepare('SELECT id, login, full_name, role, active, created_at FROM admins ORDER BY id ASC').all();
+    const rows = db.prepare(
+      'SELECT id, login, full_name, phone, role, active, created_at, ' +
+      "CASE WHEN telegram_chat_id IS NOT NULL AND TRIM(telegram_chat_id) != '' THEN 1 ELSE 0 END AS telegram_connected " +
+      'FROM admins ORDER BY id ASC'
+    ).all();
     sendJson(res, 200, { admins: rows });
   });
 
@@ -644,15 +683,21 @@ function registerAuthRoutes(router) {
   router.post('/api/admins', async (req, res, ctx) => {
     const payload = requireSuperAdmin(req, res, ctx);
     if (!payload) return;
-    const { login, password, full_name, role } = ctx.body || {};
+    const { login, password, full_name, role, phone: phoneInput } = ctx.body || {};
     if (!login || !password || password.length < 6) {
       return sendJson(res, 400, { error: 'Укажите login и password (не короче 6 символов)' });
     }
     const existing = db.prepare('SELECT id FROM admins WHERE login = ?').get(login);
     if (existing) return sendJson(res, 409, { error: 'Такой логин уже существует' });
+    const parsedPhone = adminPhoneFromInput(phoneInput === undefined ? null : phoneInput);
+    if (!parsedPhone.valid) return sendJson(res, 400, { error: 'Введите корректный мобильный номер РФ' });
+    if (adminPhoneConflict(parsedPhone.phone)) {
+      return sendJson(res, 409, { error: 'Этот номер уже назначен другому администратору' });
+    }
     const finalRole = role === 'super' ? 'super' : 'admin';
-    const info = db.prepare('INSERT INTO admins (login, password_hash, full_name, role, active) VALUES (?, ?, ?, ?, 1)')
-      .run(login, hashPassword(password), full_name || null, finalRole);
+    const info = db.prepare(
+      'INSERT INTO admins (login, password_hash, full_name, role, phone, active) VALUES (?, ?, ?, ?, ?, 1)'
+    ).run(login, hashPassword(password), full_name || null, finalRole, parsedPhone.phone);
 
     // Создание админа (особенно супер-админа) — чувствительное действие,
     // уведомление тут работает ещё и как сигнал безопасности: если аккаунт
@@ -677,7 +722,13 @@ function registerAuthRoutes(router) {
     if (!payload) return;
     const existing = db.prepare('SELECT * FROM admins WHERE id = ?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Админ не найден' });
-    const { active, full_name, role } = ctx.body || {};
+    const { active, full_name, role, phone: phoneInput } = ctx.body || {};
+    const phoneProvided = Object.prototype.hasOwnProperty.call(ctx.body || {}, 'phone');
+    const parsedPhone = phoneProvided ? adminPhoneFromInput(phoneInput) : { valid: true, phone: existing.phone };
+    if (!parsedPhone.valid) return sendJson(res, 400, { error: 'Введите корректный мобильный номер РФ' });
+    if (adminPhoneConflict(parsedPhone.phone, existing.id)) {
+      return sendJson(res, 409, { error: 'Этот номер уже назначен другому администратору' });
+    }
 
     // Защита от случайной блокировки самого себя или отключения последнего
     // супер-админа — иначе управлять админами вообще станет некому.
@@ -688,10 +739,23 @@ function registerAuthRoutes(router) {
       }
     }
 
-    db.prepare('UPDATE admins SET active = ?, full_name = ?, role = ? WHERE id = ?').run(
-      active !== undefined ? (active ? 1 : 0) : existing.active,
+    const nextActive = active !== undefined ? (active ? 1 : 0) : existing.active;
+    const nextRole = role !== undefined ? (role === 'super' ? 'super' : 'admin') : existing.role;
+    const phoneChanged = parsedPhone.phone !== (existing.phone || null);
+    const accessChanged = phoneChanged || Number(nextActive) !== Number(existing.active) ||
+      nextRole !== existing.role;
+    // A phone reassignment must drop the old Telegram binding. Existing Mini
+    // App tokens are revoked without disturbing password-based website login.
+    db.prepare(
+      'UPDATE admins SET active = ?, full_name = ?, role = ?, phone = ?, ' +
+      'telegram_chat_id = ?, miniapp_auth_version = ? WHERE id = ?'
+    ).run(
+      nextActive,
       full_name !== undefined ? full_name : existing.full_name,
-      role !== undefined ? (role === 'super' ? 'super' : 'admin') : existing.role,
+      nextRole,
+      parsedPhone.phone,
+      phoneChanged ? null : existing.telegram_chat_id,
+      Number(existing.miniapp_auth_version || 0) + (accessChanged ? 1 : 0),
       ctx.params.id
     );
     sendJson(res, 200, { ok: true });
@@ -715,7 +779,10 @@ function requireAuth(roles) {
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     const { verifyToken } = require('./auth');
     const payload = token ? verifyToken(token) : null;
-    if (!payload || (roles && !roles.includes(payload.role))) {
+    if (!payload || (roles && !roles.includes(payload.role)) ||
+        (payload.role === 'admin' &&
+         Object.prototype.hasOwnProperty.call(payload, 'miniappAuthVersion') &&
+         !validActiveAdminClaims(payload))) {
       sendJson(res, 401, { error: 'Требуется авторизация' });
       return null;
     }
@@ -758,7 +825,10 @@ function tryAuth(roles) {
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     const { verifyToken } = require('./auth');
     const payload = token ? verifyToken(token) : null;
-    if (!payload || (roles && !roles.includes(payload.role))) return null;
+    if (!payload || (roles && !roles.includes(payload.role)) ||
+        (payload.role === 'admin' &&
+         Object.prototype.hasOwnProperty.call(payload, 'miniappAuthVersion') &&
+         !validActiveAdminClaims(payload))) return null;
     return payload;
   };
 }
