@@ -76,6 +76,14 @@ RUN find /usr/share/fonts -name 'DejaVuSans.ttf' | grep -q . && \
     echo "✅ Шрифт DejaVu Sans найден: $(find /usr/share/fonts -name 'DejaVuSans.ttf' | head -1)" || \
     echo "⚠️⚠️⚠️ ВНИМАНИЕ: шрифт DejaVu Sans не найден — PDF-отчёты планёрки ГД работать НЕ БУДУТ. ⚠️⚠️⚠️"
 
+// YouTube audio conversion is optional and isolated from the main shop logic.
+// Python venv avoids Alpine's externally-managed Python restriction.
+RUN apk add --no-cache python3 py3-pip ffmpeg && \
+    python3 -m venv /opt/youtube-tools && \
+    /opt/youtube-tools/bin/pip install --no-cache-dir 'yt-dlp[default]' && \
+    /opt/youtube-tools/bin/yt-dlp --version
+ENV YT_DLP_BIN=/opt/youtube-tools/bin/yt-dlp
+
 WORKDIR /app
 
 # Сам сервер и статические файлы сайта
