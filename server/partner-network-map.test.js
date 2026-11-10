@@ -104,7 +104,7 @@ test('network map is read-only', async () => {
   assert.equal(after,before);
 });
 
-async function coordinateCall(identity, leadIds) {
+async function coordinateCall(identity, leadIds, candidateIds) {
   const handler = handlers.get('POST /api/partner-leads/network-map/coordinates');
   assert.ok(handler, 'read-only coordinate route exists');
   const req = {headers: {authorization: identity ? 'Bearer ' + signToken(identity) : ''}};
@@ -112,7 +112,7 @@ async function coordinateCall(identity, leadIds) {
     writeHead(code) { this.status = code; return this; },
     end(body) { this.body = JSON.parse(body); }
   };
-  await handler(req, res, {body: {lead_ids: leadIds}});
+  await handler(req, res, {body: {lead_ids: leadIds, candidate_ids: candidateIds || []}});
   return res;
 }
 test('coordinates are resolved for accessible CRM IDs without writing to database', async () => {
@@ -162,4 +162,49 @@ test('transient geocoder failures show an unavailable state without fake coordin
   assert.equal(response.status,200);
   assert.equal(response.body.results[0].status,'unavailable');
   assert.equal(response.body.results[0].lat,undefined);
+});
+
+
+test('external registry loads 114 entries but never inserts them into working CRM', async () => {
+  const source = require('./partner-map-candidates');
+  assert.equal(source.length, 114);
+  assert.ok(source.every(row => row.type === 'candidate' &&
+    row.status === 'candidate' && row.address.includes('Красноярск')));
+  const before = db.prepare('SELECT COUNT(*) AS n FROM partner_leads').get().n;
+  const admin = await mapCall({role:'admin',id:995});
+  assert.equal(admin.status, 200);
+  assert.equal(admin.body.candidate_source_total, 114);
+  assert.equal(admin.body.candidates.length, 114);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM partner_leads').get().n, before);
+});
+
+test('manager candidate overlay is limited to the assigned city', async () => {
+  const krasnoyarsk = await mapCall({role:'manager',id:a});
+  const petersburg = await mapCall({role:'manager',id:b});
+  assert.equal(krasnoyarsk.body.candidates.length,114);
+  assert.equal(petersburg.body.candidates.length,0);
+  assert.equal(petersburg.body.candidate_source_total,0);
+});
+
+test('candidate coordinates work through secure server route by IDs only', async () => {
+  const countBefore = db.prepare('SELECT total_changes() AS n').get().n;
+  const r = await coordinateCall({role:'manager',id:a},[],[1,2]);
+  assert.equal(r.status,200);
+  assert.equal(r.body.results.length,2);
+  assert.equal(r.body.results[0].type,'candidate');
+  assert.equal(r.body.results[1].type,'candidate');
+  assert.ok(geocodeCalls.some(q=>q.includes('Красноярск')));
+  assert.equal(db.prepare('SELECT total_changes() AS n').get().n,countBefore);
+  assert.equal((await coordinateCall({role:'manager',id:b},[],[1])).status,403);
+  assert.equal((await coordinateCall({role:'manager',id:a},[],[7777])).status,403);
+  assert.equal((await coordinateCall({role:'manager',id:a},[],Array(11).fill(1))).status,400);
+});
+
+test('candidate status never overrides live CRM or duplicates working minimarket',async () => {
+  const result = await mapCall({role:'admin',id:995});
+  assert.ok(result.body.points.every(row=>row.status==='active'));
+  assert.ok(result.body.leads.every(row=>row.status!=='candidate'));
+  assert.ok(result.body.candidates.every(row=>row.status==='candidate'));
+  const known=result.body.candidates.filter(row=>row.recommendation==='Не добавлять повторно');
+  assert.equal(known.length,4);
 });

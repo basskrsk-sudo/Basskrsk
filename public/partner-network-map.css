@@ -56,3 +56,11 @@
 .hm-map-missing b{display:block;font-size:12px;line-height:1.4;color:#2d4c3e;overflow-wrap:anywhere}
 .hm-map-missing small{display:block;font-size:11px;line-height:1.4;color:#755d39;margin-top:4px;overflow-wrap:anywhere}
 @media(max-width:740px){.hm-map-unplaced{grid-template-columns:1fr;max-height:220px}}
+
+.hm-map-candidate-controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:10px 0}
+.hm-map-candidate-controls label{display:inline-flex;gap:8px;align-items:center;font-size:12px;font-weight:700;color:#694b83}
+.hm-map-candidate-controls label input[type=checkbox]{accent-color:#8056b2;min-width:17px;min-height:17px}
+.hm-map-candidate-controls select{max-width:210px;padding:8px 11px;background:#fff;border:1px solid #d8cbea;border-radius:8px;color:#604078;font:inherit}
+.hm-map-sources{margin:8px 0 10px;padding:10px 12px;background:#f7f3fd;border-radius:9px;border:1px solid #e8dff5;font-size:12px;line-height:1.5;color:#634b7b}
+.hm-map-sources b{color:#61318a}
+@media(max-width:740px){.hm-map-candidate-controls{align-items:flex-start;flex-direction:column;gap:8px}}

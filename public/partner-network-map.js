@@ -6,12 +6,12 @@
   var current = null;
   var colors = {
     active: '#208357', declined: '#ce4b50', to_call: '#2776c7',
-    no_answer: '#ee8d3d', in_progress: '#e3aa30'
+    no_answer: '#ee8d3d', in_progress: '#e3aa30', candidate: '#8056b2'
   };
   var labels = {
     active: 'Минимаркет работает', declined: 'Отказ',
     to_call: 'Ещё не звонили', no_answer: 'Не дозвонились',
-    in_progress: 'Звонили · в проработке'
+    in_progress: 'Звонили · в проработке', candidate: 'Найдены, не в CRM'
   };
   var rawLabels = {
     to_call: 'Нужно позвонить', no_answer: 'Не дозвонились',
@@ -33,6 +33,7 @@
   }
   function colorKey(item) {
     if (item.type === 'point') return 'active';
+    if (item.type === 'candidate') return 'candidate';
     if (item.status === 'declined') return 'declined';
     if (item.status === 'to_call') return 'to_call';
     if (item.status === 'no_answer') return 'no_answer';
@@ -77,16 +78,20 @@
     node.appendChild(root);
     var state = {
       node: node, map: null, records: [], city: '', status: 'all',
+      district: '', showCandidates: true, candidateTotal: 0, matchedCandidates: [],
       cache: Object.create(null), geocodeStates: Object.create(null),
       markers: Object.create(null), generation: 0,
-      limit: 40, loading: false, cities: [], shown: [], error: ''
+      limit: 160, loading: false, cities: [], shown: [], error: ''
     };
     function token() { return String(options.token() || ''); }
     function isAlive() { return current === instance && node.isConnected; }
     function items() {
       return state.records.filter(function (i) {
         return (!state.city || String(i.city_id || '') === state.city) &&
-          (state.status === 'all' || colorKey(i) === state.status);
+          (state.status === 'all' || colorKey(i) === state.status) &&
+          (i.type !== 'candidate' || (state.showCandidates &&
+            (!state.district || String(i.district || '') === state.district))) &&
+          (!state.district || i.type === 'candidate' || state.status !== 'candidate');
       });
     }
     function resetMap() {
@@ -114,13 +119,18 @@
           '"></i>' + escapeHtml(labels[key]) + ' <b>' + count + '</b></span>';
       }).join('');
     }
-    function itemId(i) { return (i.type === 'point' ? 'p:' : 'l:') + String(i.id); }
+    function itemId(i) {
+      return (i.type === 'point' ? 'p:' : i.type === 'candidate' ? 'c:' : 'l:') +
+        String(i.id);
+    }
     function itemPosition(item) { return position(item) || state.cache[itemId(item)] || null; }
     function unplacedReason(item) {
       if (itemPosition(item)) return '';
       var key = itemId(item);
       var result = state.geocodeStates[key];
-      if (!String(item.address || '').trim()) return 'Адрес отсутствует — добавьте улицу и дом в CRM';
+      if (!String(item.address || '').trim()) return item.type === 'candidate'
+        ? 'Адрес отсутствует в исходной базе — требуется проверка'
+        : 'Адрес отсутствует — добавьте улицу и дом в CRM';
       if (result === 'needs_address') return 'Нужны город, улица и номер дома';
       if (result === 'needs_verification') return 'Адрес не удалось определить до дома — проверьте его в CRM';
       if (result === 'unavailable') return 'Сервис адресов недоступен — нажмите «Обновить»';
@@ -134,8 +144,8 @@
       if (!missing.length) { holder.hidden = true; holder.innerHTML = ''; return; }
       holder.hidden = false;
       holder.innerHTML = '<strong>⚠ Не отображаются на карте: ' + missing.length + '</strong>' +
-        '<p>Статусы сохранены в CRM. Для метки нужен проверенный адрес с номером дома. ' +
-        'Нажмите на карточку, чтобы посмотреть контакт и перейти к редактированию.</p>' +
+        '<p>Статусы CRM сохранены. Фиолетовые карточки — внешний реестр, не подтверждённый CRM. ' +
+        'Для точной метки нужен адрес с номером дома; нажмите карточку, чтобы увидеть детали.</p>' +
         '<div class="hm-map-unplaced">' + missing.slice(0, 35).map(function(item) {
           return '<button type="button" class="hm-map-missing" data-map-item="' +
             escapeHtml(itemId(item)) + '"><i style="background:' + colors[colorKey(item)] +
@@ -155,10 +165,15 @@
       var html = '<div class="hm-map-card">' +
         '<div class="hm-map-card-title">' + escapeHtml(i.name) + '</div>' +
         '<span class="hm-map-tag" style="--hm-map-color:' + colors[colorKey(i)] + '">' +
-        escapeHtml(i.type === 'point' ? 'Минимаркет работает' : rawLabels[i.status] || labels[colorKey(i)]) +
+        escapeHtml(i.type === 'point' ? 'Минимаркет работает' :
+          i.type === 'candidate' ? labels.candidate : rawLabels[i.status] || labels[colorKey(i)]) +
         '</span>' +
         '<p>📍 ' + escapeHtml(i.address || 'Адрес не указан') + '</p>' +
-        (phone.length >= 10 && i.type === 'lead' ? '<p>☎️ <a href="tel:' +
+        (i.type === 'candidate' ? '<p>Район: ' + escapeHtml(i.district || 'Уточняется') +
+          ' · ' + escapeHtml(i.category || 'Организация') + '</p>' +
+          '<p><strong>Внешняя карточка, не CRM.</strong> ' +
+          escapeHtml(i.recommendation || 'Нужно сверить перед прозвоном') + '</p>' : '') +
+        (phone.length >= 10 && (i.type === 'lead' || i.type === 'candidate') ? '<p>☎️ <a href="tel:' +
           escapeHtml(phone) + '">' + escapeHtml(i.phone) + '</a></p>' : '') +
         (i.next_contact_date && i.type === 'lead' ?
           '<p>Следующий контакт: ' + escapeHtml(i.next_contact_date) + '</p>' : '') +
@@ -196,8 +211,8 @@
     }
     function renderShell() {
       root.innerHTML = '<div class="hm-map-top"><div><h2>🗺️ Карта партнёрской сети</h2>' +
-        '<p>Действующие минимаркеты и подтверждённые карточки единой CRM обзвона. ' +
-        'Новые контакты из внешних реестров появятся только после согласования и добавления.</p></div>' +
+        '<p>CRM со статусами и отдельный реестр 114 найденных салонов. ' +
+        'Фиолетовые кандидаты не внесены в CRM и требуют сверки перед прозвоном.</p></div>' +
         '<button type="button" class="hm-map-reload" data-map-refresh>↻ Обновить</button></div>' +
         '<div class="hm-map-controls"><label>Город <select data-map-city><option value="">Все города</option>' +
         cityOptions() + '</select></label><label>Статус <select data-map-status>' +
@@ -205,6 +220,24 @@
           return '<option value="' + key + '"' + (state.status === key ? ' selected' : '') +
             '>' + labels[key] + '</option>';
         }).join('') + '</select></label></div>' +
+        '<div class="hm-map-candidate-controls">' +
+        (state.candidateTotal
+          ? '<label><input type="checkbox" data-map-candidates ' +
+              (state.showCandidates ? 'checked' : '') +
+              '> Показывать найденных кандидатов (' + state.candidateTotal + ')</label>' +
+            '<label>Район (кандидаты) <select data-map-district>' +
+            '<option value="">Все районы</option>' +
+            ['Советский','Свердловский','Центральный','Октябрьский',
+              'Железнодорожный','Кировский','Ленинский'].map(function(x) {
+              return '<option value="' + escapeHtml(x) + '"' +
+                (x === state.district ? ' selected' : '') + '>' + escapeHtml(x) + '</option>';
+            }).join('') + '</select></label>'
+          : '') + '</div>' +
+        (state.candidateTotal ? '<p class="hm-map-sources">' +
+          'Внешний реестр: <b>' + state.candidateTotal + ' карточек</b> · ' +
+          'возможных совпадений с CRM: <b>' + state.matchedCandidates.length +
+          '</b>. Совпадения не дублируются фиолетовыми метками. ' +
+          'Статус «ещё не звонили» присваивается только в CRM.</p>' : '') +
         '<div class="hm-map-legend">' + legend() + '</div>' +
         '<section class="hm-map-attention" data-map-attention hidden></section>' +
         '<div class="hm-map-canvas" data-map-canvas><p class="hm-map-muted">Загружаем карту…</p></div>' +
@@ -297,8 +330,8 @@
         // IDs are resolved on the server: the browser never passes arbitrary
         // untrusted addresses to a geocoder or exposes other managers' CRM.
         var pending = filtered.filter(function(item) {
-          return item.type === 'lead' && !itemPosition(item) &&
-            !state.geocodeStates[itemId(item)];
+          return (item.type === 'lead' || item.type === 'candidate') &&
+            !itemPosition(item) && !state.geocodeStates[itemId(item)];
         });
         var batch = pending.slice(0, state.limit);
         more.hidden = pending.length <= batch.length;
@@ -314,13 +347,20 @@
                 'Authorization': 'Bearer ' + token(),
                 'Content-Type': 'application/json'
               },
-              body: JSON.stringify({lead_ids: page.map(function(item) { return Number(item.id); })})
+              body: JSON.stringify({
+                lead_ids: page.filter(function(item) { return item.type === 'lead'; })
+                  .map(function(item) { return Number(item.id); }),
+                candidate_ids: page.filter(function(item) { return item.type === 'candidate'; })
+                  .map(function(item) { return Number(item.id); })
+              })
             });
             var result = await response.json().catch(function() { return {}; });
             if (!response.ok) throw new Error(result.error || 'Ошибка определения адреса');
             if (!isAlive() || generation !== state.generation) return;
             (result.results || []).forEach(function(entry) {
-              var item = page.find(function(x) { return Number(x.id) === Number(entry.id); });
+              var item = page.find(function(x) {
+                return x.type === (entry.type || 'lead') && Number(x.id) === Number(entry.id);
+              });
               if (!item) return;
               var id = itemId(item);
               state.geocodeStates[id] = entry.status || 'needs_verification';
@@ -348,8 +388,8 @@
         if (isAlive() && generation === state.generation) {
           fit();
           var left = filtered.filter(function(item) {
-            return item.type === 'lead' && !itemPosition(item) &&
-              !state.geocodeStates[itemId(item)];
+            return (item.type === 'lead' || item.type === 'candidate') &&
+              !itemPosition(item) && !state.geocodeStates[itemId(item)];
           });
           more.hidden = !left.length;
           if (left.length) more.textContent = '📍 Проверить ещё ' +
@@ -380,7 +420,18 @@
         var data = await response.json().catch(function () { return {}; });
         if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
         if (!isAlive()) return;
-        state.records = (data.points || []).concat(data.leads || []);
+        var candidates = data.candidates || [];
+        state.candidateTotal = Number(data.candidate_source_total || candidates.length);
+        state.matchedCandidates = candidates.filter(function(item) {
+          return !!item.matched || item.recommendation === 'Не добавлять повторно';
+        });
+        // Only unmapped candidate cards are plotted; known operating points and
+        // strong CRM matches are shown through their original live CRM markers.
+        state.records = (data.points || []).concat(data.leads || []).concat(
+          candidates.filter(function(item) {
+            return !item.matched && item.recommendation !== 'Не добавлять повторно';
+          })
+        );
         renderShell();
         await draw();
       } catch (error) {
@@ -392,15 +443,24 @@
     root.addEventListener('change', function (event) {
       if (event.target.matches('[data-map-city]')) state.city = event.target.value;
       else if (event.target.matches('[data-map-status]')) state.status = event.target.value;
-      else return;
-      state.limit = 40;
+      else if (event.target.matches('[data-map-district]')) {
+        state.district = event.target.value;
+        // District applies only to the external 114-card registry; do not
+        // suggest CRM has verified district labels when it does not.
+        state.status = 'candidate';
+        var status = root.querySelector('[data-map-status]');
+        if (status) status.value = state.status;
+      } else if (event.target.matches('[data-map-candidates]')) {
+        state.showCandidates = !!event.target.checked;
+      } else return;
+      state.limit = 160;
       draw();
     });
     root.addEventListener('click', function (event) {
       var refreshButton = event.target.closest('[data-map-refresh]');
       if (refreshButton) { refresh(); return; }
       var more = event.target.closest('[data-map-more]');
-      if (more) { state.limit += 40; draw(); return; }
+      if (more) { state.limit += 80; draw(); return; }
       var leadBtn = event.target.closest('[data-map-open-lead]');
       if (leadBtn && typeof options.onOpenLead === 'function') {
         options.onOpenLead(leadBtn.dataset.mapOpenLead);

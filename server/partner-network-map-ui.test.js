@@ -40,3 +40,18 @@ test('network map statuses and popup actions are anchored to actual CRM data', (
   assert.match(script, /window\.TAIGA_CONFIG\.YANDEX_MAPS_API_KEY/);
   assert.doesNotThrow(() => new Function(script));
 });
+
+
+test('114 external candidates use a separate purple layer with district filter', () => {
+  const script = read('partner-network-map.js');
+  const css = read('partner-network-map.css');
+  assert.match(script, /candidate: '#8056b2'/);
+  assert.match(script, /data-map-candidates/);
+  assert.match(script, /data-map-district/);
+  assert.match(script, /candidate_ids/);
+  assert.match(script, /state\.matchedCandidates/);
+  assert.match(script, /Не добавлять повторно/);
+  assert.match(script, /Фиолетовые кандидаты не внесены в CRM/);
+  assert.match(css, /hm-map-candidate-controls/);
+  assert.doesNotThrow(() => new Function(script));
+});
