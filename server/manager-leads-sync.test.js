@@ -131,6 +131,79 @@ test('manager-created leads are assigned to self and notes show real author in a
   assert.equal((await call('DELETE','/api/partner-leads/:id',actor,null,{id:created.body.id})).status,401);
 });
 
+
+test('one mobile call saves status, follow-up date and authored history atomically in shared CRM',async()=>{
+  const before=db.prepare('SELECT COUNT(*) AS n FROM partner_lead_notes WHERE lead_id=?').get(ownedA).n;
+  const saved=await call('POST','/api/partner-leads/:id/call',actor,{
+    status:'no_answer',next_contact_date:'2026-11-15',note:'Поговорил с администратором, перезвонить утром',
+  },{id:ownedA});
+  assert.equal(saved.status,201,saved.body?.error);
+  assert.equal(saved.body.status,'no_answer');
+  assert.equal(saved.body.next_contact_date,'2026-11-15');
+  const read=db.prepare('SELECT status,next_contact_date FROM partner_leads WHERE id=?').get(ownedA);
+  assert.equal(read.status,'no_answer');
+  assert.equal(read.next_contact_date,'2026-11-15');
+  const after=db.prepare('SELECT note,author FROM partner_lead_notes WHERE lead_id=? ORDER BY id DESC LIMIT 1').get(ownedA);
+  assert.match(after.note,/Звонок: Не дозвонились/);
+  assert.match(after.note,/Поговорил с администратором/);
+  assert.equal(after.author,'Менеджер ML-A');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM partner_lead_notes WHERE lead_id=?').get(ownedA).n,before+1);
+  const adminView=await call('GET','/api/partner-leads/:id',admin,null,{id:ownedA});
+  assert.equal(adminView.body.lead.status,'no_answer');
+  assert.match(adminView.body.notes[0].note,/перезвонить утром/);
+});
+
+test('quick call rejects unauthorized, inactive, foreign and unassigned manager actions',async()=>{
+  const u='/api/partner-leads/:id/call';
+  const body={status:'meeting_scheduled',note:'Тест'};
+  assert.equal((await call('POST',u,null,body,{id:ownedA})).status,401);
+  assert.equal((await call('POST',u,{role:'partner',id:a},body,{id:ownedA})).status,401);
+  assert.equal((await call('POST',u,inactive,body,{id:ownedA})).status,401);
+  assert.equal((await call('POST',u,stranger,body,{id:ownedA})).status,403);
+  assert.equal((await call('POST',u,remote,body,{id:ownedA})).status,403);
+  assert.equal((await call('POST',u,actor,body,{id:freeSpb})).status,403);
+  assert.equal((await call('POST',u,actor,body,{id:ownedB})).status,403);
+  assert.equal((await call('POST',u,{role:'admin',id:8976},body,{id:ownedA})).status,401);
+  const allowed=await call('POST',u,admin,{status:'to_call',note:'Администратор позвонил'},{id:freeSpb});
+  assert.equal(allowed.status,201);
+  assert.match((await call('GET','/api/partner-leads/:id',admin,null,{id:freeSpb})).body.notes[0].note,/Администратор позвонил/);
+});
+
+test('quick call validates status, date, note length without changing lead',async()=>{
+  const p='/api/partner-leads/:id/call';
+  const base=db.prepare('SELECT status,next_contact_date FROM partner_leads WHERE id=?').get(ownedA);
+  const before=db.prepare('SELECT COUNT(*) AS n FROM partner_lead_notes WHERE lead_id=?').get(ownedA).n;
+  for(const invalid of [
+    {status:'unknown',note:'no'},
+    {status:'no_answer',next_contact_date:'2026-02-30'},
+    {status:'no_answer',next_contact_date:'tomorrow'},
+    {status:'no_answer',next_contact_date:99},
+    {status:'no_answer',note:'x'.repeat(2001)},
+    {note:'without status'},
+  ]){
+    const result=await call('POST',p,actor,invalid,{id:ownedA});
+    assert.equal(result.status,400,JSON.stringify(invalid).slice(0,100));
+  }
+  assert.deepEqual(db.prepare('SELECT status,next_contact_date FROM partner_leads WHERE id=?').get(ownedA),base);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM partner_lead_notes WHERE lead_id=?').get(ownedA).n,before);
+});
+
+test('quick call rolls back lead when adding call history fails',async()=>{
+  const previous=db.prepare('SELECT status,next_contact_date FROM partner_leads WHERE id=?').get(ownedA);
+  const history=db.prepare('SELECT COUNT(*) AS n FROM partner_lead_notes WHERE lead_id=?').get(ownedA).n;
+  db.exec("CREATE TEMP TRIGGER deny_call_note BEFORE INSERT ON partner_lead_notes "+
+    "WHEN NEW.note LIKE 'Звонок:%' BEGIN SELECT RAISE(ABORT,'forced audit failure'); END;");
+  try{
+    await assert.rejects(call('POST','/api/partner-leads/:id/call',actor,{
+      status:'signed',next_contact_date:null,note:'Запись не должна сохраниться'
+    },{id:ownedA}),/forced audit failure/);
+    assert.deepEqual(db.prepare('SELECT status,next_contact_date FROM partner_leads WHERE id=?').get(ownedA),previous);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM partner_lead_notes WHERE lead_id=?').get(ownedA).n,history);
+  }finally{
+    db.exec('DROP TRIGGER IF EXISTS deny_call_note');
+  }
+});
+
 test('desktop and Telegram manager UIs use the shared call-list module and CSS', () => {
   const publicDir=path.join(__dirname,'..','public');
   const desktop=fs.readFileSync(path.join(publicDir,'taiga-manager.html'),'utf8');
