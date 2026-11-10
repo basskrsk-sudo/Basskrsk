@@ -4,10 +4,12 @@
 // Only verified active admin / manager bot identities can import.
 // A Places API key is OPTIONAL: without it, ask for name/contact details.
 const db = require('./db');
+const crypto = require('node:crypto');
 
 const HELP = '📍 Добавить организацию из 2ГИС:\n/2gis https://2gis.ru/krasnoyarsk/firm/70000001012345678\n' +
   'или /2gis https://2gis.ru/krasnoyarsk/geo/70000001113304165\n\n' +
-  'Если данные недоступны, бот попросит: Название | телефон | адрес\n' +
+  'После ввода данных бот покажет карточку для согласования.\n' +
+  'Только кнопка «✅ Добавить в обзвон» сохранит контакт.\n' +
   'Можно сразу: /2gis <ссылка> | Название | +7... | Адрес';
 const PENDING_TTL = 15 * 60 * 1000;
 const HOSTS = new Set(['2gis.ru', 'www.2gis.ru', '2gis.com', 'www.2gis.com',
@@ -21,8 +23,17 @@ function ensureTables(database = db) {
   database.exec("CREATE TABLE IF NOT EXISTS dgis_bot_pending ("+
     "channel TEXT NOT NULL,chat_id TEXT NOT NULL,stage TEXT NOT NULL,"+
     "url TEXT,firm_id TEXT,city_alias TEXT,category TEXT,"+
+    "name TEXT,phone TEXT,address TEXT,nonce TEXT,"+
     "created_at TEXT NOT NULL DEFAULT (datetime('now')),"+
     "PRIMARY KEY(channel,chat_id))");
+  // Existing installations may have the old link-only schema.
+  const existing = new Set(database.prepare("PRAGMA table_info('dgis_bot_pending')")
+    .all().map(row => row.name));
+  for (const column of ['name','phone','address','nonce']) {
+    if (!existing.has(column)) {
+      database.exec('ALTER TABLE dgis_bot_pending ADD COLUMN '+column+' TEXT');
+    }
+  }
 }
 
 function stripLink(s) {
@@ -161,22 +172,32 @@ function cityFromAlias(alias, database = db) {
 function pending(channel, chatId, database = db) {
   ensureTables(database);
   return database.prepare("SELECT * FROM dgis_bot_pending WHERE channel=? AND chat_id=? "+
-    "AND created_at>datetime('now','-15 minutes')").get(channel,String(chatId));
+    "AND created_at > datetime('now', '-15 minutes')").get(channel,String(chatId));
 }
 function remember(channel, chatId, data, database = db) {
   ensureTables(database);
-  database.prepare("INSERT INTO dgis_bot_pending(channel,chat_id,stage,url,firm_id,city_alias,category,created_at) "+
-    "VALUES(?,?,?,?,?,?,?,datetime('now')) ON CONFLICT(channel,chat_id) DO UPDATE SET "+
-    "stage=excluded.stage,url=excluded.url,firm_id=excluded.firm_id,"+
-    "city_alias=excluded.city_alias,category=excluded.category,created_at=datetime('now')")
-    .run(channel,String(chatId),data.stage,data.url||null,data.firmId||null,
-      data.cityAlias||null,data.category||null);
+  const nonce = crypto.randomBytes(9).toString('hex');
+  database.prepare(
+    "INSERT INTO dgis_bot_pending ("+
+      "channel,chat_id,stage,url,firm_id,city_alias,category,"+
+      "name,phone,address,nonce,created_at) "+
+    "VALUES(?,?,?,?,?,?,?,?,?,?,?,datetime('now')) "+
+    "ON CONFLICT(channel,chat_id) DO UPDATE SET "+
+      "stage=excluded.stage,url=excluded.url,firm_id=excluded.firm_id,"+
+      "city_alias=excluded.city_alias,category=excluded.category,"+
+      "name=excluded.name,phone=excluded.phone,address=excluded.address,"+
+      "nonce=excluded.nonce,created_at=datetime('now')"
+  ).run(channel,String(chatId),data.stage,data.url||null,data.firmId||null,
+    data.cityAlias||null,data.category||null,data.name||null,
+    data.phone||null,data.address||null,nonce);
+  return nonce;
 }
 function clear(channel,chatId,database=db) {
   ensureTables(database);
   database.prepare('DELETE FROM dgis_bot_pending WHERE channel=? AND chat_id=?')
     .run(channel,String(chatId));
 }
+
 function existingLead(link, database = db) {
   return database.prepare('SELECT id,salon_name,assigned_manager_id,city_id FROM partner_leads '+
     'WHERE (? IS NOT NULL AND dgis_firm_id=?) OR dgis_url=? ORDER BY id LIMIT 1')
@@ -269,7 +290,87 @@ function prompted(link) {
     (link.geoId ? '\nЭто геообъект (адрес/здание), а не обязательно карточка организации.' : '')+
     '\nНазвание организации не удалось получить автоматически.'+
     '\n\nОтправьте следующим сообщением:\nНазвание | телефон | адрес\n'+
-    'Достаточно названия; телефон и адрес можно добавить позже.\n/cancel — отмена.';
+    'Достаточно названия; телефон и адрес необязательны.\n'+
+    'После этого бот покажет карточку и попросит согласовать добавление.\n/cancel — отмена.';
+}
+function previewButtons(nonce) {
+  const buttons = [
+    ['✅ Добавить в обзвон','dgis:yes:'+nonce],
+    ['✏️ Изменить','dgis:edit:'+nonce],
+    ['❌ Отмена','dgis:no:'+nonce],
+  ];
+  return {
+    reply_markup: {inline_keyboard:buttons.map(([text,callback_data])=>[{text,callback_data}])},
+    attachments:[{
+      type:'inline_keyboard',
+      payload:{buttons:buttons.map(([text,payload])=>[{type:'callback',text,payload}])},
+    }],
+  };
+}
+function previewContact(channel,chatId,link,fields,account,database=db) {
+  const name=clean(fields.name);
+  const phone=normalizePhone(fields.phone);
+  if (!name) return {ok:false,message:'Сначала укажите название организации.'};
+  if (phone===null) return {ok:false,message:'Некорректный телефон. Проверьте номер и повторите.'};
+  const address=clean(fields.address,250);
+  const nonce=remember(channel,chatId,{
+    ...link,stage:'approval',name,phone,address,category:fields.category||null,
+    cityAlias:fields.cityAlias||link.cityAlias,
+  },database);
+  const kind=link.geoId && !link.firmId
+    ? '⚠️ Ссылка на геообъект — название заведения указано сотрудником.'
+    : 'Источник: карточка организации 2ГИС.';
+  const message='📋 Предлагаю добавить контакт в «Обзвон»:\n\n'+
+    '🏪 Название: '+name+
+    '\n📞 Телефон: '+(phone||'не указан')+
+    '\n📍 Адрес: '+(address||'не указан')+
+    '\n🏷️ Категория: '+(fields.category||'не определена')+
+    '\n👤 Ответственный: '+(account.role==='manager'?'вы':'не назначен')+
+    '\n🔗 2ГИС: '+link.url+'\n'+kind+
+    '\n\nКонтакт ещё НЕ добавлен в базу. Подтвердите действие:';
+  return {ok:true,preview:true,message,...previewButtons(nonce)};
+}
+
+function handle2gisCallback(channel,chatId,data,{database=db}={}) {
+  const match=String(data||'').match(/^dgis:(yes|edit|no):([0-9a-f]{18})$/);
+  if (!match) return null;
+  const account=identity(channel,chatId,database);
+  if (!account || account.role==='manager'&&!account.cityId) {
+    return {ok:false,message:'🔒 Нет доступа к добавлению контактов. Подтвердите аккаунт сотрудника.'};
+  }
+  const request=pending(channel,chatId,database);
+  if (!request || request.stage!=='approval' || request.nonce!==match[2]) {
+    return {ok:false,message:'Эта карточка устарела или уже обработана. Пришлите ссылку 2ГИС заново.'};
+  }
+  if (match[1]==='no') {
+    clear(channel,chatId,database);
+    return {ok:true,cancelled:true,message:'❌ Добавление отменено. В CRM ничего не записано.'};
+  }
+  if (match[1]==='edit') {
+    remember(channel,chatId,{
+      ...parseLink(request.url),firmId:request.firm_id,
+      stage:'details',name:request.name,phone:request.phone,
+      address:request.address,category:request.category,
+      cityAlias:request.city_alias,
+    },database);
+    return {ok:true,edit:true,message:
+      '✏️ Изменение предложенного контакта.\n'+
+      'Текущие данные:\n'+(request.name||'')+' | '+
+      (request.phone||'')+' | '+(request.address||'')+
+      '\n\nПришлите исправленную строку полностью:\nНазвание | телефон | адрес\n'+
+      'После изменения я снова покажу карточку для согласования. '+
+      'Никаких записей в CRM ещё нет.'};
+  }
+  // The only new CRM insertion in the entire import flow.
+  const link=parseLink(request.url);
+  if (!link) return {ok:false,message:'Ссылка невалидна. Пришлите ссылку 2ГИС снова.'};
+  if (request.firm_id) link.firmId=request.firm_id;
+  const saved=createLead(account,link,{
+    name:request.name,phone:request.phone||'',address:request.address||'',
+    category:request.category,cityAlias:request.city_alias,
+  },database);
+  if (saved.ok) clear(channel,chatId,database);
+  return saved;
 }
 
 async function handle2gisText(channel,chatId,text,{database=db,fetchImpl=fetch,apiKey=process.env.DGIS_API_KEY||''}={}) {
@@ -282,66 +383,67 @@ async function handle2gisText(channel,chatId,text,{database=db,fetchImpl=fetch,a
   if (!command && !isLinkOnly && !waiting) return null;
   if (cancel) {
     clear(channel,chatId,database);
-    return {ok:true,message:'Добавление из 2ГИС отменено.'};
+    return {ok:true,cancelled:true,message:'❌ Добавление отменено. В CRM ничего не записано.'};
   }
   if (!command && value.startsWith('/') && !isLinkOnly) return null;
   const user=identity(channel,chatId,database);
   if (!user) return {ok:false,message:'🔒 Добавление из 2ГИС доступно только активным менеджерам и администраторам с привязанным аккаунтом бота.'};
   if (user.role==='manager'&&!user.cityId)
     return {ok:false,message:'У менеджера не указан город в ХвостМаркете. Обратитесь к администратору.'};
-  let extras='';
-  let linkText='';
+
   const args=command?(command[1]||'').trim():value;
   const found=extractLink(args);
-  if (found) {
-    linkText=found;
-    extras=args.slice(args.indexOf(found)+found.length).trim().replace(/^\|/, '').trim();
-  }
   if (command && !args) {
     remember(channel,chatId,{stage:'link'},database);
     return {ok:true,message:HELP+'\n\nПришлите ссылку следующим сообщением.'};
   }
-  if (linkText) {
-    const link=await resolve2gis(linkText,{fetchImpl});
-    if (!link) return {ok:false,message:'Пришлите ссылку 2ГИС на организацию или геообъект (раздел /firm/ или /geo/), не на маршрут или поиск.\n\n'+HELP};
-    const old=existingLead(link,database);
-    if (old) {
+  if (found) {
+    const extras=args.slice(args.indexOf(found)+found.length).trim().replace(/^\|/, '').trim();
+    const link=await resolve2gis(found,{fetchImpl});
+    if (!link) return {ok:false,message:
+      'Пришлите ссылку на организацию или геообъект 2ГИС (/firm/ или /geo/), не на маршрут или поиск.\n\n'+HELP};
+    const duplicate=existingLead(link,database);
+    if (duplicate) {
       clear(channel,chatId,database);
       return createLeadDuplicate(user,link,database);
     }
     const fields=readFields(extras);
-    if (!fields) return {ok:false,message:'Неверный формат данных. Используйте: Название | телефон | адрес'};
-    // The API may return a branch for a /geo/ ID, but many such IDs
-    // represent buildings. fetch2gisCard only accepts a verified branch.
+    if (!fields) return {ok:false,message:'Неверный формат. Используйте: Название | телефон | адрес'};
     const remote=(link.firmId || link.geoId)
       ? await fetch2gisCard(link.firmId || link.geoId,{key:apiKey,fetchImpl}) : null;
     if (link.geoId && remote) link.firmId=link.geoId;
     const merged={
-      name:fields.name||remote?.name||'',phone:fields.phone||remote?.phone||'',
+      name:fields.name||remote?.name||'',
+      phone:fields.phone||remote?.phone||'',
       address:fields.address||remote?.address||'',
-      category:remote?.category||null, cityAlias:remote?.cityAlias||link.cityAlias,
+      category:remote?.category||null,cityAlias:remote?.cityAlias||link.cityAlias,
     };
     if (!merged.name) {
-      remember(channel,chatId,{...link,stage:'details'},database);
+      remember(channel,chatId,{...link,stage:'details',
+        phone:merged.phone,address:merged.address,category:merged.category},database);
       return {ok:true,message:prompted(link)};
     }
-    const result=createLead(user,link,merged,database);
-    if (result.ok)clear(channel,chatId,database);
-    return result;
+    return previewContact(channel,chatId,link,merged,user,database);
   }
   if (waiting?.stage==='link') return {ok:false,message:'Пришлите ссылку на организацию или геообъект в 2ГИС.\n'+HELP};
+  if (waiting?.stage==='approval') {
+    return {ok:false,message:'Для изменения данных сначала нажмите «✏️ Изменить» под карточкой. Ничего не внесено в базу.'};
+  }
   if (waiting?.stage==='details') {
     const fields=readFields(value);
-    if (!fields||!fields.name)return {ok:false,message:'Нужно название заведения. Формат: Название | телефон | адрес'};
-    const result=createLead(user,{firmId:waiting.firm_id||null,
-      url:waiting.url,cityAlias:waiting.city_alias||''},
-      {...fields,category:waiting.category||null},database);
-    if (result.ok)clear(channel,chatId,database);
-    return result;
+    if (!fields||!fields.name) {
+      return {ok:false,message:'Нужно название заведения. Формат: Название | телефон | адрес'};
+    }
+    const link=parseLink(waiting.url);
+    if (!link) return {ok:false,message:'Ссылка устарела. Пришлите её заново.'};
+    if (waiting.firm_id) link.firmId=waiting.firm_id;
+    return previewContact(channel,chatId,link,{
+      ...fields,category:waiting.category||null,cityAlias:waiting.city_alias,
+    },user,database);
   }
   return {ok:false,message:HELP};
 }
 
 ensureTables();
 module.exports={parseLink,resolve2gis,fetch2gisCard,identity,handle2gisText,
-  createLead,categoryFor,normalizePhone,HELP,ensureTables};
+  handle2gisCallback,createLead,categoryFor,normalizePhone,HELP,ensureTables};

@@ -427,6 +427,18 @@ async function processUpdate(update) {
     const chatId = update.chat_id || callback.chat_id || (message.recipient && message.recipient.chat_id);
 
     const callbackId = callback.callback_id || update.callback_id;
+    if (/^dgis:(?:yes|edit|no):[0-9a-f]{18}$/.test(String(payload||''))) {
+      const result=chatId
+        ? import2gisLead.handle2gisCallback('max',chatId,payload)
+        : {ok:false,message:'Невозможно определить личный чат для согласования.'};
+      // MAX callback API closes the button spinner and invalidates the old
+      // approval keyboard. Result is sent separately in the same private chat.
+      await answerMaxCallback(callbackId,
+        result?.ok ? '✅ Решение обработано.' : '⚠️ '+String(result?.message||'Ошибка'),true);
+      if(chatId && result?.message)await sendMaxMessage(chatId,result.message);
+      return;
+    }
+
     const stockMatch=String(payload || '').match(/^stk:(yes|no):([0-9]{1,15})$/);
     if (stockMatch) {
       if (!chatId) {
@@ -496,7 +508,7 @@ async function processUpdate(update) {
   if (chatId) {
     const imported = await import2gisLead.handle2gisText('max', chatId, cleaned);
     if (imported) {
-      await sendMaxMessage(chatId, imported.message);
+      await sendMaxMessage(chatId, imported.message, imported.attachments);
       return;
     }
   }
