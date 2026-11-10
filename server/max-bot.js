@@ -6,7 +6,6 @@
 'use strict';
 
 const db = require('./db');
-const { MAX_AUTH_ENABLED } = require('./max-auth-policy');
 const {
   getTaskInbox,
   handleTaskCallback,
@@ -113,11 +112,6 @@ function contactKeyboard() {
 }
 
 async function handleLoginStart(chatId, token) {
-  if (!MAX_AUTH_ENABLED) {
-    if (chatId) await sendMaxMessage(chatId,
-      'Вход через MAX временно отключён. На сайте ХвостМаркет используйте Telegram или пароль.');
-    return;
-  }
   const record = db.prepare(`
     SELECT * FROM max_login_tokens
     WHERE token = ? AND verified = 0 AND datetime(expires_at) > datetime('now')
@@ -145,7 +139,6 @@ function getContactAttachment(message) {
 }
 
 async function handleContactMessage(message) {
-  if (!MAX_AUTH_ENABLED) return false;
   const chatId = message && message.recipient && message.recipient.chat_id;
   const senderId = message && message.sender && message.sender.user_id;
   const contact = getContactAttachment(message);
@@ -222,7 +215,7 @@ async function processUpdate(update) {
   if (update.update_type === 'bot_started') {
     if (update.payload) await handleLoginStart(update.chat_id, update.payload);
     else if (update.chat_id) {
-      await sendMaxMessage(update.chat_id, 'Вход через MAX на сайте временно отключён. Для входа используйте Telegram или пароль. Сотрудникам: команда /tasks покажет активные поручения.');
+      await sendMaxMessage(update.chat_id, 'Откройте личный кабинет на сайте «ХвостМаркет» и выберите «Войти через MAX». Сотрудникам: команда /tasks покажет активные поручения.');
     }
     return;
   }
