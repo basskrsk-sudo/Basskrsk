@@ -70,5 +70,7 @@ test('searchable Telegram registry is connected to the admin navigation',()=>{
  assert.match(html,/id="sec-telegram-connections"/);
  assert.match(html,/telegram-connections\.js/);
  assert.match(html,/loadTelegramConnections\(\)/);
- assert.match(html,/'telegram-connections':'system'/);
+ const navigation=fs.readFileSync(path.join(__dirname,'../public/admin-navigation.js'),'utf8');
+ assert.match(navigation,/'telegram-connections':'system'/);
+ assert.match(navigation,/\['telegram-connections','Telegram'\]/);
 });

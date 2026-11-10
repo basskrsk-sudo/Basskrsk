@@ -552,6 +552,18 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   .unit-econ-layout { grid-template-columns:1fr !important; }
 }
 
+
+.hm-action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.7rem;}
+.hm-action-grid .row-btn{width:100%;text-align:left;white-space:normal;min-height:42px;}
+.hm-link-action{text-decoration:none;display:flex;align-items:center;}
+.hm-report-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem;}
+.hm-report-filters .admin-field{margin:0;min-width:0;}
+.hm-report-field{display:flex;flex-direction:column;gap:.35rem;font-size:.78rem;font-weight:600;}
+.hm-report-filters [hidden]{display:none!important;}
+.hm-report-categories{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;}
+.hm-point-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;}
+.point-tab-panel[hidden]{display:none!important;}
+#sec-dashboard .kpi-grid{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));}
 </style>
 <script src="config.js"></script>
 <script src="payout-schedule.js"></script>
@@ -617,18 +629,13 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   <div class="sidebar-logo" style="display:flex;align-items:center;gap:.6rem;"><span class="sidebar-brand-mark"><img src="images/hvostmarket-mark-v3-transparent.png?v=18-logo-fix" alt="Собака — логотип ХвостМаркет"></span><span style="display:flex;flex-direction:column;line-height:.88;font-family:'Inter',sans-serif;font-size:1rem;font-weight:800;letter-spacing:0;"><span style="color:#fff;">Хвост</span><span style="color:#FF5A49;margin-top:.2rem;">Маркет</span></span><button class="mobile-menu-close" type="button" onclick="closeAdminMenu()" aria-label="Закрыть меню">×</button></div>
   <div class="sidebar-label">Разделы</div>
   <button class="nav-item active" data-group="home" onclick="showSection('dashboard')"><span class="nav-dot"></span> Главная</button>
-  <button class="nav-item" data-group="strategy" onclick="showSection('bsc')"><span class="nav-dot"></span> Стратегия</button>
-  <button class="nav-item" data-group="tasks" onclick="showSection('tasks')"><span class="nav-dot"></span> Поручения</button>
-  <button class="nav-item" data-group="sales" onclick="showSection('orders')"><span class="nav-dot"></span> Продажи</button>
-  <button class="nav-item" data-group="inventory" onclick="showSection('products')"><span class="nav-dot"></span> Товары и склад</button>
   <button class="nav-item" data-group="network" onclick="showSection('points')"><span class="nav-dot"></span> Сеть</button>
-  <button class="nav-item" data-group="promotion" onclick="showSection('news')"><span class="nav-dot"></span> Продвижение <span id="reviews-pending-badge" style="display:none;background:var(--amber);color:#fff;border-radius:50px;font-size:.68rem;padding:.05rem .45rem;margin-left:.3rem;"></span></button>
-  <a class="nav-item" href="/gift-admin.html" style="text-decoration:none"><span class="nav-dot"></span> 🎁 Стрижка со вкусом</a>
-  <button class="nav-item" data-group="finance" onclick="showSection('economics')"><span class="nav-dot"></span> Финансы</button>
-  <button class="nav-item" data-group="reports" onclick="showSection('payout-reports')"><span class="nav-dot"></span> Отчёты партнёрам</button>
-  <button class="nav-item" data-group="system" onclick="showSection('launch')"><span class="nav-dot"></span> Система</button>
-  <button class="nav-item" data-group="max" onclick="showSection('max')"><span class="nav-dot"></span> MAX</button>
-  <a id="partner-club-admin-link" href="partner-club-settings.html" class="nav-item" style="display:none;text-decoration:none;color:rgba(255,255,255,.8)"><span class="nav-dot"></span> 🐾 Клуб партнёров</a>
+  <button class="nav-item" data-group="inventory" onclick="showSection('products')"><span class="nav-dot"></span> Товары и склад</button>
+  <button class="nav-item" data-group="sales" onclick="showSection('orders')"><span class="nav-dot"></span> Продажи</button>
+  <button class="nav-item" data-group="promotion" onclick="showSection('campaigns')"><span class="nav-dot"></span> Маркетинг <span id="reviews-pending-badge" style="display:none;background:var(--amber);color:#fff;border-radius:50px;font-size:.68rem;padding:.05rem .45rem;margin-left:.3rem;"></span></button>
+  <button class="nav-item" data-group="finance" onclick="showSection('report-center')"><span class="nav-dot"></span> Финансы и аналитика</button>
+  <button class="nav-item" data-group="team" onclick="showSection('tasks')"><span class="nav-dot"></span> Команда</button>
+  <button class="nav-item" data-group="system" onclick="showSection('system-health')"><span class="nav-dot"></span> Система и интеграции</button>
   <div class="sidebar-footer">
     <span>ИП Соколов В.П.</span>
     <div style="display:flex;gap:.6rem;align-items:center;">
@@ -667,6 +674,86 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     <!-- ══ DASHBOARD ══ -->
     <!-- ══ LAUNCH PLAN ══ -->
+    
+    <div id="sec-backup" style="display:none;">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Обслуживание и резервные копии</div>
+        <p style="font-size:.83rem;color:var(--muted);line-height:1.6;margin:.5rem 0 1rem;">
+          Резервные копии и восстановление БД вынесены из главного дашборда.
+          Автоматическое резервное копирование продолжает работать по прежнему расписанию.
+        </p>
+      </div>
+      <div class="card" style="margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.8rem;">
+        <div>
+          <div style="font-weight:600;font-size:.85rem;color:var(--text);">💾 Резервная копия базы данных</div>
+          <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem;">Отправляется на почту автоматически раз в сутки. Перед заливкой новой версии сайта — скачайте копию себе на компьютер.</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+          <span id="backup-msg" style="font-size:.8rem;"></span>
+          <a href="#" onclick="downloadBackupNow(event)" class="row-btn" style="text-decoration:none;">⬇️ Скачать бэкап сейчас</a>
+          <button class="row-btn" onclick="runBackupNow()">Отправить на почту сейчас</button>
+          <input type="file" id="restore-backup-file" accept=".db,application/x-sqlite3,application/octet-stream" style="display:none;" onchange="restoreBackupNow(this)">
+          <button id="restore-backup-btn" class="row-btn" style="display:none;border-color:#9B2335;color:#9B2335;" onclick="document.getElementById('restore-backup-file').click()">↥ Восстановить из файла</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="sec-report-center" style="display:none;">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Центр отчётности ХвостМаркета</div>
+        <p style="font-size:.84rem;line-height:1.65;color:var(--muted);margin:.5rem 0 1rem;">
+          Отчёты собраны по бизнес-направлениям. Выберите тип и доступные фильтры.
+          PDF и CSV формируются только после подтверждения в личном Telegram.
+          Исторические отчёты и интерактивная аналитика открываются без генерации новых файлов.
+        </p>
+        <div class="hm-report-filters">
+          <label class="admin-field"><span>Отчёт</span><select class="pm-select" id="rc-report-type" onchange="reportCenterSelect(this.value)"></select></label>
+          <div id="rc-filter-dates" class="hm-report-field" hidden>
+            <label>С даты <input class="pm-input" type="date" id="rc-start"></label>
+            <label>По дату <input class="pm-input" type="date" id="rc-end"></label>
+          </div>
+          <label id="rc-filter-year" class="hm-report-field" hidden>Год
+            <input class="pm-input" type="number" min="2024" max="2100" placeholder="Текущий" id="rc-year">
+          </label>
+          <label id="rc-filter-days" class="hm-report-field" hidden>Период
+            <select class="pm-select" id="rc-days"><option value="7">7 дней</option><option value="30" selected>30 дней</option><option value="90">90 дней</option></select>
+          </label>
+          <label id="rc-filter-city" class="hm-report-field" hidden>Город
+            <select class="pm-select" id="rpt-city" onchange="reportCenterCityFilter()"><option value="">Все города</option></select>
+          </label>
+          <label id="rc-filter-point" class="hm-report-field" hidden>Точка
+            <select class="pm-select" id="rc-point"><option value="">Все точки</option></select>
+          </label>
+        </div>
+        <div id="rc-report-detail" style="font-size:.8rem;color:var(--muted);margin:.5rem 0;"></div>
+        <div style="display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;margin-top:1rem;">
+          <button id="rc-request" type="button" class="add-product-btn" onclick="reportCenterRun()">Запросить формирование в Telegram</button>
+          <span id="rc-result" role="status" aria-live="polite" style="font-size:.8rem;white-space:pre-line;"></span>
+        </div>
+      </div>
+      <h2 style="font-size:1.1rem;margin:1.2rem 0 .65rem;">Каталог отчётов</h2>
+      <div id="rc-categories" class="hm-report-categories"></div>
+    </div>
+
+
+    <div id="sec-campaigns" style="display:none;">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Маркетинг и коммуникации</div>
+        <p style="font-size:.83rem;color:var(--muted);line-height:1.6;margin:.5rem 0;">
+          Все маркетинговые инструменты в одном месте: акции для салонов, новости, удержание покупателей,
+          отзывы и партнёрские коммуникации.
+        </p>
+        <div class="hm-action-grid">
+          <a class="row-btn hm-link-action" href="/gift-admin.html">🎁 Стрижка со вкусом</a>
+          <button type="button" class="row-btn" onclick="showSection('news')">📰 Новости</button>
+          <button type="button" class="row-btn" onclick="showSection('winback')">🔔 Возврат клиентов</button>
+          <button type="button" class="row-btn" onclick="showSection('reviews')">⭐ Отзывы</button>
+          <a id="partner-club-admin-link" href="partner-club-settings.html" class="row-btn hm-link-action"
+            style="display:none;">🐾 Клуб партнёров</a>
+        </div>
+      </div>
+    </div>
+
     <div id="sec-system-health" style="display:none;">
       <div class="card">
         <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
@@ -775,6 +862,16 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </section>
 
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Быстрые действия</div>
+        <div class="hm-action-grid">
+          <button type="button" class="row-btn" onclick="showSection('points')">＋ Создать или открыть точку</button>
+          <button type="button" class="row-btn" onclick="showSection('warehouse')">📦 Приход товара</button>
+          <button type="button" class="row-btn" onclick="showSection('tasks')">📋 Поручения</button>
+          <button type="button" class="row-btn" onclick="showSection('report-center')">📊 Запросить отчёт</button>
+        </div>
+      </div>
+
       <div class="payout-schedule-card">
         <div class="payout-schedule-icon">📅</div>
         <div class="payout-schedule-content">
@@ -782,22 +879,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <span class="payout-schedule-date" data-next-payout-date>—</span>
           <span class="payout-schedule-countdown" data-next-payout-countdown></span>
           <div class="payout-schedule-rule">Партнёрам, менеджерам и владельцам салонов. График: 9-го и 24-го числа каждого месяца.</div>
-        </div>
-      </div>
-
-      <div id="admin-telegram-connect"></div>
-
-      <div class="card" style="margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.8rem;">
-        <div>
-          <div style="font-weight:600;font-size:.85rem;color:var(--text);">💾 Резервная копия базы данных</div>
-          <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem;">Отправляется на почту автоматически раз в сутки. Перед заливкой новой версии сайта — скачайте копию себе на компьютер.</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
-          <span id="backup-msg" style="font-size:.8rem;"></span>
-          <a href="#" onclick="downloadBackupNow(event)" class="row-btn" style="text-decoration:none;">⬇️ Скачать бэкап сейчас</a>
-          <button class="row-btn" onclick="runBackupNow()">Отправить на почту сейчас</button>
-          <input type="file" id="restore-backup-file" accept=".db,application/x-sqlite3,application/octet-stream" style="display:none;" onchange="restoreBackupNow(this)">
-          <button id="restore-backup-btn" class="row-btn" style="display:none;border-color:#9B2335;color:#9B2335;" onclick="document.getElementById('restore-backup-file').click()">↥ Восстановить из файла</button>
         </div>
       </div>
 
@@ -822,6 +903,11 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div class="kpi-label">Товаров выдано</div>
           <div class="kpi-value" id="kpi-items">—</div>
           <div class="kpi-delta delta-up" id="kpi-items-d">↑ —</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Действующих точек</div>
+          <div class="kpi-value" id="kpi-active-points">—</div>
+          <div class="kpi-delta" style="font-size:.77rem;color:var(--muted);">в сети ХвостМаркет</div>
         </div>
       </div>
 
@@ -1873,6 +1959,10 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
     <!-- ══ ПОДКЛЮЧЕНИЯ TELEGRAM-БОТА ══ -->
     <div id="sec-telegram-connections" style="display:none;">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Подключение Telegram администратора</div>
+        <div id="admin-telegram-connect"></div>
+      </div>
       <div class="card">
         <div class="card-title">
           <span>Telegram-бот · подключившиеся пользователи</span>
@@ -2145,6 +2235,15 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
 
+
+      <div class="hm-point-tabs" role="tablist" aria-label="Карточка точки">
+        <button class="tab-btn active" id="tab-overview" type="button" role="tab" aria-selected="true" onclick="switchPointTab('overview')">Обзор</button>
+        <button class="tab-btn" id="tab-sales" type="button" role="tab" aria-selected="false" onclick="switchPointTab('sales')">Продажи</button>
+        <button class="tab-btn" id="tab-stock" type="button" role="tab" aria-selected="false" onclick="switchPointTab('stock')">Товары</button>
+        <button class="tab-btn" id="tab-people" type="button" role="tab" aria-selected="false" onclick="switchPointTab('people')">Партнёры</button>
+        <button class="tab-btn" id="tab-qr" type="button" role="tab" aria-selected="false" onclick="switchPointTab('qr')">QR и акции</button>
+      </div>
+      <div id="pt-tab-overview" class="point-tab-panel">
       <!-- Чек-лист открытия конкретной точки -->
       <div class="card launch-checklist-card" id="point-launch-checklist-card">
         <div class="launch-checklist-head">
@@ -2218,14 +2317,10 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
 
-      <!-- Tabs: продажи / остатки -->
-      <div style="display:flex;gap:.5rem;margin-bottom:1rem;">
-        <button class="tab-btn active" id="tab-sales" onclick="switchPointTab('sales')">Продажи</button>
-        <button class="tab-btn" id="tab-stock" onclick="switchPointTab('stock')">Остатки</button>
-      </div>
+      </div><!-- /pt-tab-overview -->
 
       <!-- Sales orders table -->
-      <div id="pt-tab-sales" class="card">
+      <div id="pt-tab-sales" class="card point-tab-panel" hidden>
         <div class="card-title">Заказы по точке <span id="pt-orders-count"></span></div>
         <table class="tbl">
           <thead>
@@ -2239,7 +2334,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
 
       <!-- Stock table for point -->
-      <div id="pt-tab-stock" class="card" style="display:none;">
+      <div id="pt-tab-stock" class="card point-tab-panel" hidden>
         <div class="card-title">Остатки в точке <span id="pt-stock-updated">обновлено только что</span></div>
         <table class="tbl">
           <thead>
@@ -2253,6 +2348,21 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </thead>
           <tbody id="pt-stock-tbody"></tbody>
         </table>
+      </div>
+
+      <div id="pt-tab-people" class="card point-tab-panel" hidden>
+        <div class="card-title">Участники точки</div>
+        <p style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem;">Владелец салона, менеджер и грумеры, закреплённые за этой точкой.</p>
+        <div id="pt-people-content" aria-live="polite">Откройте вкладку для загрузки участников.</div>
+      </div>
+      <div id="pt-tab-qr" class="card point-tab-panel" hidden>
+        <div class="card-title">QR-коды и акции точки</div>
+        <div id="pt-qr-content" aria-live="polite">Откройте вкладку для загрузки промокода.</div>
+        <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-top:1rem;">
+          <button type="button" class="row-btn" onclick="openCurrentPointQr()">Печать QR-кодов</button>
+          <button type="button" class="row-btn" onclick="openCurrentPointPageSettings()">Настройки страницы салона</button>
+          <button type="button" class="row-btn" onclick="showSection('campaigns')">Общие акции</button>
+        </div>
       </div>
 
     </div>
@@ -2760,6 +2870,9 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="salon-photo-gallery.js?v=70"></script>
 <script src="telegram-connections.js?v=1"></script>
 <script src="max-admin.js?v=1"></script>
+<script src="admin-navigation.js?v=1"></script>
+<script src="admin-point.js?v=1"></script>
+<script src="admin-report-center.js?v=1"></script>
     <script src="/week-over-week.js"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
@@ -3259,6 +3372,8 @@ async function loadPointsInfo() {
   POINTS_INFO = (data.points || []).filter((p) => p.active).map((p, i) => ({
     id: p.id, name: p.name, color: POINT_COLOR_PALETTE[i % POINT_COLOR_PALETTE.length],
   }));
+  const count=document.getElementById('kpi-active-points');
+  if(count)count.textContent=POINTS_INFO.length.toLocaleString('ru-RU');
 }
 
 let allOrders = [];
@@ -3415,66 +3530,7 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
   }
 }
 
-// ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'system-health', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'week-comparison', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'qr-analytics', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'telegram-connections', 'max', 'point'];
-const titles = { launch: 'План запуска', 'system-health': 'Состояние системы', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'week-comparison': 'Неделя к неделе', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', 'qr-analytics':'Аналитика QR', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', 'telegram-connections': 'Telegram — подключения', max: 'MAX · управление ботом', point: '' };
-const sectionGroups = {
-  'payout-reports':'reports',
-  dashboard:'home', bsc:'strategy', tasks:'tasks', orders:'sales', customers:'sales',
-  products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
-  points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', 'qr-analytics':'network', leads:'network',
-  news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'business-expenses':'finance', 'week-comparison':'finance', 'weekly-reports':'finance',
-  launch:'system', 'system-health':'system', guides:'system', audit:'system', admins:'system', 'telegram-connections':'system', max:'max',
-};
-titles['payout-reports'] = 'Отчёты партнёрам';
-const contextTabs = {
-  sales: [['orders','Заказы'], ['customers','Клиенты']],
-  inventory: [['products','Каталог'], ['stock','На точках'], ['warehouse','Центральный склад'], ['restock','Перемещения']],
-  network: [['points','Точки'], ['partners','Грумеры'], ['managers','Менеджеры'], ['owners','Владельцы'], ['qr','QR-коды'], ['qr-analytics','Аналитика QR'], ['leads','Прозвон']],
-  promotion: [['news','Новости'], ['reviews','Отзывы'], ['winback','Возврат клиентов']],
-  finance: [['economics','Экономика'], ['business-expenses','Траты бизнеса'], ['week-comparison','Неделя к неделе'], ['weekly-reports','Отчёт ГД']],
-  system: [['launch','План запуска'], ['system-health','Мониторинг'], ['guides','Инструкции'], ['audit','Журнал действий',true], ['admins','Администраторы',true], ['telegram-connections','Telegram']],
-};
-
-function renderContextTabs(sectionId) {
-  const holder = document.getElementById('section-context-tabs');
-  if (!holder) return;
-  const group = sectionGroups[sectionId];
-  const tabs = (contextTabs[group] || []).filter(function(tab) {
-    return !tab[2] || currentAdminRole === 'super';
-  });
-  holder.style.display = tabs.length > 1 ? 'flex' : 'none';
-  const activeId = sectionId === 'point' ? 'points' : sectionId;
-  holder.innerHTML = tabs.map(function(tab) {
-    const reviewCount = tab[0] === 'reviews' ? (document.getElementById('reviews-pending-badge')?.textContent || '') : '';
-    return '<button class="section-context-tab ' + (tab[0] === activeId ? 'active' : '') + '" onclick="showSection(\'' + tab[0] + '\')">' + tab[1] + (reviewCount ? ' · ' + reviewCount : '') + '</button>';
-  }).join('');
-}
-
-function setAdminMenuOpen(open) {
-  const sidebar = document.getElementById('admin-sidebar');
-  const overlay = document.getElementById('admin-sidebar-overlay');
-  const button = document.querySelector('.mobile-menu-btn');
-  if (sidebar) sidebar.classList.toggle('mobile-open', open);
-  if (overlay) overlay.classList.toggle('mobile-open', open);
-  document.body.classList.toggle('admin-menu-open', open);
-  if (button) button.setAttribute('aria-expanded', open ? 'true' : 'false');
-}
-
-function toggleAdminMenu() {
-  const sidebar = document.getElementById('admin-sidebar');
-  setAdminMenuOpen(!(sidebar && sidebar.classList.contains('mobile-open')));
-}
-
-function closeAdminMenu() { setAdminMenuOpen(false); }
-
-document.addEventListener('keydown', function(event) {
-  if (event.key === 'Escape') closeAdminMenu();
-});
-window.addEventListener('resize', function() {
-  if (window.innerWidth > 768) closeAdminMenu();
-});
-
+// Navigation and contextual menus are in admin-navigation.js.
 async function loadQrAnalytics(){
   const period=document.getElementById('qr-analytics-days').value;
   const select=document.getElementById('qr-analytics-point');
@@ -3495,299 +3551,8 @@ async function loadQrAnalytics(){
   }catch(e){summary.textContent='Не удалось загрузить аналитику: '+e.message;body.innerHTML='';}
 }
 
-async function showSection(id) {
-  sections.forEach(function(s) {
-    const el = document.getElementById('sec-' + s);
-    if (el) el.style.display = (s === id) ? 'block' : 'none';
-  });
-  document.querySelectorAll('.nav-item[data-group]').forEach(function(el) {
-    el.classList.toggle('active', el.dataset.group === sectionGroups[id]);
-  });
-  closeAdminMenu();
-  renderContextTabs(id);
-  const titleEl = document.getElementById('section-title');
-  if (titleEl && titles[id]) titleEl.textContent = titles[id];
-
-  const showGlobalPeriod = ['dashboard', 'points', 'partners'].includes(id);
-  document.querySelectorAll('.topbar-right > .period-btn').forEach(function(btn) {
-    btn.style.display = showGlobalPeriod ? '' : 'none';
-  });
-
-  if (id === 'launch')      await showLaunchTab(launchActiveTab);
-  if (id === 'system-health') await renderSystemHealth();
-  if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo(), loadOperationsCenter()]); renderDashboard(); }
-  if (id === 'bsc')         await renderBscDashboard();
-  if (id === 'tasks')       await loadTaskLinks();
-  if (id === 'economics')   await renderEconomics();
-  if (id === 'business-expenses') await renderBusinessExpenses();
-  if (id === 'week-comparison') await renderWeekComparison();
-  if (id === 'weekly-reports') await renderWeeklyReports();
-  if (id === 'payout-reports') await openPayoutReports('partner');
-  if (id === 'orders')      { await loadOrders(); renderOrders(); }
-  if (id === 'customers')   { await loadCustomers(); renderCustomers(); }
-  if (id === 'stock')       { await loadStockTablePoints(); await loadAdminProducts(); renderStock(); }
-  if (id === 'products')    { await loadStockTablePoints(); await loadAdminProducts(); renderProducts(); }
-  if (id === 'reviews')     await renderReviews();
-  if (id === 'news')        await renderNews();
-  if (id === 'winback')     await loadWinbackCandidates();
-  if (id === 'partners')    await renderPartners();
-  if (id === 'managers') await renderManagers();
-  if (id === 'points')      { await Promise.all([loadOrders(), loadPointsInfo()]); renderPointsOverview(); await renderPointsManagement(); }
-  if (id === 'owners')      await renderOwners();
-  if (id === 'qr')          await qrInitSection();
-  if (id === 'qr-analytics') await loadQrAnalytics();
-  if (id === 'leads')       await renderLeads();
-  if (id === 'warehouse')   { await loadAdminProducts(); await populateReceiptForm(); await renderWarehouse(); }
-  if (id === 'restock')     await Promise.all([renderStockMovements(), renderAdminCustomerRestock()]);
-  if (id === 'audit')       await renderAuditLog();
-  if (id === 'admins')      await renderAdmins();
-  if (id === 'telegram-connections') await loadTelegramConnections();
-  if (id === 'max') await loadMaxAdmin();
-}
-
-let currentPointIdx = 0;
-
-function openCurrentPointPageSettings() {
-  const point = POINTS_INFO[currentPointIdx];
-  if (point) openSalonPageModal(point.id, point.name);
-}
-
-async function openCurrentPointQr() {
-  const point = POINTS_INFO[currentPointIdx];
-  if (!point) return;
-  await showSection('qr');
-  const fullPoint = QR_POINTS.find(function(item) { return item.id === point.id; });
-  const citySelect = document.getElementById('qr-sel-city');
-  const pointSelect = document.getElementById('qr-sel-point');
-  if (fullPoint && citySelect) citySelect.value = fullPoint.city_id || '';
-  qrRenderPointOptions();
-  if (pointSelect) pointSelect.value = point.id;
-  qrGenerate();
-}
-
-async function savePointLocation() {
-  const p = POINTS_INFO[currentPointIdx];
-  const lat = parseFloat(document.getElementById('pt-lat').value);
-  const lng = parseFloat(document.getElementById('pt-lng').value);
-  const msgEl = document.getElementById('pt-location-msg');
-  if (isNaN(lat) || isNaN(lng)) {
-    msgEl.textContent = 'Укажите широту и долготу числами.';
-    msgEl.style.color = '#9B2335';
-    return;
-  }
-  const res = await authFetch('/api/points/' + p.id + '/location', { method: 'PUT', body: { lat, lng } });
-  if (!res.ok) {
-    const data = await res.json();
-    msgEl.textContent = data.error || 'Не удалось сохранить.';
-    msgEl.style.color = '#9B2335';
-    return;
-  }
-  msgEl.textContent = '✅ Сохранено';
-  msgEl.style.color = '#2D7D46';
-  await loadPointLaunchChecklist(p.id);
-  loadOperationsCenter();
-}
-
-async function showPoint(idx) {
-  currentPointIdx = idx;
-  sections.forEach(function(s) {
-    const el = document.getElementById('sec-' + s);
-    if (el) el.style.display = (s === 'point') ? 'block' : 'none';
-  });
-  document.querySelectorAll('.nav-item[data-group]').forEach(function(el) {
-    el.classList.toggle('active', el.dataset.group === 'network');
-  });
-  renderContextTabs('point');
-  document.querySelectorAll('.topbar-right > .period-btn').forEach(function(btn) { btn.style.display = ''; });
-
-  const p = POINTS_INFO[idx];
-  document.getElementById('section-title').textContent = p.name;
-  document.getElementById('point-breadcrumb').textContent = p.name;
-  document.getElementById('point-header-name').textContent = p.name;
-  document.getElementById('point-header-addr').textContent = '';
-  document.getElementById('point-color-bar').style.background = p.color;
-
-  const pointsRes = await fetch('/api/points');
-  const pointsData = await pointsRes.json();
-  const realPoint = (pointsData.points || []).find(function(x) { return x.id === p.id; });
-  document.getElementById('point-header-addr').textContent = realPoint ? realPoint.addr : '';
-  document.getElementById('pt-lat').value = realPoint && realPoint.lat !== null ? realPoint.lat : '';
-  document.getElementById('pt-lng').value = realPoint && realPoint.lng !== null ? realPoint.lng : '';
-  document.getElementById('pt-location-msg').textContent = '';
-
-  await Promise.all([loadOrders(), loadPointLaunchChecklist(p.id)]);
-  const days = periodDays();
-  const periodOrders = ordersInPeriod(days);
-  const pOrders = periodOrders.filter(function(o) { return o.point_id === p.id; });
-  const totalRev = periodOrders.reduce(function(s, o) { return s + o.total; }, 0);
-  const rev = pOrders.reduce(function(s, o) { return s + o.total; }, 0);
-  const avgCheck = pOrders.length ? Math.round(rev / pOrders.length) : 0;
-  const pct = totalRev > 0 ? Math.round(rev / totalRev * 100) : 0;
-
-  document.getElementById('pt-kpi-rev').textContent = rev.toLocaleString('ru-RU') + ' ₽';
-  document.getElementById('pt-kpi-ord').textContent = pOrders.length;
-  document.getElementById('pt-kpi-avg').textContent = avgCheck.toLocaleString('ru-RU') + ' ₽';
-  document.getElementById('pt-kpi-pct').textContent = pct + '%';
-
-  const dayLabels = [], dayValues = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000);
-    const key = d.toISOString().slice(0, 10);
-    dayLabels.push(d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }));
-    dayValues.push(pOrders.filter(function(o) { return parseOrderDate(o.created_at).toISOString().slice(0, 10) === key; })
-                          .reduce(function(s, o) { return s + o.total; }, 0));
-  }
-  const step = days > 14 ? Math.ceil(days / 10) : 1;
-  drawLineChart('chartPointSales', dayLabels.filter(function(_, i) { return i % step === 0; }),
-                                    dayValues.filter(function(_, i) { return i % step === 0; }), p.color);
-
-  const productRevenue = {};
-  pOrders.forEach(function(o) { o.items.forEach(function(i) { productRevenue[i.name] = (productRevenue[i.name] || 0) + i.price * i.qty; }); });
-  const topProducts = Object.entries(productRevenue).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 5);
-  drawBarChart('chartPointProducts', topProducts.map(function(x) { return x[0]; }), topProducts.map(function(x) { return x[1]; }), '#D4872A');
-
-  document.getElementById('pt-orders-count').textContent = pOrders.length + ' шт.';
-  document.getElementById('pt-orders-tbody').innerHTML = pOrders.length ? pOrders.map(function(o) {
-    return '<tr>' +
-      '<td style="font-family:monospace;font-size:.78rem;">' + o.order_code + '</td>' +
-      '<td style="font-size:.8rem;color:var(--muted);">' + parseOrderDate(o.created_at).toLocaleString('ru-RU') + '</td>' +
-      '<td>' + o.customer_name + '</td>' +
-      '<td style="font-size:.8rem;">' + o.items.map(function(i) { return i.name; }).join(', ') + '</td>' +
-      '<td class="r">' + o.total.toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + (o.payment_method === 'sbp' ? 'СБП' : (o.payment_method === 'yookassa' ? 'ЮKassa' : 'Карта')) + '</td>' +
-      '<td>' + o.status + '</td></tr>';
-  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1.5rem;">Заказов нет</td></tr>';
-
-  await loadAdminProducts();
-  const stockRows = [];
-  adminProducts.forEach(function(prod) {
-    prod.variants.forEach(function(v) {
-      const qty = v.stock[p.id] || 0;
-      stockRows.push({ name: prod.name + ' (' + v.weight + ')', qty: qty, price: v.price });
-    });
-  });
-  document.getElementById('pt-stock-tbody').innerHTML = stockRows.map(function(r) {
-    const statusClass = r.qty === 0 ? 'stock-out' : r.qty < 3 ? 'stock-low' : 'stock-ok';
-    const statusText = r.qty === 0 ? '✕ Нет' : r.qty < 3 ? '⚠ Мало' : '✓ Есть';
-    return '<tr><td>' + r.name + '</td><td class="r">' + r.qty + '</td>' +
-      '<td><span class="stock-pill ' + statusClass + '">' + statusText + '</span></td>' +
-      '<td class="r">' + r.price.toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td class="r">' + (r.qty * r.price).toLocaleString('ru-RU') + ' ₽</td></tr>';
-  }).join('');
-}
-
-let pointLaunchChecklistData = null;
-
-async function loadPointLaunchChecklist(pointId) {
-  const body = document.getElementById('point-launch-checklist-body');
-  if (body) body.textContent = 'Загрузка чек-листа…';
-  try {
-    const res = await authFetch('/api/points/' + encodeURIComponent(pointId) + '/launch-checklist');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Не удалось загрузить чек-лист');
-    pointLaunchChecklistData = data;
-    renderPointLaunchChecklist();
-  } catch (error) {
-    if (body) body.innerHTML = '<span style="color:#9B2335;">' + opsEscapeHtml(error.message) + '</span>';
-  }
-}
-
-function renderPointLaunchChecklist() {
-  if (!pointLaunchChecklistData) return;
-  const summary = pointLaunchChecklistData.summary;
-  const status = document.getElementById('point-launch-status');
-  status.className = 'launch-progress-pill ' + (summary.ready ? 'ready' : 'pending');
-  status.textContent = summary.ready
-    ? '✓ Готова к работе · 100%'
-    : summary.completed + ' из ' + summary.total + ' · ' + summary.percent + '%';
-  document.getElementById('point-launch-progress-bar').style.width = summary.percent + '%';
-
-  const groups = {};
-  pointLaunchChecklistData.items.forEach(function(item) {
-    if (!groups[item.group]) groups[item.group] = [];
-    groups[item.group].push(item);
-  });
-  document.getElementById('point-launch-checklist-body').innerHTML = Object.keys(groups).map(function(group) {
-    return '<div class="launch-checklist-group"><div class="launch-checklist-group-title">' + opsEscapeHtml(group) + '</div>' +
-      '<div class="launch-checklist-items">' + groups[group].map(function(item) {
-        const important = item.key === 'referral_bonus_verified' || item.key === 'test_sale_verified';
-        const completedDate = item.completed_at
-          ? new Date(String(item.completed_at).replace(' ', 'T') + 'Z').toLocaleString('ru-RU')
-          : '';
-        const meta = item.mode === 'auto'
-          ? '<div class="launch-check-meta">Обновляется автоматически</div>'
-          : (item.completed
-              ? '<div class="launch-check-meta">Подтвердил: ' + opsEscapeHtml(item.completed_by || 'администратор') +
-                (completedDate ? ' · ' + opsEscapeHtml(completedDate) : '') +
-                (item.note ? '<br>Комментарий: ' + opsEscapeHtml(item.note) : '') + '</div>'
-              : '');
-        const action = item.mode === 'manual'
-          ? '<button class="launch-check-action" onclick="togglePointLaunchItem(\'' + item.key + '\',' + (!item.completed) + ')">' +
-            (item.completed ? 'Отменить отметку' : 'Отметить выполненным') + '</button>'
-          : '';
-        return '<div class="launch-check-item ' + (item.completed ? 'done ' : '') + (important ? 'important' : '') + '">' +
-          '<div class="launch-check-icon">' + (item.completed ? '✓' : '○') + '</div>' +
-          '<div class="launch-check-body"><div class="launch-check-title">' + opsEscapeHtml(item.title) + '</div>' +
-          '<div class="launch-check-desc">' + opsEscapeHtml(item.description) + '</div>' +
-          (item.evidence ? '<div class="launch-check-evidence">' + opsEscapeHtml(item.evidence) + '</div>' : '') +
-          meta + action + '</div></div>';
-      }).join('') + '</div></div>';
-  }).join('');
-}
-
-async function togglePointLaunchItem(itemKey, completed) {
-  if (!pointLaunchChecklistData) return;
-  let note = '';
-  if (completed && itemKey === 'referral_bonus_verified') {
-    const value = prompt(
-      'Зафиксируйте результат проверки бонуса.\n\nЕсли точку привёл грумер — укажите его. Если реферала не было — напишите, кто это проверил.',
-      ''
-    );
-    if (value === null) return;
-    note = value.trim();
-  }
-  if (completed && itemKey === 'test_sale_verified') {
-    const value = prompt(
-      'Подтвердите результат тестовой продажи:',
-      'Оплата, списание остатка, экран успеха и уведомления проверены'
-    );
-    if (value === null) return;
-    note = value.trim();
-  }
-  try {
-    const res = await authFetch(
-      '/api/points/' + encodeURIComponent(pointLaunchChecklistData.point.id) + '/launch-checklist/' + encodeURIComponent(itemKey),
-      { method: 'PUT', body: { completed: completed, note: note } }
-    );
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Не удалось сохранить отметку');
-    pointLaunchChecklistData = data.checklist;
-    renderPointLaunchChecklist();
-    loadOperationsCenter();
-  } catch (error) {
-    alert(error.message);
-  }
-}
-
-async function openPointChecklistById(pointId) {
-  await loadPointsInfo();
-  const idx = POINTS_INFO.findIndex(function(point) { return point.id === pointId; });
-  if (idx < 0) {
-    alert('Чек-лист доступен для активной точки. Сначала включите точку.');
-    return;
-  }
-  await showPoint(idx);
-  const card = document.getElementById('point-launch-checklist-card');
-  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function switchPointTab(tab) {
-  document.getElementById('tab-sales').classList.toggle('active', tab === 'sales');
-  document.getElementById('tab-stock').classList.toggle('active', tab === 'stock');
-  document.getElementById('pt-tab-sales').style.display = tab === 'sales' ? 'block' : 'none';
-  document.getElementById('pt-tab-stock').style.display = tab === 'stock' ? 'block' : 'none';
-}
-
+// showSection is defined in admin-navigation.js.
+// Point workspace is loaded from admin-point.js
 // ── ДАШБОРД ────────────────────────────────────────────────────────
 // ── ПЛАН ЗАПУСКА ────────────────────────────────────────────────────
 let launchTasksData = [];

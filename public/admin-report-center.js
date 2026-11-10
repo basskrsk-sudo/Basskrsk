@@ -1,0 +1,190 @@
+'use strict';
+// One report catalogue instead of scattered entry points. Only actions
+// marked "telegram" start a report-approval request. Other rows navigate
+// to existing read-only analytics or the archived report workspace.
+const HM_REPORTS=Object.freeze([
+ {type:'salesweek',cat:'Продажи',title:'Продажи за 7 дней',
+  detail:'Короткая сводка по выручке и заказам',mode:'telegram'},
+ {type:'nogroomer',cat:'Продажи',title:'Заказы без грумера',
+  detail:'Оплаченные заказы без назначенного грумера',mode:'telegram',days:true},
+ {type:'weekcompare',cat:'Продажи',title:'Сравнение периодов',
+  detail:'Интерактивная динамика двух периодов',target:'week-comparison',mode:'view'},
+ {type:'business',cat:'Финансы',title:'Итоги бизнеса за год',
+  detail:'Выручка, прибыль и расходы',mode:'telegram',year:true},
+ {type:'payouts',cat:'Финансы',title:'Справки для выплат',
+  detail:'PDF и CSV с подтверждением в боте',mode:'telegram'},
+ {type:'economics',cat:'Финансы',title:'Экономика сети',
+  detail:'Действующая экономическая модель',target:'economics',mode:'view'},
+ {type:'businesspoints',cat:'Сеть',title:'Реестр точек · CSV',
+  detail:'Сводный реестр действующих точек',mode:'telegram',year:true},
+ {type:'points',cat:'Сеть',title:'Эффективность точек',
+  detail:'Список точек и их операционные показатели',target:'points',mode:'view'},
+ {type:'stock',cat:'Склад',title:'Центральный склад',
+  detail:'Сводка остатков складов городов',mode:'telegram',city:true},
+ {type:'pointstock',cat:'Склад',title:'Остатки минимаркетов',
+  detail:'Актуальные остатки на полках',target:'stock',mode:'view'},
+ {type:'qrview',cat:'Маркетинг',title:'QR-воронка',
+  detail:'Открытия, оплаты и конверсия по точкам',target:'qr-analytics',mode:'view',city:true,point:true,days:true},
+ {type:'qrweek',cat:'Маркетинг',title:'Еженедельный QR-отчёт',
+  detail:'CSV по точкам после подтверждения в Telegram',mode:'telegram',super:true},
+ {type:'gdweek',cat:'Управление',title:'Отчёт для планёрки ГД',
+  detail:'PDF и Excel за выбранный период',mode:'telegram',dates:true},
+ {type:'gdarchive',cat:'Управление',title:'Архив отчётов ГД',
+  detail:'Скачивание уже сформированных файлов',target:'weekly-reports',mode:'view'},
+ {type:'payoutarchive',cat:'Управление',title:'Архив выплат партнёрам',
+  detail:'История и подтверждённые выплаты',target:'payout-reports',mode:'view'},
+]);
+
+const hmReportState={loaded:false,points:[],selected:'gdweek',result:''};
+function reportCenterEscape(value){
+ return String(value==null?'':value)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function currentReport(){
+ return HM_REPORTS.find(r=>r.type===hmReportState.selected)||HM_REPORTS[0];
+}
+function reportCenterSelect(type){
+ hmReportState.selected=type;
+ const selector=document.getElementById('rc-report-type');
+ if(selector)selector.value=type;
+ const report=currentReport();
+ const helper=document.getElementById('rc-report-detail');
+ if(helper)helper.textContent=report.detail+
+   (report.mode==='telegram'?' · требуется подтверждение в личном Telegram.':
+   ' · откроется интерактивный экран.');
+ for(const field of ['dates','year','days','city','point']){
+  const container=document.getElementById('rc-filter-'+field);
+  if(container)container.hidden=!report[field];
+ }
+ const action=document.getElementById('rc-request');
+ if(action)action.textContent=report.mode==='telegram'?
+   'Запросить формирование в Telegram':'Открыть отчёт';
+ const result=document.getElementById('rc-result');
+ if(result)result.textContent='';
+}
+function reportCenterCityFilter(){
+ const city=document.getElementById('rpt-city')?.value||'';
+ const select=document.getElementById('rc-point');
+ if(!select)return;
+ const previous=select.value;
+ select.replaceChildren();
+ const all=document.createElement('option');
+ all.value='';all.textContent='Все точки';select.append(all);
+ hmReportState.points.filter(p=>!city||p.city_id===city).forEach(p=>{
+   const option=document.createElement('option');
+   option.value=p.id;option.textContent=p.name;
+   select.append(option);
+ });
+ if([...select.options].some(o=>o.value===previous))select.value=previous;
+}
+async function loadReportCenter(){
+ const select=document.getElementById('rc-report-type');
+ if(!select)return;
+ if(!hmReportState.loaded){
+  const cats=[...new Set(HM_REPORTS.map(r=>r.cat))];
+  select.replaceChildren();
+  cats.forEach(cat=>{
+   const group=document.createElement('optgroup');group.label=cat;
+   HM_REPORTS.filter(r=>r.cat===cat&&(!r.super||currentAdminRole==='super')).forEach(r=>{
+     const option=document.createElement('option');
+     option.value=r.type;option.textContent=r.title;
+     group.append(option);
+   });
+   select.append(group);
+  });
+  const cards=document.getElementById('rc-categories');
+  if(cards){
+   cards.replaceChildren();
+   cats.forEach(cat=>{
+     const box=document.createElement('div');
+     box.className='card';box.style.cssText='margin:0;';
+     const title=document.createElement('h3');
+     title.style.cssText='font-size:1rem;margin-bottom:.65rem;';
+     title.textContent=cat;
+     box.append(title);
+     HM_REPORTS.filter(r=>r.cat===cat&&(!r.super||currentAdminRole==='super'))
+       .forEach(r=>{
+         const button=document.createElement('button');
+         button.type='button';button.className='row-btn';
+         button.style.cssText='display:block;text-align:left;width:100%;margin:.35rem 0;white-space:normal;';
+         button.textContent=r.title;
+         button.addEventListener('click',()=>{
+           reportCenterSelect(r.type);
+           document.getElementById('rc-request')?.scrollIntoView({block:'nearest',behavior:'smooth'});
+         });
+         box.append(button);
+       });
+     cards.append(box);
+   });
+  }
+  hmReportState.loaded=true;
+  try{
+    const res=await authFetch('/api/points?all=1');
+    if(res.ok){
+      const data=await res.json();
+      hmReportState.points=(data.points||[]).filter(p=>p.active);
+      const cities=[...new Map(hmReportState.points
+        .filter(p=>p.city_id).map(p=>[p.city_id,p.city_name||p.city_id])).entries()];
+      const selector=document.getElementById('rpt-city');
+      if(selector){
+        cities.forEach(([id,name])=>{
+          const option=document.createElement('option');option.value=id;option.textContent=name;
+          selector.append(option);
+        });
+      }
+      reportCenterCityFilter();
+    }
+  }catch(error){console.warn('Не удалось загрузить города центра отчётности:',error.message);}
+ }
+ if(!document.getElementById('rc-report-type').value||
+   currentAdminRole!=='super'&&currentReport().super)
+   hmReportState.selected='gdweek';
+ reportCenterSelect(hmReportState.selected);
+}
+async function reportCenterRun(){
+ const report=currentReport();
+ const output=document.getElementById('rc-result');
+ const button=document.getElementById('rc-request');
+ if(report.super&&currentAdminRole!=='super'){
+   if(output)output.textContent='Этот отчёт доступен только супер-администратору';
+   return;
+ }
+ if(report.mode==='view'){
+   if(report.target==='qr-analytics'){
+     const days=Number(document.getElementById('rc-days')?.value||30);
+     const point=document.getElementById('rc-point')?.value||'';
+     await showSection(report.target);
+     const dayEl=document.getElementById('qr-analytics-days');
+     const pointEl=document.getElementById('qr-analytics-point');
+     if(dayEl)dayEl.value=String([7,30,90].includes(days)?days:30);
+     if(pointEl && [...pointEl.options].some(o=>o.value===point))pointEl.value=point;
+     if(typeof loadQrAnalytics==='function')await loadQrAnalytics();
+   } else{
+     await showSection(report.target);
+   }
+   return;
+ }
+ const body={type:report.type};
+ if(report.dates){
+   body.start=document.getElementById('rc-start')?.value||'';
+   body.end=document.getElementById('rc-end')?.value||'';
+ }
+ if(report.year){
+   body.year=document.getElementById('rc-year')?.value||'';
+ }
+ if(report.days)body.days=Number(document.getElementById('rc-days')?.value||30);
+ if(report.city)body.citySelector=document.getElementById('rpt-city')?.value||'';
+ if(button)button.disabled=true;
+ if(output)output.textContent='Отправляем запрос на согласование в Telegram…';
+ try{
+   const res=await authFetch('/api/admin/report-center/request',
+     {method:'POST',body});
+   const data=await res.json();
+   if(!res.ok)throw new Error(data.error||'Не удалось запросить отчёт');
+   if(output)output.textContent=data.message||
+     'Подтвердите формирование в личном Telegram. До этого отчёт не создаётся.';
+ }catch(error){
+   if(output)output.textContent='Ошибка: '+error.message;
+ }finally{if(button)button.disabled=false;}
+}
