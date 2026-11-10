@@ -11,6 +11,32 @@ const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { geocodeAddress } = require('./geocoding');
+const mapCandidates = require('./partner-map-candidates');
+
+// Only strong address + name/phone matches are treated as duplicate CRM
+// candidates; identical phone alone is insufficient for salon chains.
+function mapNormAddress(value) {
+  return String(value || '').toLowerCase().replace(/ё/g, 'е')
+    .replace(/^(?:россия\s*[,\s]*)?(?:г\.?\s*)?красноярск\s*[,\s]*/i, '')
+    .replace(/(?:улица|ул\.?|проспект|пр-т|пер\.?|переулок)/gi, '')
+    .replace(/[^a-zа-я0-9]+/gi, '');
+}
+function mapNormName(value) {
+  return String(value || '').toLowerCase().replace(/ё/g, 'е')
+    .replace(/[^a-zа-я0-9]+/gi, '');
+}
+function mapPhones(value) {
+  return String(value || '').split(/[;,]/)
+    .map(x => x.replace(/\D/g, '').slice(-10))
+    .filter(x => x.length === 10);
+}
+function mapDuplicate(source, row) {
+  const address = mapNormAddress(source.address);
+  if (address.length < 5 || address !== mapNormAddress(row.address)) return false;
+  if (mapNormName(source.name) === mapNormName(row.name)) return true;
+  const phones = mapPhones(source.phone);
+  return phones.length > 0 && mapPhones(row.phone).some(phone => phones.includes(phone));
+}
 
 // Bounded, short-lived cache: map geocoding runs only after the employee opens
 // the tab, never automatically as part of reports or a background job.
@@ -235,8 +261,18 @@ function registerPartnerLeadRoutes(router, options = {}) {
         // by ID through the authenticated read-only coordinates route.
         lat: null, lng: null
       }));
+    // External 114-card Excel registry is deliberately kept OUT of partner_leads.
+    // Only overlay it on the map. Manager city scoping still applies.
+    const candidates = (!manager || manager.city_id === 'krsk')
+      ? mapCandidates.map(candidate => {
+          const match = points.concat(leads).find(row => mapDuplicate(candidate, row));
+          return { ...candidate, matched: match ? { type: match.type, id: match.id } : null };
+        })
+      : [];
     sendJson(res, 200, {
-      points, leads, default_city_id: manager ? manager.city_id : 'krsk'
+      points, leads, candidates,
+      candidate_source_total: (!manager || manager.city_id === 'krsk') ? mapCandidates.length : 0,
+      default_city_id: manager ? manager.city_id : 'krsk'
     });
   });
 
@@ -252,11 +288,18 @@ function registerPartnerLeadRoutes(router, options = {}) {
     }
     const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
     if (payload.role === 'manager' && !manager) return;
-    const ids = ctx.body && ctx.body.lead_ids;
-    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 10 ||
-        ids.some(id => !Number.isSafeInteger(id) || id <= 0) ||
-        new Set(ids).size !== ids.length) {
-      return sendJson(res, 400, { error: 'Передайте от 1 до 10 уникальных ID заведений' });
+    const ids = ctx.body && ctx.body.lead_ids === undefined ? [] : ctx.body && ctx.body.lead_ids;
+    const candidateIds = ctx.body && ctx.body.candidate_ids === undefined
+      ? [] : ctx.body && ctx.body.candidate_ids;
+    const validIds = arr => Array.isArray(arr) &&
+      arr.every(id => Number.isSafeInteger(id) && id > 0) &&
+      new Set(arr).size === arr.length;
+    if (!validIds(ids) || !validIds(candidateIds) ||
+        ids.length + candidateIds.length < 1 || ids.length + candidateIds.length > 10) {
+      return sendJson(res, 400, { error: 'Передайте от 1 до 10 уникальных ID объектов' });
+    }
+    if (candidateIds.length && manager && manager.city_id !== 'krsk') {
+      return sendJson(res, 403, { error: 'Нет доступа к кандидатам этого города' });
     }
     const rows = ids.map(id => db.prepare([
       'SELECT l.*,',
@@ -270,30 +313,37 @@ function registerPartnerLeadRoutes(router, options = {}) {
     if (rows.some(row => !row || !canReadLead(payload, manager, row))) {
       return sendJson(res, 403, { error: 'Нет доступа к одному или нескольким заведениям' });
     }
-    const results = await Promise.all(rows.map(async row => {
+    const external = candidateIds.map(id => mapCandidates.find(candidate => candidate.id === id));
+    if (external.some(item => !item)) {
+      return sendJson(res, 403, { error: 'Нет доступа к одному или нескольким кандидатам' });
+    }
+    const records = rows.map(row => ({ ...row, type: 'lead' }))
+      .concat(external.map(item => ({ ...item, type: 'candidate' })));
+    const results = await Promise.all(records.map(async row => {
       const query = mapGeocodeAddress(row);
-      if (!query) return { id: row.id, status: 'needs_address' };
+      const label = { id: row.id, type: row.type };
+      if (!query) return { ...label, status: 'needs_address' };
       const cacheKey = query.trim().toLowerCase();
       const cached = cachedMapPosition(cacheKey);
-      if (cached) return { id: row.id, ...cached.value };
+      if (cached) return { ...label, ...cached.value };
       try {
         const found = await mapGeocode(query, { timeoutMs: 6500 });
-        // The ordinary point-creation workflow permits street-level precision;
-        // CRM map pins must be accurate to a building or house-number range.
+        // Do not place a marker at the city or street centre when the building
+        // cannot be resolved. A false marker is worse than an unplaced card.
         if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lng) ||
             !['exact', 'number', 'near', 'range'].includes(found.precision) ||
             (row.city_name && found.formattedAddress &&
               !found.formattedAddress.toLowerCase().includes(row.city_name.toLowerCase()))) {
           const value = { status: 'needs_verification' };
           cacheMapPosition(cacheKey, { value });
-          return { id: row.id, ...value };
+          return { ...label, ...value };
         }
         const value = { status: 'mapped', lat: found.lat, lng: found.lng };
         cacheMapPosition(cacheKey, { value });
-        return { id: row.id, ...value };
+        return { ...label, ...value };
       } catch (error) {
-        // Short transient failures must not poison the cache; retry is possible.
-        return { id: row.id, status: 'unavailable' };
+        // Transient failures must not poison the cache; retry is possible.
+        return { ...label, status: 'unavailable' };
       }
     }));
     sendJson(res, 200, { results });

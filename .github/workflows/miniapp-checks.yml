@@ -29,6 +29,7 @@ on:
       - server/referral-flow.test.js
       - server/cynology-venues-ui.test.js
       - server/manager-leads-sync.test.js
+      - server/partner-map-candidates.js
       - server/partner-network-map.test.js
       - server/partner-network-map-ui.test.js
       - public/partner-network-map.js
@@ -363,6 +364,7 @@ jobs:
           node --check server/routes-partner-leads.js
           node --check public/manager-leads.js
           node --check public/partner-network-map.js
+          node --check server/partner-map-candidates.js
           node --check server/partner-network-map.test.js
           node --check server/partner-network-map-ui.test.js
           node --check server/miniapp-promos-ui.test.js
