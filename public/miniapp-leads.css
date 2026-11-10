@@ -1,0 +1,45 @@
+
+#leadsPage .hmleads-mini-header h1{margin:0 0 5px;font-size:22px;line-height:1.2;color:#0b4b39;font-weight:900}
+#leadsPage .hmleads-mini-header p{margin:0 0 17px;font-size:12px;color:#718378}
+#leadsPage .hmleads-mini-tools{display:flex;gap:8px;margin:14px 0}
+#leadsPage button,#leadsPage input,#leadsPage select,#leadsPage textarea{font:inherit}
+#leadsPage .hmleads-mini-new,#leadsPage .hmleads-mini-refresh,#leadsPage .hmleads-mini-back{background:#e3f2e9;color:#0b5940;border:1px solid #c4dfcb;border-radius:11px;padding:10px 12px;font-weight:800;font-size:12px;min-height:43px}
+#leadsPage .hmleads-mini-new{flex:1;background:#0b4b39;color:white}
+#leadsPage .hmleads-mini-search{display:grid;gap:9px;grid-template-columns:1fr 1fr;background:#fff;border:1px solid #e2e9e1;border-radius:13px;padding:12px}
+#leadsPage .hmleads-mini-search input{grid-column:1/-1}
+#leadsPage .hmleads-mini-search input,#leadsPage .hmleads-mini-search select,#leadsPage .hmleads-mini-form input,#leadsPage .hmleads-mini-form select,#leadsPage .hmleads-mini-form textarea{min-width:0;width:100%;border:1px solid #cddcd0;border-radius:10px;padding:11px;background:white;color:#193b30;outline-offset:3px;font-size:14px}
+#leadsPage .hmleads-mini-search button{min-height:44px;background:#16654a;border:0;border-radius:10px;color:#fff;font-size:12px;font-weight:800}
+#leadsPage .hmleads-mini-filters{display:flex;gap:8px;margin:12px 0}
+#leadsPage .hmleads-mini-filters button{flex:1;background:#fff;border:1px solid #dfe9dd;border-radius:9px;padding:10px 4px;font-weight:800;color:#52685c;font-size:12px}
+#leadsPage .hmleads-mini-filters button.active{background:#16654a;color:white}
+#leadsPage .hmleads-mini-caption{font-size:12px;color:#718378;margin:9px 0}
+#leadsPage .hmleads-mini-item{background:#fff;border:1px solid #dfe9dd;border-radius:14px;margin:10px 0;overflow:hidden}
+#leadsPage .hmleads-mini-details{width:100%;display:grid;gap:6px;padding:14px;border:0;background:transparent;text-align:left;color:#193b30}
+#leadsPage .hmleads-mini-details small{font-size:12px;color:#718378}
+#leadsPage .hmleads-mini-details small.overdue{color:#a53d2f;font-weight:800}
+#leadsPage .hmleads-mini-row{display:flex;gap:10px;align-items:start;justify-content:space-between}
+#leadsPage .hmleads-mini-row strong{font-size:14px;overflow-wrap:anywhere}
+#leadsPage .hmleads-mini-row span{font-size:10px;padding:4px 7px;background:#eaf3eb;color:#266648;border-radius:10px;flex-shrink:0}
+#leadsPage .hmleads-mini-actions{display:flex;gap:8px;padding:0 12px 12px}
+#leadsPage .hmleads-mini-call,#leadsPage .hmleads-mini-record,#leadsPage .hmleads-mini-claim{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 13px;border-radius:10px;text-decoration:none;font-weight:800;font-size:13px;text-align:center}
+#leadsPage .hmleads-mini-actions a,#leadsPage .hmleads-mini-actions button{flex:1}
+#leadsPage .hmleads-mini-call{border:1px solid #bfe1cb;background:#e6f4e9;color:#136143}
+#leadsPage .hmleads-mini-record{border:1px solid #16654a;background:#16654a;color:#fff}
+#leadsPage .hmleads-mini-claim{border:1px solid #e2c994;background:#fff7ea;color:#75501e}
+#leadsPage .hmleads-mini-target{background:#fff;border:1px solid #dfe9dd;border-radius:13px;padding:15px;margin:12px 0;display:grid;gap:6px}
+#leadsPage .hmleads-mini-target strong{font-size:17px}
+#leadsPage .hmleads-mini-target p{margin:0;color:#667b6e;font-size:12px}
+#leadsPage .hmleads-mini-target a{justify-self:start}
+#leadsPage .hmleads-mini-form{display:grid;gap:13px;padding:16px;background:#fff;border:1px solid #dfe9dd;border-radius:14px;margin:12px 0}
+#leadsPage .hmleads-mini-form label{display:grid;gap:6px;font-size:12px;color:#596e60;font-weight:800}
+#leadsPage .hmleads-mini-form input,#leadsPage .hmleads-mini-form select{min-height:46px}
+#leadsPage .hmleads-mini-form textarea{resize:vertical;min-height:95px}
+#leadsPage .hmleads-mini-save{min-height:48px;border:0;border-radius:11px;color:white;background:#16654a;font-weight:900;font-size:14px}
+#leadsPage .hmleads-mini-error{font-size:12px;color:#a53d2f;margin:6px 0}
+#leadsPage .hmleads-mini-success{padding:11px;border-radius:10px;background:#e8f6ed;color:#1b6243;font-size:12px}
+#leadsPage .hmleads-mini-empty{padding:22px 15px;text-align:center;background:white;border-radius:13px;color:#718378}
+#leadsPage .hmleads-mini-history-title{font-size:16px;margin:20px 0 10px}
+#leadsPage .hmleads-mini-history{background:white;border-bottom:1px solid #e7eae1;padding:12px}
+#leadsPage .hmleads-mini-history small{font-size:11px;color:#718378}
+#leadsPage .hmleads-mini-history p{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0}
+@media(max-width:345px){#leadsPage .hmleads-mini-row{flex-wrap:wrap}#leadsPage .hmleads-mini-actions{flex-direction:column}}

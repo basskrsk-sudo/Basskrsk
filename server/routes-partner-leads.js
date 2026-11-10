@@ -294,6 +294,74 @@ function registerPartnerLeadRoutes(router) {
     sendJson(res, 200, { ok: true });
   });
 
+  // POST /api/partner-leads/:id/call — one-tap mobile call log.
+  // Status, next contact and audit note are committed atomically so the
+  // Telegram Mini App and desktop/admin CRM never disagree after a save.
+  router.post('/api/partner-leads/:id/call', (req, res, ctx) => {
+    const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
+    if (!payload) return;
+    if (payload.role === 'admin' &&
+        !db.prepare('SELECT id FROM admins WHERE id=? AND active=1').get(payload.id)) {
+      return sendJson(res, 401, { error: 'Администратор отключён' });
+    }
+    const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
+    if (payload.role === 'manager' && !manager) return;
+    const existing = db.prepare('SELECT * FROM partner_leads WHERE id=?').get(ctx.params.id);
+    if (!existing) return sendJson(res, 404, { error: 'Заведение не найдено' });
+    if (!canEditLead(payload, existing)) {
+      return sendJson(res, 403, { error: 'Фиксировать звонки можно только по своим заведениям' });
+    }
+
+    const b = ctx.body || {};
+    if (typeof b.status !== 'string' || !STATUSES.includes(b.status)) {
+      return sendJson(res, 400, { error: 'Выберите результат звонка' });
+    }
+    if (b.note !== undefined && b.note !== null && typeof b.note !== 'string') {
+      return sendJson(res, 400, { error: 'Некорректный комментарий' });
+    }
+    const note = String(b.note || '').trim();
+    if (note.length > 2000) {
+      return sendJson(res, 400, { error: 'Комментарий не должен превышать 2000 символов' });
+    }
+    const dateRaw = b.next_contact_date;
+    let nextDate = existing.next_contact_date;
+    if (dateRaw !== undefined) {
+      if (dateRaw !== null && typeof dateRaw !== 'string') {
+        return sendJson(res, 400, { error: 'Некорректная дата следующего звонка' });
+      }
+      nextDate = dateRaw ? dateRaw.trim() : null;
+      if (nextDate) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate) ||
+            !Number.isFinite(Date.parse(nextDate+'T00:00:00Z')) ||
+            new Date(nextDate+'T00:00:00Z').toISOString().slice(0,10) !== nextDate) {
+          return sendJson(res, 400, { error: 'Дата следующего звонка должна быть в формате ГГГГ-ММ-ДД' });
+        }
+      }
+    }
+    const labels = {
+      to_call: 'Нужно позвонить', no_answer: 'Не дозвонились',
+      meeting_scheduled: 'Встреча назначена', meeting_held: 'Встреча прошла',
+      signed: 'Партнёр подключён', declined: 'Отказ',
+    };
+    const detail = 'Звонок: ' + labels[b.status] +
+      (nextDate ? '. Следующий контакт: ' + nextDate : '') +
+      (note ? '. ' + note : '');
+
+    db.exec('SAVEPOINT partner_lead_quick_call');
+    try {
+      db.prepare("UPDATE partner_leads SET status=?,next_contact_date=?,updated_at=datetime('now') WHERE id=?")
+        .run(b.status, nextDate, existing.id);
+      db.prepare('INSERT INTO partner_lead_notes (lead_id,author,note) VALUES(?,?,?)')
+        .run(existing.id, authorLabel(payload), detail);
+      db.exec('RELEASE SAVEPOINT partner_lead_quick_call');
+    } catch (error) {
+      db.exec('ROLLBACK TO SAVEPOINT partner_lead_quick_call');
+      db.exec('RELEASE SAVEPOINT partner_lead_quick_call');
+      throw error;
+    }
+    sendJson(res, 201, { ok: true, id: existing.id, status: b.status, next_contact_date: nextDate });
+  });
+
   // POST /api/partner-leads/:id/notes — добавить запись в историю звонков
   router.post('/api/partner-leads/:id/notes', (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);

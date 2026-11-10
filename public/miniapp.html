@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="/fonts/site-fonts.css">
 <link rel="stylesheet" href="/miniapp-work.css?v=2">
 <link rel="stylesheet" href="/manager-leads.css?v=1">
+<link rel="stylesheet" href="/miniapp-leads.css?v=1">
 <link rel="stylesheet" href="/miniapp-home-screen.css">
 <link rel="stylesheet" href="/notification-settings.css">
 <!-- Remote Telegram SDK must NOT block HTML parsing. When telegram.org hangs
@@ -88,6 +89,7 @@
     <section id="checkoutPage" class="hide"></section>
     <section id="profilePage" class="hide"></section>
     <section id="workPage" class="hide"></section>
+    <section id="leadsPage" class="hide"></section>
     <section id="resultPage" class="hide"></section>
   </main>
 </div>
@@ -97,6 +99,7 @@
   <button class="tab" type="button" data-view="cart"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.5 12H20l2-9H6"/><circle cx="10" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>Корзина<span class="count hide" id="navQty">0</span></button>
   <button class="tab" type="button" data-view="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21c0-4.8 15-4.8 15 0"/></svg>Профиль</button>
   <button class="tab hide" type="button" data-view="work"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/></svg>Кабинеты</button>
+  <button class="tab hide" type="button" data-view="leads"><svg viewBox="0 0 24 24"><path d="M6.5 3.5c-1 1-1.5 2.5-1 4.5a16 16 0 0 0 10.5 10.5c2 .5 3.5 0 4.5-1l-4-4-3 2-4.5-4.5 2-3-4-4Z"/></svg>Обзвон</button>
 </nav>
 <div class="sheet-cover hide" id="sheetCover"><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Выбор товара"></div></div>
 <div class="toast" id="toast" role="status"></div>
@@ -111,6 +114,7 @@
 <script src="/miniapp-admin-product-create.js"></script>
 <script src="/miniapp-promos.js"></script>
 <script src="/manager-leads.js?v=1"></script>
+<script src="/miniapp-leads.js?v=1"></script>
 <script src="/miniapp-work.js"></script>
 <script src="/miniapp-customer.js"></script>
 <script>
@@ -145,12 +149,35 @@ function subtotal(){return state.cart.reduce(function(a,i){return a+i.price*i.qt
 function persistPoint(){try{localStorage.setItem('hm_miniapp_point',String(state.pointId))}catch(_){}}
 function readPoint(){try{return localStorage.getItem('hm_miniapp_point')||''}catch(_){return ''}}
 async function api(url,options){var r=await (window.HvostMiniAppReliability?window.HvostMiniAppReliability.request:fetch)(url,Object.assign({cache:'no-store'},options||{}));var data=await r.json().catch(function(){return {}});if(!r.ok){var err=new Error(data.error||'Ошибка сервера ('+r.status+')');err.status=r.status;if(r.status>=500)err.code='server';throw err}return data}
-function setView(view,skipWorkRender){if(view==='work'&&!isPhoneAccessUnlocked())view='profile';state.view=view;['shop','cart','checkout','profile','work','result'].forEach(function(v){el(v+'Page').classList.toggle('hide',v!==view)});el('navigation').classList.toggle('hide',view==='result');el('header').classList.toggle('hide',view==='result'||view==='work'||view==='profile');Array.from(document.querySelectorAll('.tab')).forEach(function(btn){btn.classList.toggle('on',btn.dataset.view===view)});renderCartIndicators();if(view==='shop')renderProducts();if(view==='cart')renderCart();if(view==='checkout')renderCheckout();if(view==='profile')renderProfile();if(view==='work'&&!skipWorkRender&&window.HvostMiniAppWork)window.HvostMiniAppWork.render();window.scrollTo(0,0)}
+function setView(view,skipWorkRender){
+  if(view==='work'&&!isPhoneAccessUnlocked())view='profile';
+  if(view==='leads'&&(!window.HvostMiniAppLeads||!window.HvostMiniAppLeads.available()))view='profile';
+  if(view!=='leads'&&window.HvostMiniAppLeads)window.HvostMiniAppLeads.close();
+  state.view=view;
+  ['shop','cart','checkout','profile','work','leads','result'].forEach(function(v){el(v+'Page').classList.toggle('hide',v!==view)});
+  el('navigation').classList.toggle('hide',view==='result');
+  el('header').classList.toggle('hide',view==='result'||view==='work'||view==='profile'||view==='leads');
+  Array.from(document.querySelectorAll('.tab')).forEach(function(btn){btn.classList.toggle('on',btn.dataset.view===view)});
+  renderCartIndicators();
+  if(view==='shop')renderProducts();
+  if(view==='cart')renderCart();
+  if(view==='checkout')renderCheckout();
+  if(view==='profile')renderProfile();
+  if(view==='work'&&!skipWorkRender&&window.HvostMiniAppWork)window.HvostMiniAppWork.render();
+  if(view==='leads'&&window.HvostMiniAppLeads)window.HvostMiniAppLeads.open();
+  window.scrollTo(0,0);
+}
 function isPhoneAccessUnlocked(){return !!(window.HvostMiniAppIdentity&&window.HvostMiniAppIdentity.getStatus().verified)}
 function syncPhoneAccess(){
   var tab=document.querySelector('[data-view="work"]');
   if(tab)tab.classList.toggle('hide',!isPhoneAccessUnlocked());
-  if(!isPhoneAccessUnlocked()&&state.view==='work')setView('profile');
+  var callsAllowed=!!(window.HvostMiniAppLeads&&window.HvostMiniAppLeads.available());
+  var leadsTab=document.querySelector('[data-view="leads"]');
+  if(leadsTab)leadsTab.classList.toggle('hide',!callsAllowed);
+  var count=document.querySelectorAll('#navigation .tab:not(.hide)').length;
+  el('navigation').style.gridTemplateColumns='repeat('+count+',minmax(0,1fr))';
+  if((!isPhoneAccessUnlocked()&&state.view==='work')||
+    (!callsAllowed&&state.view==='leads'))setView('profile');
 }
 window.HvostMiniAppGoProfile=function(){
   if(window.HvostMiniAppCustomer)window.HvostMiniAppCustomer.showChoices();
@@ -236,6 +263,10 @@ async function refreshReadOnlyAfterReconnect(){
     await window.HvostMiniAppWork.refresh();
     return;
   }
+  if(state.view==='leads'&&window.HvostMiniAppLeads&&window.HvostMiniAppLeads.available()){
+    await window.HvostMiniAppLeads.refresh();
+    return;
+  }
   var data=await Promise.all([api('/api/products'),api('/api/points')]);
   state.products=data[0].products||[];
   state.points=data[1].points||[];
@@ -268,6 +299,8 @@ async function init(){
   if(!validPayment){
     var view=query.get('view');
     if(view==='shop'||!!query.get('point'))setView('shop');
+    else if(view==='leads'&&window.HvostMiniAppLeads&&window.HvostMiniAppLeads.available())
+      setView('leads');
     // Old ?view=work links safely show the phone and role picker too.
   }
   var catalogLoaded=false;
