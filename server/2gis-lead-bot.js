@@ -5,7 +5,8 @@
 // A Places API key is OPTIONAL: without it, ask for name/contact details.
 const db = require('./db');
 
-const HELP = '📍 Добавить организацию из 2ГИС:\n/2gis https://2gis.ru/krasnoyarsk/firm/70000001012345678\n\n' +
+const HELP = '📍 Добавить организацию из 2ГИС:\n/2gis https://2gis.ru/krasnoyarsk/firm/70000001012345678\n' +
+  'или /2gis https://2gis.ru/krasnoyarsk/geo/70000001113304165\n\n' +
   'Если данные недоступны, бот попросит: Название | телефон | адрес\n' +
   'Можно сразу: /2gis <ссылка> | Название | +7... | Адрес';
 const PENDING_TTL = 15 * 60 * 1000;
@@ -43,16 +44,21 @@ function parseLink(text) {
   url.port = '';
   url.hash = '';
   const path = url.pathname;
-  const match = path.match(/^\/(?:(?<city>[a-z][a-z0-9-]{1,40})\/)?firm\/(?<id>\d{10,20})(?:\/|$)/i);
-  const firmId = match?.groups?.id || null;
-  if (!firmId && !SHORT_HOSTS.has(url.hostname.toLowerCase())) return null;
-  if (!firmId && !/^\/[a-z0-9_-]{2,100}\/?$/i.test(path)) return null;
-  const cityAlias = match?.groups?.city || '';
+  // /firm/ identifies a company branch; /geo/ can identify a building or
+  // another map object. Do not label a geo ID as a company without Places API
+  // confirming the response type is "branch".
+  const match = path.match(/^\/(?:(?<city>[a-z][a-z0-9-]{1,40})\/)?(?<kind>firm|geo)\/(?<id>\d{10,20})(?:\/|$)/i);
+  const kind = match?.groups?.kind?.toLowerCase() || null;
+  const firmId = kind === 'firm' ? match.groups.id : null;
+  const geoId = kind === 'geo' ? match.groups.id : null;
+  if (!match && !SHORT_HOSTS.has(url.hostname.toLowerCase())) return null;
+  if (!match && !/^\/[a-z0-9_-]{2,100}\/?$/i.test(path)) return null;
+  const cityAlias = match?.groups?.city?.toLowerCase() || '';
   return {
-    firmId, cityAlias,
-    url: firmId ? 'https://2gis.ru/' + (cityAlias ? cityAlias + '/' : '') + 'firm/' + firmId
-      : url.origin + path,
-    short: !firmId,
+    firmId, geoId, cityAlias,
+    url: match ? 'https://2gis.ru/' + (cityAlias ? cityAlias + '/' : '') +
+      kind + '/' + match.groups.id : url.origin + path,
+    short: !match,
   };
 }
 
@@ -74,7 +80,7 @@ async function resolve2gis(text, { fetchImpl = fetch } = {}) {
       const check = parseLink(nextUrl.toString());
       if (!check) break;
       result = check;
-      if (check.firmId) return check;
+      if (check.firmId || check.geoId) return check;
       next = check.url;
     } catch (_) { break; }
   }
@@ -260,6 +266,7 @@ function extractLink(text) {
 }
 function prompted(link) {
   return '📍 Ссылка 2ГИС принята: '+link.url+
+    (link.geoId ? '\nЭто геообъект (адрес/здание), а не обязательно карточка организации.' : '')+
     '\nНазвание организации не удалось получить автоматически.'+
     '\n\nОтправьте следующим сообщением:\nНазвание | телефон | адрес\n'+
     'Достаточно названия; телефон и адрес можно добавить позже.\n/cancel — отмена.';
@@ -296,7 +303,7 @@ async function handle2gisText(channel,chatId,text,{database=db,fetchImpl=fetch,a
   }
   if (linkText) {
     const link=await resolve2gis(linkText,{fetchImpl});
-    if (!link) return {ok:false,message:'Пришлите ссылку именно на карточку организации 2ГИС (раздел /firm/), не на маршрут или поиск.\n\n'+HELP};
+    if (!link) return {ok:false,message:'Пришлите ссылку 2ГИС на организацию или геообъект (раздел /firm/ или /geo/), не на маршрут или поиск.\n\n'+HELP};
     const old=existingLead(link,database);
     if (old) {
       clear(channel,chatId,database);
@@ -304,7 +311,11 @@ async function handle2gisText(channel,chatId,text,{database=db,fetchImpl=fetch,a
     }
     const fields=readFields(extras);
     if (!fields) return {ok:false,message:'Неверный формат данных. Используйте: Название | телефон | адрес'};
-    const remote=link.firmId ? await fetch2gisCard(link.firmId,{key:apiKey,fetchImpl}) : null;
+    // The API may return a branch for a /geo/ ID, but many such IDs
+    // represent buildings. fetch2gisCard only accepts a verified branch.
+    const remote=(link.firmId || link.geoId)
+      ? await fetch2gisCard(link.firmId || link.geoId,{key:apiKey,fetchImpl}) : null;
+    if (link.geoId && remote) link.firmId=link.geoId;
     const merged={
       name:fields.name||remote?.name||'',phone:fields.phone||remote?.phone||'',
       address:fields.address||remote?.address||'',
@@ -318,7 +329,7 @@ async function handle2gisText(channel,chatId,text,{database=db,fetchImpl=fetch,a
     if (result.ok)clear(channel,chatId,database);
     return result;
   }
-  if (waiting?.stage==='link') return {ok:false,message:'Пришлите ссылку на организацию в 2ГИС.\n'+HELP};
+  if (waiting?.stage==='link') return {ok:false,message:'Пришлите ссылку на организацию или геообъект в 2ГИС.\n'+HELP};
   if (waiting?.stage==='details') {
     const fields=readFields(value);
     if (!fields||!fields.name)return {ok:false,message:'Нужно название заведения. Формат: Название | телефон | адрес'};
