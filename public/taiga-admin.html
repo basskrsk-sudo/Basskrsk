@@ -627,6 +627,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   <button class="nav-item" data-group="finance" onclick="showSection('economics')"><span class="nav-dot"></span> Финансы</button>
   <button class="nav-item" data-group="reports" onclick="showSection('payout-reports')"><span class="nav-dot"></span> Отчёты партнёрам</button>
   <button class="nav-item" data-group="system" onclick="showSection('launch')"><span class="nav-dot"></span> Система</button>
+  <button class="nav-item" data-group="max" onclick="showSection('max')"><span class="nav-dot"></span> MAX</button>
   <a id="partner-club-admin-link" href="partner-club-settings.html" class="nav-item" style="display:none;text-decoration:none;color:rgba(255,255,255,.8)"><span class="nav-dot"></span> 🐾 Клуб партнёров</a>
   <div class="sidebar-footer">
     <span>ИП Соколов В.П.</span>
@@ -1783,6 +1784,93 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
     </div>
 
+
+    <!-- ══ ЕДИНОЕ УПРАВЛЕНИЕ MAX-БОТОМ ══ -->
+    <div id="sec-max" style="display:none;">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <span>MAX · состояние бота</span>
+          <button type="button" class="row-btn" onclick="loadMaxAdmin()">↻ Обновить</button>
+        </div>
+        <p style="color:var(--muted);font-size:.84rem;line-height:1.6;">
+          Единый центр управления ботом: подключение, команды, тест сообщений и привязанные аккаунты.
+          Параметры доступа хранятся в Amvera и не отображаются здесь.
+          Статус настроек не заменяет проверку реальной доставки сообщения.
+        </p>
+        <div id="max-admin-status" role="status" aria-live="polite" style="font-size:.84rem;margin-bottom:.9rem;">Загрузка…</div>
+        <div id="max-admin-config" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.6rem;margin-bottom:.8rem;"></div>
+        <div id="max-admin-link" style="font-size:.82rem;"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Команды MAX</div>
+        <p style="color:var(--muted);font-size:.82rem;">
+          Рабочие команды регистрируются в штатном меню MAX при запуске сервера.
+          Кнопка ниже синхронизирует меню без перезапуска. Она доступна супер-администратору.
+        </p>
+        <div id="max-admin-commands" style="display:grid;gap:.45rem;margin:.8rem 0;">Загрузка…</div>
+        <div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;">
+          <button id="max-admin-sync" type="button" class="row-btn" style="display:none;" onclick="syncMaxAdminCommands()">↻ Синхронизировать меню MAX</button>
+          <span id="max-admin-sync-last" style="font-size:.76rem;color:var(--muted);"></span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Проверка доставки</div>
+        <p style="color:var(--muted);font-size:.82rem;line-height:1.6;">
+          Отправить одно тестовое сообщение в свой MAX, привязанный к исполнителю поручений
+          с тем же номером, который указан в аккаунте администратора.
+          Отправка другим людям с этого экрана недоступна.
+        </p>
+        <button type="button" id="max-admin-test-button" class="row-btn" onclick="sendMaxAdminTest()">🧪 Отправить тестовое сообщение</button>
+        <span style="font-size:.76rem;color:var(--muted);margin-left:.6rem;">Не чаще 1 раза в минуту</span>
+        <div id="max-admin-action-result" role="status" aria-live="polite" style="font-size:.82rem;margin-top:.7rem;"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <span>Подключённые к MAX пользователи</span>
+          <button type="button" class="row-btn" onclick="loadMaxConnections()">↻ Обновить список</button>
+        </div>
+        <div id="max-admin-connection-summary" style="font-size:.83rem;margin:.45rem 0 .8rem;" aria-live="polite">Загрузка…</div>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.85rem;">
+          <input id="max-admin-search" class="pm-input" type="search" maxlength="90"
+            placeholder="Поиск по имени, логину, телефону или салону"
+            aria-label="Поиск MAX-подключений" oninput="maxAdminScheduleSearch()"
+            style="flex:2;min-width:190px;">
+          <select id="max-admin-role" class="pm-select" aria-label="Фильтр MAX по роли"
+            onchange="maxAdminChangeFilter()" style="flex:1;min-width:150px;">
+            <option value="">Все роли</option>
+            <option value="customer">Покупатели</option>
+            <option value="partner">Грумеры</option>
+            <option value="owner">Владельцы салонов</option>
+            <option value="manager">Менеджеры</option>
+            <option value="assignee">Исполнители поручений</option>
+          </select>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;">
+            <thead><tr><th>Пользователь</th><th>Роль</th><th>Аккаунт / салон</th><th>Состояние</th><th>Управление</th></tr></thead>
+            <tbody id="max-admin-connections-body"><tr><td colspan="5">Загрузка…</td></tr></tbody>
+          </table>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:.65rem;margin-top:.85rem;flex-wrap:wrap;">
+          <button class="row-btn" id="max-admin-prev" type="button" onclick="maxAdminPage(-1)" disabled>← Назад</button>
+          <span id="max-admin-page-label" style="font-size:.8rem;">—</span>
+          <button class="row-btn" id="max-admin-next" type="button" onclick="maxAdminPage(1)" disabled>Далее →</button>
+        </div>
+        <p style="color:var(--muted);font-size:.75rem;margin:.85rem 0 0;">
+          Доступ к списку — только администраторам. Отключение конкретной привязки — только супер-администратору,
+          с подтверждением. Пароли, токены и полные идентификаторы чатов не отображаются.
+        </p>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Журнал управления MAX</div>
+        <div id="max-admin-history" style="font-size:.81rem;line-height:1.65;">Загрузка…</div>
+      </div>
+    </div>
+
     <!-- ══ ПОДКЛЮЧЕНИЯ TELEGRAM-БОТА ══ -->
     <div id="sec-telegram-connections" style="display:none;">
       <div class="card">
@@ -2671,6 +2759,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
 <script src="salon-photo-gallery.js?v=70"></script>
 <script src="telegram-connections.js?v=1"></script>
+<script src="max-admin.js?v=1"></script>
     <script src="/week-over-week.js"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
@@ -3327,15 +3416,15 @@ function drawPieChart(canvasId, legendId, labels, values, colors) {
 }
 
 // ── НАВИГАЦИЯ ПО РАЗДЕЛАМ ─────────────────────────────────────────────
-const sections = ['launch', 'system-health', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'week-comparison', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'qr-analytics', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'telegram-connections', 'point'];
-const titles = { launch: 'План запуска', 'system-health': 'Состояние системы', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'week-comparison': 'Неделя к неделе', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', 'qr-analytics':'Аналитика QR', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', 'telegram-connections': 'Telegram — подключения', point: '' };
+const sections = ['launch', 'system-health', 'guides', 'dashboard', 'bsc', 'tasks', 'economics', 'business-expenses', 'week-comparison', 'weekly-reports', 'payout-reports', 'orders', 'customers', 'stock', 'products', 'reviews', 'news', 'winback', 'partners', 'managers', 'points', 'owners', 'qr', 'qr-analytics', 'leads', 'warehouse', 'restock', 'audit', 'admins', 'telegram-connections', 'max', 'point'];
+const titles = { launch: 'План запуска', 'system-health': 'Состояние системы', guides: 'Инструкции', dashboard: 'Дашборд', bsc: 'Стратегия и показатели', tasks: 'Контроль поручений', economics: 'Экономика проекта', 'business-expenses': 'Траты бизнеса', 'week-comparison': 'Неделя к неделе', 'weekly-reports': 'Отчёт для планёрки ГД', orders: 'Заказы', customers: 'Клиенты', stock: 'Остатки на точках', products: 'Каталог товаров', reviews: 'Отзывы', news: 'Новости', winback: 'Возврат клиентов', partners: 'Грумеры', managers: 'Менеджеры', points: 'Точки', owners: 'Владельцы салонов', qr: 'QR-коды для точек', 'qr-analytics':'Аналитика QR', leads: 'Прозвон грумерских', warehouse: 'Центральный склад', restock: 'Перемещения', audit: 'Журнал действий', admins: 'Администраторы', 'telegram-connections': 'Telegram — подключения', max: 'MAX · управление ботом', point: '' };
 const sectionGroups = {
   'payout-reports':'reports',
   dashboard:'home', bsc:'strategy', tasks:'tasks', orders:'sales', customers:'sales',
   products:'inventory', stock:'inventory', warehouse:'inventory', restock:'inventory',
   points:'network', point:'network', partners:'network', managers:'network', owners:'network', qr:'network', 'qr-analytics':'network', leads:'network',
   news:'promotion', reviews:'promotion', winback:'promotion', economics:'finance', 'business-expenses':'finance', 'week-comparison':'finance', 'weekly-reports':'finance',
-  launch:'system', 'system-health':'system', guides:'system', audit:'system', admins:'system', 'telegram-connections':'system',
+  launch:'system', 'system-health':'system', guides:'system', audit:'system', admins:'system', 'telegram-connections':'system', max:'max',
 };
 titles['payout-reports'] = 'Отчёты партнёрам';
 const contextTabs = {
@@ -3453,6 +3542,7 @@ async function showSection(id) {
   if (id === 'audit')       await renderAuditLog();
   if (id === 'admins')      await renderAdmins();
   if (id === 'telegram-connections') await loadTelegramConnections();
+  if (id === 'max') await loadMaxAdmin();
 }
 
 let currentPointIdx = 0;
