@@ -9,6 +9,7 @@ const { safeFounder } = require('./business-founders');
 const { telegramStartLink } = require('./telegram-bot-identity');
 const { bindTelegramAccount } = require('./telegram-connection-alerts');
 const { normalizeRussianPhone } = require('./miniapp-phone-identity');
+const { MAX_AUTH_ENABLED } = require('./max-auth-policy');
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // час на использование ссылки
 
@@ -207,6 +208,7 @@ function registerAuthRoutes(router) {
   router.post('/api/max/connect/start', (req, res, ctx) => {
     const payload = requireAuth(Object.keys(maxAccountTables))(req, res, ctx);
     if (!payload) return;
+    if (!MAX_AUTH_ENABLED) return sendJson(res, 503, { error: 'Подключение MAX временно отключено' });
     const { isConfigured } = require('./max-bot');
     if (!isConfigured()) return sendJson(res, 503, { error: 'MAX-бот пока не настроен на сервере' });
     const tableName = maxAccountTables[payload.role];
@@ -231,6 +233,7 @@ function registerAuthRoutes(router) {
   router.get('/api/max/connect/check', (req, res, ctx) => {
     const payload = requireAuth(Object.keys(maxAccountTables))(req, res, ctx);
     if (!payload) return;
+    if (!MAX_AUTH_ENABLED) return sendJson(res, 503, { error: 'Подключение MAX временно отключено' });
     const token = String(ctx.query.token || '');
     if (!token) return sendJson(res, 400, { error: 'Не указан токен подключения' });
     const record = db.prepare('SELECT * FROM max_login_tokens WHERE token = ?').get(token);
@@ -622,6 +625,7 @@ function registerAuthRoutes(router) {
 
   // POST /api/customer/max/start { phone } — создаёт токен и ссылку-приглашение в бота MAX
   router.post('/api/customer/max/start', (req, res, ctx) => {
+    if (!MAX_AUTH_ENABLED) return sendJson(res, 503, { error: 'Вход через MAX временно отключён. Используйте Telegram или пароль.' });
     const { phone } = ctx.body || {};
     const digits = normalizePhoneDigits(phone);
     if (digits.length < 10) return sendJson(res, 400, { error: 'Укажите корректный номер телефона' });
@@ -637,12 +641,14 @@ function registerAuthRoutes(router) {
   });
 
   router.get('/api/customer/max/status', (req, res) => {
-    const { isConfigured } = require('./max-bot');
-    sendJson(res, 200, { enabled: isConfigured() });
+    // Old cached pages still query this route. Never advertise MAX while paused.
+    sendJson(res, 200, { enabled: MAX_AUTH_ENABLED && require('./max-bot').isConfigured() });
   });
 
   // GET /api/customer/max/check?token=... — фронтенд опрашивает, подтвердил ли клиент вход в боте MAX
   router.get('/api/customer/max/check', (req, res, ctx) => {
+    // Do not issue a session even if an old MAX token was already verified.
+    if (!MAX_AUTH_ENABLED) return sendJson(res, 503, { error: 'Вход через MAX временно отключён. Используйте Telegram или пароль.' });
     const token = ctx.query.token;
     if (!token) return sendJson(res, 400, { error: 'Укажите token' });
     const record = db.prepare("SELECT * FROM max_login_tokens WHERE token = ? AND role = 'customer'").get(token);

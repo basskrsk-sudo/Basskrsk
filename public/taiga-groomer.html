@@ -283,7 +283,6 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <script src="config.js"></script>
 <script src="payout-schedule.js"></script>
 <script src="telegram-connect.js?v=38"></script>
-<script src="max-connect.js?v=41"></script>
 <script src="cabinet-navigation.js?v=46"></script>
 <link rel="stylesheet" href="/notification-settings.css">
 </head>
@@ -786,7 +785,6 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
             </button>
           </div>
           <div id="partner-telegram-connect"></div>
-          <div id="partner-max-connect"></div>
           <div class="card">
             <div class="card-title">Безопасность</div>
             <button style="width:100%;background:none;border:1.5px solid var(--border);color:var(--text);border-radius:var(--r);padding:.6rem;font-size:.82rem;cursor:pointer;font-family:'Inter',sans-serif;margin-bottom:.5rem;">
@@ -1187,12 +1185,6 @@ async function onPartnerLoginSuccess(data) {
     role: 'partner',
     tokenGetter: getPartnerToken,
     connected: !!data.user.telegram_connected,
-  });
-  HvostMaxConnect.mount({
-    containerId: 'partner-max-connect',
-    role: 'partner',
-    tokenGetter: getPartnerToken,
-    connected: !!data.user.max_connected,
   });
   renderSec('home');
 }
