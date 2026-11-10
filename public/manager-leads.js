@@ -114,6 +114,18 @@
             '</button>';
         }).join('') : '<p class="hmleads-empty">Заявок по выбранным фильтрам нет.</p>') + '</div>';
     }
+
+    function sourceLink(lead) {
+      var source=String(lead.yandex_url||lead.dgis_url||'');
+      var trusted=/^https:\/\/yandex\.ru\/maps\/org\/[a-z0-9_-]+\/\d{5,20}$/i.test(source) ||
+        /^https:\/\/yandex\.ru\/maps\/org\/\d{5,20}$/i.test(source) ||
+        /^https:\/\/2gis\.ru\/[a-z0-9-]+\/(?:firm|geo)\/\d{10,20}$/i.test(source);
+      if(!trusted) return '';
+      var label=lead.yandex_url?'Открыть в Яндекс Картах':'Открыть в 2ГИС';
+      return '<p class="hmleads-sub"><a href="'+esc(source)+
+        '" target="_blank" rel="noopener noreferrer">'+label+'</a></p>';
+    }
+
     function detailField(title, control) {
       return '<label class="hmleads-field">' + title + control + '</label>';
     }
@@ -141,7 +153,7 @@
           '</div>' +
           (isNew ? detailField('Первый комментарий', '<textarea name="note" rows="3" placeholder="Откуда контакт, что обсудили"></textarea>') : '') +
           (!free ? '<button class="hmleads-primary" type="submit">' + (isNew ? 'Добавить в прозвон' : 'Сохранить изменения') + '</button>' : '') +
-        '</form>' +
+        '</form>' + (!isNew ? sourceLink(lead) : '') +
         (!isNew ? '<section class="hmleads-history"><h3>История переговоров</h3>' +
           (notes.length ? notes.map(function (note) {
             return '<div class="hmleads-note"><small>' + esc(timeLabel(note.created_at)) + ' · ' + esc(note.author) +
