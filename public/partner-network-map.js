@@ -77,8 +77,9 @@
     node.appendChild(root);
     var state = {
       node: node, map: null, records: [], city: '', status: 'all',
-      cache: Object.create(null), markers: Object.create(null), generation: 0,
-      limit: 48, loading: false, cities: [], shown: [], error: ''
+      cache: Object.create(null), geocodeStates: Object.create(null),
+      markers: Object.create(null), generation: 0,
+      limit: 40, loading: false, cities: [], shown: [], error: ''
     };
     function token() { return String(options.token() || ''); }
     function isAlive() { return current === instance && node.isConnected; }
@@ -114,8 +115,39 @@
       }).join('');
     }
     function itemId(i) { return (i.type === 'point' ? 'p:' : 'l:') + String(i.id); }
+    function itemPosition(item) { return position(item) || state.cache[itemId(item)] || null; }
+    function unplacedReason(item) {
+      if (itemPosition(item)) return '';
+      var key = itemId(item);
+      var result = state.geocodeStates[key];
+      if (!String(item.address || '').trim()) return 'Адрес отсутствует — добавьте улицу и дом в CRM';
+      if (result === 'needs_address') return 'Нужны город, улица и номер дома';
+      if (result === 'needs_verification') return 'Адрес не удалось определить до дома — проверьте его в CRM';
+      if (result === 'unavailable') return 'Сервис адресов недоступен — нажмите «Обновить»';
+      if (item.type === 'point') return 'Для точки не заданы координаты — проверьте настройки минимаркета';
+      return result === 'loading' ? 'Определяем адрес…' : 'Ожидает определения координат';
+    }
+    function renderUnplaced() {
+      var holder = root.querySelector('[data-map-attention]');
+      if (!holder) return;
+      var missing = items().filter(function(item) { return !itemPosition(item); });
+      if (!missing.length) { holder.hidden = true; holder.innerHTML = ''; return; }
+      holder.hidden = false;
+      holder.innerHTML = '<strong>⚠ Не отображаются на карте: ' + missing.length + '</strong>' +
+        '<p>Статусы сохранены в CRM. Для метки нужен проверенный адрес с номером дома. ' +
+        'Нажмите на карточку, чтобы посмотреть контакт и перейти к редактированию.</p>' +
+        '<div class="hm-map-unplaced">' + missing.slice(0, 35).map(function(item) {
+          return '<button type="button" class="hm-map-missing" data-map-item="' +
+            escapeHtml(itemId(item)) + '"><i style="background:' + colors[colorKey(item)] +
+            '"></i><span><b>' + escapeHtml(item.name) + '</b><small>' +
+            escapeHtml(labels[colorKey(item)]) + ' · ' + escapeHtml(unplacedReason(item)) +
+            '</small></span></button>';
+        }).join('') + '</div>' +
+        (missing.length > 35 ? '<p>Ещё ' + (missing.length - 35) +
+          ' карточек доступны в полном списке ниже.</p>' : '');
+    }
     function details(i, inBalloon) {
-      var coord = state.cache[addressQuery(i)] || position(i);
+      var coord = itemPosition(i);
       var route = coord ? 'https://yandex.ru/maps/?rtext=~' +
         encodeURIComponent(coord[0] + ',' + coord[1]) + '&rtt=auto' :
         'https://yandex.ru/maps/?text=' + encodeURIComponent(addressQuery(i) || i.name || '');
@@ -140,20 +172,15 @@
     }
     function statusText() {
       var all = items();
-      var mapped = all.filter(function (i) {
-        return !!(position(i) || state.cache[addressQuery(i)]);
-      }).length;
-      var withoutAddress = all.filter(function (i) {
-        return !(position(i) || addressQuery(i));
-      }).length;
-      var pending = all.length - mapped - withoutAddress;
+      var mapped = all.filter(function (i) { return !!itemPosition(i); }).length;
+      var missing = all.length - mapped;
       return 'На карте: ' + mapped + ' из ' + all.length +
-        (withoutAddress ? ' · Без точного адреса: ' + withoutAddress : '') +
-        (pending ? ' · Ожидают определения координат: ' + pending : '');
+        (missing ? ' · Не нанесены: ' + missing : ' · Все объекты нанесены');
     }
     function updateCount() {
       var counter = root.querySelector('[data-map-count]');
       if (counter) counter.textContent = statusText();
+      renderUnplaced();
     }
     function updateList() {
       var target = root.querySelector('[data-map-list]');
@@ -179,6 +206,7 @@
             '>' + labels[key] + '</option>';
         }).join('') + '</select></label></div>' +
         '<div class="hm-map-legend">' + legend() + '</div>' +
+        '<section class="hm-map-attention" data-map-attention hidden></section>' +
         '<div class="hm-map-canvas" data-map-canvas><p class="hm-map-muted">Загружаем карту…</p></div>' +
         '<div class="hm-map-counter" data-map-count>' + statusText() + '</div>' +
         '<button type="button" class="hm-map-more" data-map-more hidden>📍 Разместить ещё адреса</button>' +
@@ -194,7 +222,7 @@
       var detail = root.querySelector('[data-map-detail]');
       if (detail) detail.innerHTML = details(item, false);
       if (focus && state.map) {
-        var coords = state.cache[addressQuery(item)] || position(item);
+        var coords = itemPosition(item);
         if (coords) {
           state.map.setCenter(coords, Math.max(state.map.getZoom(), 15), { duration: 250 });
           var marker = state.markers[itemId(item)];
@@ -216,8 +244,10 @@
       state.markers[itemId(item)] = marker;
     }
     async function draw() {
-      ++state.generation;
-      var generation = state.generation;
+      var generation = ++state.generation;
+      Object.keys(state.geocodeStates).forEach(function (key) {
+        if (state.geocodeStates[key] === 'loading') delete state.geocodeStates[key];
+      });
       var filtered = items();
       updateList();
       var legendEl = root.querySelector('.hm-map-legend');
@@ -244,71 +274,86 @@
         if (!isAlive() || generation !== state.generation) return;
         if (!state.map) {
           canvas.innerHTML = '';
-          var first = filtered.map(position).find(Boolean) || [56.0097, 92.8526];
+          var first = filtered.map(itemPosition).find(Boolean) || [56.0097, 92.8526];
           state.map = new window.ymaps.Map(canvas, {
             center: first, zoom: 11, controls: ['zoomControl']
           });
         } else state.map.geoObjects.removeAll();
         state.markers = Object.create(null);
         filtered.forEach(function (item) {
-          var coords = position(item) || state.cache[addressQuery(item)];
+          var coords = itemPosition(item);
           if (coords) addMarker(item, coords);
         });
         function fit() {
-          if (state.map && state.map.geoObjects.getLength()) {
-            if (state.map.geoObjects.getLength() === 1) {
-              var marker = state.map.geoObjects.get(0);
-              state.map.setCenter(marker.geometry.getCoordinates(), 13);
-            } else state.map.setBounds(state.map.geoObjects.getBounds(),
-              { checkZoomRange: true, zoomMargin: 42, duration: 180 });
-          }
+          if (!state.map || !state.map.geoObjects.getLength()) return;
+          if (state.map.geoObjects.getLength() === 1) {
+            var marker = state.map.geoObjects.get(0);
+            state.map.setCenter(marker.geometry.getCoordinates(), 13);
+          } else state.map.setBounds(state.map.geoObjects.getBounds(),
+            { checkZoomRange: true, zoomMargin: 42, duration: 180 });
         }
         fit();
-        var unknown = filtered.filter(function (i) {
-          var query = addressQuery(i);
-          return !position(i) && query && !Object.prototype.hasOwnProperty.call(state.cache, query);
+
+        // IDs are resolved on the server: the browser never passes arbitrary
+        // untrusted addresses to a geocoder or exposes other managers' CRM.
+        var pending = filtered.filter(function(item) {
+          return item.type === 'lead' && !itemPosition(item) &&
+            !state.geocodeStates[itemId(item)];
         });
-        var batch = unknown.slice(0, state.limit);
-        more.hidden = unknown.length <= batch.length;
-        // Bounded queue, only when this tab is opened; never hammer API at page load.
-        for (var offset = 0; offset < batch.length; offset += 3) {
+        var batch = pending.slice(0, state.limit);
+        more.hidden = pending.length <= batch.length;
+        for (var offset = 0; offset < batch.length; offset += 5) {
           if (!isAlive() || generation !== state.generation) return;
-          await Promise.all(batch.slice(offset, offset + 3).map(async function (item) {
-            var query = addressQuery(item);
-            try {
-              var result = await window.ymaps.geocode(query, { results: 1 });
-              var geo = result.geoObjects.get(0);
-              var coords = geo && geo.geometry && geo.geometry.getCoordinates();
-              // Reject unusable coordinates: never make up a pin on failed geocode.
-              var meta = geo && geo.properties &&
-                geo.properties.get('metaDataProperty.GeocoderMetaData');
-              var precision = meta && meta.precision;
-              var line = geo && typeof geo.getAddressLine === 'function' ?
-                String(geo.getAddressLine() || '') : '';
-              var targetCity = String(item.city_name || '').toLowerCase();
-              var cityMatch = !targetCity || !line || line.toLowerCase().includes(targetCity);
-              var addressMatch = !precision || precision === 'exact' || precision === 'number';
-              state.cache[query] = cityMatch && addressMatch && Array.isArray(coords) &&
-                validCoordinate(coords[0], -90, 90) &&
-                validCoordinate(coords[1], -180, 180) ? coords : null;
-            } catch (_) {
-              state.cache[query] = null;
-            }
+          var page = batch.slice(offset, offset + 5);
+          page.forEach(function(item) { state.geocodeStates[itemId(item)] = 'loading'; });
+          updateCount();
+          try {
+            var response = await fetch('/api/partner-leads/network-map/coordinates', {
+              method: 'POST',
+              headers: {
+                'Authorization': 'Bearer ' + token(),
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({lead_ids: page.map(function(item) { return Number(item.id); })})
+            });
+            var result = await response.json().catch(function() { return {}; });
+            if (!response.ok) throw new Error(result.error || 'Ошибка определения адреса');
             if (!isAlive() || generation !== state.generation) return;
-            if (state.cache[query]) addMarker(item, state.cache[query]);
-            updateCount();
-          }));
+            (result.results || []).forEach(function(entry) {
+              var item = page.find(function(x) { return Number(x.id) === Number(entry.id); });
+              if (!item) return;
+              var id = itemId(item);
+              state.geocodeStates[id] = entry.status || 'needs_verification';
+              if (entry.status === 'mapped' &&
+                  validCoordinate(entry.lat, -90, 90) &&
+                  validCoordinate(entry.lng, -180, 180)) {
+                var coords = [Number(entry.lat), Number(entry.lng)];
+                state.cache[id] = coords;
+                addMarker(item, coords);
+              }
+            });
+            // Mark unknown response records as unresolved, not permanently loading.
+            page.forEach(function(item) {
+              if (state.geocodeStates[itemId(item)] === 'loading')
+                state.geocodeStates[itemId(item)] = 'unavailable';
+            });
+          } catch (_) {
+            if (!isAlive() || generation !== state.generation) return;
+            page.forEach(function(item) {
+              state.geocodeStates[itemId(item)] = 'unavailable';
+            });
+          }
+          updateCount();
         }
         if (isAlive() && generation === state.generation) {
           fit();
-          var left = filtered.filter(function (i) {
-            return !position(i) && addressQuery(i) &&
-              !Object.prototype.hasOwnProperty.call(state.cache, addressQuery(i));
+          var left = filtered.filter(function(item) {
+            return item.type === 'lead' && !itemPosition(item) &&
+              !state.geocodeStates[itemId(item)];
           });
           more.hidden = !left.length;
-          if (left.length) more.textContent = '📍 Разместить ещё ' +
-            Math.min(state.limit, left.length) + ' адресов';
-          // Null entries are intentionally not retried on every filter change.
+          if (left.length) more.textContent = '📍 Проверить ещё ' +
+            Math.min(40, left.length) + ' адресов';
           updateCount();
         }
       } catch (error) {
@@ -317,11 +362,14 @@
         canvas.innerHTML = '<p class="hm-map-muted">' +
           escapeHtml(error.message || 'Не удалось открыть карту') +
           '. Список и контакты доступны ниже.</p>';
+        updateCount();
       }
     }
     async function refresh() {
       ++state.generation;
       state.error = '';
+      state.geocodeStates = Object.create(null);
+      state.cache = Object.create(null);
       resetMap(); // A refreshed panel has a new map DIV; never reuse the old instance.
       root.innerHTML = '<p class="hm-map-muted">Загружаем актуальные записи CRM…</p>';
       try {
@@ -345,14 +393,14 @@
       if (event.target.matches('[data-map-city]')) state.city = event.target.value;
       else if (event.target.matches('[data-map-status]')) state.status = event.target.value;
       else return;
-      state.limit = 48;
+      state.limit = 40;
       draw();
     });
     root.addEventListener('click', function (event) {
       var refreshButton = event.target.closest('[data-map-refresh]');
       if (refreshButton) { refresh(); return; }
       var more = event.target.closest('[data-map-more]');
-      if (more) { state.limit += 48; draw(); return; }
+      if (more) { state.limit += 40; draw(); return; }
       var leadBtn = event.target.closest('[data-map-open-lead]');
       if (leadBtn && typeof options.onOpenLead === 'function') {
         options.onOpenLead(leadBtn.dataset.mapOpenLead);
