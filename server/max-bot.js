@@ -24,6 +24,7 @@ const MAX_BOT_COMMANDS = Object.freeze([
   { name: 'help', description: 'Все команды и быстрые действия' },
   { name: 'tasks', description: 'Мои поручения (для сотрудников)' },
   { name: 'stock', description: 'Остатки на точках (для сотрудников)' },
+  { name: 'app', description: 'Тестовое мини-приложение ХвостМаркета' },
 ]);
 
 function isConfigured() {
@@ -219,6 +220,34 @@ async function sendTaskInbox(chatId) {
   }
 }
 
+
+// The open_app button opens the Mini App registered for THIS bot in MAX
+// Business (it does not take an arbitrary external URL).
+function maxMiniAppKeyboard() {
+  const username = String(process.env.MAX_BOT_USERNAME || '').replace(/^@/, '').trim();
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(username)) return undefined;
+  return [{
+    type: 'inline_keyboard',
+    payload: { buttons: [[{
+      type: 'open_app', text: '🐾 Открыть тестовое приложение',
+      web_app: username,
+      payload: 'pilot_catalog',
+    }]] },
+  }];
+}
+async function sendMaxMiniApp(chatId) {
+  if (!chatId) return;
+  const keyboard = maxMiniAppKeyboard();
+  await sendMaxMessage(chatId,
+    '🐾 ХвостМаркет в MAX — тестовое мини-приложение.\n\n' +
+    'В нём можно выбрать минимаркет и проверить ассортимент и остатки. ' +
+    'Покупки и рабочие кабинеты пока отключены.\n\n' +
+    (keyboard
+      ? 'Нажмите кнопку, чтобы открыть мини-приложение.'
+      : 'Чтобы включить запуск, настройте бота MAX и зарегистрируйте URL мини-приложения.'),
+    keyboard);
+}
+
 function buildMaxHelp(chatId) {
   const id = String(chatId == null ? '' : chatId);
   const hasTasks = !!db.prepare(
@@ -234,11 +263,14 @@ function buildMaxHelp(chatId) {
     '/stock код_точки — Остатки по товарам и фасовкам',
     '',
     'Для /tasks и /stock нужен привязанный MAX-аккаунт сотрудника.',
+    '/app — тестовое мини-приложение для всех пользователей.',
     'Подтверждение отчёта об остатках — кнопкой в боте.',
   ];
   const buttons = [];
   if (hasTasks) buttons.push([{ type: 'callback', text: '📋 Мои поручения', payload: 'menu:tasks' }]);
   if (hasStock) buttons.push([{ type: 'callback', text: '📦 Остатки по точкам', payload: 'menu:stock' }]);
+  const appButton = maxMiniAppKeyboard()?.[0]?.payload?.buttons?.[0]?.[0];
+  if (appButton) buttons.push([appButton]);
   return {
     text: lines.join('\n'),
     attachments: buttons.length ? [{
@@ -453,6 +485,10 @@ async function processUpdate(update) {
     await sendMaxHelp(chatId);
     return;
   }
+  if (/^\/(?:app|shop|miniapp)$/i.test(cleaned)) {
+    await sendMaxMiniApp(chatId);
+    return;
+  }
   const stockCommand=pointStock.parseStockCommand(text);
   if (stockCommand) {
     if (!chatId) return;
@@ -478,6 +514,7 @@ async function processUpdate(update) {
 
 module.exports = {
   MAX_BOT_COMMANDS, configureMaxCommands, buildMaxHelp,
+  maxMiniAppKeyboard, sendMaxMiniApp,
   webhookStatus, ensureMaxWebhookUpdates,
   isConfigured,
   normalizePhone,

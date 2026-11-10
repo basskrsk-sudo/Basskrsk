@@ -52,6 +52,7 @@ const bot={
     {name:'help',description:'Все команды'},
     {name:'tasks',description:'Мои поручения'},
     {name:'stock',description:'Остатки'},
+    {name:'app',description:'Мини-приложение'},
   ],
   configureMaxCommands:async()=>{syncCalls++;return {ok:true};},
   webhookStatus:()=>({status:'ready',message:'Подписка проверена',checked_at:'2026-11-10T07:00:00Z'}),
@@ -91,7 +92,7 @@ test('MAX overview requires an active administrator and does not leak secrets or
   assert.equal(result.payload.webhook_secret_configured,true);
   assert.equal(result.payload.webhook_subscription.status,'ready');
   assert.equal(result.payload.bot_url,'https://max.ru/HvostMarketTest');
-  assert.deepEqual(result.payload.commands.map(item=>item.name),['start','help','tasks','stock']);
+  assert.deepEqual(result.payload.commands.map(item=>item.name),['start','help','tasks','stock','app']);
   assert.equal(result.payload.connections.people,4);
   assert.equal(result.payload.connections.accounts,4);
   assert.deepEqual(result.payload.self_connection,{connected:false,phone_configured:true});

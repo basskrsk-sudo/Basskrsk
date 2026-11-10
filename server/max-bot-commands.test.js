@@ -52,7 +52,7 @@ test('MAX official slash-command registration matches the 4 implemented entry po
   assert.equal(request.url,'https://platform-api2.max.ru/me/commands');
   assert.equal(request.method,'PATCH');
   assert.equal(request.headers.Authorization,'mock-max-help-token');
-  assert.deepEqual(request.body.commands.map(x=>x.name),['start','help','tasks','stock']);
+  assert.deepEqual(request.body.commands.map(x=>x.name),['start','help','tasks','stock','app']);
   assert.ok(request.body.commands.every(x=>x.description.length<=128));
 });
 test('help command lists actual commands with buttons only for permitted roles',()=>{
@@ -61,10 +61,30 @@ test('help command lists actual commands with buttons only for permitted roles',
   assert.match(allowed.text,/\/tasks/);
   assert.match(allowed.text,/\/stock/);
   assert.deepEqual(allowed.attachments[0].payload.buttons.map(row=>row[0].payload),
-    ['menu:tasks','menu:stock']);
+    ['menu:tasks','menu:stock','pilot_catalog']);
+  const appButton=allowed.attachments[0].payload.buttons[2][0];
+  assert.equal(appButton.type,'open_app');
+  assert.equal(appButton.web_app,'mock-max-help-bot');
+  assert.equal(appButton.payload,'pilot_catalog');
   const guest=bot.buildMaxHelp('88002');
   assert.match(guest.text,/привязанный MAX-аккаунт/);
-  assert.equal(guest.attachments,undefined);
+  assert.equal(guest.attachments[0].payload.buttons.length,1);
+  assert.equal(guest.attachments[0].payload.buttons[0][0].type,'open_app');
+});
+
+test('/app sends an open_app button to any private MAX user, no staff role required',async()=>{
+  const calls=await recordMax(async()=>{
+    await bot.processUpdate(updateMessage('88002','/app'));
+    await bot.processUpdate(updateMessage('88002','/shop'));
+  });
+  assert.equal(calls.length,2);
+  for(const call of calls) {
+    const btn=call.body.attachments?.[0]?.payload?.buttons?.[0]?.[0];
+    assert.equal(btn?.type,'open_app');
+    assert.equal(btn?.web_app,'mock-max-help-bot');
+    assert.equal(btn?.payload,'pilot_catalog');
+    assert.match(call.body.text,/тестовое мини-приложение/i);
+  }
 });
 test('start without token, /help, /commands and /menu return usable help',async()=>{
   const calls=await recordMax(async()=>{
@@ -103,6 +123,6 @@ test('unlinked user cannot receive working stock or task buttons',async()=>{
     await bot.processUpdate(updateMessage('88002','/stock'));
   });
   assert.equal(calls.length,2);
-  assert.equal(calls[0].body.attachments,undefined);
+  assert.equal(calls[0].body.attachments[0].payload.buttons[0][0].type,'open_app');
   assert.match(calls[1].body.text,/доступен только сотрудникам/);
 });
