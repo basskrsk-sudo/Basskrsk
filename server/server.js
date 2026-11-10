@@ -8,6 +8,8 @@
 require('./database-restore').applyPendingDatabaseRestore();
 
 const http = require('node:http');
+const { performance } = require('node:perf_hooks');
+const { recordApiRequest } = require('./api-performance');
 const fs = require('node:fs');
 const path = require('node:path');
 const { URL } = require('node:url');
@@ -258,7 +260,12 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   if (pathname.startsWith('/api/')) {
+    const startedAt = performance.now();
     const match = router.match(req.method, pathname);
+    // Use registered route templates, never user-supplied paths, in admin metrics.
+    res.once('finish', () => recordApiRequest(
+      `${req.method} ${match ? match.routePath : '/api/*'}`,
+      performance.now() - startedAt, res.statusCode));
     if (!match) return sendJson(res, 404, { error: 'Маршрут не найден' });
     const heavyUpload = isHeavyUpload(req.method, pathname);
     if (heavyUpload && activeHeavyUploads >= 1) {

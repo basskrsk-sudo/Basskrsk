@@ -10,6 +10,7 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireActiveAdmin } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
+const { snapshotApiPerformance } = require('./api-performance');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const BOOTED_AT = Date.now();
@@ -122,6 +123,7 @@ function metrics() {
     sample_schedule_drift_ms:lastSample ? lastSample.sample_schedule_drift_ms : null,
     cpu_percent:lastSample ? lastSample.cpu_percent : null,
     sampled_at:lastSample ? lastSample.time : null,
+    api_performance:snapshotApiPerformance(),
   };
 }
 async function alert(type, severity, detail) {

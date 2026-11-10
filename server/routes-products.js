@@ -10,12 +10,24 @@ const { sendJson } = require('./http-utils');
 const { requireAuth, requireActiveAdmin, requireSuperAdmin, tryAuth } = require('./routes-auth');
 const { reverseAndDeleteOrdersBy } = require('./order-reversal');
 const { buildCatalog } = require('./product-catalog');
+const { createSalesCountCache } = require('./product-sales-cache');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
 const { writeSalonPagesSnapshot } = require('./salon-page-storage');
 const { geocodeAddress } = require('./geocoding');
 
 const PRODUCT_CATEGORIES = new Set(['treats', 'toys', 'accessories', 'care']);
+
+// Historical popularity is not payment- or inventory-critical, unlike live stock.
+// Do not aggregate all past order items on every catalog refresh.
+const salesCountCache = createSalesCountCache(() => db.prepare(
+  'SELECT pv.product_id, COALESCE(SUM(oi.qty), 0) AS sales_count ' +
+  'FROM order_items oi ' +
+  'JOIN orders o ON o.id = oi.order_id ' +
+  'JOIN product_variants pv ON pv.id = oi.variant_id ' +
+  "WHERE o.status = 'paid' AND COALESCE(o.refund_status, 'none') != 'refunded' " +
+  'AND oi.is_custom = 0 GROUP BY pv.product_id'
+).all());
 
 // Папка с загруженными фото товаров — специально ВНЕ public/, в постоянном
 // хранилище (DATA_DIR, то же самое, где живёт база данных). public/
@@ -130,19 +142,7 @@ function registerProductRoutes(router) {
     // заказы не должны продолжать поднимать товар в блоке «Популярно рядом».
     // Считаем одним запросом для всего каталога, а не отдельным запросом на
     // каждый товар — это останется быстрым и при расширении ассортимента.
-    const salesRows = db.prepare(`
-      SELECT pv.product_id, COALESCE(SUM(oi.qty), 0) AS sales_count
-      FROM order_items oi
-      JOIN orders o ON o.id = oi.order_id
-      JOIN product_variants pv ON pv.id = oi.variant_id
-      WHERE o.status = 'paid'
-        AND COALESCE(o.refund_status, 'none') != 'refunded'
-        AND oi.is_custom = 0
-      GROUP BY pv.product_id
-    `).all();
-    const salesByProduct = new Map(
-      salesRows.map((row) => [Number(row.product_id), Number(row.sales_count) || 0])
-    );
+    const salesByProduct = salesCountCache.get();
     // Three bulk reads replace the former variants/stock/reviews N+1 pattern.
     const products = buildCatalog(rows, !!adminPayload, includeInactive, salesByProduct);
     sendJson(res, 200, { products });

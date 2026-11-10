@@ -89,3 +89,21 @@ test('SQL read count is constant regardless of number of products',()=>{
   assert.equal(result.find(p=>p.id===productId).sales_count,4);
   assert.equal(result.length,2);
 });
+
+test('product popularity is cached for one minute while new stock remains live',()=>{
+  const {createSalesCountCache}=require('./product-sales-cache');
+  let now=1000, queries=0, sales=4;
+  const cache=createSalesCountCache(()=>{queries++;return [{product_id:productId,sales_count:sales}];},
+    {ttlMs:60000,clock:()=>now});
+  assert.equal(cache.get().get(productId),4);
+  sales=5;
+  now+=30000;
+  assert.equal(cache.get().get(productId),4);
+  assert.equal(queries,1,'repeated requests must not re-aggregate paid history');
+  now+=30001;
+  assert.equal(cache.get().get(productId),5);
+  assert.equal(queries,2);
+  cache.invalidate();
+  assert.equal(cache.get().get(productId),5);
+  assert.equal(queries,3);
+});

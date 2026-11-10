@@ -3,7 +3,7 @@
 
 const db = require('./db');
 const crypto = require('node:crypto');
-const { verifyPassword, signToken, hashPassword } = require('./auth');
+const { verifyPasswordAsync, signToken, hashPassword } = require('./auth');
 const { sendJson } = require('./http-utils');
 const { safeFounder } = require('./business-founders');
 const { telegramStartLink } = require('./telegram-bot-identity');
@@ -97,7 +97,7 @@ function registerAuthRoutes(router) {
       return sendJson(res, 400, { error: 'Неизвестная роль' });
     }
 
-    if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
+    if (!user || !user.password_hash || !(await verifyPasswordAsync(password, user.password_hash))) {
       return sendJson(res, 401, { error: 'Неверный логин или пароль' });
     }
 
