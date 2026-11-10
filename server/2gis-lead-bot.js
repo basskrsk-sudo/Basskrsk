@@ -5,18 +5,22 @@
 // A Places API key is OPTIONAL: without it, ask for name/contact details.
 const db = require('./db');
 const crypto = require('node:crypto');
+const {parseYandexLink,extractYandexLink,parseMapShareFields,cityAliasFromAddress} =
+  require('./yandex-map-input');
 
-const HELP = '📍 Добавить организацию из 2ГИС:\n/2gis https://2gis.ru/krasnoyarsk/firm/70000001012345678\n' +
-  'или /2gis https://2gis.ru/krasnoyarsk/geo/70000001113304165\n\n' +
-  'После ввода данных бот покажет карточку для согласования.\n' +
-  'Только кнопка «✅ Добавить в обзвон» сохранит контакт.\n' +
-  'Можно сразу: /2gis <ссылка> | Название | +7... | Адрес';
+const HELP = '📍 Добавить контакт из Яндекс Карт или 2ГИС:\n' +
+  '/contact https://yandex.ru/maps/org/tsatsagrum/16856539729\n' +
+  '/contact https://2gis.ru/krasnoyarsk/firm/70000001012345678\n\n' +
+  'Можно просто переслать сообщение с названием, адресом и ссылкой.\n' +
+  'Если название неизвестно, бот попросит его указать.\n' +
+  'В CRM контакт попадёт только после согласования: ✅ Добавить в обзвон.\n' +
+  'Прежняя команда /2gis также работает.';
 const PENDING_TTL = 15 * 60 * 1000;
 const HOSTS = new Set(['2gis.ru', 'www.2gis.ru', '2gis.com', 'www.2gis.com',
   'go.2gis.com', 'go.2gis.ru']);
 const SHORT_HOSTS = new Set(['go.2gis.com','go.2gis.ru']);
 const VALID_PHONE = /^\+?[\d ()-]{7,30}$/;
-const COMMAND = /^\/(?:2gis|gis)(?:@[a-z0-9_]{3,50})?(?:\s+([\s\S]*))?$/i;
+const COMMAND = /^\/(?:contact|2gis|gis)(?:@[a-z0-9_]{3,50})?(?:\s+([\s\S]*))?$/i;
 const URL_IN_TEXT = /(?:https?:\/\/)?(?:go\.|www\.)?2gis\.(?:ru|com)\/[^\s|<>"']+/i;
 
 function ensureTables(database = db) {
@@ -199,9 +203,23 @@ function clear(channel,chatId,database=db) {
 }
 
 function existingLead(link, database = db) {
+  if(link.source==='yandex') {
+    return database.prepare('SELECT id,salon_name,assigned_manager_id,city_id FROM partner_leads '+
+      'WHERE yandex_org_id=? OR yandex_url=? ORDER BY id LIMIT 1')
+      .get(link.yandexOrgId,link.url);
+  }
   return database.prepare('SELECT id,salon_name,assigned_manager_id,city_id FROM partner_leads '+
     'WHERE (? IS NOT NULL AND dgis_firm_id=?) OR dgis_url=? ORDER BY id LIMIT 1')
     .get(link.firmId,link.firmId,link.url);
+}
+function parseAnyLink(raw) {
+  return parseYandexLink(raw) || parseLink(raw);
+}
+function extractAnyLink(text) {
+  const yandex=extractYandexLink(text);
+  const dgis=extractLink(text);
+  if(yandex && dgis) return null; // Ambiguous: ask for a single source.
+  return yandex || dgis;
 }
 
 function duplicateResult(account, existing) {
@@ -245,13 +263,19 @@ function createLead(account, link, fields, database = db) {
   try {
     const insert=database.prepare(
       'INSERT OR IGNORE INTO partner_leads(salon_name,category,city_id,address,phone,status,'+
-      'assigned_manager_id,dgis_firm_id,dgis_url) VALUES(?,?,?,?,?,?,?,?,?)'
+      'assigned_manager_id,dgis_firm_id,dgis_url,yandex_org_id,yandex_url) '+
+      'VALUES(?,?,?,?,?,?,?,?,?,?,?)'
     ).run(name,category,city||null,address||null,phone||null,'to_call',
-      account.role==='manager' ? account.id : null,link.firmId||null,link.url);
+      account.role==='manager' ? account.id : null,
+      link.source==='yandex'?null:link.firmId||null,
+      link.source==='yandex'?null:link.url,
+      link.source==='yandex'?link.yandexOrgId:null,
+      link.source==='yandex'?link.url:null);
     if (insert.changes) {
       recordId=Number(insert.lastInsertRowid);
       database.prepare('INSERT INTO partner_lead_notes(lead_id,author,note) VALUES(?,?,?)')
-        .run(recordId,account.author,'Добавлено из 2ГИС: '+link.url+
+        .run(recordId,account.author,
+          'Добавлено из '+(link.source==='yandex'?'Яндекс Карт':'2ГИС')+': '+link.url+
           (phone?' · Контактный телефон: '+phone:' · Телефон не указан'));
     }
     database.exec('RELEASE SAVEPOINT import_2gis_partner_lead');
@@ -275,7 +299,13 @@ function createLeadDuplicate(account,link,database) {
     {ok:false,message:'⚠️ Не удалось сохранить контакт. Повторите команду позже.'};
 }
 function readFields(input) {
-  const parts=String(input || '').split('|');
+  const text=String(input||'').trim();
+  if(!text.includes('|') && /[\r\n]/.test(text)) {
+    const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    if(lines.length>3) return null;
+    return {name:clean(lines[0]),phone:'',address:clean(lines.slice(1).join(', '),250)};
+  }
+  const parts=text.split('|');
   if (parts.length > 3) return null;
   return {name:clean(parts[0]),phone:clean(parts[1]||'',40),
     address:clean(parts[2]||'',250)};
@@ -286,9 +316,9 @@ function extractLink(text) {
   return stripLink(found[0]);
 }
 function prompted(link) {
-  return '📍 Ссылка 2ГИС принята: '+link.url+
+  return '📍 Ссылка '+(link.source==='yandex'?'Яндекс Карт':'2ГИС')+' принята: '+link.url+
     (link.geoId ? '\nЭто геообъект (адрес/здание), а не обязательно карточка организации.' : '')+
-    '\nНазвание организации не удалось получить автоматически.'+
+    '\nНазвание организации не указано в сообщении.'+
     '\n\nОтправьте следующим сообщением:\nНазвание | телефон | адрес\n'+
     'Достаточно названия; телефон и адрес необязательны.\n'+
     'После этого бот покажет карточку и попросит согласовать добавление.\n/cancel — отмена.';
@@ -317,16 +347,18 @@ function previewContact(channel,chatId,link,fields,account,database=db) {
     ...link,stage:'approval',name,phone,address,category:fields.category||null,
     cityAlias:fields.cityAlias||link.cityAlias,
   },database);
-  const kind=link.geoId && !link.firmId
-    ? '⚠️ Ссылка на геообъект — название заведения указано сотрудником.'
-    : 'Источник: карточка организации 2ГИС.';
+  const kind=link.source==='yandex'
+    ? 'Источник: Яндекс Карты. Название и адрес взяты из вашего сообщения.'
+    : link.geoId && !link.firmId
+      ? '⚠️ Ссылка на геообъект — название заведения указано сотрудником.'
+      : 'Источник: карточка организации 2ГИС.';
   const message='📋 Предлагаю добавить контакт в «Обзвон»:\n\n'+
     '🏪 Название: '+name+
     '\n📞 Телефон: '+(phone||'не указан')+
     '\n📍 Адрес: '+(address||'не указан')+
     '\n🏷️ Категория: '+(fields.category||'не определена')+
     '\n👤 Ответственный: '+(account.role==='manager'?'вы':'не назначен')+
-    '\n🔗 2ГИС: '+link.url+'\n'+kind+
+    '\n🔗 '+(link.source==='yandex'?'Яндекс Карты':'2ГИС')+': '+link.url+'\n'+kind+
     '\n\nКонтакт ещё НЕ добавлен в базу. Подтвердите действие:';
   return {ok:true,preview:true,message,...previewButtons(nonce)};
 }
@@ -340,7 +372,7 @@ function handle2gisCallback(channel,chatId,data,{database=db}={}) {
   }
   const request=pending(channel,chatId,database);
   if (!request || request.stage!=='approval' || request.nonce!==match[2]) {
-    return {ok:false,message:'Эта карточка устарела или уже обработана. Пришлите ссылку 2ГИС заново.'};
+    return {ok:false,message:'Эта карточка устарела или уже обработана. Пришлите ссылку карты заново.'};
   }
   if (match[1]==='no') {
     clear(channel,chatId,database);
@@ -348,7 +380,7 @@ function handle2gisCallback(channel,chatId,data,{database=db}={}) {
   }
   if (match[1]==='edit') {
     remember(channel,chatId,{
-      ...parseLink(request.url),firmId:request.firm_id,
+      ...parseAnyLink(request.url),firmId:request.firm_id,
       stage:'details',name:request.name,phone:request.phone,
       address:request.address,category:request.category,
       cityAlias:request.city_alias,
@@ -362,8 +394,8 @@ function handle2gisCallback(channel,chatId,data,{database=db}={}) {
       'Никаких записей в CRM ещё нет.'};
   }
   // The only new CRM insertion in the entire import flow.
-  const link=parseLink(request.url);
-  if (!link) return {ok:false,message:'Ссылка невалидна. Пришлите ссылку 2ГИС снова.'};
+  const link=parseAnyLink(request.url);
+  if (!link) return {ok:false,message:'Ссылка невалидна. Пришлите ссылку карты снова.'};
   if (request.firm_id) link.firmId=request.firm_id;
   const saved=createLead(account,link,{
     name:request.name,phone:request.phone||'',address:request.address||'',
@@ -377,46 +409,48 @@ async function handle2gisText(channel,chatId,text,{database=db,fetchImpl=fetch,a
   const value=String(text||'').trim();
   const command=value.match(COMMAND);
   const waiting=pending(channel,chatId,database);
-  const isLinkOnly=!!extractLink(value)&&
-    /^(?:https?:\/\/)?(?:go\.|www\.)?2gis\.(?:ru|com)\/[^\s|]+(?:\s*\|[\s\S]*)?$/i.test(value);
+  const foundInMessage=extractAnyLink(value);
+  const isMapShare=!!foundInMessage && !value.startsWith('/');
   const cancel=waiting && /^\/cancel(?:@\w+)?$/i.test(value);
-  if (!command && !isLinkOnly && !waiting) return null;
+  if (!command && !isMapShare && !waiting) return null;
   if (cancel) {
     clear(channel,chatId,database);
     return {ok:true,cancelled:true,message:'❌ Добавление отменено. В CRM ничего не записано.'};
   }
-  if (!command && value.startsWith('/') && !isLinkOnly) return null;
+  if (!command && value.startsWith('/')) return null;
   const user=identity(channel,chatId,database);
   if (!user) return {ok:false,message:'🔒 Добавление из 2ГИС доступно только активным менеджерам и администраторам с привязанным аккаунтом бота.'};
   if (user.role==='manager'&&!user.cityId)
     return {ok:false,message:'У менеджера не указан город в ХвостМаркете. Обратитесь к администратору.'};
 
   const args=command?(command[1]||'').trim():value;
-  const found=extractLink(args);
+  const found=extractAnyLink(args);
   if (command && !args) {
     remember(channel,chatId,{stage:'link'},database);
     return {ok:true,message:HELP+'\n\nПришлите ссылку следующим сообщением.'};
   }
   if (found) {
-    const extras=args.slice(args.indexOf(found)+found.length).trim().replace(/^\|/, '').trim();
-    const link=await resolve2gis(found,{fetchImpl});
+    const link=parseYandexLink(found)||await resolve2gis(found,{fetchImpl});
     if (!link) return {ok:false,message:
-      'Пришлите ссылку на организацию или геообъект 2ГИС (/firm/ или /geo/), не на маршрут или поиск.\n\n'+HELP};
+      'Нужна ссылка на организацию из Яндекс Карт (/maps/org/) или 2ГИС (/firm/, /geo/).\n\n'+HELP};
+    const fields=link.source==='yandex'
+      ? parseMapShareFields(args,found)
+      : parseMapShareFields(args,found);
+    if (!fields) return {ok:false,message:'Неверный формат. Укажите: Название | телефон | адрес или пришлите название и адрес отдельными строками.'};
     const duplicate=existingLead(link,database);
     if (duplicate) {
       clear(channel,chatId,database);
       return createLeadDuplicate(user,link,database);
     }
-    const fields=readFields(extras);
-    if (!fields) return {ok:false,message:'Неверный формат. Используйте: Название | телефон | адрес'};
-    const remote=(link.firmId || link.geoId)
+    const remote=link.source==='yandex'?null:(link.firmId || link.geoId)
       ? await fetch2gisCard(link.firmId || link.geoId,{key:apiKey,fetchImpl}) : null;
     if (link.geoId && remote) link.firmId=link.geoId;
     const merged={
       name:fields.name||remote?.name||'',
       phone:fields.phone||remote?.phone||'',
       address:fields.address||remote?.address||'',
-      category:remote?.category||null,cityAlias:remote?.cityAlias||link.cityAlias,
+      category:remote?.category||null,
+      cityAlias:remote?.cityAlias||link.cityAlias||cityAliasFromAddress(fields.address),
     };
     if (!merged.name) {
       remember(channel,chatId,{...link,stage:'details',
@@ -434,7 +468,7 @@ async function handle2gisText(channel,chatId,text,{database=db,fetchImpl=fetch,a
     if (!fields||!fields.name) {
       return {ok:false,message:'Нужно название заведения. Формат: Название | телефон | адрес'};
     }
-    const link=parseLink(waiting.url);
+    const link=parseAnyLink(waiting.url);
     if (!link) return {ok:false,message:'Ссылка устарела. Пришлите её заново.'};
     if (waiting.firm_id) link.firmId=waiting.firm_id;
     return previewContact(channel,chatId,link,{
@@ -446,4 +480,4 @@ async function handle2gisText(channel,chatId,text,{database=db,fetchImpl=fetch,a
 
 ensureTables();
 module.exports={parseLink,resolve2gis,fetch2gisCard,identity,handle2gisText,
-  handle2gisCallback,createLead,categoryFor,normalizePhone,HELP,ensureTables};
+  handle2gisCallback,createLead,categoryFor,normalizePhone,HELP,ensureTables,parseAnyLink,extractAnyLink};

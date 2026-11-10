@@ -150,6 +150,13 @@
       '<p data-call-message class="hmleads-mini-error" role="status" aria-live="polite"></p>'+
       '<button type="submit" class="hmleads-mini-save">✅ Сохранить итог</button></form>';
   }
+  function sourceAnchor(lead){
+    var source=String(lead.yandex_url||lead.dgis_url||'');
+    if(!/^https:\/\/yandex\.ru\/maps\/org\/(?:[a-z0-9_-]+\/)?\d{5,20}$/i.test(source) &&
+       !/^https:\/\/2gis\.ru\/[a-z0-9-]+\/(?:firm|geo)\/\d{10,20}$/i.test(source)) return '';
+    return '<a href="'+esc(source)+'" class="hmleads-mini-call" target="_blank" rel="noopener noreferrer">'+
+      (lead.yandex_url?'📍 Открыть в Яндекс Картах':'📍 Открыть в 2ГИС')+'</a>';
+  }
   async function detail(id){
     var req=serial;
     mode='detail';
@@ -164,6 +171,7 @@
         '<div class="hmleads-mini-target"><p>'+esc(current.address||'Адрес не указан')+'</p>'+
         '<p>'+esc(current.contact_name||'Контактное лицо не указано')+'</p>'+
         (href?'<a href="'+esc(href)+'" class="hmleads-mini-call">📞 '+esc(current.phone)+'</a>':'')+
+        sourceAnchor(current)+
         '<p>Статус: '+esc(label(statuses,current.status))+'</p></div>'+
         actions(current)+
         '<h2 class="hmleads-mini-history-title">История контактов</h2>'+

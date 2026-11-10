@@ -1756,6 +1756,12 @@ ensureColumn('manager_points', 'referred_owner_amount', 'INTEGER');
 // Reusable official 2GIS identity for CRM imports; nullable for other leads.
 ensureColumn('partner_leads','dgis_firm_id','TEXT');
 ensureColumn('partner_leads','dgis_url','TEXT');
+ensureColumn('partner_leads','yandex_org_id','TEXT');
+ensureColumn('partner_leads','yandex_url','TEXT');
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_leads_yandex_org "+
+  "ON partner_leads(yandex_org_id) WHERE yandex_org_id IS NOT NULL");
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_leads_yandex_url "+
+  "ON partner_leads(yandex_url) WHERE yandex_url IS NOT NULL");
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_leads_dgis_firm "+
   "ON partner_leads(dgis_firm_id) WHERE dgis_firm_id IS NOT NULL");
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_leads_dgis_url "+
