@@ -745,13 +745,21 @@ curl -X POST "https://platform-api2.max.ru/subscriptions" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://ваш-домен/api/max/webhook",
-    "update_types": ["bot_started", "message_created"],
+    "update_types": ["bot_started", "message_created", "message_callback"],
     "secret": "ВАШ_MAX_WEBHOOK_SECRET"
   }'
 ```
 
 Ожидаемый ответ: `{"success":true}`. Токен и webhook-секрет нельзя
 публиковать в коде, логах или переписке.
+
+**Важно:** для кнопок отчётов /stock и /tasks требуется тип события
+`message_callback`. Старые подписки, где были только `bot_started` и
+`message_created`, не доставляют нажатия в бота. При запуске приложение
+сверяет зарегистрированную подписку /api/max/webhook в MAX и дополняет
+недостающие типы через POST /subscriptions, сохраняя URL и остальные типы.
+Результат доступен в админке: MAX → Состояние webhook.
+Если синхронизация не удалась, супер-администратор может повторить её вручную.
 
 ### Telegram-бот «ХвостМаркет»
 

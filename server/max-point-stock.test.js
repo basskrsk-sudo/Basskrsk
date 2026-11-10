@@ -165,11 +165,12 @@ test('long detailed stock is split into MAX-safe messages',()=>{
 });
 
 test('MAX webhook consumes /stock then sends report only after callback confirmation',async()=>{
-  const sent=[];
+  const sent=[],responses=[];
   const original=global.fetch;
   global.fetch=async(url,options={})=>{
     const payload=options.body?JSON.parse(options.body):{};
     if(String(url).includes('/messages?')) sent.push(payload);
+    if(String(url).includes('/answers?')) responses.push(payload);
     return {ok:true,status:200,json:async()=>({message:{ok:true}})};
   };
   try{
@@ -185,10 +186,14 @@ test('MAX webhook consumes /stock then sends report only after callback confirma
     const pending=db.prepare("SELECT id FROM max_point_stock_approvals WHERE chat_id=? AND status='pending' ORDER BY id DESC LIMIT 1").get('700001');
     assert.ok(pending);
     await bot.processUpdate({
-      update_type:'message_callback',chat_id:'700001',
-      callback:{payload:'stk:yes:'+pending.id,callback_id:'stock-confirm-test'},
+      update_type:'message_callback',
+      message:{recipient:{chat_id:'700001'}},
+      callback:{payload:'stk:yes:'+pending.id,callback_id:'stock-confirm-test',user:{user_id:'75123'}},
     });
     assert.ok(sent.length>=2);
+    assert.equal(responses.length,1);
+    assert.match(responses[0].message.text,/Подтверждено/);
+    assert.deepEqual(responses[0].message.attachments,[], 'stock prompt buttons should disappear');
     const output=sent.at(-1).text;
     assert.match(output,/Барсик/);
     assert.match(output,/Собачий стиль/);

@@ -125,6 +125,7 @@ function readStatus(database=db, bot=maxBot) {
     commands:bot.MAX_BOT_COMMANDS.map(x=>({...x})),
     connections:connectionStats(database),
     last_manual_commands_sync:lastSync,
+    webhook_subscription:typeof bot.webhookStatus==='function' ? bot.webhookStatus() : null,
     // No external health probe is performed when opening this screen.
     detail:'Состояние настроек в Amvera, не проверка доставки MAX в реальном времени.',
   };
@@ -224,6 +225,28 @@ function registerMaxAdminRoutes(router,{database=db,bot=maxBot}={}) {
     sendJson(res,result.ok?200:503,
       result.ok?{ok:true,message:'Штатное меню MAX успешно обновлено'}:
         {error:'Не удалось обновить меню MAX. Проверьте настройки подключения и журнал сервера.'});
+  });
+  // Explicit retry for a missing callback subscription, with a cooldown
+  // and no secrets or subscription URLs returned to the browser.
+  router.post('/api/admin/max/webhook/sync',async(req,res,ctx)=>{
+    const admin=getAdmin(req,res,ctx,database,true);if(!admin)return;
+    const last=database.prepare(
+      "SELECT created_at FROM max_bot_admin_log WHERE admin_id=? "+
+      "AND action='sync_webhook' AND created_at>datetime('now','-20 seconds') "+
+      "ORDER BY id DESC LIMIT 1"
+    ).get(admin.id);
+    if(last)return sendJson(res,429,{error:'Повторная проверка webhook — не чаще одного раза за 20 секунд'});
+    record(admin.id,'sync_webhook',false,null,null,database);
+    const result=typeof bot.ensureMaxWebhookUpdates==='function'
+      ? await bot.ensureMaxWebhookUpdates()
+      : {ok:false,message:'Проверка подписки MAX недоступна в этой версии'};
+    database.prepare("UPDATE max_bot_admin_log SET success=? WHERE id=("+
+      "SELECT id FROM max_bot_admin_log WHERE admin_id=? "+
+      "AND action='sync_webhook' ORDER BY id DESC LIMIT 1)").run(result.ok?1:0,admin.id);
+    sendJson(res,result.ok?200:503,
+      result.ok?{ok:true,message:result.message}:{
+        error:result.message||'Не удалось проверить подписку MAX'
+      });
   });
   router.post('/api/admin/max/test',async(req,res,ctx)=>{
     const admin=getAdmin(req,res,ctx,database);if(!admin)return;

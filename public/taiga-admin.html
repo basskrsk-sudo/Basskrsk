@@ -1886,6 +1886,13 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div id="max-admin-status" role="status" aria-live="polite" style="font-size:.84rem;margin-bottom:.9rem;">Загрузка…</div>
         <div id="max-admin-config" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.6rem;margin-bottom:.8rem;"></div>
         <div id="max-admin-link" style="font-size:.82rem;"></div>
+        <div style="margin-top:.8rem;border-top:1px solid var(--border);padding-top:.8rem;">
+          <div style="font-size:.88rem;font-weight:600;margin-bottom:.4rem;">Состояние webhook и кнопок</div>
+          <div id="max-admin-webhook-status" role="status" aria-live="polite"
+            style="font-size:.82rem;line-height:1.6;">Загрузка…</div>
+          <button id="max-admin-webhook-sync" type="button" class="row-btn" style="display:none;margin-top:.55rem;"
+            onclick="syncMaxAdminWebhook()">↻ Проверить и восстановить webhook MAX</button>
+        </div>
       </div>
 
       <div class="card" style="margin-bottom:1rem;">
@@ -2883,7 +2890,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="salon-photo-gallery.js?v=70"></script>
 <script src="telegram-connections.js?v=1"></script>
 <script src="max-connect.js?v=2"></script>
-<script src="max-admin.js?v=2"></script>
+<script src="max-admin.js?v=3"></script>
 <script src="admin-navigation.js?v=1"></script>
 <script src="admin-point.js?v=1"></script>
 <script src="admin-report-center.js?v=1"></script>
