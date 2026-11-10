@@ -34,6 +34,10 @@ const FIRMA='70000001012345678';
 const FIRM_B='70000001012345679';
 const FIRM_C='70000001012345680';
 const ORIGINAL='https://2gis.ru/krasnoyarsk/firm/'+FIRMA;
+const GEO='70000001113304165';
+const GEO_URL='https://2gis.ru/krasnoyarsk/geo/'+GEO;
+const GEO_BRANCH='70000001113304166';
+
 
 test('accepts only 2GIS firm cards or supported 2GIS short links',()=>{
   const parsed=importer.parseLink(ORIGINAL+'?m=56.03,92.8/14');
@@ -50,6 +54,20 @@ test('accepts only 2GIS firm cards or supported 2GIS short links',()=>{
   ])assert.equal(importer.parseLink(invalid),null,invalid);
 });
 
+test('accepts the exact /geo/ link from 2GIS without mistaking the geo ID for a company',()=>{
+  const parsed=importer.parseLink(GEO_URL);
+  assert.ok(parsed);
+  assert.equal(parsed.geoId,GEO);
+  assert.equal(parsed.firmId,null);
+  assert.equal(parsed.short,false);
+  assert.equal(parsed.cityAlias,'krasnoyarsk');
+  assert.equal(parsed.url,GEO_URL);
+  assert.equal(importer.parseLink(GEO_URL+'?m=92.8,56.0/16#details').url,GEO_URL);
+  assert.equal(importer.parseLink(GEO_URL+'/?q=1').geoId,GEO);
+  assert.equal(importer.parseLink('https://2gis.ru/krasnoyarsk/geo/not-a-number'),null);
+  assert.equal(importer.parseLink('https://2gis.ru/krasnoyarsk/search/salon'),null);
+});
+
 test('short links are followed manually only across allowed hosts',async()=>{
   const result=await importer.resolve2gis('https://go.2gis.ru/AbCd',{
     fetchImpl:async(url,options)=>{
@@ -59,6 +77,11 @@ test('short links are followed manually only across allowed hosts',async()=>{
     },
   });
   assert.equal(result.firmId,FIRMA);
+  const geo=await importer.resolve2gis('https://go.2gis.ru/AbCd',{
+    fetchImpl:async()=>({status:302,headers:{get:()=>GEO_URL+'?m=55,66/15'}}),
+  });
+  assert.equal(geo.geoId,GEO);
+  assert.equal(geo.short,false);
   const blocked=await importer.resolve2gis('https://go.2gis.ru/AbCd',{
     fetchImpl:async()=>({status:302,headers:{get:()=> 'https://private.internal/metadata'}}),
   });
@@ -165,6 +188,69 @@ test('support one message with full details, including direct 2GIS share link',a
   assert.equal(lead.salon_name,'Кинолог Зверь');
   assert.equal(lead.phone,'+7 999 555-22-11');
   assert.equal(lead.address,'ул. Молокова, 18');
+});
+
+test('the exact /geo/ link works without a Places API key and is deduplicated across bots',async()=>{
+  // Do not infer the company name, phone or building from a bare /geo/ link.
+  const first=await importer.handle2gisText('telegram','812003','/2gis '+GEO_URL);
+  assert.equal(first.ok,true);
+  assert.match(first.message,/геообъект/);
+  assert.match(first.message,/Название \| телефон \| адрес/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM partner_leads WHERE dgis_url=?').get(GEO_URL).n,0);
+  const saved=await importer.handle2gisText('telegram','812003',
+    'Груминг для хвостиков | +7 900 111-22-44 | Красноярск, ул. Весны, 1');
+  assert.equal(saved.created,true);
+  const lead=db.prepare('SELECT * FROM partner_leads WHERE dgis_url=?').get(GEO_URL);
+  assert.equal(lead.dgis_firm_id,null,'geo ID is not a verified organization');
+  assert.equal(lead.status,'to_call');
+  assert.equal(lead.assigned_manager_id,mgrId);
+  assert.equal(lead.phone,'+7 900 111-22-44');
+  const duplicate=await importer.handle2gisText('max','812004',GEO_URL+'?test=1');
+  assert.equal(duplicate.duplicate,true);
+  assert.equal(duplicate.id,lead.id);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM partner_leads WHERE dgis_url=?').get(GEO_URL).n,1);
+});
+
+test('a /geo/ ID is promoted to firm ID only when official 2GIS API returns branch',async()=>{
+  let calls=0;
+  const result=await importer.handle2gisText('max','812002',
+    '/2gis https://2gis.ru/krasnoyarsk/geo/'+GEO_BRANCH,
+    {apiKey:'test-places-key',fetchImpl:async(url)=>{
+      calls++;
+      assert.equal(new URL(url).searchParams.get('id'),GEO_BRANCH);
+      return {ok:true,json:async()=>({meta:{code:200},result:{items:[{
+        id:GEO_BRANCH,type:'branch',name:'Зоосалон API',
+        full_address_name:'Красноярск, Мира 20',rubrics:[{name:'Груминг-салоны'}],
+      }]}})};
+    }},
+  );
+  assert.equal(calls,1);
+  assert.equal(result.created,true);
+  const lead=db.prepare('SELECT * FROM partner_leads WHERE dgis_firm_id=?').get(GEO_BRANCH);
+  assert.equal(lead.salon_name,'Зоосалон API');
+  assert.equal(lead.dgis_url,'https://2gis.ru/krasnoyarsk/geo/'+GEO_BRANCH);
+  assert.equal(lead.category,'groomer');
+  const duplicate=await importer.handle2gisText('telegram','812001',
+    '/2gis https://2gis.ru/krasnoyarsk/firm/'+GEO_BRANCH);
+  assert.equal(duplicate.duplicate,true);
+  assert.equal(duplicate.id,lead.id);
+});
+
+test('a /geo/ building response is never treated as a company',async()=>{
+  const id='70000001113304167';
+  const result=await importer.handle2gisText('max','812002',
+    '/2gis https://2gis.ru/krasnoyarsk/geo/'+id,
+    {apiKey:'test-places-key',fetchImpl:async()=>({ok:true,json:async()=>({
+      meta:{code:200},result:{items:[{id,type:'building',name:'Жилой дом',address_name:'Ленина, 1'}]},
+    })})},
+  );
+  assert.equal(result.ok,true);
+  assert.equal(result.created,undefined);
+  assert.match(result.message,/Название организации/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM partner_leads WHERE dgis_url=?')
+    .get('https://2gis.ru/krasnoyarsk/geo/'+id).n,0);
+  // No wrong company is stored; cancel the prompt.
+  assert.match((await importer.handle2gisText('max','812002','/cancel')).message,/отменено/);
 });
 
 test('draft can be cancelled and invalid entries are not created',async()=>{
