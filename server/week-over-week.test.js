@@ -170,8 +170,11 @@ test('admin week comparison tab is reachable and rendered through separate scrip
   const html=fs.readFileSync(path.join(__dirname,'../public/taiga-admin.html'),'utf8');
   const js=fs.readFileSync(path.join(__dirname,'../public/week-over-week.js'),'utf8');
   assert.match(html,/id="sec-week-comparison"/);
-  assert.match(html,/\['week-comparison','Неделя к неделе'\]/);
-  assert.match(html,/id === 'week-comparison'\) await renderWeekComparison/);
+  const reports=fs.readFileSync(path.join(__dirname,'../public/admin-report-center.js'),'utf8');
+   const navigation=fs.readFileSync(path.join(__dirname,'../public/admin-navigation.js'),'utf8');
+   assert.match(reports,/type:'weekcompare'/);
+   assert.match(reports,/target:'week-comparison'/);
+  assert.match(navigation,/id === 'week-comparison'\) await renderWeekComparison/);
   assert.match(html,/<script src="\/week-over-week.js"><\/script>/);
   assert.match(js,/authFetch\('\/api\/weekly-reports\/comparison/);
   assert.match(js,/function renderWeekComparison\(\)/);

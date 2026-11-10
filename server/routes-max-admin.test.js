@@ -178,10 +178,13 @@ test('frontend MAX management is a separate menu section with gated actions',()=
   const root=path.join(__dirname,'..');
   const adminHtml=fs.readFileSync(path.join(root,'public','taiga-admin.html'),'utf8');
   const frontend=fs.readFileSync(path.join(root,'public','max-admin.js'),'utf8');
-  assert.match(adminHtml,/data-group="max" onclick="showSection\('max'\)"/);
+  const navigation=fs.readFileSync(path.join(root,'public','admin-navigation.js'),'utf8');
+  assert.match(adminHtml,/data-group="system" onclick="showSection\('system-health'\)"/);
+  assert.match(navigation,/max:'system'/);
+  assert.match(navigation,/\['max','MAX'\]/);
   assert.match(adminHtml,/id="sec-max"/);
   assert.match(adminHtml,/src="max-admin\.js/);
-  assert.match(adminHtml,/if \(id === 'max'\) await loadMaxAdmin\(\)/);
+  assert.match(navigation,/if \(id === 'max'\) await loadMaxAdmin\(\)/);
   assert.match(frontend,/currentAdminRole==='super'/);
   assert.match(frontend,/disconnectMaxAdminAccount/);
   assert.doesNotMatch(frontend,/MAX_BOT_TOKEN|MAX_WEBHOOK_SECRET/);
