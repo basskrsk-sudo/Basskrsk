@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="telegram-connect.css?v=38">
 <link rel="stylesheet" href="cabinet-navigation.css?v=46">
 <link rel="stylesheet" href="manager-leads.css?v=1">
+<link rel="stylesheet" href="partner-network-map.css?v=1">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 html { font-size: 16px; }
@@ -363,6 +364,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
   <button class="nav-item" data-group="income" onclick="showSec('earnings')"><span class="nav-dot"></span> Доход</button>
   <button class="nav-item" data-group="growth" onclick="showSec('recruit')"><span class="nav-dot"></span> Развитие сети</button>
   <button class="nav-item" data-group="leads" onclick="showSec('leads')"><span class="nav-dot"></span> 📞 Прозвон</button>
+        <button class="nav-item" data-group="map" onclick="showSec('network-map')"><span class="nav-dot"></span> 🗺️ Карта сети</button>
   <button class="nav-item" data-group="profile" onclick="showSec('profile')"><span class="nav-dot"></span> Профиль</button>
   <div class="sidebar-footer">
     <span>v1.0</span>
@@ -704,6 +706,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
     <!-- CRM PROZVON: exactly the same backend as in the admin cabinet. -->
     <div class="page-sec" id="sec-leads"><div id="manager-leads-panel"></div></div>
+    <div class="page-sec" id="sec-network-map"><div id="manager-network-map"></div></div>
 
     <!-- ══ CALCULATOR ══ -->
     <div class="page-sec" id="sec-calculator">
@@ -888,6 +891,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
 <script src="salon-photo-gallery.js?v=70"></script>
 <script src="manager-leads.js?v=1"></script>
+<script src="partner-network-map.js?v=1"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 let MY_POINTS = [];
@@ -1404,8 +1408,8 @@ document.getElementById('l-login').addEventListener('keydown',e=>{if(e.key==='En
 document.getElementById('l-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 
 // ── NAV ──────────────────────────────────────────────────────────────
-const SECS={home:'Главная',points:'Мои точки',orders:'Заказы',stock:'Остатки на точках',partners:'Партнёры на точках',restock:'Пополнение',earnings:'Доход',recruit:'Привлечение точек',leads:'Прозвон партнёров',calculator:'Калькулятор дохода',qr:'QR-коды для точек',profile:'Профиль'};
-const MANAGER_SECTION_GROUPS={home:'home',points:'points',orders:'points',stock:'points',partners:'points',restock:'points',qr:'points',earnings:'income',calculator:'income',recruit:'growth',leads:'leads',profile:'profile'};
+const SECS={home:'Главная',points:'Мои точки',orders:'Заказы',stock:'Остатки на точках',partners:'Партнёры на точках',restock:'Пополнение',earnings:'Доход',recruit:'Привлечение точек',leads:'Прозвон партнёров','network-map':'Карта сети',calculator:'Калькулятор дохода',qr:'QR-коды для точек',profile:'Профиль'};
+const MANAGER_SECTION_GROUPS={home:'home',points:'points',orders:'points',stock:'points',partners:'points',restock:'points',qr:'points',earnings:'income',calculator:'income',recruit:'growth',leads:'leads','network-map':'map',profile:'profile'};
 HvostCabinetNavigation.init({sidebarId:'manager-sidebar',overlayId:'manager-sidebar-overlay',tabsId:'manager-context-tabs',initialSection:'home',sectionGroups:MANAGER_SECTION_GROUPS,tabs:{points:[['points','Точки'],['orders','Заказы'],['stock','Остатки'],['partners','Партнёры'],['restock','Пополнение'],['qr','QR-коды']],income:[['earnings','Начисления'],['calculator','Калькулятор']]}});
 function showSec(id){
   currentSec=id;
@@ -1426,6 +1430,10 @@ function renderSec(id){
   if(id==='restock') { renderRestock(); renderManagerCustomerRestock(); }
   if(id==='recruit') loadPointsForRegistrationForms();
   if(id==='leads' && window.HvostManagerLeads) window.HvostManagerLeads.mount(document.getElementById('manager-leads-panel'), { token:getMgrToken });
+  if(id==='network-map' && window.HvostPartnerNetworkMap) window.HvostPartnerNetworkMap.mount(
+    document.getElementById('manager-network-map'), { token:getMgrToken,
+      onOpenLead:function(id){ showSec('leads'); var panel=document.getElementById('manager-leads-panel');
+        if(panel && window.HvostManagerLeads) window.HvostManagerLeads.mount(panel,{token:getMgrToken}).open(id); } });
   if(id==='calculator') renderCalculator();
   if(id==='qr') qrInitSection();
 }

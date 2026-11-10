@@ -16,7 +16,7 @@ const titles={
   products:'Каталог товаров',reviews:'Отзывы',news:'Новости',
   winback:'Возврат клиентов',partners:'Грумеры',managers:'Менеджеры',
   points:'Сеть точек',owners:'Владельцы салонов',qr:'QR-коды',
-  'qr-analytics':'Аналитика QR',leads:'Привлечение салонов',
+  'qr-analytics':'Аналитика QR',leads:'Привлечение салонов', 'network-map':'Карта сети',
   warehouse:'Центральный склад',restock:'Перемещения',
   audit:'Журнал действий',admins:'Администраторы',
   'telegram-connections':'Telegram · подключения',
@@ -27,7 +27,7 @@ const titles={
 const sectionGroups={
   dashboard:'home',
   points:'network',point:'network',partners:'network',managers:'network',
-  owners:'network',leads:'network',qr:'network',
+  owners:'network',leads:'network','network-map':'network',qr:'network',
   products:'inventory',stock:'inventory',warehouse:'inventory',restock:'inventory',
   orders:'sales',customers:'sales',
   campaigns:'promotion',news:'promotion',reviews:'promotion',winback:'promotion',
@@ -43,7 +43,7 @@ const sectionGroups={
 // as context tabs or from the centralized report/point workspaces.
 const contextTabs={
   network:[['points','Точки'],['partners','Грумеры'],['owners','Владельцы'],
-    ['managers','Менеджеры'],['leads','Привлечение'],['qr','QR-коды']],
+    ['managers','Менеджеры'],['leads','Привлечение'],['network-map','Карта сети'],['qr','QR-коды']],
   inventory:[['products','Каталог'],['stock','На точках'],
     ['warehouse','Центральный склад'],['restock','Перемещения']],
   sales:[['orders','Заказы'],['customers','Покупатели']],
@@ -142,6 +142,15 @@ async function showSection(id) {
   if (id === 'qr')          await qrInitSection();
   if (id === 'qr-analytics') await loadQrAnalytics();
   if (id === 'leads')       await renderLeads();
+  if (id === 'network-map' && window.HvostPartnerNetworkMap) {
+    window.HvostPartnerNetworkMap.mount(document.getElementById('admin-network-map'), {
+      token: function () { return adminToken; },
+      onOpenLead: async function (id) {
+        await showSection('leads');
+        await openLeadModal(Number(id));
+      },
+    });
+  }
   if (id === 'warehouse')   { await loadAdminProducts(); await populateReceiptForm(); await renderWarehouse(); }
   if (id === 'restock')     await Promise.all([renderStockMovements(), renderAdminCustomerRestock()]);
   if (id === 'audit')       await renderAuditLog();

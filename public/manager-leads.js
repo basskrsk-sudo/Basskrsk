@@ -282,6 +282,7 @@
     });
     var instance = {
       reload: reload,
+      open: open,
       destroy: function () { alive = false; instances.delete(container); container.textContent = ''; },
     };
     instances.set(container, instance);

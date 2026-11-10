@@ -1141,6 +1141,32 @@
       document.getElementById('workManagerLeads').innerHTML = problem('Раздел прозвона не загрузился. Обновите страницу.');
     }
   }
+  // Both staff roles use the same read-only operational map.
+  function openNetworkMap() {
+    var role = activeRole;
+    if (!((role === 'manager' && phoneRoleAvailable('manager')) ||
+          (role === 'admin' && adminRegisterAuthorized())) || !getToken(role)) return;
+    root.innerHTML = dashboardHeader(role) +
+      '<button class="work-back" type="button" data-work-action="network-map-back">← В кабинет</button>' +
+      '<div id="workPartnerNetworkMap"></div>';
+    var node = document.getElementById('workPartnerNetworkMap');
+    if (!window.HvostPartnerNetworkMap) {
+      node.innerHTML = problem('Карта не загрузилась. Обновите мини-приложение.');
+      return;
+    }
+    window.HvostPartnerNetworkMap.mount(node, {
+      token: function () { return getToken(role); },
+      onOpenLead: role === 'manager' ? function (id) {
+        openManagerLeads();
+        var panel = document.getElementById('workManagerLeads');
+        if (panel && window.HvostManagerLeads) {
+          window.HvostManagerLeads.mount(panel, {
+            token: function () { return getToken('manager'); }
+          }).open(id);
+        }
+      } : undefined
+    });
+  }
   function managerDashboard(data) {
     // manager.points is a legacy payout/referral ledger, not the live network.
     // Only the server-verified canonical points directory may drive this panel.
@@ -1163,6 +1189,9 @@
     html += surface('📍 Новые минимаркеты',
       '<button type="button" class="work-primary" data-work-action="manager-point-new">➕ Добавить минимаркет</button>' +
       '<p class="work-note">Точка автоматически закрепится за вами, появится на карте и будет доступна для регистрации сотрудников.</p>');
+    html += surface('🗺️ Карта сети',
+      '<button type="button" class="work-primary" data-work-action="network-map-open">🗺️ Открыть карту</button>' +
+      '<p class="work-note">Цветные метки действующих минимаркетов, звонков, переговоров и отказов.</p>');
     html += surface('📞 Прозвон потенциальных партнёров',
       '<button type="button" class="work-primary" data-work-action="manager-leads-open">Открыть прозвон →</button>' +
       '<p class="work-note">Общая с админкой база: звонки, договорённости и следующий контакт.</p>');
@@ -1563,6 +1592,9 @@
       '<button class="work-primary" type="button" data-work-action="admin-wh-open">' +
       '📦 Добавить или удалить товар</button>' +
       '<p class="work-note">Приход, списание и удаление складской позиции с записью в журнал. Остатки в салонах не изменяются.</p>');
+    html += surface('🗺️ Карта сети',
+      '<button type="button" class="work-primary" data-work-action="network-map-open">🗺️ Открыть карту</button>' +
+      '<p class="work-note">Минимаркеты и статусы обзвона в одном месте.</p>');
     html += surface('➕ Управление сетью',
       '<div class="work-register-actions">' +
       '<button class="work-primary" type="button" data-work-action="admin-reg-point">📍 Добавить минимаркет</button>' +
@@ -1677,6 +1709,8 @@
     if (action === 'admin-reg-retry' && activeRole === 'admin' && adminRegistrationKind)
       return openAdminRegistration(adminRegistrationKind);
     if (action === 'admin-reg-back' && activeRole === 'admin') return closeAdminRegistration();
+    if (action === 'network-map-open' && (activeRole === 'manager' || activeRole === 'admin')) return openNetworkMap();
+    if (action === 'network-map-back' && (activeRole === 'manager' || activeRole === 'admin')) return chooseRole(activeRole);
     if (action === 'manager-leads-open' && activeRole === 'manager') return openManagerLeads();
     if (action === 'manager-leads-back' && activeRole === 'manager') return chooseRole('manager');
     if (action === 'manager-point-new' && activeRole === 'manager') return openManagerNewPoint();
