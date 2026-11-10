@@ -49,6 +49,38 @@
     return (city && !address.toLowerCase().includes(city.toLowerCase()))
       ? city + ', ' + address : address;
   }
+  // Open the organization profile when its verified Yandex organization
+  // ID is available. Coordinates are NOT a profile ID.
+  function venueYandexLink(item) {
+    var id = String(item.yandex_org_id || '').trim();
+    if (/^\d{5,20}$/.test(id)) {
+      return { url: 'https://yandex.ru/maps/org/' + id + '/', direct: true };
+    }
+    // Existing CRM can store a direct Yandex organization URL.
+    // Ignore navigation, generic map, and non-Yandex URLs.
+    var stored = String(item.yandex_url || '').trim();
+    if (stored) {
+      try {
+        var parsed = new URL(stored);
+        if (parsed.protocol === 'https:' &&
+            (parsed.hostname === 'yandex.ru' || parsed.hostname === 'www.yandex.ru')) {
+          var matched = parsed.pathname.match(/^\/maps\/org\/(?:[^/]+\/)?(\d{5,20})\/?$/);
+          if (matched) {
+            return { url: 'https://yandex.ru/maps/org/' + matched[1] + '/', direct: true };
+          }
+        }
+      } catch (_) {}
+    }
+    // Unverified external listings do not all include Yandex profile IDs.
+    // Search using the organization name and address rather than routing.
+    var name = String(item.name || '').trim();
+    var address = addressQuery(item) || String(item.city_name || '').trim();
+    var query = [name, address].filter(Boolean).join(', ') || 'Красноярск';
+    return {
+      url: 'https://yandex.ru/maps/?mode=search&text=' + encodeURIComponent(query),
+      direct: false
+    };
+  }
   function mapsScript(key) {
     if (window.ymaps && typeof window.ymaps.ready === 'function')
       return new Promise(function(resolve) { window.ymaps.ready(function() { resolve(window.ymaps); }); });
@@ -157,10 +189,7 @@
           ' карточек доступны в полном списке ниже.</p>' : '');
     }
     function details(i, inBalloon) {
-      var coord = itemPosition(i);
-      var route = coord ? 'https://yandex.ru/maps/?rtext=~' +
-        encodeURIComponent(coord[0] + ',' + coord[1]) + '&rtt=auto' :
-        'https://yandex.ru/maps/?text=' + encodeURIComponent(addressQuery(i) || i.name || '');
+      var yandex = venueYandexLink(i);
       var phone = String(i.phone || '').replace(/[^\d+]/g, '');
       var html = '<div class="hm-map-card">' +
         '<div class="hm-map-card-title">' + escapeHtml(i.name) + '</div>' +
@@ -177,8 +206,9 @@
           escapeHtml(phone) + '">' + escapeHtml(i.phone) + '</a></p>' : '') +
         (i.next_contact_date && i.type === 'lead' ?
           '<p>Следующий контакт: ' + escapeHtml(i.next_contact_date) + '</p>' : '') +
-        '<a target="_blank" rel="noopener noreferrer" href="' + escapeHtml(route) +
-        '">Открыть в Яндекс Картах</a>' +
+        '<a target="_blank" rel="noopener noreferrer" href="' + escapeHtml(yandex.url) +
+        '">' + (yandex.direct ? 'Открыть карточку в Яндекс Картах' :
+          'Найти организацию в Яндекс Картах') + '</a>' +
         (!inBalloon && i.type === 'lead' && typeof options.onOpenLead === 'function' ?
           '<button type="button" class="hm-map-action" data-map-open-lead="' +
           escapeHtml(i.id) + '">Открыть в базе обзвона</button>' : '') +
@@ -484,5 +514,5 @@
     refresh();
     return instance;
   }
-  window.HvostPartnerNetworkMap = { mount: mount };
+  window.HvostPartnerNetworkMap = { mount: mount, venueYandexLink: venueYandexLink };
 })();

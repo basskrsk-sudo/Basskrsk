@@ -216,7 +216,13 @@ function registerPartnerLeadRoutes(router, options = {}) {
 
     const pointSql = [
       'SELECT p.id, p.name, p.addr AS address, p.city_id,',
-      'c.name AS city_name, p.lat, p.lng',
+      'c.name AS city_name, p.lat, p.lng,',
+      '(SELECT l.yandex_org_id FROM partner_leads l WHERE l.linked_point_id=p.id',
+      "AND l.yandex_org_id IS NOT NULL AND l.yandex_org_id<>''",
+      'ORDER BY l.id DESC LIMIT 1) AS yandex_org_id,',
+      '(SELECT l.yandex_url FROM partner_leads l WHERE l.linked_point_id=p.id',
+      "AND l.yandex_url IS NOT NULL AND l.yandex_url<>''",
+      'ORDER BY l.id DESC LIMIT 1) AS yandex_url',
       'FROM points p LEFT JOIN cities c ON c.id=p.city_id',
       'WHERE p.active=1 AND COALESCE(p.is_hub,0)=0',
       manager ? 'AND p.manager_id=?' : '',
@@ -226,6 +232,7 @@ function registerPartnerLeadRoutes(router, options = {}) {
       .map(p => ({
         type: 'point', id: p.id, name: p.name, address: p.address,
         city_id: p.city_id, city_name: p.city_name, lat: p.lat, lng: p.lng,
+        yandex_org_id: p.yandex_org_id, yandex_url: p.yandex_url,
         status: 'active'
       }));
     const activeIds = new Set(points.map(point => String(point.id)));
@@ -235,6 +242,7 @@ function registerPartnerLeadRoutes(router, options = {}) {
 
     const leadsSql = [
       'SELECT l.id, l.salon_name AS name, l.address, l.phone,',
+      'l.yandex_org_id, l.yandex_url,',
       'l.status, l.category, l.city_id,',
       "COALESCE(c.name, mc.name, CASE WHEN l.city_id IS NULL THEN 'Красноярск' END) AS city_name,",
       'l.next_contact_date, l.assigned_manager_id, l.linked_point_id',
@@ -255,6 +263,7 @@ function registerPartnerLeadRoutes(router, options = {}) {
       .map(lead => ({
         type: 'lead', id: lead.id, name: lead.name,
         address: lead.address, phone: lead.phone, status: lead.status,
+        yandex_org_id: lead.yandex_org_id, yandex_url: lead.yandex_url,
         category: lead.category, city_id: lead.city_id,
         city_name: lead.city_name, next_contact_date: lead.next_contact_date,
         // Leads have no persistent coordinates. They are requested on demand

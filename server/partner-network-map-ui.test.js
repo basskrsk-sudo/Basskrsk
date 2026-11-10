@@ -55,3 +55,62 @@ test('114 external candidates use a separate purple layer with district filter',
   assert.match(css, /hm-map-candidate-controls/);
   assert.doesNotThrow(() => new Function(script));
 });
+
+
+test('Yandex links open an organization card when ID exists; otherwise salon search, never a route', () => {
+  const vm = require('node:vm');
+  const script = read('partner-network-map.js');
+  const context = { window: {}, URL };
+  vm.runInNewContext(script, context);
+  const link = context.window.HvostPartnerNetworkMap.venueYandexLink;
+  assert.equal(typeof link, 'function');
+  const direct = link({
+    name: 'Цацагрум',
+    address: 'Красноярск, улица Перенсона, 5А',
+    yandex_org_id: '16856539729',
+    lat: 56.0, lng: 92.0
+  });
+  assert.equal(direct.url, 'https://yandex.ru/maps/org/16856539729/');
+  assert.equal(direct.direct, true);
+
+  const knownUrl = link({
+    name: 'Цацагрум',
+    address: 'Красноярск, улица Перенсона, 5А',
+    yandex_url: 'https://yandex.ru/maps/org/tsatsagrum/16856539729?si=example'
+  });
+  assert.equal(knownUrl.url, direct.url);
+  assert.equal(knownUrl.direct, true);
+
+  const external = link({
+    name: 'Цацагрум',
+    address: 'ул. Перенсона, 5А',
+    city_name: 'Красноярск',
+    lat: 56.01, lng: 92.80
+  });
+  assert.equal(external.direct, false);
+  const queryUrl = new URL(external.url);
+  assert.equal(queryUrl.hostname, 'yandex.ru');
+  assert.equal(queryUrl.searchParams.get('mode'), 'search');
+  assert.match(queryUrl.searchParams.get('text'), /Цацагрум/);
+  assert.match(queryUrl.searchParams.get('text'), /Перенсона, 5А/);
+  assert.match(queryUrl.searchParams.get('text'), /Красноярск/);
+  assert.equal(queryUrl.searchParams.has('rtext'), false);
+  assert.equal(queryUrl.searchParams.has('rtt'), false);
+  assert.equal(queryUrl.searchParams.has('rtn'), false);
+
+  const foreign = link({
+    name: 'Цацагрум',
+    address: 'Красноярск, улица Перенсона, 5А',
+    yandex_url: 'https://example.com/maps/org/tsatsagrum/16856539729'
+  });
+  assert.equal(foreign.direct, false);
+  assert.ok(foreign.url.includes('mode=search'));
+
+  const oldRoute = link({
+    name: 'Цацагрум',
+    address: 'Красноярск, улица Перенсона, 5А',
+    yandex_url: 'https://yandex.ru/maps/?rtext=~56.01,92.80&rtt=auto'
+  });
+  assert.equal(oldRoute.direct, false);
+  assert.ok(!oldRoute.url.includes('rtext='));
+});
