@@ -14,7 +14,19 @@ const router = {};
 for (const method of ['get', 'post', 'put', 'delete']) {
   router[method] = (url, fn) => handlers.set(method.toUpperCase() + ' ' + url, fn);
 }
-registerPartnerLeadRoutes(router);
+const geocodeCalls = [];
+registerPartnerLeadRoutes(router, {
+  geocodeAddress: async function(query) {
+    geocodeCalls.push(query);
+    if (query.includes('Ленина, 99')) {
+      return {lat: 56.0, lng: 92.8, precision: 'street',
+        formattedAddress: 'Россия, Красноярск, улица Ленина'};
+    }
+    if (query.includes('Ленина, 88')) throw new Error('Service temporarily unavailable');
+    return {lat: 56.0123, lng: 92.8456, precision: 'exact',
+      formattedAddress: 'Россия, Красноярск, улица Ленина, 2'};
+  }
+});
 
 function manager(code, city, active = 1) {
   return Number(db.prepare(
@@ -90,4 +102,64 @@ test('network map is read-only', async () => {
   await mapCall({role:'manager',id:b});
   const after = db.prepare('SELECT total_changes() AS n').get().n;
   assert.equal(after,before);
+});
+
+async function coordinateCall(identity, leadIds) {
+  const handler = handlers.get('POST /api/partner-leads/network-map/coordinates');
+  assert.ok(handler, 'read-only coordinate route exists');
+  const req = {headers: {authorization: identity ? 'Bearer ' + signToken(identity) : ''}};
+  const res = {status: 0, body: null,
+    writeHead(code) { this.status = code; return this; },
+    end(body) { this.body = JSON.parse(body); }
+  };
+  await handler(req, res, {body: {lead_ids: leadIds}});
+  return res;
+}
+test('coordinates are resolved for accessible CRM IDs without writing to database', async () => {
+  const id = db.prepare("SELECT id FROM partner_leads WHERE salon_name='Звонить А'").get().id;
+  const originalChangeCount = db.prepare('SELECT total_changes() n').get().n;
+  const before = geocodeCalls.length;
+  const response = await coordinateCall({role:'manager',id:a}, [id]);
+  assert.equal(response.status, 200);
+  assert.equal(response.body.results[0].status, 'mapped');
+  assert.equal(response.body.results[0].lat,56.0123);
+  assert.ok(geocodeCalls[before].includes('Красноярск'));
+  assert.equal(db.prepare('SELECT total_changes() n').get().n, originalChangeCount);
+  await coordinateCall({role:'manager',id:a},[id]);
+  assert.equal(geocodeCalls.length,before+1, 'cached successful geocoding');
+});
+test('coordinates cannot reveal a foreign manager lead or validate arbitrary IDs', async () => {
+  const foreign = db.prepare("SELECT id FROM partner_leads WHERE salon_name='Отказ B'").get().id;
+  const own = db.prepare("SELECT id FROM partner_leads WHERE salon_name='Звонить А'").get().id;
+  const before = geocodeCalls.length;
+  assert.equal((await coordinateCall(null,[own])).status,401);
+  assert.equal((await coordinateCall({role:'partner',id:a},[own])).status,401);
+  assert.equal((await coordinateCall({role:'manager',id:inactive},[own])).status,401);
+  assert.equal((await coordinateCall({role:'admin',id:996},[own])).status,401);
+  assert.equal((await coordinateCall({role:'manager',id:a},[own,foreign])).status,403);
+  assert.equal((await coordinateCall({role:'manager',id:a},[0])).status,400);
+  assert.equal((await coordinateCall({role:'manager',id:a},[own,own])).status,400);
+  assert.equal((await coordinateCall({role:'manager',id:a},[999999])).status,403);
+  assert.equal(geocodeCalls.length,before);
+});
+test('address without house number stays unplaced with a clear reason', async () => {
+  const id=Number(leadInsert.run('Нет номера дома','улица Мира','79000000006','krsk','to_call',a,null).lastInsertRowid);
+  const response=await coordinateCall({role:'manager',id:a},[id]);
+  assert.equal(response.status,200);
+  assert.equal(response.body.results[0].status,'needs_address');
+  assert.equal(response.body.results[0].lat,undefined);
+});
+test('imprecise geocoder response is never turned into a map pin', async () => {
+  const id=Number(leadInsert.run('Неточный адрес','Красноярск, улица Ленина, 99','79000000007','krsk','declined',a,null).lastInsertRowid);
+  const response=await coordinateCall({role:'manager',id:a},[id]);
+  assert.equal(response.status,200);
+  assert.equal(response.body.results[0].status,'needs_verification');
+  assert.equal(response.body.results[0].lat,undefined);
+});
+test('transient geocoder failures show an unavailable state without fake coordinates', async () => {
+  const id=Number(leadInsert.run('Не работает геокодер','Красноярск, улица Ленина, 88','79000000008','krsk','to_call',a,null).lastInsertRowid);
+  const response=await coordinateCall({role:'manager',id:a},[id]);
+  assert.equal(response.status,200);
+  assert.equal(response.body.results[0].status,'unavailable');
+  assert.equal(response.body.results[0].lat,undefined);
 });

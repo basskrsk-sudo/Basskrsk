@@ -31,7 +31,10 @@ test('network map statuses and popup actions are anchored to actual CRM data', (
     assert.match(script, new RegExp(status));
   }
   assert.match(script, /new window\.ymaps\.Placemark/);
-  assert.match(script, /window\.ymaps\.geocode/);
+  assert.match(script, /network-map\/coordinates/);
+  assert.match(script, /data-map-attention/);
+  assert.match(script, /unplacedReason/);
+  assert.match(script, /lead_ids/);
   assert.match(script, /onOpenLead/);
   assert.match(script, /escapeHtml/);
   assert.match(script, /window\.TAIGA_CONFIG\.YANDEX_MAPS_API_KEY/);

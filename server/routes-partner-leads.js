@@ -10,6 +10,34 @@ const referralProgram = require('./referral-program');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
+const { geocodeAddress } = require('./geocoding');
+
+// Bounded, short-lived cache: map geocoding runs only after the employee opens
+// the tab, never automatically as part of reports or a background job.
+const mapAddressCache = new Map();
+const MAP_CACHE_TTL = 6 * 60 * 60 * 1000;
+const MAP_MAX_CACHE = 256;
+function mapGeocodeAddress(row) {
+  const address = String(row.address || '').trim();
+  if (address.length < 6 || !/[а-яёa-z]/i.test(address) ||
+      !/\b\d{1,4}(?:\s*[а-яёa-z]|\/\d+)?\b/i.test(address)) return '';
+  const city = String(row.city_name || '').trim();
+  if (!city && !/(?:Красноярск|Петербург|Москва|Новосибирск)/i.test(address))
+    return '';
+  return city && !address.toLowerCase().includes(city.toLowerCase())
+    ? city + ', ' + address : address;
+}
+function cachedMapPosition(key) {
+  const entry = mapAddressCache.get(key);
+  if (!entry) return null;
+  if (entry.expires <= Date.now()) { mapAddressCache.delete(key); return null; }
+  return entry;
+}
+function cacheMapPosition(key, value) {
+  if (mapAddressCache.size >= MAP_MAX_CACHE) mapAddressCache.delete(mapAddressCache.keys().next().value);
+  mapAddressCache.set(key, { ...value, expires: Date.now() + MAP_CACHE_TTL });
+}
+
 
 const STATUSES = ['to_call', 'no_answer', 'meeting_scheduled', 'meeting_held', 'signed', 'declined'];
 const CATEGORIES = ['groomer', 'vet', 'training_center', 'kennel', 'hotel', 'other'];
@@ -86,7 +114,8 @@ function serializeLead(row) {
   };
 }
 
-function registerPartnerLeadRoutes(router) {
+function registerPartnerLeadRoutes(router, options = {}) {
+  const mapGeocode = options.geocodeAddress || geocodeAddress;
   // POST /api/partner-leads/public — заявка «Стать партнёром» с главной
   // страницы сайта. Без авторизации: попадает в общий список прозвона со
   // статусом «Нужно позвонить», плюс мгновенное уведомление в Telegram, чтобы
@@ -180,9 +209,12 @@ function registerPartnerLeadRoutes(router) {
 
     const leadsSql = [
       'SELECT l.id, l.salon_name AS name, l.address, l.phone,',
-      'l.status, l.category, l.city_id, c.name AS city_name,',
+      'l.status, l.category, l.city_id,',
+      "COALESCE(c.name, mc.name, CASE WHEN l.city_id IS NULL THEN 'Красноярск' END) AS city_name,",
       'l.next_contact_date, l.assigned_manager_id, l.linked_point_id',
       'FROM partner_leads l LEFT JOIN cities c ON c.id=l.city_id',
+      'LEFT JOIN managers m ON m.id=l.assigned_manager_id',
+      'LEFT JOIN cities mc ON mc.id=m.city_id',
       manager
         ? 'WHERE (l.assigned_manager_id=? OR (l.assigned_manager_id IS NULL AND l.city_id=?))'
         : '',
@@ -199,13 +231,72 @@ function registerPartnerLeadRoutes(router) {
         address: lead.address, phone: lead.phone, status: lead.status,
         category: lead.category, city_id: lead.city_id,
         city_name: lead.city_name, next_contact_date: lead.next_contact_date,
-        // Leads have no persistent coordinates; geocode the public address
-        // on demand in the Yandex Maps JS client, never write it to CRM here.
+        // Leads have no persistent coordinates. They are requested on demand
+        // by ID through the authenticated read-only coordinates route.
         lat: null, lng: null
       }));
     sendJson(res, 200, {
       points, leads, default_city_id: manager ? manager.city_id : 'krsk'
     });
+  });
+
+  // POST /api/partner-leads/network-map/coordinates
+  // Read-only mapping of EXISTING CRM IDs, not arbitrary addresses.
+  // Does not modify CRM or store coordinates received from Yandex in SQLite.
+  router.post('/api/partner-leads/network-map/coordinates', async (req, res, ctx) => {
+    const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
+    if (!payload) return;
+    if (payload.role === 'admin' &&
+        !db.prepare('SELECT 1 FROM admins WHERE id=? AND active=1').get(payload.id)) {
+      return sendJson(res, 401, { error: 'Администратор отключён' });
+    }
+    const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
+    if (payload.role === 'manager' && !manager) return;
+    const ids = ctx.body && ctx.body.lead_ids;
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 10 ||
+        ids.some(id => !Number.isSafeInteger(id) || id <= 0) ||
+        new Set(ids).size !== ids.length) {
+      return sendJson(res, 400, { error: 'Передайте от 1 до 10 уникальных ID заведений' });
+    }
+    const rows = ids.map(id => db.prepare([
+      'SELECT l.*,',
+      "COALESCE(c.name, mc.name, CASE WHEN l.city_id IS NULL THEN 'Красноярск' END) AS city_name",
+      'FROM partner_leads l LEFT JOIN cities c ON c.id=l.city_id',
+      'LEFT JOIN managers m ON m.id=l.assigned_manager_id',
+      'LEFT JOIN cities mc ON mc.id=m.city_id',
+      'WHERE l.id=?'
+    ].join(' ')).get(id));
+    // Never leak whether a foreign lead exists, or send its address to Yandex.
+    if (rows.some(row => !row || !canReadLead(payload, manager, row))) {
+      return sendJson(res, 403, { error: 'Нет доступа к одному или нескольким заведениям' });
+    }
+    const results = await Promise.all(rows.map(async row => {
+      const query = mapGeocodeAddress(row);
+      if (!query) return { id: row.id, status: 'needs_address' };
+      const cacheKey = query.trim().toLowerCase();
+      const cached = cachedMapPosition(cacheKey);
+      if (cached) return { id: row.id, ...cached.value };
+      try {
+        const found = await mapGeocode(query, { timeoutMs: 6500 });
+        // The ordinary point-creation workflow permits street-level precision;
+        // CRM map pins must be accurate to a building or house-number range.
+        if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lng) ||
+            !['exact', 'number', 'near', 'range'].includes(found.precision) ||
+            (row.city_name && found.formattedAddress &&
+              !found.formattedAddress.toLowerCase().includes(row.city_name.toLowerCase()))) {
+          const value = { status: 'needs_verification' };
+          cacheMapPosition(cacheKey, { value });
+          return { id: row.id, ...value };
+        }
+        const value = { status: 'mapped', lat: found.lat, lng: found.lng };
+        cacheMapPosition(cacheKey, { value });
+        return { id: row.id, ...value };
+      } catch (error) {
+        // Short transient failures must not poison the cache; retry is possible.
+        return { id: row.id, status: 'unavailable' };
+      }
+    }));
+    sendJson(res, 200, { results });
   });
 
   // GET /api/partner-leads?status=&city_id=&q= — список лидов, новые сверху
