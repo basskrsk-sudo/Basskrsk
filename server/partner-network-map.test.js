@@ -208,3 +208,31 @@ test('candidate status never overrides live CRM or duplicates working minimarket
   const known=result.body.candidates.filter(row=>row.recommendation==='Не добавлять повторно');
   assert.equal(known.length,4);
 });
+
+
+test('live CRM map includes actual Yandex organization IDs and linked point profile URLs', async () => {
+  db.prepare("UPDATE partner_leads SET yandex_org_id=?, yandex_url=? WHERE salon_name='Звонить А'")
+    .run('16856539729', 'https://yandex.ru/maps/org/tsatsagrum/16856539729',);
+  db.prepare("UPDATE partner_leads SET yandex_org_id=?, yandex_url=? WHERE salon_name='Привязан к действующей'")
+    .run('19999999999', 'https://yandex.ru/maps/org/salon/19999999999');
+  const map = await mapCall({role:'admin', id:995});
+  assert.equal(map.status,200);
+  const lead = map.body.leads.find(x => x.name === 'Звонить А');
+  assert.equal(lead.yandex_org_id, '16856539729');
+  assert.match(lead.yandex_url, /tsatsagrum\/16856539729/);
+  const point = map.body.points.find(x => x.id === 'map-active-a');
+  assert.equal(point.yandex_org_id, '19999999999');
+  assert.equal(point.yandex_url, 'https://yandex.ru/maps/org/salon/19999999999');
+});
+
+
+test('only the verified TsatsaGroom branch carries its direct Yandex profile ID', async () => {
+  const result = await mapCall({role:'admin',id:995});
+  assert.equal(result.status, 200);
+  const first = result.body.candidates.find(row => row.id === 12);
+  const second = result.body.candidates.find(row => row.id === 13);
+  assert.ok(first);
+  assert.ok(second);
+  assert.equal(first.yandex_org_id, '16856539729');
+  assert.equal(second.yandex_org_id, null);
+});
