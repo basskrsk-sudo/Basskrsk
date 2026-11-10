@@ -74,17 +74,9 @@ async function callBotApi(method, body) {
   return data.result;
 }
 
-// Отображаемое имя, описание и меню команд поддерживаем из кода, чтобы после
-// очередного деплоя бот не оставался оформлен под старый бренд. Ошибка любой
-// из этих косметических операций не должна останавливать вход и уведомления.
-async function configureBotProfile() {
-  if (!TG_TOKEN) return { ok: false, skipped: true };
-  const operations = [
-    ['setMyName', { name: BOT_NAME }],
-    ['setMyDescription', { description: BOT_DESCRIPTION }],
-    ['setMyShortDescription', { short_description: BOT_SHORT_DESCRIPTION }],
-    ['setChatMenuButton', { menu_button: commandsMenuButton() }],
-    ['setMyCommands', { commands: [
+// Telegram has separate default/private/language-scoped command lists.
+// Keep a single source of truth for all scopes and for verification.
+const TELEGRAM_BOT_COMMANDS = Object.freeze([
       { command: 'start', description: 'Открыть помощника ХвостМаркета' },
       { command: 'app', description: '🐾 Открыть ХвостМаркет — все возможности' },
       { command: 'phone', description: '🔐 Подтвердить свой номер для кабинета' },
@@ -107,16 +99,89 @@ async function configureBotProfile() {
       { command: 'cancel', description: 'Отменить текущее действие' },
       { command: 'help', description: 'Как пользоваться ботом' },
       { command: 'chatid', description: 'Показать ID текущей группы' },
-    ] }],
+]);
+const TELEGRAM_COMMAND_SCOPES = Object.freeze([
+  { name: 'default', options: { scope: { type: 'default' } } },
+  { name: 'private', options: { scope: { type: 'all_private_chats' } } },
+  { name: 'private_ru', options: { scope: { type: 'all_private_chats' }, language_code: 'ru' } },
+]);
+let commandSyncInFlight = null;
+let commandMenuRetryTimer = null;
+let commandMenuRetryCount = 0;
+
+async function syncTelegramBotCommands() {
+  if (!TG_TOKEN) return { ok: false, skipped: true, failed: ['TG_TOKEN'] };
+  if (commandSyncInFlight) return commandSyncInFlight;
+  commandSyncInFlight = (async () => {
+    const failed = [];
+    for (const item of TELEGRAM_COMMAND_SCOPES) {
+      try {
+        await callBotApi('setMyCommands', { commands: TELEGRAM_BOT_COMMANDS, ...item.options });
+        const actual = await callBotApi('getMyCommands', item.options);
+        const expected = TELEGRAM_BOT_COMMANDS.map(command => command.command);
+        const found = Array.isArray(actual) ? actual.map(command => command.command) : [];
+        if (JSON.stringify(found) !== JSON.stringify(expected)) {
+          throw new Error('список Telegram после публикации не совпал с кодом');
+        }
+      } catch (error) {
+        failed.push(item.name);
+        console.warn('Telegram: меню команд не синхронизировано ('+item.name+'):',
+          error.message);
+      }
+    }
+    if (failed.length === 0) {
+      console.log('Telegram: меню команд проверено (default, private, private_ru), /contact доступна');
+    }
+    return { ok: failed.length === 0, failed };
+  })();
+  try { return await commandSyncInFlight; }
+  finally { commandSyncInFlight = null; }
+}
+
+function scheduleBotMenuRetry() {
+  if (!polling || commandMenuRetryTimer || commandMenuRetryCount >= 4) return;
+  const delays = [60000, 300000, 900000, 1800000];
+  const delay = delays[commandMenuRetryCount++];
+  commandMenuRetryTimer = setTimeout(async () => {
+    commandMenuRetryTimer = null;
+    if (!polling) return;
+    const result = await syncTelegramBotCommands();
+    if (result.ok) commandMenuRetryCount = 0;
+    else scheduleBotMenuRetry();
+  }, delay);
+  // A bot-menu retry must never keep an otherwise stopped Node process alive.
+  commandMenuRetryTimer.unref?.();
+}
+
+// Отображаемое имя, описание и меню команд поддерживаем из кода, чтобы после
+// очередного деплоя бот не оставался оформлен под старый бренд. Ошибка любой
+// из этих косметических операций не должна останавливать вход и уведомления.
+async function configureBotProfile() {
+  if (!TG_TOKEN) return { ok: false, skipped: true };
+  const operations = [
+    ['setMyName', { name: BOT_NAME }],
+    ['setMyDescription', { description: BOT_DESCRIPTION }],
+    ['setMyShortDescription', { short_description: BOT_SHORT_DESCRIPTION }],
+    ['setChatMenuButton', { menu_button: commandsMenuButton() }],
+
   ];
-  const results = await Promise.allSettled(operations.map(([method, body]) => callBotApi(method, body)));
+  const [results, commands] = await Promise.all([
+    Promise.allSettled(operations.map(([method, body]) => callBotApi(method, body))),
+    syncTelegramBotCommands(),
+  ]);
   const failed = results
     .map((result, index) => ({ result, method: operations[index][0] }))
     .filter(({ result }) => result.status === 'rejected');
   for (const { result, method } of failed) {
     console.warn(`Telegram: не удалось обновить ${method}:`, result.reason.message);
   }
-  return { ok: failed.length === 0, failed: failed.map(({ method }) => method) };
+  if (!commands.ok) {
+    // Previously a single transient failure left command menus stale forever.
+    scheduleBotMenuRetry();
+  }
+  const failures = failed.map(({ method }) => method);
+  if (!commands.ok) failures.push(...commands.failed.map(name => 'commands:' + name));
+  return { ok: failures.length === 0, failed: failures, commands };
 }
 
 // Короткий 4-значный код — запасной способ подтвердить вход, если сайт не
@@ -1067,6 +1132,31 @@ async function processUpdate(update) {
   }
   if (!msg.text) return;
   const text = msg.text.trim();
+  // Hidden diagnostics for an actively linked administrator: resync the
+  // Telegram command menu without changing permissions or touching CRM data.
+  if (msg.chat.type === 'private' && /^\/syncmenu(?:@\w+)?$/i.test(text)) {
+    const ownChat = String(msg.from?.id) === String(msg.chat.id);
+    const admin = ownChat && db.prepare(
+      "SELECT id FROM admins WHERE active=1 AND role IN ('super','admin') AND CAST(telegram_chat_id AS TEXT)=?"
+    ).get(String(msg.chat.id));
+    if (!admin) {
+      await replyToChat(msg.chat.id, '🔒 Обновлять меню бота может только привязанный администратор.');
+      return;
+    }
+    const result = await syncTelegramBotCommands();
+    if (result.ok) {
+      if (commandMenuRetryTimer) clearTimeout(commandMenuRetryTimer);
+      commandMenuRetryTimer = null;
+      commandMenuRetryCount = 0;
+      await replyToChat(msg.chat.id,
+        '✅ Меню команд Telegram обновлено и проверено. Команда /contact опубликована для личных чатов и русского языка. Закройте и откройте меню бота повторно.');
+    } else {
+      scheduleBotMenuRetry();
+      await replyToChat(msg.chat.id,
+        '⚠️ Telegram пока не подтвердил обновление меню ('+result.failed.join(', ')+'). Запланирована повторная попытка. Команду /contact можно отправлять вручную.');
+    }
+    return;
+  }
   if (msg.chat.type==='private' && /^\/reports(?:@\w+)?$/i.test(text)) {
     const menu=reportApprovals.menu(msg.chat.id);
     await replyToChat(msg.chat.id,menu.message,menu.reply_markup);
@@ -1357,6 +1447,9 @@ async function startPolling() {
 
 function stopPolling() {
   polling = false;
+  if (commandMenuRetryTimer) clearTimeout(commandMenuRetryTimer);
+  commandMenuRetryTimer = null;
+  commandMenuRetryCount = 0;
 }
 
-module.exports = { startPolling, stopPolling, processUpdate, configureBotProfile, buildWelcomeMessage };
+module.exports = { startPolling, stopPolling, processUpdate, configureBotProfile, syncTelegramBotCommands, TELEGRAM_BOT_COMMANDS, buildWelcomeMessage };
