@@ -146,6 +146,68 @@ function registerPartnerLeadRoutes(router) {
     if (!active) return sendJson(res,401,{error:'Администратор отключён'});
     return sendJson(res,200,{leads:referralProgram.referralLeadOptions(null,null)});
   });
+  // GET /api/partner-leads/network-map — compact, read-only markers for
+  // both cabinets and their Mini Apps. Managers see only their operational
+  // points and the same scoped lead list they can access in the CRM.
+  router.get('/api/partner-leads/network-map', (req, res, ctx) => {
+    const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
+    if (!payload) return;
+    if (payload.role === 'admin' &&
+        !db.prepare('SELECT 1 FROM admins WHERE id=? AND active=1').get(payload.id)) {
+      return sendJson(res, 401, { error: 'Администратор отключён' });
+    }
+    const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
+    if (payload.role === 'manager' && !manager) return;
+
+    const pointSql = [
+      'SELECT p.id, p.name, p.addr AS address, p.city_id,',
+      'c.name AS city_name, p.lat, p.lng',
+      'FROM points p LEFT JOIN cities c ON c.id=p.city_id',
+      'WHERE p.active=1 AND COALESCE(p.is_hub,0)=0',
+      manager ? 'AND p.manager_id=?' : '',
+      'ORDER BY p.name COLLATE NOCASE'
+    ].join(' ');
+    const points = db.prepare(pointSql).all(...(manager ? [payload.id] : []))
+      .map(p => ({
+        type: 'point', id: p.id, name: p.name, address: p.address,
+        city_id: p.city_id, city_name: p.city_name, lat: p.lat, lng: p.lng,
+        status: 'active'
+      }));
+    const activeIds = new Set(points.map(point => String(point.id)));
+    const venueKey = (name, address) => String(name || '').trim().toLowerCase() + '|' +
+      String(address || '').trim().toLowerCase();
+    const activeNamesAndAddresses = new Set(points.map(p => venueKey(p.name, p.address)));
+
+    const leadsSql = [
+      'SELECT l.id, l.salon_name AS name, l.address, l.phone,',
+      'l.status, l.category, l.city_id, c.name AS city_name,',
+      'l.next_contact_date, l.assigned_manager_id, l.linked_point_id',
+      'FROM partner_leads l LEFT JOIN cities c ON c.id=l.city_id',
+      manager
+        ? 'WHERE (l.assigned_manager_id=? OR (l.assigned_manager_id IS NULL AND l.city_id=?))'
+        : '',
+      'ORDER BY l.id DESC'
+    ].join(' ');
+    const args = manager ? [payload.id, manager.city_id] : [];
+    const leads = db.prepare(leadsSql).all(...args)
+      // When a CRM card is attached to an operating point, show only green
+      // operational marker instead of two contradictory markers at one address.
+      .filter(lead => (!lead.linked_point_id || !activeIds.has(String(lead.linked_point_id))) &&
+        !activeNamesAndAddresses.has(venueKey(lead.name, lead.address)))
+      .map(lead => ({
+        type: 'lead', id: lead.id, name: lead.name,
+        address: lead.address, phone: lead.phone, status: lead.status,
+        category: lead.category, city_id: lead.city_id,
+        city_name: lead.city_name, next_contact_date: lead.next_contact_date,
+        // Leads have no persistent coordinates; geocode the public address
+        // on demand in the Yandex Maps JS client, never write it to CRM here.
+        lat: null, lng: null
+      }));
+    sendJson(res, 200, {
+      points, leads, default_city_id: manager ? manager.city_id : 'krsk'
+    });
+  });
+
   // GET /api/partner-leads?status=&city_id=&q= — список лидов, новые сверху
   router.get('/api/partner-leads', (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
