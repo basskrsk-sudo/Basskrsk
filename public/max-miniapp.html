@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#124D38">
+<meta name="description" content="ХвостМаркет в MAX: тестовое мини-приложение, точки и актуальный ассортимент.">
+<meta name="robots" content="noindex,nofollow">
+<title>ХвостМаркет · MAX тест</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/max-miniapp.css?v=1">
+<script defer src="https://st.max.ru/js/max-web-app.js"></script>
+<script defer src="/max-miniapp.js?v=1"></script>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div class="brand">
+      <img src="/images/hvostmarket-logo-v3-transparent.png" alt="Логотип ХвостМаркета">
+      <div><strong>ХвостМаркет</strong><span>Мини-приложение MAX</span></div>
+      <small class="pilot">ТЕСТ</small>
+    </div>
+    <h1>Лакомства рядом с вами 🐾</h1>
+    <p>Выберите минимаркет и посмотрите, что сейчас есть на полках.</p>
+  </header>
+  <main>
+    <section class="card identity" aria-label="Статус MAX">
+      <div class="identity-icon" aria-hidden="true">✦</div>
+      <div>
+        <strong id="identity-title">Проверяем запуск…</strong>
+        <p id="identity-info" role="status" aria-live="polite">Получаем данные от MAX.</p>
+      </div>
+    </section>
+    <section class="notice" aria-label="Тестовый режим">
+      Это тестовая версия. Покупки и вход в рабочие кабинеты пока отключены. Данные каталога и остатков получаем из ХвостМаркета.
+    </section>
+    <section aria-labelledby="point-heading">
+      <div class="heading"><h2 id="point-heading">Где забрать</h2><span id="point-count"></span></div>
+      <label class="field" for="point-select">Выберите минимаркет</label>
+      <select id="point-select" aria-label="Минимаркет"><option value="">Загружаем точки…</option></select>
+      <p class="address" id="point-address"></p>
+    </section>
+    <section aria-labelledby="catalog-heading">
+      <div class="heading"><h2 id="catalog-heading">Каталог товаров</h2><span id="stock-count"></span></div>
+      <label class="field" for="product-search">Поиск по товарам</label>
+      <input id="product-search" type="search" maxlength="80" placeholder="Например, лёгкое или игрушка" autocomplete="off">
+      <div class="filters" id="category-filters" aria-label="Категория товара"></div>
+      <div class="grid" id="products" aria-live="polite">
+        <div class="empty">Загружаем товары…</div>
+      </div>
+    </section>
+    <section class="card about">
+      <h2>Что дальше?</h2>
+      <p>Это первый этап запуска ХвостМаркета в MAX. Следующим этапом подключим авторизованные кабинеты и покупку через СБП после отдельной проверки безопасности.</p>
+      <button type="button" id="refresh" class="refresh">↻ Обновить остатки</button>
+      <p id="updated-at" class="updated" aria-live="polite"></p>
+    </section>
+  </main>
+  <footer>ХвостМаркет · Красноярск · Тестовое мини-приложение MAX</footer>
+</div>
+</body>
+</html>
