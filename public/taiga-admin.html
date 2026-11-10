@@ -1889,6 +1889,18 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
 
       <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Мой MAX · доступ к /stock</div>
+        <p id="max-admin-personal-status" style="color:var(--muted);font-size:.82rem;line-height:1.6;margin-bottom:.7rem;">
+          Для команды /stock подключите личный MAX по телефону администратора.
+        </p>
+        <div id="max-admin-personal-connect"></div>
+        <p style="color:var(--muted);font-size:.76rem;margin-top:.65rem;line-height:1.5;">
+          Телефон назначается супер-администратором; для подключения потребуется передать
+          боту свой контакт из MAX. Доступ к остаткам предоставляется только проверенному аккаунту.
+        </p>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
         <div class="card-title">Команды MAX</div>
         <p style="color:var(--muted);font-size:.82rem;">
           Рабочие команды регистрируются в штатном меню MAX при запуске сервера.
@@ -1927,6 +1939,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <select id="max-admin-role" class="pm-select" aria-label="Фильтр MAX по роли"
             onchange="maxAdminChangeFilter()" style="flex:1;min-width:150px;">
             <option value="">Все роли</option>
+            <option value="admin">Администраторы</option>
             <option value="customer">Покупатели</option>
             <option value="partner">Грумеры</option>
             <option value="owner">Владельцы салонов</option>
@@ -2869,7 +2882,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 
 <script src="salon-photo-gallery.js?v=70"></script>
 <script src="telegram-connections.js?v=1"></script>
-<script src="max-admin.js?v=1"></script>
+<script src="max-connect.js?v=2"></script>
+<script src="max-admin.js?v=2"></script>
 <script src="admin-navigation.js?v=1"></script>
 <script src="admin-point.js?v=1"></script>
 <script src="admin-report-center.js?v=1"></script>

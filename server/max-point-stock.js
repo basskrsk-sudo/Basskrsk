@@ -25,12 +25,16 @@ function when(now) {
   }).format(now);
 }
 
-// Administrators do not have a max_chat_id field. Link them only through
-// their super-admin-managed phone number and a verified MAX task assignee.
-// Never trust a chat ID typed in a bot message or an unverified login token.
+// Prefer a directly confirmed MAX administrator link; legacy verified
+// task-assignee links remain supported. Never accept arbitrary chat IDs.
 function resolveMaxStockAccess(chatId) {
   const chat = String(chatId ?? '');
   if (!/^\d{1,20}$/.test(chat)) return null;
+
+  const directlyLinkedAdmin = db.prepare(
+    'SELECT id FROM admins WHERE active=1 AND max_chat_id=? LIMIT 1'
+  ).get(chat);
+  if (directlyLinkedAdmin) return { all: true, managerIds: [], pointIds: [] };
 
   const linkedAssignees = db.prepare(
     'SELECT phone FROM task_assignees WHERE active=1 AND max_chat_id=?'
