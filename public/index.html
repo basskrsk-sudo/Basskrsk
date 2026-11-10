@@ -625,6 +625,57 @@
   .value-card h3 { font-size: .95rem; font-weight: 700; color: var(--deep); margin-bottom: .5rem; font-family: 'Manrope', sans-serif; }
   .value-card p { font-size: .83rem; color: var(--muted); line-height: 1.65; }
 
+
+  /* ─── PARTNER MINI-MARKET PLACEMENT FORMATS ─── */
+  .partner-formats {
+    max-width: 1180px; margin: 0 auto; padding: 38px 20px 28px;
+  }
+  .partner-formats-head { text-align: center; margin: 0 auto 1.5rem; max-width: 730px; }
+  .partner-formats-head h2 {
+    color: var(--forest); font-size: clamp(1.55rem, 3vw, 2.25rem);
+    line-height: 1.22; margin: 0 0 .65rem;
+  }
+  .partner-formats-head p { color: var(--muted); line-height: 1.65; font-size: .96rem; }
+  .partner-formats-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem;
+  }
+  .partner-format-card {
+    min-width: 0; overflow: hidden; border-radius: 18px;
+    background: var(--white); border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+  }
+  .partner-format-card img {
+    display: block; width: 100%; height: auto; aspect-ratio: 1.8;
+    object-fit: cover; background: var(--cream);
+  }
+  .partner-format-card-copy { padding: 1rem 1.1rem 1.2rem; }
+  .partner-format-card h3 {
+    font-family: 'Manrope', sans-serif; color: var(--deep);
+    font-size: .98rem; font-weight: 800; line-height: 1.32; margin: 0 0 .45rem;
+  }
+  .partner-format-card p {
+    font-size: .81rem; color: var(--muted); line-height: 1.6; margin: 0;
+  }
+  .partner-formats-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; margin-top: 1.15rem; border-radius: 16px;
+    background: var(--mint); padding: 1.2rem 1.35rem;
+  }
+  .partner-formats-footer p { color: var(--forest); font-weight: 700; line-height: 1.5; }
+  .partner-formats-footer .btn-primary { flex: 0 0 auto; }
+  .partner-formats-note {
+    color: var(--muted); font-size: .74rem; line-height: 1.5;
+    text-align: center; margin: .9rem auto 0; max-width: 780px;
+  }
+  @media (max-width: 850px) {
+    .partner-formats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 520px) {
+    .partner-formats { padding: 30px 10px 16px; }
+    .partner-formats-grid { grid-template-columns: 1fr; gap: .75rem; }
+    .partner-formats-footer { flex-direction: column; align-items: stretch; text-align: center; }
+    .partner-formats-footer .btn-primary { width: 100%; }
+  }
   /* ─── PARTNERS PAGE ─── */
   .partner-nav-link { color: var(--amber) !important; font-weight: 700 !important; }
   .partner-recruit-hero {
@@ -1983,6 +2034,64 @@
     <article class="partner-benefit-mini"><span>🚚</span><strong>Без своей логистики</strong><p>Пополнение и контроль остатков организует ХвостМаркет.</p></article>
     <article class="partner-benefit-mini"><span>📊</span><strong>Прозрачный доход</strong><p>Продажи и начисления видны в личном кабинете.</p></article>
   </div>
+
+
+  <!-- Компактные форматы размещения: реальные варианты под площадь салона -->
+  <section class="partner-formats" id="partner-formats" aria-labelledby="partner-formats-title">
+    <div class="partner-formats-head">
+      <h2 id="partner-formats-title">Место найдётся в любом салоне</h2>
+      <p>Необязательно выделять площадь под большую стойку. Подберём формат ХвостМаркета под ваш интерьер: от компактной настенной витрины до классического напольного минимаркета.</p>
+    </div>
+    <div class="partner-formats-grid">
+      <article class="partner-format-card">
+        <img src="/images/partner-placements/wall.webp" width="486" height="276" loading="lazy" decoding="async" alt="Пример размещения ХвостМаркета: настенная витрина">
+        <div class="partner-format-card-copy">
+          <h3>Настенная витрина</h3>
+          <p>Размещается на стене и не занимает место на полу.</p>
+        </div>
+      </article>
+      <article class="partner-format-card">
+        <img src="/images/partner-placements/counter.webp" width="493" height="275" loading="lazy" decoding="async" alt="Пример размещения ХвостМаркета: настольный мини-маркет">
+        <div class="partner-format-card-copy">
+          <h3>Настольный мини-маркет</h3>
+          <p>Компактная витрина для ресепшена или свободного участка столешницы.</p>
+        </div>
+      </article>
+      <article class="partner-format-card">
+        <img src="/images/partner-placements/cabinet.webp" width="517" height="274" loading="lazy" decoding="async" alt="Пример размещения ХвостМаркета: на боковине мебели">
+        <div class="partner-format-card-copy">
+          <h3>На боковине мебели</h3>
+          <p>Используем торец стойки администратора или шкафа.</p>
+        </div>
+      </article>
+      <article class="partner-format-card">
+        <img src="/images/partner-placements/shelf.webp" width="485" height="268" loading="lazy" decoding="async" alt="Пример размещения ХвостМаркета: на готовой полке">
+        <div class="partner-format-card-copy">
+          <h3>На готовой полке</h3>
+          <p>Небольшой ассортимент на части уже установленной полки.</p>
+        </div>
+      </article>
+      <article class="partner-format-card">
+        <img src="/images/partner-placements/qr.webp" width="489" height="271" loading="lazy" decoding="async" alt="Пример размещения ХвостМаркета: qr-карточка">
+        <div class="partner-format-card-copy">
+          <h3>QR-карточка</h3>
+          <p>Когда совсем нет места для товара: переход в каталог с выбором точки покупки.</p>
+        </div>
+      </article>
+      <article class="partner-format-card">
+        <img src="/images/partner-placements/floor.webp" width="519" height="270" loading="lazy" decoding="async" alt="Пример размещения ХвостМаркета: классическая металлическая стойка">
+        <div class="partner-format-card-copy">
+          <h3>Классическая металлическая стойка</h3>
+          <p>Напольный вариант для салонов, где можно разместить расширенный ассортимент.</p>
+        </div>
+      </article>
+    </div>
+    <div class="partner-formats-footer">
+      <p>Мало свободного места? Предложим компактное размещение без закупки товара салоном.</p>
+      <button class="btn-primary" type="button" onclick="document.getElementById('partnerFormAnchor').scrollIntoView({behavior:'smooth'})">Подобрать формат →</button>
+    </div>
+    <p class="partner-formats-note">Изображения — визуализации возможного размещения. Подходящую конструкцию, условия установки и доступность формата согласуем индивидуально.</p>
+  </section>
 
   <section class="sec" id="partner-cynology" aria-labelledby="partner-cynology-title" style="max-width:1180px;padding-top:1.6rem;padding-bottom:0;">
     <div style="background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:clamp(1.2rem,3vw,2rem);display:flex;align-items:flex-start;gap:1.1rem;flex-wrap:wrap;box-shadow:var(--shadow);">
