@@ -328,8 +328,8 @@ server.listen(PORT, () => {
   require('./telegram-login-poller').startPolling();
   require('./routes-partner-club').startPartnerClubWorker();
   console.log(require('./max-bot').isConfigured()
-    ? 'MAX: webhook для ранее подключённых уведомлений работает, новый вход временно отключён'
-    : 'MAX: бот не настроен, новый вход временно отключён');
+    ? 'MAX: сайт готов принимать события через /api/max/webhook'
+    : 'MAX: вход выключен — задайте MAX_BOT_TOKEN, MAX_BOT_USERNAME и MAX_WEBHOOK_SECRET');
 
   // Ежесуточная проверка уровней партнёров — ловит понижения даже у тех,
   // у кого давно не было заказов (иначе понижение сработало бы только при

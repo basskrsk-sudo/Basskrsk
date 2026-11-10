@@ -106,6 +106,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 </style>
 <script src="payout-schedule.js"></script>
 <script src="telegram-connect.js?v=38"></script>
+<script src="max-connect.js?v=41"></script>
 <link rel="stylesheet" href="/notification-settings.css">
 </head>
 <body>
@@ -182,6 +183,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
         </table>
       </div>
       <div id="owner-telegram-connect"></div>
+      <div id="owner-max-connect"></div>
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-label">Выручка всего</div>
@@ -495,6 +497,12 @@ async function loadOwnerTelegramConnect() {
       role: 'owner',
       tokenGetter: getToken,
       connected: !!data.owner.telegram_connected,
+    });
+    HvostMaxConnect.mount({
+      containerId: 'owner-max-connect',
+      role: 'owner',
+      tokenGetter: getToken,
+      connected: !!data.owner.max_connected,
     });
   } catch (e) {
     // Основной кабинет продолжает работать, даже если статус Telegram
