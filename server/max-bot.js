@@ -6,6 +6,7 @@
 'use strict';
 
 const db = require('./db');
+const pointStock = require('./max-point-stock');
 const {
   getTaskInbox,
   handleTaskCallback,
@@ -196,6 +197,19 @@ async function handleContactMessage(message) {
   return true;
 }
 
+
+async function deliverApprovedStock(chatId, selection) {
+  const access=pointStock.resolveMaxStockAccess(chatId);
+  if (!access) throw new Error('Нет доступа к остаткам');
+  const pages=selection.kind==='summary'
+    ?[pointStock.formatSummary(pointStock.stockSummary(access,selection.page))]
+    :pointStock.formatDetail(pointStock.stockDetail(access,selection.pointId));
+  for (const message of pages) {
+    const sent=await sendMaxMessage(chatId,message);
+    if (sent?.ok===false) throw new Error(sent.error||'MAX не принял сообщение');
+  }
+}
+
 async function processUpdate(update) {
   if (!update || typeof update !== 'object') return;
 
@@ -204,6 +218,27 @@ async function processUpdate(update) {
     const message = callback.message || update.message || {};
     const payload = callback.payload || callback.data || (callback.button && callback.button.payload);
     const chatId = update.chat_id || callback.chat_id || (message.recipient && message.recipient.chat_id);
+
+    const stockMatch=String(payload || '').match(/^stk:(yes|no):([0-9]{1,15})$/);
+    if (stockMatch) {
+      await answerMaxCallback(callback.callback_id || update.callback_id);
+      const decision=pointStock.decideStockApproval(chatId,stockMatch[1],stockMatch[2]);
+      if (!decision.ok || decision.cancelled) {
+        if (chatId) await sendMaxMessage(chatId,decision.message);
+        return;
+      }
+      let success=false;
+      try {
+        await deliverApprovedStock(chatId,decision.selection);
+        success=true;
+      } catch(error) {
+        console.warn('[MAX stock] report failed:',error.message);
+        await sendMaxMessage(chatId,'⚠️ Остатки получить не удалось. Повторите /stock или обратитесь к администратору.');
+      } finally {
+        pointStock.finishStockApproval(decision.id,success);
+      }
+      return;
+    }
     const result = handleTaskCallback('max', chatId, payload);
     if (result) {
       await answerMaxCallback(callback.callback_id || update.callback_id);
@@ -215,7 +250,7 @@ async function processUpdate(update) {
   if (update.update_type === 'bot_started') {
     if (update.payload) await handleLoginStart(update.chat_id, update.payload);
     else if (update.chat_id) {
-      await sendMaxMessage(update.chat_id, 'Откройте личный кабинет на сайте «ХвостМаркет» и выберите «Войти через MAX». Сотрудникам: команда /tasks покажет активные поручения.');
+      await sendMaxMessage(update.chat_id, 'Откройте личный кабинет на сайте «ХвостМаркет» и выберите «Войти через MAX». Команды для сотрудников: /tasks — мои поручения, /stock — остатки товаров по точкам.');
     }
     return;
   }
@@ -225,6 +260,17 @@ async function processUpdate(update) {
 
   const text = update.message.body && update.message.body.text;
   const chatId = update.message.recipient && update.message.recipient.chat_id;
+  const stockCommand=pointStock.parseStockCommand(text);
+  if (stockCommand) {
+    if (!chatId) return;
+    if (stockCommand.error) {
+      await sendMaxMessage(chatId,stockCommand.error);
+      return;
+    }
+    const approval=pointStock.requestStockApproval(chatId,stockCommand);
+    await sendMaxMessage(chatId,approval.message,approval.ok?approval.attachments:undefined);
+    return;
+  }
   if (/^\/tasks$/i.test(String(text || '').trim()) || /^мои поручения$/i.test(String(text || '').trim())) {
     await sendTaskInbox(chatId);
     return;
