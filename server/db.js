@@ -1753,6 +1753,13 @@ ensureColumn('manager_points', 'referred_owner_amount', 'INTEGER');
 
 // Referral program: one immutable attribution per newly launched point.
 // Historical "bonus_paid" on manager_points means accrued, not transferred.
+// Reusable official 2GIS identity for CRM imports; nullable for other leads.
+ensureColumn('partner_leads','dgis_firm_id','TEXT');
+ensureColumn('partner_leads','dgis_url','TEXT');
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_leads_dgis_firm "+
+  "ON partner_leads(dgis_firm_id) WHERE dgis_firm_id IS NOT NULL");
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_leads_dgis_url "+
+  "ON partner_leads(dgis_url) WHERE dgis_url IS NOT NULL");
 ensureColumn('partner_leads','referral_code','TEXT');
 ensureColumn('partner_leads','referred_by_role','TEXT');
 ensureColumn('partner_leads','referred_by_id','INTEGER');

@@ -7,6 +7,7 @@
 
 const db = require('./db');
 const pointStock = require('./max-point-stock');
+const import2gisLead = require('./2gis-lead-bot');
 const {
   getTaskInbox,
   handleTaskCallback,
@@ -24,6 +25,7 @@ const MAX_BOT_COMMANDS = Object.freeze([
   { name: 'help', description: 'Все команды и быстрые действия' },
   { name: 'tasks', description: 'Мои поручения (для сотрудников)' },
   { name: 'stock', description: 'Остатки на точках (для сотрудников)' },
+  { name: '2gis', description: 'Добавить организацию из 2ГИС в обзвон' },
   { name: 'app', description: 'Тестовое мини-приложение ХвостМаркета' },
 ]);
 
@@ -263,6 +265,7 @@ function buildMaxHelp(chatId) {
     '/stock код_точки — Остатки по товарам и фасовкам',
     '',
     'Для /tasks и /stock нужен привязанный MAX-аккаунт сотрудника.',
+    '/2gis ссылка — добавить заведение из 2ГИС в общую CRM обзвона (менеджер/администратор).',
     '/app — тестовое мини-приложение для всех пользователей.',
     'Подтверждение отчёта об остатках — кнопкой в боте.',
   ];
@@ -488,6 +491,14 @@ async function processUpdate(update) {
   if (/^\/(?:app|shop|miniapp)$/i.test(cleaned)) {
     await sendMaxMiniApp(chatId);
     return;
+  }
+  // MAX may share the same 2GIS URLs as Telegram. Check bot-linked staff role.
+  if (chatId) {
+    const imported = await import2gisLead.handle2gisText('max', chatId, cleaned);
+    if (imported) {
+      await sendMaxMessage(chatId, imported.message);
+      return;
+    }
   }
   const stockCommand=pointStock.parseStockCommand(text);
   if (stockCommand) {

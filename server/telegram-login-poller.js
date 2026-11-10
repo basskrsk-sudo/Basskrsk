@@ -7,6 +7,7 @@
 
 
 const db = require('./db');
+const import2gisLead = require('./2gis-lead-bot');
 const crypto = require('node:crypto');
 const {
   getTaskInbox,
@@ -96,6 +97,7 @@ async function configureBotProfile() {
       { command: 'business', description: 'Бизнес по месяцам и за год' },
       { command: 'businesspoints', description: 'Все точки: CSV со статистикой' },
       { command: 'stock', description: 'Актуальные остатки центрального склада' },
+      { command: '2gis', description: '📍 Добавить заведение из 2ГИС в обзвон' },
       { command: 'nogroomer', description: 'Оплаченные заказы без грумера' },
       { command: 'payouts', description: 'Справка для выплат партнёрам' },
       { command: 'tierapprovals', description: 'Согласовать изменение процента грумера' },
@@ -146,6 +148,7 @@ function buildWelcomeMessage() {
     'Нажмите «🐾 Открыть ХвостМаркет» или отправьте /app. После подтверждения телефона увидите только доступные вам разделы.',
     '',
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
+    'Менеджерам и администраторам: /2gis ссылка — добавить заведение из 2ГИС в общую CRM обзвона.',
     'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /stock — остатки центрального склада; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
     'Супер-администратору: /newproduct — рассылка новинки с фотографией и предпросмотром; /tierapprovals — заявки на снижение процента грумеров.',
     '',
@@ -1068,6 +1071,16 @@ async function processUpdate(update) {
       await replyToChat(msg.chat.id, '🐾 ID этой группы: ' + String(msg.chat.id) + '\nСкопируйте число для подключения Клуба партнёров.');
     }
     return;
+  }
+
+  // Import 2GIS companies into the SAME CRM shared by manager mini-app and admin.
+  // A private Telegram account must be linked to an active manager/admin.
+  if (msg.chat.type === 'private') {
+    const imported = await import2gisLead.handle2gisText('telegram', msg.chat.id, text);
+    if (imported) {
+      await replyToChat(msg.chat.id, imported.message);
+      return;
+    }
   }
 
   if (msg.chat.type === 'private' && /^\/tierapprovals(?:@\w+)?$/i.test(text)) {
