@@ -24,6 +24,54 @@ function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(actual, expected);
 }
 
+
+// Keep password verification outside the main HTTP event loop. Limit libuv
+// scrypt concurrency so a login burst cannot exhaust a small Amvera container.
+const MAX_PARALLEL_CHECKS = 2;
+const MAX_WAITING_CHECKS = 8;
+let activeChecks = 0;
+const waitingChecks = [];
+
+function acquireCheckSlot() {
+  if (activeChecks < MAX_PARALLEL_CHECKS) {
+    activeChecks++;
+    return Promise.resolve();
+  }
+  if (waitingChecks.length >= MAX_WAITING_CHECKS) {
+    const err = new Error('Вход временно занят. Повторите попытку через несколько секунд.');
+    err.statusCode = 503;
+    return Promise.reject(err);
+  }
+  return new Promise((resolve) => waitingChecks.push(resolve));
+}
+
+function releaseCheckSlot() {
+  const next = waitingChecks.shift();
+  if (next) next(); // Slot transfers to the oldest queued verification.
+  else activeChecks--;
+}
+
+async function verifyPasswordAsync(password, stored) {
+  const parts = String(stored || '').split(':');
+  if (parts.length !== 2) return false;
+  const [saltHex, hashHex] = parts;
+  if (!/^[0-9a-f]+$/i.test(saltHex) || saltHex.length % 2 !== 0 ||
+      !/^[0-9a-f]{128}$/i.test(hashHex)) return false;
+  const salt = Buffer.from(saltHex, 'hex');
+  const expected = Buffer.from(hashHex, 'hex');
+  await acquireCheckSlot();
+  try {
+    return await new Promise((resolve, reject) => {
+      crypto.scrypt(String(password), salt, 64, (error, actual) => {
+        if (error) return reject(error);
+        resolve(crypto.timingSafeEqual(actual, expected));
+      });
+    });
+  } finally {
+    releaseCheckSlot();
+  }
+}
+
 // ── Токены: base64url(payload).base64url(hmac-sha256(payload)) ──────────
 function base64url(input) {
   return Buffer.from(input).toString('base64url');
@@ -53,4 +101,4 @@ function verifyToken(token) {
   return payload;
 }
 
-module.exports = { hashPassword, verifyPassword, signToken, verifyToken };
+module.exports = { hashPassword, verifyPassword, verifyPasswordAsync, signToken, verifyToken };

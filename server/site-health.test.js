@@ -9,6 +9,7 @@ process.env.DATA_DIR=dir;
 process.env.TOKEN_SECRET='healthcheck-test-token';
 const db=require('./db');
 const {signToken}=require('./auth');
+const {createApiPerformanceTracker}=require('./api-performance');
 const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,appendEvent,nextLoopState}=require('./site-health');
 const routes=new Map(),router={get:(name,handler)=>routes.set(name,handler)};
 registerSiteHealthRoutes(router);
@@ -87,6 +88,8 @@ test('only active admin can inspect process metrics and persistent restart log',
   assert.equal(r.data.events.some(x=>x.path||x.user_id||x.token),false);
   assert.equal(r.data.events.some(x=>String(x.detail).includes(dir)),false);
   assert.ok(metrics().timestamp);
+  assert.ok(r.data.api_performance);
+  assert.ok(Array.isArray(r.data.api_performance.slow_routes));
 });
 
 
@@ -117,4 +120,25 @@ test('diagnostics expose both timer drift and measured event-loop latency',()=>{
   assert.ok(Number.isFinite(sample.event_loop_p99_ms));
   assert.ok(Number.isFinite(sample.sample_schedule_drift_ms));
   assert.equal(sample.event_loop_delay_ms,sample.event_loop_max_ms,'legacy field tracks actual maximum');
+});
+
+test('API diagnostics use bounded samples and registered route templates',()=>{
+  const tracker=createApiPerformanceTracker({maxRoutes:2,samplesPerRoute:3});
+  tracker.record('GET /api/products',10,200);
+  tracker.record('GET /api/products',20,200);
+  tracker.record('GET /api/products',50,500);
+  tracker.record('GET /api/products',30,200);
+  tracker.record('POST /api/orders/:id',15,200);
+  tracker.record('GET /api/*',70,404);
+  const result=tracker.snapshot();
+  assert.equal(result.total_requests,6);
+  assert.equal(result.sample_window_per_route,3);
+  assert.ok(result.tracked_routes<=3,'overflow must not grow without bound');
+  const products=result.slow_routes.find(row=>row.route==='GET /api/products');
+  assert.equal(products.requests,4);
+  assert.equal(products.server_errors,1);
+  assert.equal(products.samples,3);
+  assert.equal(products.p95_ms,50);
+  assert.equal(products.avg_ms,33);
+  assert.equal(result.slow_routes.some(row=>row.route.includes('some-private-id')),false);
 });

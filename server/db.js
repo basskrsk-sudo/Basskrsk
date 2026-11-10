@@ -1344,6 +1344,15 @@ db.exec("CREATE INDEX IF NOT EXISTS idx_orders_pending_notification_scan " +
 // This index also helps existing time-window reporting as the order table grows.
 db.exec('CREATE INDEX IF NOT EXISTS idx_orders_created_at_weekly ON orders(created_at,id)');
 
+// Target the common per-point reporting / paid-order scans and point inventory.
+// Foreign-key columns are not indexed automatically by SQLite.
+db.exec(
+  "CREATE INDEX IF NOT EXISTS idx_orders_status_created ON orders(status,created_at,id);" +
+  "CREATE INDEX IF NOT EXISTS idx_orders_point_status_created ON orders(point_id,status,created_at);" +
+  "CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);" +
+  "CREATE INDEX IF NOT EXISTS idx_stock_point_variant ON stock(point_id,variant_id);"
+);
+
 // Игра «Поймай косточку» заменена викториной о собаках — старые таблицы
 // на уже развёрнутых серверах больше не используются нигде в коде, чистим их.
 db.exec('DROP TABLE IF EXISTS game_prizes');

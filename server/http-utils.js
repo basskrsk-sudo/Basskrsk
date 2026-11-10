@@ -105,7 +105,7 @@ class Router {
           .join('/') +
         '/?$'
     );
-    this.routes.push({ method, pattern, keys, handler });
+    this.routes.push({ method, path, pattern, keys, handler });
   }
 
   get(path, handler) { this.add('GET', path, handler); }
@@ -120,7 +120,7 @@ class Router {
       if (!m) continue;
       const params = {};
       r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); });
-      return { handler: r.handler, params };
+      return { handler: r.handler, params, routePath: r.path };
     }
     return null;
   }
