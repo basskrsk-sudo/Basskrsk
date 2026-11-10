@@ -92,6 +92,18 @@ test('scopes match a linked MAX identity, not a task-only connection',()=>{
   assert.equal(stock.stockSummary(admin).count,3);
 });
 
+test('a personally linked MAX admin sees all shelves and loses access when disabled',()=>{
+  db.prepare("UPDATE admins SET max_chat_id='700007' WHERE login='max-stock-admin'").run();
+  const directlyLinked=stock.resolveMaxStockAccess('700007');
+  assert.ok(directlyLinked);
+  assert.equal(directlyLinked.all,true);
+  assert.equal(stock.stockSummary(directlyLinked).count,3);
+  db.prepare("UPDATE admins SET active=0 WHERE login='max-stock-admin'").run();
+  assert.equal(stock.resolveMaxStockAccess('700007'),null);
+  db.prepare("UPDATE admins SET active=1,max_chat_id=NULL WHERE login='max-stock-admin'").run();
+  assert.equal(stock.resolveMaxStockAccess('700007'),null);
+});
+
 test('live stock excludes central warehouse, hidden points, includes zeros and historic nonzero items',()=>{
   const manager=stock.resolveMaxStockAccess('700001');
   const report=stock.stockSummary(manager,1,new Date('2026-11-10T03:00:00Z'));

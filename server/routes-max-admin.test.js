@@ -90,6 +90,7 @@ test('MAX overview requires an active administrator and does not leak secrets or
   assert.deepEqual(result.payload.commands.map(item=>item.name),['start','help','tasks','stock']);
   assert.equal(result.payload.connections.people,4);
   assert.equal(result.payload.connections.accounts,4);
+  assert.deepEqual(result.payload.self_connection,{connected:false,phone_configured:true});
   const safe=JSON.stringify(result.payload);
   assert.equal(safe.includes('secret-token-must-not-be-exposed'),false);
   assert.equal(safe.includes('secret-webhook-must-not-be-exposed'),false);
@@ -187,6 +188,9 @@ test('frontend MAX management is a separate menu section with gated actions',()=
   assert.match(navigation,/if \(id === 'max'\) await loadMaxAdmin\(\)/);
   assert.match(frontend,/currentAdminRole==='super'/);
   assert.match(frontend,/disconnectMaxAdminAccount/);
+  assert.match(frontend,/HvostMaxConnect\.mount/);
+  assert.match(adminHtml,/id="max-admin-personal-connect"/);
+  assert.match(adminHtml,/src="max-connect\.js/);
   assert.doesNotMatch(frontend,/MAX_BOT_TOKEN|MAX_WEBHOOK_SECRET/);
   // Check full-size admin inline script syntax, not just the standalone MAX module.
   const inlineScripts=[...adminHtml.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/gi)]

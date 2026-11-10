@@ -10,6 +10,8 @@ const maxBot = require('./max-bot');
 
 const PER_PAGE = 60;
 const SOURCES = Object.freeze([
+  { role:'admin', label:'Администратор', table:'admins',
+    name:'COALESCE(a.full_name,a.login)',login:'a.login',point:"''",active:'a.active',phone:'a.phone' },
   { role:'customer', label:'Покупатель', table:'customers',
     name:"TRIM(COALESCE(a.name,'') || ' ' || COALESCE(a.lname,''))", login:"''",
     point:"''", active:'1', phone:'a.phone' },
@@ -130,7 +132,7 @@ function readStatus(database=db, bot=maxBot) {
 function getAdmin(req,res,ctx,database=db,superOnly=false) {
   const claims=requireActiveAdmin(req,res,ctx);
   if(!claims)return null;
-  const account=database.prepare('SELECT id,role,phone FROM admins WHERE id=? AND active=1')
+  const account=database.prepare('SELECT id,role,phone,max_chat_id FROM admins WHERE id=? AND active=1')
     .get(claims.id);
   if(!account){sendJson(res,403,{error:'Администратор отключён'});return null;}
   if(superOnly&&account.role!=='super'){
@@ -139,6 +141,7 @@ function getAdmin(req,res,ctx,database=db,superOnly=false) {
   return account;
 }
 function personalMaxChat(admin,database=db) {
+  if(admin.max_chat_id)return admin.max_chat_id;
   const phone=normalizePhone(admin.phone);
   if(!phone)return null;
   // Confirmed connections already saved by existing login/linking flows.
@@ -180,8 +183,12 @@ function disconnect(role,accountId,database=db) {
 
 function registerMaxAdminRoutes(router,{database=db,bot=maxBot}={}) {
   router.get('/api/admin/max/overview',(req,res,ctx)=>{
-    if(!getAdmin(req,res,ctx,database))return;
-    sendJson(res,200,readStatus(database,bot));
+    const admin=getAdmin(req,res,ctx,database);
+    if(!admin)return;
+    sendJson(res,200,{
+      ...readStatus(database,bot),
+      self_connection:{connected:!!admin.max_chat_id,phone_configured:!!normalizePhone(admin.phone)}
+    });
   });
   router.get('/api/admin/max/connections',(req,res,ctx)=>{
     if(!getAdmin(req,res,ctx,database))return;

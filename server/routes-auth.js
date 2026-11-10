@@ -195,11 +195,12 @@ function registerAuthRoutes(router) {
     sendJson(res, 200, { verified: true, telegram_connected: true });
   });
 
-  // Подключение MAX из уже открытого кабинета партнёра или владельца.
+  // Подключение MAX из уже открытого кабинета администратора, партнёра или владельца.
   // Как и в клиентском входе, бот принимает только контакт самого
   // пользователя; роль и account_id дополнительно связывают одноразовую
   // ссылку с конкретным авторизованным кабинетом.
   const maxAccountTables = {
+    admin: 'admins',
     partner: 'partners',
     owner: 'salon_owners',
   };
@@ -212,6 +213,9 @@ function registerAuthRoutes(router) {
     const tableName = maxAccountTables[payload.role];
     const account = db.prepare(`SELECT id, phone, max_chat_id FROM ${tableName} WHERE id = ? AND active = 1`).get(payload.id);
     if (!account) return sendJson(res, 404, { error: 'Аккаунт не найден или отключён' });
+    if (!/^79\d{9}$/.test(normalizePhoneDigits(account.phone))) {
+      return sendJson(res, 409, { error: 'Укажите мобильный телефон РФ в кабинете. Номер администратора задаёт супер-администратор.' });
+    }
 
     const token = crypto.randomBytes(24).toString('hex');
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -240,10 +244,16 @@ function registerAuthRoutes(router) {
     if (Date.parse(record.expires_at) <= Date.now() && !record.verified) {
       return sendJson(res, 410, { error: 'Ссылка подключения устарела' });
     }
+    // Tokens issued for an old phone or a disabled account must not link MAX.
+    const tableName = maxAccountTables[payload.role];
+    const account = db.prepare(`SELECT phone FROM ${tableName} WHERE id = ? AND active = 1`).get(payload.id);
+    if (!account || normalizePhoneDigits(account.phone) !== normalizePhoneDigits(record.phone)) {
+      return sendJson(res, 410, { error: 'Номер телефона изменён или доступ отключён. Подключите MAX повторно.' });
+    }
     if (!record.verified || !record.chat_id) return sendJson(res, 200, { verified: false });
 
-    const tableName = maxAccountTables[payload.role];
-    db.prepare(`UPDATE ${tableName} SET max_chat_id = ? WHERE id = ?`).run(String(record.chat_id), payload.id);
+    db.prepare(`UPDATE ${tableName} SET max_chat_id = ? WHERE id = ? AND active=1`)
+      .run(String(record.chat_id), payload.id);
     sendJson(res, 200, { verified: true, max_connected: true });
   });
 
@@ -748,13 +758,14 @@ function registerAuthRoutes(router) {
     // App tokens are revoked without disturbing password-based website login.
     db.prepare(
       'UPDATE admins SET active = ?, full_name = ?, role = ?, phone = ?, ' +
-      'telegram_chat_id = ?, miniapp_auth_version = ? WHERE id = ?'
+      'telegram_chat_id = ?, max_chat_id = ?, miniapp_auth_version = ? WHERE id = ?'
     ).run(
       nextActive,
       full_name !== undefined ? full_name : existing.full_name,
       nextRole,
       parsedPhone.phone,
       phoneChanged ? null : existing.telegram_chat_id,
+      (phoneChanged || Number(nextActive) !== 1) ? null : existing.max_chat_id,
       Number(existing.miniapp_auth_version || 0) + (accessChanged ? 1 : 0),
       ctx.params.id
     );

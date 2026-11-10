@@ -236,11 +236,26 @@ async function handleContactMessage(message) {
     return true;
   }
 
+  // Administrators get stock access only after MAX confirms the actual
+  // sender owns the number assigned by their super-administrator.
+  if (pending.role === 'admin') {
+    const admin = db.prepare('SELECT phone FROM admins WHERE id=? AND active=1').get(pending.account_id);
+    if (!admin || normalizePhone(admin.phone) !== confirmedPhone) {
+      await sendMaxMessage(chatId, 'Привязка устарела: номер или доступ администратора изменён. Запросите новую ссылку.');
+      return true;
+    }
+  }
+
   db.prepare(`
     UPDATE max_login_tokens
     SET verified = 1, chat_id = ?
     WHERE id = ? AND verified = 0
   `).run(String(chatId), pending.id);
+  if (pending.role === 'admin') {
+    // /stock works immediately, without waiting for a browser polling request.
+    db.prepare('UPDATE admins SET max_chat_id = ? WHERE id = ? AND active = 1')
+      .run(String(chatId), pending.account_id);
+  }
   await sendMaxMessage(chatId, '✅ Номер подтверждён. Вернитесь на сайт — личный кабинет откроется автоматически.');
   if (pending.role === 'task_assignee') {
     if (pending.account_id) {

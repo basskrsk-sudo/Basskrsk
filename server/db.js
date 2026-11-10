@@ -991,6 +991,8 @@ ensureColumn('admins', 'role', "TEXT NOT NULL DEFAULT 'admin'");
 ensureColumn('admins', 'active', 'INTEGER NOT NULL DEFAULT 1');
 // Phone is assigned ONLY by an active super-admin; stored in one canonical format.
 ensureColumn('admins', 'phone', 'TEXT');
+// A verified personal MAX identity, never supplied by a user message.
+ensureColumn('admins', 'max_chat_id', 'TEXT');
 // Revokes Mini App sessions immediately on changes to this account's access.
 ensureColumn('admins', 'miniapp_auth_version', 'INTEGER NOT NULL DEFAULT 0');
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_admins_phone_unique ON admins(phone) WHERE phone IS NOT NULL AND phone <> ''");

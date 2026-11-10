@@ -35,6 +35,24 @@ async function loadMaxAdmin(){
   }
   const data=overview.value;
   maxAdminState.overview=data;
+  const self=data.self_connection||{};
+  const selfStatus=document.getElementById('max-admin-personal-status');
+  const selfContainer=document.getElementById('max-admin-personal-connect');
+  if(selfStatus){
+    selfStatus.textContent=!self.phone_configured
+      ?'Телефон администратора пока не назначен. Укажите номер в разделе управления администраторами.'
+      :self.connected
+        ?'✅ Личный MAX подтверждён. Откройте бота ХвостМаркет и отправьте /stock.'
+        :'Подключите личный MAX и подтвердите свой номер телефона, чтобы получить доступ к /stock.';
+  }
+  if(selfContainer){
+    if(self.phone_configured&&window.HvostMaxConnect){
+      window.HvostMaxConnect.mount({
+        containerId:'max-admin-personal-connect',
+        role:'admin',connected:!!self.connected,tokenGetter:()=>adminToken,
+      });
+    }else selfContainer.textContent='';
+  }
   status.textContent=data.configured
     ?'✅ Бот настроен в Amvera. Отправку проверьте кнопкой «Тестовое сообщение».'
     :'⚠️ Не все параметры MAX заданы в Amvera. Проверьте поля ниже.';
