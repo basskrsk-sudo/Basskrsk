@@ -43,6 +43,7 @@ db.prepare(
 ).run('max-admin-delete-token','79001114444','partner',partnerId,'918004');
 
 let syncCalls=0;
+let webhookSyncCalls=0;
 const sent=[];
 const bot={
   isConfigured:()=>true,
@@ -53,6 +54,8 @@ const bot={
     {name:'stock',description:'Остатки'},
   ],
   configureMaxCommands:async()=>{syncCalls++;return {ok:true};},
+  webhookStatus:()=>({status:'ready',message:'Подписка проверена',checked_at:'2026-11-10T07:00:00Z'}),
+  ensureMaxWebhookUpdates:async()=>{webhookSyncCalls++;return {ok:true,message:'Webhook синхронизирован'};},
   sendMaxMessage:async(chatId,text)=>{
     sent.push({chatId:String(chatId),text});
     return {ok:true};
@@ -86,6 +89,7 @@ test('MAX overview requires an active administrator and does not leak secrets or
   assert.equal(result.payload.configured,true);
   assert.equal(result.payload.token_configured,true);
   assert.equal(result.payload.webhook_secret_configured,true);
+  assert.equal(result.payload.webhook_subscription.status,'ready');
   assert.equal(result.payload.bot_url,'https://max.ru/HvostMarketTest');
   assert.deepEqual(result.payload.commands.map(item=>item.name),['start','help','tasks','stock']);
   assert.equal(result.payload.connections.people,4);
@@ -128,6 +132,17 @@ test('only super-admin may synchronize the native bot commands; second request i
   assert.equal(syncCalls,1);
 });
 
+test('webhook update subscription is super-admin only, guarded by cooldown',async()=>{
+  const denied=await call('post','/api/admin/max/webhook/sync',{token:tokenRegular});
+  assert.equal(denied.status,403);
+  assert.equal(webhookSyncCalls,0);
+  const ok=await call('post','/api/admin/max/webhook/sync',{token:tokenSuper});
+  assert.equal(ok.status,200);
+  assert.equal(webhookSyncCalls,1);
+  const duplicate=await call('post','/api/admin/max/webhook/sync',{token:tokenSuper});
+  assert.equal(duplicate.status,429);
+  assert.equal(webhookSyncCalls,1);
+});
 test('test message is addressed to own linked MAX and is throttled',async()=>{
   assert.equal(personalMaxChat({phone:'79001117711'}),'918001');
   const result=await call('post','/api/admin/max/test',{
@@ -189,6 +204,8 @@ test('frontend MAX management is a separate menu section with gated actions',()=
   assert.match(frontend,/currentAdminRole==='super'/);
   assert.match(frontend,/disconnectMaxAdminAccount/);
   assert.match(frontend,/HvostMaxConnect\.mount/);
+  assert.match(adminHtml,/id="max-admin-webhook-sync"/);
+  assert.match(frontend,/syncMaxAdminWebhook/);
   assert.match(adminHtml,/id="max-admin-personal-connect"/);
   assert.match(adminHtml,/src="max-connect\.js/);
   assert.doesNotMatch(frontend,/MAX_BOT_TOKEN|MAX_WEBHOOK_SECRET/);

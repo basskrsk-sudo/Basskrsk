@@ -85,6 +85,7 @@ test('the menu buttons reuse existing /tasks and /stock flows with stock confirm
   const answered=calls.filter(x=>x.url.includes('/answers?'));
   const messages=calls.filter(x=>x.url.includes('/messages?'));
   assert.equal(answered.length,2);
+  assert.ok(answered.every(call=>call.body.message?.text));
   assert.ok(messages.some(m=>m.body.text.includes('Активных поручений')||
     m.body.text.includes('нет активных поручений')||
     m.body.text.includes('Активные поручения')));

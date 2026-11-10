@@ -64,6 +64,95 @@ async function maxApi(pathname, options = {}) {
   return data;
 }
 
+
+// Keep the existing webhook URL and the existing event types, adding only
+// callback events. Do not delete subscriptions: those deliver login events.
+const REQUIRED_WEBHOOK_UPDATES = Object.freeze([
+  'bot_started', 'message_created', 'message_callback',
+]);
+let webhookState = Object.freeze({
+  status: 'unchecked', message: 'Подписка ещё не проверена.',
+  checked_at: null, callback_enabled: null, updated: false,
+});
+let webhookSyncInFlight = null;
+
+function webhookStatus() { return { ...webhookState }; }
+function saveWebhookState(status, message, enabled, updated = false) {
+  webhookState = Object.freeze({
+    status, message, checked_at: new Date().toISOString(),
+    callback_enabled: enabled, updated,
+  });
+  return { ok: status === 'ready', updated, message };
+}
+function ownWebhookSubscription(subscription) {
+  try {
+    const url = new URL(String(subscription && subscription.url || ''));
+    return url.protocol === 'https:' &&
+      url.pathname === '/api/max/webhook' &&
+      !url.username && !url.password && !url.search && !url.hash;
+  } catch (_) {
+    return false;
+  }
+}
+
+// One lightweight reconciliation at startup, with a super-admin retry button.
+// No new URL is guessed; only a previously registered, unique MAX webhook is
+// upgraded. Other subscriptions and event types stay untouched.
+async function ensureMaxWebhookUpdates() {
+  if (webhookSyncInFlight) return webhookSyncInFlight;
+  webhookSyncInFlight = (async () => {
+    if (!isConfigured()) return saveWebhookState(
+      'unconfigured', 'Не заданы настройки бота MAX в Amvera.', false);
+    try {
+      const list = await maxApi('/subscriptions');
+      if (!Array.isArray(list.subscriptions)) throw new Error('Invalid subscriptions response');
+      const matches = list.subscriptions.filter(ownWebhookSubscription);
+      if (matches.length !== 1) return saveWebhookState(
+        'attention',
+        matches.length === 0 ?
+          'Webhook /api/max/webhook не найден среди подписок MAX. Проверьте его настройку.' :
+          'Найдено несколько подписок /api/max/webhook. Требуется ручная проверка.',
+        false);
+      const current = matches[0];
+      const existingTypes = current.update_types;
+      // MAX allows no update_types filter (null / omitted / empty = all events).
+      if (!Array.isArray(existingTypes) || existingTypes.length === 0 ||
+          REQUIRED_WEBHOOK_UPDATES.every(type => existingTypes.includes(type))) {
+        return saveWebhookState('ready',
+          'Webhook MAX получает события нажатия кнопок.', true);
+      }
+      const allTypes = [...new Set([...existingTypes, ...REQUIRED_WEBHOOK_UPDATES])];
+      const updated = await maxApi('/subscriptions', {
+        method: 'POST',
+        body: JSON.stringify({
+          url: current.url, update_types: allTypes,
+          secret: process.env.MAX_WEBHOOK_SECRET,
+        }),
+      });
+      if (updated.success !== true) throw new Error('Subscription update rejected');
+      // Do not declare success solely on POST: read the registered types back.
+      const verified = await maxApi('/subscriptions');
+      const registered = (verified.subscriptions || []).find(
+        item => item.url === current.url);
+      const newTypes = registered && registered.update_types;
+      if (!registered || (Array.isArray(newTypes) && newTypes.length > 0 &&
+          !REQUIRED_WEBHOOK_UPDATES.every(type => newTypes.includes(type)))) {
+        return saveWebhookState('attention',
+          'MAX не подтвердил обновление подписки. Повторите синхронизацию в админке.',
+          false);
+      }
+      return saveWebhookState('ready',
+        'Webhook MAX обновлён: нажатия кнопок теперь включены.', true, true);
+    } catch (error) {
+      console.warn('MAX webhook sync failed (HTTP):', error.statusCode || 'request failed');
+      return saveWebhookState('error',
+        'Не удалось проверить подписку MAX. Проверьте доступность API и повторите синхронизацию.',
+        null);
+    }
+  })().finally(() => { webhookSyncInFlight = null; });
+  return webhookSyncInFlight;
+}
+
 // Update the native slash-command menu once when the MAX webhook bot starts.
 // Do not block HTTP startup if MAX is temporarily unavailable.
 async function configureMaxCommands() {
@@ -96,12 +185,17 @@ async function sendMaxMessage(chatId, text, attachments) {
   }
 }
 
-async function answerMaxCallback(callbackId) {
+async function answerMaxCallback(callbackId, text = '✅ Действие принято', removeButtons = false) {
   if (!callbackId) return { ok: false, skipped: true };
   try {
     return await maxApi(`/answers?callback_id=${encodeURIComponent(String(callbackId))}`, {
       method: 'POST',
-      body: JSON.stringify({}),
+      // MAX requires an updated message when acknowledging a callback.
+      // An empty {} no longer reliably closes the loading state in clients.
+      body: JSON.stringify({ message: {
+        text: String(text).slice(0, 2700),
+        ...(removeButtons ? { attachments: [] } : {}),
+      } }),
     });
   } catch (error) {
     console.warn('Не удалось подтвердить нажатие кнопки MAX:', error.message);
@@ -297,12 +391,21 @@ async function processUpdate(update) {
     const payload = callback.payload || callback.data || (callback.button && callback.button.payload);
     const chatId = update.chat_id || callback.chat_id || (message.recipient && message.recipient.chat_id);
 
+    const callbackId = callback.callback_id || update.callback_id;
     const stockMatch=String(payload || '').match(/^stk:(yes|no):([0-9]{1,15})$/);
     if (stockMatch) {
-      await answerMaxCallback(callback.callback_id || update.callback_id);
+      if (!chatId) {
+        await answerMaxCallback(callbackId,'⚠️ Не удалось определить диалог. Отправьте /stock ещё раз.');
+        return;
+      }
       const decision=pointStock.decideStockApproval(chatId,stockMatch[1],stockMatch[2]);
+      await answerMaxCallback(callbackId, !decision.ok
+        ? '⚠️ '+decision.message
+        : decision.cancelled
+          ? '❌ Отчёт отменён.'
+          : '✅ Подтверждено. Отправляю актуальные остатки отдельным сообщением…', true);
       if (!decision.ok || decision.cancelled) {
-        if (chatId) await sendMaxMessage(chatId,decision.message);
+        await sendMaxMessage(chatId,decision.message);
         return;
       }
       let success=false;
@@ -318,7 +421,7 @@ async function processUpdate(update) {
       return;
     }
     if (payload === 'menu:tasks' || payload === 'menu:stock') {
-      await answerMaxCallback(callback.callback_id || update.callback_id);
+      await answerMaxCallback(callbackId,'✅ Запрос принят. Отвечаю новым сообщением.');
       if (!chatId) return;
       if (payload === 'menu:tasks') await sendTaskInbox(chatId);
       else await requestMaxStock(chatId, { kind: 'summary', page: 1 });
@@ -326,7 +429,7 @@ async function processUpdate(update) {
     }
     const result = handleTaskCallback('max', chatId, payload);
     if (result) {
-      await answerMaxCallback(callback.callback_id || update.callback_id);
+      await answerMaxCallback(callbackId,'✅ Действие обработано.');
       if (chatId) await sendMaxMessage(chatId, result.message);
     }
     return;
@@ -375,6 +478,7 @@ async function processUpdate(update) {
 
 module.exports = {
   MAX_BOT_COMMANDS, configureMaxCommands, buildMaxHelp,
+  webhookStatus, ensureMaxWebhookUpdates,
   isConfigured,
   normalizePhone,
   phoneFromVcard,

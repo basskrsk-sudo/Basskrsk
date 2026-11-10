@@ -84,6 +84,18 @@ async function loadMaxAdmin(){
     '<strong style="font-family:monospace;font-size:.88rem;">/'+maxAdminEsc(c.name)+'</strong>'+
     '<span style="font-size:.8rem;color:var(--muted);">'+maxAdminEsc(c.description)+'</span></div>'
   ).join('')||'Нет команд';
+  const webhook=data.webhook_subscription||{};
+  const webhookState=document.getElementById('max-admin-webhook-status');
+  if(webhookState){
+    const label=webhook.status==='ready'?'✅ Нажатия кнопок подключены':
+      webhook.status==='unchecked'?'Проверка подписки ещё не выполнена':
+      '⚠️ Подписка MAX требует проверки';
+    webhookState.textContent=label+'. '+
+      String(webhook.message||'Состояние webhook ещё не определено.')+
+      (webhook.checked_at?' · проверено '+webhook.checked_at:'');
+  }
+  const webhookButton=document.getElementById('max-admin-webhook-sync');
+  if(webhookButton)webhookButton.style.display=currentAdminRole==='super'?'inline-flex':'none';
   const sync=document.getElementById('max-admin-sync');
   if(sync)sync.style.display=currentAdminRole==='super'?'inline-flex':'none';
   const last=document.getElementById('max-admin-sync-last');
@@ -176,6 +188,19 @@ async function syncMaxAdminCommands(){
   }catch(error){maxAdminMessage('Ошибка: '+error.message)}
   finally{if(button)button.disabled=false;}
 }
+async function syncMaxAdminWebhook(){
+  if(currentAdminRole!=='super')return;
+  if(!confirm('Проверить подписку MAX и включить события нажатий кнопок, если они отсутствуют?'))return;
+  const button=document.getElementById('max-admin-webhook-sync');
+  if(button)button.disabled=true;
+  maxAdminMessage('Проверяем и восстанавливаем webhook MAX…');
+  try{
+    const result=await maxAdminApi('/api/admin/max/webhook/sync',{method:'POST',body:{}});
+    maxAdminMessage(result.message);
+    await loadMaxAdmin();
+  }catch(error){maxAdminMessage('Webhook MAX: '+error.message)}
+  finally{if(button)button.disabled=false;}
+}
 async function sendMaxAdminTest(){
   const button=document.getElementById('max-admin-test-button');
   if(button)button.disabled=true;
@@ -216,6 +241,7 @@ async function loadMaxHistory(){
     sync_commands:'Синхронизация команд',
     test_message:'Проверка доставки',
     disconnect:'Отключение аккаунта',
+    sync_webhook:'Проверка подписки webhook',
   };
   const rows=(data.rows||[]);
   target.innerHTML=rows.length?rows.map(item=>

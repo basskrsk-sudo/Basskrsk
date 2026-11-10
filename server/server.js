@@ -348,6 +348,10 @@ server.listen(PORT, () => {
     // Native MAX command menu appears when users enter '/' in a bot chat.
     // A single non-blocking API call per process start (not a polling job).
     void maxBot.configureMaxCommands();
+    // One guarded check per startup: repair a webhook missing message_callback.
+    // Never block HTTP startup or replace an unrelated subscription.
+    void maxBot.ensureMaxWebhookUpdates().catch(error =>
+      console.warn('MAX webhook startup check:', error.message));
   }
 
   // Ежесуточная проверка уровней партнёров — ловит понижения даже у тех,
