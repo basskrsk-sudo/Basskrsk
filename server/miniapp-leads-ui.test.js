@@ -13,8 +13,11 @@ const routes=fs.readFileSync(path.join(__dirname,'routes-partner-leads.js'),'utf
 test('Telegram has dedicated bottom-tab calls, not a new independent CRM',()=>{
   assert.match(html,/id="leadsPage"/);
   assert.match(html,/data-view="leads"/);
-  assert.match(html,/miniapp-leads\.js\?v=1/);
-  assert.match(html,/miniapp-leads\.css\?v=1/);
+  assert.match(html,/name="hm-miniapp-rollout" content="calls-retry-20261110-r2"/);
+  assert.match(html,/miniapp-leads\.js\?v=2/);
+  assert.match(html,/miniapp-leads\.css\?v=2/);
+  assert.match(html,/miniapp-leads\.js\?v=2/);
+  assert.match(html,/miniapp-leads\.css\?v=2/);
   assert.match(html,/HvostMiniAppLeads\.open\(\)/);
   assert.match(html,/HvostMiniAppLeads\.available\(\)/);
   assert.match(html,/state\.view==='leads'/);
