@@ -1374,16 +1374,12 @@
         <h3>Введите номер телефона</h3>
         <p class="account-auth-intro">Выберите удобный способ подтверждения — повторно вводить номер не понадобится.</p>
         <div id="account-tg-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.82rem;padding:.6rem .8rem;border-radius:6px;margin-bottom:.8rem;"></div>
-        <div id="account-max-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.82rem;padding:.6rem .8rem;border-radius:6px;margin-bottom:.8rem;"></div>
         <div id="account-auth-start">
           <div class="form-group">
             <label>Телефон</label>
             <input type="tel" id="acc-auth-phone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this);syncAccountPhoneInputs(this.value)" autocomplete="tel">
           </div>
           <div class="account-auth-actions">
-            <div id="account-max-block" style="display:none;">
-              <button class="account-auth-button max" onclick="submitMaxStart()">Продолжить через MAX</button>
-            </div>
             <button class="account-auth-button telegram" onclick="submitTelegramStart()">✈️ Продолжить через Telegram</button>
           </div>
         </div>
@@ -1402,12 +1398,7 @@
             </div>
           </div>
         </div>
-        <div id="account-max-step-waiting" style="display:none;text-align:center;padding:.5rem 0;">
-          <h3 style="margin-bottom:.6rem;">Подтвердите вход в MAX</h3>
-          <p style="font-size:.88rem;color:var(--text);margin-bottom:1rem;">Откройте бота, нажмите «Запустить», затем подтвердите номер кнопкой «Поделиться номером».</p>
-          <a id="account-max-link" href="#" target="_blank" class="btn-primary" style="display:inline-block;background:#7C4DFF;text-decoration:none;">Открыть бота в MAX →</a>
-          <p style="font-size:.78rem;color:var(--muted);margin-top:1rem;">Ждём подтверждения...</p>
-        </div>
+
       </div>
 
       <div class="account-other-login">
@@ -2611,12 +2602,6 @@
     <button class="btn-primary" style="width:100%;margin-bottom:1.4rem;" onclick="openPaidOrder()">Открыть мой заказ</button>
     <div style="font-size:.92rem;font-weight:700;color:var(--deep);margin-bottom:.7rem;">Получать уведомления о заказах</div>
     <div class="success-notify-grid">
-      <div id="checkout-max-offer" class="success-notify-card" style="border-color:#D9CBFF;background:#F5F1FF;">
-        <div style="font-size:.9rem;font-weight:700;color:var(--deep);margin-bottom:.25rem;">MAX</div>
-        <div style="font-size:.76rem;line-height:1.45;color:var(--muted);">Статусы и подтверждения следующих заказов.</div>
-        <button type="button" id="checkout-max-button" onclick="connectCheckoutMax()" style="margin-top:.65rem;padding:.55rem .75rem;border:0;border-radius:9px;background:#7C4DFF;color:#fff;font:600 .8rem 'Manrope',sans-serif;cursor:pointer;">Подключить MAX</button>
-        <div id="checkout-max-status" style="font-size:.74rem;line-height:1.4;margin-top:.45rem;color:var(--muted);"></div>
-      </div>
       <div id="checkout-tg-offer" class="success-notify-card" style="border-color:#B8D8F8;background:#EEF6FF;">
         <div style="font-size:.9rem;font-weight:700;color:var(--deep);margin-bottom:.25rem;">Telegram</div>
         <div style="font-size:.76rem;line-height:1.45;color:var(--muted);">Статусы и подтверждения следующих заказов.</div>
@@ -3983,12 +3968,9 @@ async function renderAccountPage() {
     updateAccountNavButton(null);
     const authStart = document.getElementById('account-auth-start');
     const tgWaiting = document.getElementById('account-tg-step-waiting');
-    const maxWaiting = document.getElementById('account-max-step-waiting');
     if (authStart) authStart.style.display = 'block';
     if (tgWaiting) tgWaiting.style.display = 'none';
-    if (maxWaiting) maxWaiting.style.display = 'none';
     prefillAccountPhoneFields();
-    updateMaxLoginAvailability();
     return;
   }
 
@@ -5752,7 +5734,6 @@ async function showCheckoutMaxOffer() {
 }
 
 function showCheckoutMessagingOffers() {
-  showCheckoutMaxOffer();
   showCheckoutTelegramOffer();
 }
 
@@ -5962,9 +5943,6 @@ async function prefillCheckoutFromAccount() {
         }
         if (c.telegram_connected && c.phone) {
           localStorage.setItem(CHECKOUT_TG_CONNECTED_KEY, phoneLast10(c.phone));
-        }
-        if (c.max_connected && c.phone) {
-          localStorage.setItem(CHECKOUT_MAX_CONNECTED_KEY, phoneLast10(c.phone));
         }
       }
     } catch (e) {

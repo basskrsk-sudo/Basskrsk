@@ -11,6 +11,7 @@ const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { sendTaskReminder } = require('./task-reminders');
 const { nextRecurringDue } = require('./task-utils');
+const { MAX_AUTH_ENABLED } = require('./max-auth-policy');
 
 const PROFILES = Object.freeze([
   { key: 'admin', label: 'Администратор — все поручения', code: null },
@@ -388,6 +389,8 @@ function registerTaskPageRoutes(router) {
     const phone = String(member.phone || '').replace(/\D/g,'').slice(-10);
     if (phone.length !== 10) return sendJson(res, 400, { error: 'Сначала укажите телефон исполнителя.' });
     const channel = ctx.params.channel;
+    if (channel === 'max' && !MAX_AUTH_ENABLED)
+      return sendJson(res, 503, { error: 'Подключение MAX временно отключено' });
     const token = crypto.randomBytes(20).toString('hex');
     const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     if (channel === 'telegram') {
@@ -410,6 +413,8 @@ function registerTaskPageRoutes(router) {
   router.get('/api/task-page/assignees/:id/connect/:channel/check', (req, res, ctx) => {
     if (!requireTaskAdmin(req, res)) return;
     const channel = ctx.params.channel;
+    if (channel === 'max' && !MAX_AUTH_ENABLED)
+      return sendJson(res, 503, { error: 'Подключение MAX временно отключено' });
     const table = channel === 'telegram' ? 'telegram_login_tokens' :
       channel === 'max' ? 'max_login_tokens' : null;
     if (!table) return sendJson(res, 400, { error: 'Неизвестный канал.' });

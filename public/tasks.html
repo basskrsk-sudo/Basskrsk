@@ -318,8 +318,7 @@ function renderPeople(){
     '<label class="field"><span>Телефон</span><input id="personPhone-'+member.id+'" placeholder="+7…" value="'+escapeHtml(member.phone||'')+'"></label>'+
     '<label class="field" style="margin-top:.4rem;"><span>Зона ответственности</span><input id="personResponsibility-'+member.id+'" value="'+escapeHtml(member.responsibility||'')+'"></label>'+
     '<div class="actions"><button class="button tiny secondary" onclick="savePerson('+member.id+')">Сохранить</button>'+
-    (member.active?'<button class="button tiny secondary" onclick="connectPerson('+member.id+',\'telegram\')">'+(member.telegram_connected?'✓ Telegram':'Telegram')+'</button>'+
-    '<button class="button tiny secondary" onclick="connectPerson('+member.id+',\'max\')">'+(member.max_connected?'✓ MAX':'MAX')+'</button>':'')+
+    (member.active?'<button class="button tiny secondary" onclick="connectPerson('+member.id+',\'telegram\')">'+(member.telegram_connected?'✓ Telegram':'Telegram')+'</button>':'')+
     '</div></div>'
   ).join('');
 }
@@ -399,6 +398,7 @@ async function savePerson(id){
   catch(err){toast(err.message,true)}
 }
 async function connectPerson(id,channel){
+  if(channel !== 'telegram'){ toast('Подключение MAX временно отключено',true);return; }
   try{
     const response=await api('/assignees/'+id+'/connect/'+channel+'/start',{method:'POST'});
     if(!response.deep_link)throw new Error('Ссылка подключения не получена');

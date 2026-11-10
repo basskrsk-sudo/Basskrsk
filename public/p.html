@@ -688,7 +688,6 @@ function showSuccess(orderId, phone, isSelfOrder) {
     + '<button class="link-btn" onclick="location.href=\'/?page=account&open_orders=1\'">Открыть мой заказ</button>'
     + '<div class="notify-title">Получать уведомления о заказах</div>'
     + '<div class="notify-grid">'
-    + '<div class="notify-card" id="successMaxCard" style="display:none;background:#F5F1FF;border-color:#D9CBFF"><b>MAX</b>Статусы следующих заказов<button id="successMaxBtn" style="background:#7C4DFF" onclick="connectSuccessChannel(\'max\')">Подключить MAX</button><div class="notify-status" id="successMaxStatus"></div></div>'
     + '<div class="notify-card" id="successTelegramCard" style="background:#EEF6FF;border-color:#B8D8F8"><b>Telegram</b>Статусы следующих заказов<button id="successTelegramBtn" style="background:#229ED9" onclick="connectSuccessChannel(\'telegram\')">Подключить Telegram</button><div class="notify-status" id="successTelegramStatus"></div></div>'
     + '</div>'
     + '<button class="cta" style="margin-top:18px" onclick="location.href=\'/?ref=' + encodeURIComponent(CTX.pointId) + '\'">Купить ещё товар</button>'
@@ -704,13 +703,7 @@ async function initSuccessNotifications(phone) {
   }
   var digits = String(phone).replace(/\D/g,'').slice(-10);
   if (localStorage.getItem('hvostmarket_tg_connected_phone') === digits) markSuccessChannelConnected('telegram', phone);
-  try {
-    var res = await fetch('/api/customer/max/status', { cache:'no-store' });
-    var data = await res.json();
-    var card = document.getElementById('successMaxCard');
-    if (card && res.ok && data.enabled) card.style.display = 'block';
-    if (res.ok && data.enabled && localStorage.getItem('hvostmarket_max_connected_phone') === digits) markSuccessChannelConnected('max', phone);
-  } catch (e) { /* MAX просто не показываем */ }
+
 }
 
 function markSuccessChannelConnected(channel, phone) {
@@ -724,6 +717,7 @@ function markSuccessChannelConnected(channel, phone) {
 }
 
 async function connectSuccessChannel(channel) {
+  if (channel !== 'telegram') return;
   var phone = SUCCESS_PHONE;
   var prefix = channel === 'max' ? 'Max' : 'Telegram';
   var btn = document.getElementById('success' + prefix + 'Btn');
