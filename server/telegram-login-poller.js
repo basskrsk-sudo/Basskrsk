@@ -671,6 +671,37 @@ async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
 
+    // Only the original owner of a private chat can approve the 2GIS draft.
+    if (/^dgis:(?:yes|edit|no):[0-9a-f]{18}$/.test(callback.data||'')) {
+      const chat=callback.message?.chat;
+      const allowed=chat?.type==='private' && String(chat.id)===String(callback.from?.id);
+      const result=allowed
+        ? import2gisLead.handle2gisCallback('telegram',chat.id,callback.data)
+        : {ok:false,message:'Подтвердите контакт только в своём личном чате с ботом.'};
+      try {
+        await callBotApi('answerCallbackQuery',{
+          callback_query_id:callback.id,
+          text:String(result?.message||'Готово').slice(0,180),
+          show_alert:!result?.ok,
+        });
+      } catch(error) {
+        console.warn('[2GIS] Telegram callback acknowledgement:',error.message);
+      }
+      if(allowed){
+        // Used approval buttons must not remain live after accept/edit/cancel.
+        if(result?.ok && callback.message?.message_id){
+          try{
+            await callBotApi('editMessageReplyMarkup',{
+              chat_id:chat.id,message_id:callback.message.message_id,
+              reply_markup:{inline_keyboard:[]},
+            });
+          }catch(_){}
+        }
+        if(result?.message)await replyToChat(chat.id,result.message);
+      }
+      return;
+    }
+
     if (/^report:(?:menu|new:[a-z]+|(?:yes|no):[0-9]+)$/.test(callback.data||'')) {
       const data=callback.data||'',chat=callback.message?.chat;
       const allowed=chat?.type==='private' && String(chat.id)===String(callback.from?.id);
@@ -1078,7 +1109,7 @@ async function processUpdate(update) {
   if (msg.chat.type === 'private') {
     const imported = await import2gisLead.handle2gisText('telegram', msg.chat.id, text);
     if (imported) {
-      await replyToChat(msg.chat.id, imported.message);
+      await replyToChat(msg.chat.id, imported.message, imported.reply_markup);
       return;
     }
   }
