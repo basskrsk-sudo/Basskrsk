@@ -327,9 +327,15 @@ server.listen(PORT, () => {
   require('./backup').scheduleBackups();
   require('./telegram-login-poller').startPolling();
   require('./routes-partner-club').startPartnerClubWorker();
-  console.log(require('./max-bot').isConfigured()
+  const maxBot = require('./max-bot');
+  console.log(maxBot.isConfigured()
     ? 'MAX: сайт готов принимать события через /api/max/webhook'
     : 'MAX: вход выключен — задайте MAX_BOT_TOKEN, MAX_BOT_USERNAME и MAX_WEBHOOK_SECRET');
+  if (maxBot.isConfigured()) {
+    // Native MAX command menu appears when users enter '/' in a bot chat.
+    // A single non-blocking API call per process start (not a polling job).
+    void maxBot.configureMaxCommands();
+  }
 
   // Ежесуточная проверка уровней партнёров — ловит понижения даже у тех,
   // у кого давно не было заказов (иначе понижение сработало бы только при
