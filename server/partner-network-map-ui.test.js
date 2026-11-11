@@ -114,3 +114,28 @@ test('Yandex links open an organization card when ID exists; otherwise salon sea
   assert.equal(oldRoute.direct, false);
   assert.ok(!oldRoute.url.includes('rtext='));
 });
+
+
+test('reviewing a candidate can hide and later restore it without changing CRM', () => {
+  const script = read('partner-network-map.js');
+  const style = read('partner-network-map.css');
+  assert.match(script, /data-map-review-start/);
+  assert.match(script, /data-map-review-form/);
+  assert.match(script, /data-map-review-reason/);
+  assert.match(script, /data-map-review-note/);
+  assert.match(script, /Подтвердить и скрыть/);
+  assert.match(script, /Нет груминг-салона/);
+  assert.match(script, /data-map-reviewed-toggle/);
+  assert.match(script, /data-map-review-restore/);
+  assert.match(script, /Отработанные и скрытые/);
+  assert.match(script, /\/api\/partner-leads\/network-map\/candidates\//);
+  assert.match(script, /reviewedCandidates = candidates\.filter/);
+  assert.match(script, /return !item\.hidden && !item\.matched/);
+  assert.match(script, /showReviewed/);
+  assert.match(script, /reviewBusy/);
+  assert.match(script, /data-map-review-notice/);
+  assert.match(style, /hm-map-review-form/);
+  assert.match(style, /hm-map-reviewed-item/);
+  assert.match(style, /hm-map-review-start/);
+  assert.doesNotThrow(() => new Function(script));
+});

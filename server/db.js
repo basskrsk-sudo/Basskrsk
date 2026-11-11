@@ -437,6 +437,32 @@ CREATE TABLE IF NOT EXISTS partner_lead_notes (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ── ПРОВЕРКА ВНЕШНИХ ОРГАНИЗАЦИЙ НА КАРТЕ ───────────────────────
+-- Кандидаты из отдельного XLSX-реестра не записываются в CRM partner_leads.
+-- Здесь хранится только результат проверки: скрыто/восстановлено и кем.
+-- Данные переживают перезапуск приложения в постоянной SQLite на /data.
+CREATE TABLE IF NOT EXISTS partner_map_candidate_reviews (
+  candidate_id    INTEGER PRIMARY KEY CHECK(candidate_id > 0),
+  hidden          INTEGER NOT NULL DEFAULT 0 CHECK(hidden IN (0,1)),
+  reason          TEXT,                              -- not_grooming|duplicate|closed|not_suitable|other
+  note            TEXT,
+  reviewed_by_role TEXT NOT NULL CHECK(reviewed_by_role IN ('admin','manager')),
+  reviewed_by_id   INTEGER NOT NULL,
+  reviewed_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS partner_map_candidate_review_log (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  candidate_id    INTEGER NOT NULL,
+  action          TEXT NOT NULL CHECK(action IN ('hide','restore')),
+  reason          TEXT,
+  note            TEXT,
+  actor_role      TEXT NOT NULL CHECK(actor_role IN ('admin','manager')),
+  actor_id        INTEGER NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_partner_map_candidate_review_log
+  ON partner_map_candidate_review_log(candidate_id, id DESC);
+
 -- ── ПЛАН ЗАПУСКА ПРОЕКТА ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS launch_tasks (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
