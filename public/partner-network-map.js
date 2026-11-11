@@ -114,6 +114,7 @@
     var state = {
       node: node, map: null, records: [], city: '', status: 'all',
       district: '', showCandidates: true, candidateTotal: 0, matchedCandidates: [],
+      reviewedCandidates: [], showReviewed: false, reviewBusy: false, notice: '',
       cache: Object.create(null), geocodeStates: Object.create(null),
       markers: Object.create(null), generation: 0,
       limit: initialLimit, loading: false, cities: [], shown: [], error: ''
@@ -159,6 +160,32 @@
         String(i.id);
     }
     function itemPosition(item) { return position(item) || state.cache[itemId(item)] || null; }
+    var reviewReasons = {
+      not_grooming: 'Нет груминг-салона',
+      duplicate: 'Дубль / уже есть в базе',
+      closed: 'Заведение закрыто',
+      not_suitable: 'Не подходит для сотрудничества',
+      other: 'Другое'
+    };
+    function reasonName(key) { return reviewReasons[key] || 'Отработано'; }
+    function reviewedListMarkup() {
+      if (!state.reviewedCandidates.length) return '';
+      return '<div class="hm-map-reviewed">' +
+        '<button type="button" class="hm-map-reviewed-toggle" data-map-reviewed-toggle ' +
+        'aria-expanded="' + (state.showReviewed ? 'true' : 'false') + '">' +
+        '✅ Отработанные и скрытые (' + state.reviewedCandidates.length + ')' +
+        (state.showReviewed ? ' ▲' : ' ▼') + '</button>' +
+        (state.showReviewed ? '<div class="hm-map-reviewed-items">' +
+          state.reviewedCandidates.map(function (item) {
+            return '<div class="hm-map-reviewed-item"><span><b>' +
+              escapeHtml(item.name) + '</b><small>' +
+              escapeHtml(item.address || 'Адрес отсутствует') + ' · ' +
+              escapeHtml(reasonName(item.review_reason)) +
+              (item.review_note ? ' · ' + escapeHtml(item.review_note) : '') +
+              '</small></span><button type="button" data-map-review-restore="' +
+              escapeHtml(item.id) + '">Вернуть</button></div>';
+          }).join('') + '</div>' : '') + '</div>';
+    }
     function unplacedReason(item) {
       if (itemPosition(item)) return '';
       var key = itemId(item);
@@ -205,6 +232,10 @@
           ' · ' + escapeHtml(i.category || 'Организация') + '</p>' +
           '<p><strong>Внешняя карточка, не CRM.</strong> ' +
           escapeHtml(i.recommendation || 'Нужно сверить перед прозвоном') + '</p>' : '') +
+        (i.type === 'candidate' && !i.hidden ?
+          '<button type="button" class="hm-map-action hm-map-review-start" ' +
+          'data-map-review-start="' + escapeHtml(i.id) +
+          '">✅ Отработано — скрыть с карты</button>' : '') +
         (phone.length >= 10 && (i.type === 'lead' || i.type === 'candidate') ? '<p>☎️ <a href="tel:' +
           escapeHtml(phone) + '">' + escapeHtml(i.phone) + '</a></p>' : '') +
         (i.next_contact_date && i.type === 'lead' ?
@@ -212,11 +243,113 @@
         '<a target="_blank" rel="noopener noreferrer" href="' + escapeHtml(yandex.url) +
         '">' + (yandex.direct ? 'Открыть карточку в Яндекс Картах' :
           'Найти организацию в Яндекс Картах') + '</a>' +
+
         (!inBalloon && i.type === 'lead' && typeof options.onOpenLead === 'function' ?
           '<button type="button" class="hm-map-action" data-map-open-lead="' +
           escapeHtml(i.id) + '">Открыть в базе обзвона</button>' : '') +
         '</div>';
       return html;
+    }
+    function startReview(item) {
+      if (!item || item.type !== 'candidate' || item.hidden) return;
+      var detail = root.querySelector('[data-map-detail]');
+      if (!detail) return;
+      detail.innerHTML = details(item, false) +
+        '<form data-map-review-form="' + escapeHtml(item.id) + '" class="hm-map-review-form">' +
+        '<label>Причина проверки<select required data-map-review-reason>' +
+        '<option value="">Выберите причину</option>' +
+        Object.keys(reviewReasons).map(function(key) {
+          return '<option value="' + key + '">' + escapeHtml(reviewReasons[key]) + '</option>';
+        }).join('') + '</select></label>' +
+        '<label>Комментарий (необязательно)<textarea data-map-review-note ' +
+        'maxlength="300" rows="2" placeholder="Что проверили?"></textarea></label>' +
+        '<p class="hm-map-review-hint">После подтверждения организация исчезнет с карты у всей команды. ' +
+        'Её можно будет вернуть из списка «Отработанные и скрытые».</p>' +
+        '<p data-map-review-error role="alert" class="hm-map-review-error"></p>' +
+        '<div class="hm-map-review-actions"><button type="submit" class="hm-map-action">' +
+        'Подтвердить и скрыть</button><button type="button" data-map-review-cancel>' +
+        'Отмена</button></div></form>';
+      if (typeof detail.scrollIntoView === 'function') {
+        detail.scrollIntoView({behavior:'smooth',block:'nearest'});
+      }
+    }
+    function applyReview(item, review) {
+      item.hidden = !!review.hidden;
+      item.review_reason = review.review_reason || null;
+      item.review_note = review.review_note || null;
+      item.reviewed_at = review.reviewed_at || null;
+      if (item.hidden) {
+        state.records = state.records.filter(function(row) {
+          return !(row.type === 'candidate' && Number(row.id) === Number(item.id));
+        });
+        state.reviewedCandidates = state.reviewedCandidates.filter(function(row) {
+          return Number(row.id) !== Number(item.id);
+        });
+        state.reviewedCandidates.unshift(item);
+        state.notice = '✅ «' + item.name + '» отмечена как отработанная и скрыта с карты.';
+      } else {
+        state.reviewedCandidates = state.reviewedCandidates.filter(function(row) {
+          return Number(row.id) !== Number(item.id);
+        });
+        if (!item.matched && item.recommendation !== 'Не добавлять повторно') {
+          state.records.push(item);
+        }
+        state.notice = '↩ «' + item.name + '» возвращена на карту.';
+      }
+      ++state.generation;
+      resetMap();
+      renderShell();
+      draw();
+    }
+    async function saveReview(item, action, form) {
+      if (state.reviewBusy || !item || item.type !== 'candidate') return;
+      var reason = action === 'hide' ? String(
+        form && form.querySelector('[data-map-review-reason]') &&
+        form.querySelector('[data-map-review-reason]').value || ''
+      ) : '';
+      var note = action === 'hide' ? String(
+        form && form.querySelector('[data-map-review-note]') &&
+        form.querySelector('[data-map-review-note]').value || ''
+      ).trim() : '';
+      var errorEl = form && form.querySelector('[data-map-review-error]');
+      if (action === 'hide' && !reviewReasons[reason]) {
+        if (errorEl) errorEl.textContent = 'Выберите причину проверки.';
+        return;
+      }
+      if (!token()) {
+        if (errorEl) errorEl.textContent = 'Сессия сотрудника истекла. Войдите снова.';
+        return;
+      }
+      state.reviewBusy = true;
+      var buttons = form ? Array.from(form.querySelectorAll('button')) :
+        Array.from(root.querySelectorAll('[data-map-review-restore]'))
+          .filter(function(btn) { return btn.dataset.mapReviewRestore === String(item.id); });
+      buttons.forEach(function(btn) { btn.disabled = true; });
+      try {
+        var response = await fetch(
+          '/api/partner-leads/network-map/candidates/' + encodeURIComponent(item.id) + '/review', {
+            method: 'POST', cache: 'no-store',
+            headers: {
+              'Authorization': 'Bearer ' + token(),
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ action: action, reason: reason, note: note })
+          }
+        );
+        var result = await response.json().catch(function() { return {}; });
+        if (!response.ok) throw new Error(result.error || 'Не удалось сохранить результат проверки');
+        if (current === instance && node.isConnected) applyReview(item, result);
+      } catch (error) {
+        if (errorEl) errorEl.textContent = error.message;
+        else if (current === instance && node.isConnected) {
+          state.notice = '⚠ ' + String(error.message || 'Не удалось сохранить');
+          var msg = root.querySelector('[data-map-review-notice]');
+          if (msg) msg.textContent = state.notice;
+        }
+      } finally {
+        state.reviewBusy = false;
+        buttons.forEach(function(btn) { btn.disabled = false; });
+      }
     }
     function statusText() {
       var all = items();
@@ -247,6 +380,8 @@
         '<p>CRM со статусами и отдельный реестр 114 найденных салонов. ' +
         'Фиолетовые кандидаты не внесены в CRM и требуют сверки перед прозвоном.</p></div>' +
         '<button type="button" class="hm-map-reload" data-map-refresh>↻ Обновить</button></div>' +
+        '<p class="hm-map-review-notice" data-map-review-notice role="status">' +
+        escapeHtml(state.notice) + '</p>' +
         '<div class="hm-map-controls"><label>Город <select data-map-city><option value="">Все города</option>' +
         cityOptions() + '</select></label><label>Статус <select data-map-status>' +
         '<option value="all">Все статусы</option>' + Object.keys(colors).map(function (key) {
@@ -270,7 +405,10 @@
           'Внешний реестр: <b>' + state.candidateTotal + ' карточек</b> · ' +
           'возможных совпадений с CRM: <b>' + state.matchedCandidates.length +
           '</b>. Совпадения не дублируются фиолетовыми метками. ' +
-          'Статус «ещё не звонили» присваивается только в CRM.</p>' : '') +
+          'Статус «ещё не звонили» присваивается только в CRM.' +
+          (state.reviewedCandidates.length ? ' Скрыто после проверки: <b>' +
+            state.reviewedCandidates.length + '</b>.' : '') + '</p>' : '') +
+        reviewedListMarkup() +
         '<div class="hm-map-legend">' + legend() + '</div>' +
         '<section class="hm-map-attention" data-map-attention hidden></section>' +
         '<div class="hm-map-canvas" data-map-canvas><p class="hm-map-muted">Загружаем карту…</p></div>' +
@@ -458,11 +596,12 @@
         state.matchedCandidates = candidates.filter(function(item) {
           return !!item.matched || item.recommendation === 'Не добавлять повторно';
         });
+        state.reviewedCandidates = candidates.filter(function(item) { return !!item.hidden; });
         // Only unmapped candidate cards are plotted; known operating points and
         // strong CRM matches are shown through their original live CRM markers.
         state.records = (data.points || []).concat(data.leads || []).concat(
           candidates.filter(function(item) {
-            return !item.matched && item.recommendation !== 'Не добавлять повторно';
+            return !item.hidden && !item.matched && item.recommendation !== 'Не добавлять повторно';
           })
         );
         renderShell();
@@ -490,6 +629,34 @@
       draw();
     });
     root.addEventListener('click', function (event) {
+      var toggleReviewed = event.target.closest('[data-map-reviewed-toggle]');
+      if (toggleReviewed) {
+        state.showReviewed = !state.showReviewed;
+        var reviewedSection = root.querySelector('.hm-map-reviewed');
+        if (reviewedSection) reviewedSection.outerHTML = reviewedListMarkup();
+        return;
+      }
+      var startBtn = event.target.closest('[data-map-review-start]');
+      if (startBtn) {
+        var candidate = recordById('c:' + startBtn.dataset.mapReviewStart);
+        if (candidate) startReview(candidate);
+        return;
+      }
+      var restoreBtn = event.target.closest('[data-map-review-restore]');
+      if (restoreBtn) {
+        var restoreItem = state.reviewedCandidates.find(function(row) {
+          return String(row.id) === restoreBtn.dataset.mapReviewRestore;
+        });
+        if (restoreItem) saveReview(restoreItem, 'restore', null);
+        return;
+      }
+      var cancelBtn = event.target.closest('[data-map-review-cancel]');
+      if (cancelBtn) {
+        var form = cancelBtn.closest('[data-map-review-form]');
+        var cancelItem = form && recordById('c:' + form.dataset.mapReviewForm);
+        if (cancelItem) selectItem(cancelItem, false);
+        return;
+      }
       var refreshButton = event.target.closest('[data-map-refresh]');
       if (refreshButton) { refresh(); return; }
       var more = event.target.closest('[data-map-more]');
@@ -504,6 +671,13 @@
         var item = recordById(row.dataset.mapItem);
         if (item) selectItem(item, true);
       }
+    });
+    root.addEventListener('submit', function(event) {
+      var form = event.target.closest('[data-map-review-form]');
+      if (!form) return;
+      event.preventDefault();
+      var candidate = recordById('c:' + form.dataset.mapReviewForm);
+      if (candidate) saveReview(candidate, 'hide', form);
     });
     var instance = {
       node: node, refresh: refresh,

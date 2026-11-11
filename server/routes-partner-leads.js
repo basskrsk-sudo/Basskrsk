@@ -12,6 +12,7 @@ const { requireAuth } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { geocodeAddress } = require('./geocoding');
 const mapCandidates = require('./partner-map-candidates');
+const MAP_REVIEW_REASONS = new Set(['not_grooming', 'duplicate', 'closed', 'not_suitable', 'other']);
 
 // Only strong address + name/phone matches are treated as duplicate CRM
 // candidates; identical phone alone is insufficient for salon chains.
@@ -272,16 +273,101 @@ function registerPartnerLeadRoutes(router, options = {}) {
       }));
     // External 114-card Excel registry is deliberately kept OUT of partner_leads.
     // Only overlay it on the map. Manager city scoping still applies.
+    const hiddenCandidateRows = db.prepare([
+      'SELECT candidate_id, reason, note, reviewed_at',
+      'FROM partner_map_candidate_reviews WHERE hidden=1'
+    ].join(' ')).all();
+    const hiddenById = new Map(hiddenCandidateRows.map(row => [row.candidate_id, row]));
     const candidates = (!manager || manager.city_id === 'krsk')
       ? mapCandidates.map(candidate => {
           const match = points.concat(leads).find(row => mapDuplicate(candidate, row));
-          return { ...candidate, matched: match ? { type: match.type, id: match.id } : null };
+          const review = hiddenById.get(candidate.id);
+          return { ...candidate, matched: match ? { type: match.type, id: match.id } : null,
+            hidden: !!review, review_reason: review ? review.reason : null,
+            review_note: review ? review.note : null,
+            reviewed_at: review ? review.reviewed_at : null };
+
         })
       : [];
     sendJson(res, 200, {
       points, leads, candidates,
+      candidate_hidden_total: candidates.filter(candidate => candidate.hidden).length,
       candidate_source_total: (!manager || manager.city_id === 'krsk') ? mapCandidates.length : 0,
       default_city_id: manager ? manager.city_id : 'krsk'
+    });
+  });
+
+  // POST /api/partner-leads/network-map/candidates/:id/review
+  // Explicit staff confirmation to mark an external (non-CRM) venue as
+  // reviewed/hidden. A separate SQLite table persists across Amvera restarts.
+  // Reversible and audited; no CRM lead, point, or source XLSX is changed.
+  router.post('/api/partner-leads/network-map/candidates/:id/review', (req, res, ctx) => {
+    const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
+    if (!payload) return;
+    if (payload.role === 'admin' &&
+        !db.prepare('SELECT 1 FROM admins WHERE id=? AND active=1').get(payload.id)) {
+      return sendJson(res, 401, { error: 'Администратор отключён' });
+    }
+    const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
+    if (payload.role === 'manager' && !manager) return;
+    if (manager && manager.city_id !== 'krsk') {
+      return sendJson(res, 403, { error: 'Нет доступа к кандидатам этого города' });
+    }
+    const rawId = String(ctx.params.id || '');
+    const id = /^\d{1,7}$/.test(rawId) ? Number(rawId) : 0;
+    if (!Number.isSafeInteger(id) || id <= 0 || !mapCandidates.some(row => row.id === id)) {
+      return sendJson(res, 404, { error: 'Организация из внешнего реестра не найдена' });
+    }
+    const body = ctx.body || {};
+    const action = body.action;
+    if (action !== 'hide' && action !== 'restore') {
+      return sendJson(res, 400, { error: 'Укажите действие: скрыть или восстановить' });
+    }
+    const reason = action === 'hide' ? String(body.reason || '').trim() : null;
+    if (action === 'hide' && !MAP_REVIEW_REASONS.has(reason)) {
+      return sendJson(res, 400, { error: 'Выберите причину, по которой организация отработана' });
+    }
+    if (body.note != null && typeof body.note !== 'string') {
+      return sendJson(res, 400, { error: 'Комментарий должен быть текстом' });
+    }
+    const note = action === 'hide' ? String(body.note || '').trim() : '';
+    if (note.length > 300) {
+      return sendJson(res, 400, { error: 'Комментарий не должен превышать 300 символов' });
+    }
+    let review;
+    // The project uses node:sqlite DatabaseSync (no db.transaction()).
+    // SAVEPOINT keeps the review state and its audit log atomic.
+    db.exec('SAVEPOINT partner_map_candidate_review');
+    try {
+      db.prepare([
+        'INSERT INTO partner_map_candidate_reviews',
+        '(candidate_id, hidden, reason, note, reviewed_by_role, reviewed_by_id, reviewed_at)',
+        "VALUES (?,?,?,?,?,?,datetime('now'))",
+        'ON CONFLICT(candidate_id) DO UPDATE SET',
+        'hidden=excluded.hidden, reason=excluded.reason, note=excluded.note,',
+        'reviewed_by_role=excluded.reviewed_by_role, reviewed_by_id=excluded.reviewed_by_id,',
+        'reviewed_at=excluded.reviewed_at'
+      ].join(' ')).run(id, action === 'hide' ? 1 : 0, reason,
+        note || null, payload.role, payload.id);
+      db.prepare([
+        'INSERT INTO partner_map_candidate_review_log',
+        '(candidate_id, action, reason, note, actor_role, actor_id)',
+        'VALUES (?,?,?,?,?,?)'
+      ].join(' ')).run(id, action, reason, note || null, payload.role, payload.id);
+      review = db.prepare([
+        'SELECT candidate_id, hidden, reason, note, reviewed_at',
+        'FROM partner_map_candidate_reviews WHERE candidate_id=?'
+      ].join(' ')).get(id);
+      db.exec('RELEASE SAVEPOINT partner_map_candidate_review');
+    } catch (error) {
+      db.exec('ROLLBACK TO SAVEPOINT partner_map_candidate_review');
+      db.exec('RELEASE SAVEPOINT partner_map_candidate_review');
+      throw error;
+    }
+    return sendJson(res, 200, {
+      ok: true, id, hidden: !!review.hidden,
+      review_reason: review.reason, review_note: review.note,
+      reviewed_at: review.reviewed_at
     });
   });
 
@@ -328,7 +414,13 @@ function registerPartnerLeadRoutes(router, options = {}) {
     }
     const records = rows.map(row => ({ ...row, type: 'lead' }))
       .concat(external.map(item => ({ ...item, type: 'candidate' })));
+    const hiddenCandidateIds = new Set(db.prepare(
+      'SELECT candidate_id FROM partner_map_candidate_reviews WHERE hidden=1'
+    ).all().map(row => row.candidate_id));
     const results = await Promise.all(records.map(async row => {
+      if (row.type === 'candidate' && hiddenCandidateIds.has(row.id)) {
+        return { id: row.id, type: row.type, status: 'hidden' };
+      }
       const query = mapGeocodeAddress(row);
       const label = { id: row.id, type: row.type };
       if (!query) return { ...label, status: 'needs_address' };

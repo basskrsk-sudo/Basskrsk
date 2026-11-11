@@ -236,3 +236,96 @@ test('only the verified TsatsaGroom branch carries its direct Yandex profile ID'
   assert.equal(first.yandex_org_id, '16856539729');
   assert.equal(second.yandex_org_id, null);
 });
+
+
+async function reviewCandidate(identity, id, body) {
+  const handler = handlers.get('POST /api/partner-leads/network-map/candidates/:id/review');
+  assert.ok(handler, 'authenticated candidate review route exists');
+  const req = {headers: {authorization: identity ? 'Bearer ' + signToken(identity) : ''}};
+  const res = {status: 0, body: null,
+    writeHead(code) { this.status = code; return this; },
+    end(payload) { this.body = JSON.parse(payload); }
+  };
+  await handler(req, res, {params: {id: String(id)}, body: body || {}});
+  return res;
+}
+
+test('candidate review is denied to buyers, unauthorized accounts, and managers from another city', async () => {
+  const body = {action: 'hide', reason: 'not_grooming'};
+  for (const user of [null, {role: 'partner', id: a},
+    {role: 'manager', id: inactive}, {role: 'admin', id: 996}]) {
+    assert.equal((await reviewCandidate(user, 27, body)).status, 401);
+  }
+  assert.equal((await reviewCandidate({role: 'manager', id: b}, 27, body)).status, 403);
+  assert.equal((await reviewCandidate({role: 'manager', id: a}, 0, body)).status, 404);
+  assert.equal((await reviewCandidate({role: 'manager', id: a}, 999999, body)).status, 404);
+  assert.equal((await reviewCandidate({role: 'manager', id: a}, '../27', body)).status, 404);
+  assert.equal((await reviewCandidate({role: 'manager', id: a}, 27, {action:'delete'})).status, 400);
+  assert.equal((await reviewCandidate({role: 'manager', id: a}, 27,
+    {action:'hide',reason:'invalid'})).status, 400);
+  assert.equal((await reviewCandidate({role: 'manager', id: a}, 27,
+    {action:'hide',reason:'not_grooming',note:'a'.repeat(301)})).status, 400);
+  assert.equal((await reviewCandidate({role: 'manager', id: a}, 27,
+    {action:'hide',reason:'not_grooming',note:{bad:true}})).status, 400);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM partner_map_candidate_review_log').get().n, 0);
+});
+
+test('reviewed non-groomer disappears from map for every staff member but is retained for recovery', async () => {
+  const id = 27;
+  const original = require('./partner-map-candidates').find(row => row.id === id);
+  assert.ok(original);
+  const crmBefore = db.prepare('SELECT COUNT(*) n FROM partner_leads').get().n;
+  const pointBefore = db.prepare('SELECT COUNT(*) n FROM points').get().n;
+  const result = await reviewCandidate({role:'manager',id:a},id,{
+    action:'hide',reason:'not_grooming',note:'Проверил: салона груминга нет'
+  });
+  assert.equal(result.status,200);
+  assert.equal(result.body.ok,true);
+  assert.equal(result.body.id,id);
+  assert.equal(result.body.hidden,true);
+  assert.equal(result.body.review_reason,'not_grooming');
+  assert.equal(result.body.review_note,'Проверил: салона груминга нет');
+  assert.ok(result.body.reviewed_at);
+
+  const managerView = await mapCall({role:'manager',id:a});
+  const adminView = await mapCall({role:'admin',id:995});
+  assert.equal(managerView.body.candidates.find(row=>row.id===id).hidden,true);
+  assert.equal(adminView.body.candidates.find(row=>row.id===id).hidden,true);
+  assert.equal(adminView.body.candidate_hidden_total,1);
+  assert.equal(adminView.body.candidate_source_total,114);
+  const beforeGeocode = geocodeCalls.length;
+  const coords = await coordinateCall({role:'admin',id:995},[],[id]);
+  assert.equal(coords.status,200);
+  assert.equal(coords.body.results[0].status,'hidden');
+  assert.equal(geocodeCalls.length,beforeGeocode,
+    'hidden candidates must not generate additional Yandex API calls');
+
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM partner_leads').get().n,crmBefore);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM points').get().n,pointBefore);
+  assert.equal(require('./partner-map-candidates').length,114);
+  assert.equal(require('./partner-map-candidates').find(row=>row.id===id).hidden,undefined);
+  const review=db.prepare('SELECT * FROM partner_map_candidate_reviews WHERE candidate_id=?').get(id);
+  assert.equal(review.hidden,1);
+  assert.equal(review.reviewed_by_role,'manager');
+  assert.equal(review.reviewed_by_id,a);
+  const log=db.prepare('SELECT * FROM partner_map_candidate_review_log WHERE candidate_id=?').all(id);
+  assert.equal(log.length,1);
+  assert.equal(log[0].action,'hide');
+});
+
+test('administrator can restore reviewed candidate and history stays in audit log', async () => {
+  const id=27;
+  const result=await reviewCandidate({role:'admin',id:995},id,{action:'restore'});
+  assert.equal(result.status,200);
+  assert.equal(result.body.hidden,false);
+  assert.equal(result.body.review_reason,null);
+  const admin=await mapCall({role:'admin',id:995});
+  const mgr=await mapCall({role:'manager',id:a});
+  assert.equal(admin.body.candidates.find(row=>row.id===id).hidden,false);
+  assert.equal(mgr.body.candidates.find(row=>row.id===id).hidden,false);
+  assert.equal(admin.body.candidate_hidden_total,0);
+  const log=db.prepare('SELECT action,actor_role FROM partner_map_candidate_review_log WHERE candidate_id=? ORDER BY id').all(id);
+  assert.deepEqual(log.map(row=>row.action),['hide','restore']);
+  assert.deepEqual(log.map(row=>row.actor_role),['manager','admin']);
+  assert.equal(db.prepare('SELECT hidden FROM partner_map_candidate_reviews WHERE candidate_id=?').get(id).hidden,0);
+});

@@ -64,3 +64,29 @@
 .hm-map-sources{margin:8px 0 10px;padding:10px 12px;background:#f7f3fd;border-radius:9px;border:1px solid #e8dff5;font-size:12px;line-height:1.5;color:#634b7b}
 .hm-map-sources b{color:#61318a}
 @media(max-width:740px){.hm-map-candidate-controls{align-items:flex-start;flex-direction:column;gap:8px}}
+
+/* Reviewed external organizations: reversible, team-wide hiding (not CRM deletion). */
+.hm-map-review-start{display:block;margin-top:12px;background:#8056b2;color:#fff;max-width:100%;white-space:normal;text-align:center}
+.hm-map-reviewed{margin:10px 0 12px;padding:10px 12px;background:#f5f8f3;border:1px solid #d8e6dc;border-radius:12px}
+.hm-map-reviewed-toggle{display:block;width:100%;text-align:left;font:inherit;font-weight:800;color:#216148;border:0;background:none;padding:7px 0;cursor:pointer}
+.hm-map-reviewed-items{display:grid;gap:7px;max-height:300px;overflow:auto;padding:5px 0}
+.hm-map-reviewed-item{display:flex;align-items:center;gap:12px;justify-content:space-between;border:1px solid #dfe8de;background:#fff;border-radius:10px;padding:10px}
+.hm-map-reviewed-item span{flex:1;min-width:0}
+.hm-map-reviewed-item b{display:block;font-size:12px;overflow-wrap:anywhere;color:#294a3c}
+.hm-map-reviewed-item small{display:block;margin-top:4px;color:#677b6e;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.hm-map-reviewed-item button{font:inherit;font-size:12px;font-weight:800;padding:9px 11px;border:1px solid #bdd6c7;color:#156849;background:#eaf5ed;border-radius:9px;cursor:pointer}
+.hm-map-reviewed-item button:disabled{opacity:.6;cursor:wait}
+.hm-map-review-form{margin-top:12px;padding:12px;background:#f7f2fd;border:1px solid #e1d4ee;border-radius:12px}
+.hm-map-review-form label{display:block;color:#534268;font-size:12px;font-weight:700;margin-bottom:10px}
+.hm-map-review-form select,.hm-map-review-form textarea{width:100%;display:block;margin-top:6px;background:#fff;border:1px solid #ccbddd;border-radius:9px;color:#294a3c;font:inherit;font-size:14px;padding:10px;box-sizing:border-box}
+.hm-map-review-form textarea{resize:vertical;max-height:160px}
+.hm-map-review-actions{display:flex;gap:9px;flex-wrap:wrap;align-items:stretch}
+.hm-map-review-actions button{font:inherit;font-size:12px;font-weight:800;border-radius:9px;border:1px solid #b9a9c9;padding:10px 12px;cursor:pointer}
+.hm-map-review-actions .hm-map-action{background:#8056b2;border-color:#8056b2;color:#fff}
+.hm-map-review-actions button:not(.hm-map-action){background:#fff;color:#685478}
+.hm-map-review-actions button:disabled{opacity:.6;cursor:wait}
+.hm-map-review-hint{font-size:11px;line-height:1.5;color:#776987;margin:9px 0}
+.hm-map-review-error{font-size:12px;line-height:1.4;color:#ae3733;margin:7px 0}
+.hm-map-review-notice{border:1px solid #c4ddcb;background:#edf8ef;border-radius:10px;padding:10px 12px;font-size:12px;color:#276849;margin:8px 0 12px}
+.hm-map-review-notice:empty{display:none}
+@media(max-width:640px){.hm-map-reviewed-item{align-items:flex-start}.hm-map-reviewed-item button{flex:0 0 auto}.hm-map-review-actions{flex-direction:column}.hm-map-review-actions button{width:100%}}
