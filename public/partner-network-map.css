@@ -90,3 +90,9 @@
 .hm-map-review-notice{border:1px solid #c4ddcb;background:#edf8ef;border-radius:10px;padding:10px 12px;font-size:12px;color:#276849;margin:8px 0 12px}
 .hm-map-review-notice:empty{display:none}
 @media(max-width:640px){.hm-map-reviewed-item{align-items:flex-start}.hm-map-reviewed-item button{flex:0 0 auto}.hm-map-review-actions{flex-direction:column}.hm-map-review-actions button{width:100%}}
+
+/* External candidates: CRM-like stages and VK / Telegram / MAX contact editor. */
+.hm-map-contact-start{display:block;margin-top:10px;background:#15899b!important;color:#fff}
+.hm-map-review-form input[type=date]{display:block;margin-top:6px;width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccbddd;border-radius:9px;font:inherit;color:#294a3c;background:#fff;min-height:42px}
+.hm-map-card .hm-map-tag{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.hm-map-contact-form label select{min-height:42px}

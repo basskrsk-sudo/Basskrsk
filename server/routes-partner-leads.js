@@ -13,6 +13,13 @@ const { sendTelegram } = require('./telegram');
 const { geocodeAddress } = require('./geocoding');
 const mapCandidates = require('./partner-map-candidates');
 const MAP_REVIEW_REASONS = new Set(['not_grooming', 'duplicate', 'closed', 'not_suitable', 'other']);
+const MAP_CANDIDATE_STATUSES = new Set([
+  'candidate', 'to_call', 'no_answer', 'in_progress',
+  'message_sent', 'waiting_reply', 'meeting_scheduled', 'meeting_held',
+  'signed', 'declined'
+]);
+const MAP_CONTACT_CHANNELS = new Set(['vk', 'tg', 'max', 'phone', 'in_person']);
+const MAP_MESSAGE_STATUSES = new Set(['message_sent', 'waiting_reply']);
 
 // Only strong address + name/phone matches are treated as duplicate CRM
 // candidates; identical phone alone is insufficient for salon chains.
@@ -273,19 +280,29 @@ function registerPartnerLeadRoutes(router, options = {}) {
       }));
     // External 114-card Excel registry is deliberately kept OUT of partner_leads.
     // Only overlay it on the map. Manager city scoping still applies.
-    const hiddenCandidateRows = db.prepare([
-      'SELECT candidate_id, reason, note, reviewed_at',
-      'FROM partner_map_candidate_reviews WHERE hidden=1'
+    const candidateReviewRows = db.prepare([
+      'SELECT candidate_id, hidden, reason, note, reviewed_at,',
+      'contact_status, contact_channel, contact_note, next_contact_date,',
+      'contact_updated_at, contact_updated_by_role, contact_updated_by_id',
+      'FROM partner_map_candidate_reviews'
     ].join(' ')).all();
-    const hiddenById = new Map(hiddenCandidateRows.map(row => [row.candidate_id, row]));
+    const reviewsById = new Map(candidateReviewRows.map(row => [row.candidate_id, row]));
     const candidates = (!manager || manager.city_id === 'krsk')
       ? mapCandidates.map(candidate => {
           const match = points.concat(leads).find(row => mapDuplicate(candidate, row));
-          const review = hiddenById.get(candidate.id);
+          const review = reviewsById.get(candidate.id);
           return { ...candidate, matched: match ? { type: match.type, id: match.id } : null,
-            hidden: !!review, review_reason: review ? review.reason : null,
+            hidden: !!(review && review.hidden),
+            review_reason: review ? review.reason : null,
             review_note: review ? review.note : null,
-            reviewed_at: review ? review.reviewed_at : null };
+            reviewed_at: review ? review.reviewed_at : null,
+            status: review && review.contact_status || candidate.status,
+            contact_channel: review ? review.contact_channel : null,
+            contact_note: review ? review.contact_note : null,
+            next_contact_date: review ? review.next_contact_date : null,
+            contact_updated_at: review ? review.contact_updated_at : null,
+            contact_updated_by_role: review ? review.contact_updated_by_role : null,
+            contact_updated_by_id: review ? review.contact_updated_by_id : null };
 
         })
       : [];
@@ -369,6 +386,101 @@ function registerPartnerLeadRoutes(router, options = {}) {
       review_reason: review.reason, review_note: review.note,
       reviewed_at: review.reviewed_at
     });
+  });
+
+  // POST /api/partner-leads/network-map/candidates/:id/contact
+  // Save an interaction with a candidate from the unapproved external list.
+  // The CRM lead database is NOT modified; all changes are team-visible
+  // and independently audited. Active manager or admin access is mandatory.
+  router.post('/api/partner-leads/network-map/candidates/:id/contact', (req, res, ctx) => {
+    const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
+    if (!payload) return;
+    if (payload.role === 'admin' &&
+        !db.prepare('SELECT 1 FROM admins WHERE id=? AND active=1').get(payload.id)) {
+      return sendJson(res, 401, { error: 'Администратор отключён' });
+    }
+    const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
+    if (payload.role === 'manager' && !manager) return;
+    if (manager && manager.city_id !== 'krsk') {
+      return sendJson(res, 403, { error: 'Нет доступа к кандидатам этого города' });
+    }
+    const rawId = String(ctx.params.id || '');
+    const id = /^\d{1,7}$/.test(rawId) ? Number(rawId) : 0;
+    if (!Number.isSafeInteger(id) || id <= 0 ||
+        !mapCandidates.some(candidate => candidate.id === id)) {
+      return sendJson(res, 404, { error: 'Организация из внешнего реестра не найдена' });
+    }
+    if (db.prepare('SELECT hidden FROM partner_map_candidate_reviews WHERE candidate_id=?')
+      .get(id)?.hidden) {
+      return sendJson(res, 409, { error: 'Организация скрыта. Сначала восстановите её на карте' });
+    }
+    const body = ctx.body || {};
+    const status = String(body.status || '').trim();
+    const channel = String(body.channel || '').trim();
+    const note = body.note === undefined || body.note === null ? '' : body.note;
+    const nextDate = body.next_contact_date === undefined ||
+      body.next_contact_date === null ? '' : body.next_contact_date;
+    if (!MAP_CANDIDATE_STATUSES.has(status)) {
+      return sendJson(res, 400, { error: 'Выберите этап из списка' });
+    }
+    if (channel && !MAP_CONTACT_CHANNELS.has(channel)) {
+      return sendJson(res, 400, { error: 'Неизвестный канал контакта' });
+    }
+    if (MAP_MESSAGE_STATUSES.has(status) && !['vk', 'tg', 'max'].includes(channel)) {
+      return sendJson(res, 400, { error: 'Для сообщения выберите ВК, Telegram или MAX' });
+    }
+    if (typeof note !== 'string' || note.length > 500) {
+      return sendJson(res, 400, { error: 'Комментарий должен быть текстом до 500 символов' });
+    }
+    if (typeof nextDate !== 'string' || (nextDate &&
+        (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate) ||
+        !Number.isFinite(Date.parse(nextDate + 'T00:00:00Z')) ||
+        new Date(nextDate + 'T00:00:00Z').toISOString().slice(0,10) !== nextDate))) {
+      return sendJson(res, 400, { error: 'Неверная дата следующего контакта' });
+    }
+
+    let contact;
+    // node:sqlite DatabaseSync: SAVEPOINT rather than better-sqlite3 .transaction().
+    db.exec('SAVEPOINT partner_map_candidate_contact');
+    try {
+      db.prepare([
+        'INSERT INTO partner_map_candidate_reviews',
+        '(candidate_id, hidden, reason, note, reviewed_by_role, reviewed_by_id, reviewed_at,',
+        'contact_status, contact_channel, contact_note, next_contact_date,',
+        'contact_updated_at, contact_updated_by_role, contact_updated_by_id)',
+        "VALUES (?,0,NULL,NULL,?,?,datetime('now'),?,?,?,?,datetime('now'),?,?)",
+        'ON CONFLICT(candidate_id) DO UPDATE SET',
+        'contact_status=excluded.contact_status,',
+        'contact_channel=excluded.contact_channel,',
+        'contact_note=excluded.contact_note,',
+        'next_contact_date=excluded.next_contact_date,',
+        'contact_updated_at=excluded.contact_updated_at,',
+        'contact_updated_by_role=excluded.contact_updated_by_role,',
+        'contact_updated_by_id=excluded.contact_updated_by_id'
+      ].join(' ')).run(
+        id, payload.role, payload.id, status, channel || null,
+        note.trim() || null, nextDate || null, payload.role, payload.id
+      );
+      db.prepare([
+        'INSERT INTO partner_map_candidate_contact_log',
+        '(candidate_id, contact_status, contact_channel, next_contact_date,',
+        'note, actor_role, actor_id) VALUES (?,?,?,?,?,?,?)'
+      ].join(' ')).run(
+        id, status, channel || null, nextDate || null,
+        note.trim() || null, payload.role, payload.id
+      );
+      contact = db.prepare([
+        'SELECT candidate_id, hidden, contact_status, contact_channel, contact_note,',
+        'next_contact_date, contact_updated_at, contact_updated_by_role,',
+        'contact_updated_by_id FROM partner_map_candidate_reviews WHERE candidate_id=?'
+      ].join(' ')).get(id);
+      db.exec('RELEASE SAVEPOINT partner_map_candidate_contact');
+    } catch (error) {
+      db.exec('ROLLBACK TO SAVEPOINT partner_map_candidate_contact');
+      db.exec('RELEASE SAVEPOINT partner_map_candidate_contact');
+      throw error;
+    }
+    return sendJson(res, 200, { ok: true, id, ...contact, hidden: !!contact.hidden });
   });
 
   // POST /api/partner-leads/network-map/coordinates
