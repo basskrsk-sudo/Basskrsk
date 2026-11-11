@@ -6,12 +6,12 @@
   var current = null;
   var colors = {
     active: '#208357', declined: '#ce4b50', to_call: '#2776c7',
-    no_answer: '#ee8d3d', in_progress: '#e3aa30', candidate: '#8056b2'
+    no_answer: '#ee8d3d', in_progress: '#e3aa30', candidate: '#8056b2', social: '#15899b'
   };
   var labels = {
     active: 'Минимаркет работает', declined: 'Отказ',
     to_call: 'Ещё не звонили', no_answer: 'Не дозвонились',
-    in_progress: 'Звонили · в проработке', candidate: 'Найдены, не в CRM'
+    in_progress: 'Звонили · в проработке', candidate: 'Найдены, не в CRM', social: 'Сообщения в соцсетях'
   };
   var rawLabels = {
     to_call: 'Нужно позвонить', no_answer: 'Не дозвонились',
@@ -33,7 +33,15 @@
   }
   function colorKey(item) {
     if (item.type === 'point') return 'active';
-    if (item.type === 'candidate') return 'candidate';
+    if (item.type === 'candidate') {
+      if (item.status === 'message_sent' || item.status === 'waiting_reply') return 'social';
+      if (item.status === 'declined') return 'declined';
+      if (item.status === 'to_call') return 'to_call';
+      if (item.status === 'no_answer') return 'no_answer';
+      if (['in_progress','meeting_scheduled','meeting_held','signed'].includes(item.status))
+        return 'in_progress';
+      return 'candidate';
+    }
     if (item.status === 'declined') return 'declined';
     if (item.status === 'to_call') return 'to_call';
     if (item.status === 'no_answer') return 'no_answer';
@@ -114,6 +122,7 @@
     var state = {
       node: node, map: null, records: [], city: '', status: 'all',
       district: '', showCandidates: true, candidateTotal: 0, matchedCandidates: [],
+      contactBusy: false,
       reviewedCandidates: [], showReviewed: false, reviewBusy: false, notice: '',
       cache: Object.create(null), geocodeStates: Object.create(null),
       markers: Object.create(null), generation: 0,
@@ -124,7 +133,9 @@
     function items() {
       return state.records.filter(function (i) {
         return (!state.city || String(i.city_id || '') === state.city) &&
-          (state.status === 'all' || colorKey(i) === state.status) &&
+          (state.status === 'all' ||
+            (state.status === 'candidate' ? i.type === 'candidate' :
+              colorKey(i) === state.status)) &&
           (i.type !== 'candidate' || (state.showCandidates &&
             (!state.district || String(i.district || '') === state.district))) &&
           (!state.district || i.type === 'candidate' || state.status !== 'candidate');
@@ -212,7 +223,8 @@
           return '<button type="button" class="hm-map-missing" data-map-item="' +
             escapeHtml(itemId(item)) + '"><i style="background:' + colors[colorKey(item)] +
             '"></i><span><b>' + escapeHtml(item.name) + '</b><small>' +
-            escapeHtml(labels[colorKey(item)]) + ' · ' + escapeHtml(unplacedReason(item)) +
+            escapeHtml(item.type === 'candidate' ? candidateStatusLabel(item) :
+              labels[colorKey(item)]) + ' · ' + escapeHtml(unplacedReason(item)) +
             '</small></span></button>';
         }).join('') + '</div>' +
         (missing.length > 35 ? '<p>Ещё ' + (missing.length - 35) +
@@ -225,13 +237,24 @@
         '<div class="hm-map-card-title">' + escapeHtml(i.name) + '</div>' +
         '<span class="hm-map-tag" style="--hm-map-color:' + colors[colorKey(i)] + '">' +
         escapeHtml(i.type === 'point' ? 'Минимаркет работает' :
-          i.type === 'candidate' ? labels.candidate : rawLabels[i.status] || labels[colorKey(i)]) +
+          i.type === 'candidate' ?
+            (candidateStatusLabel(i) + (candidateChannelLabel(i) ? ' · ' + candidateChannelLabel(i) : '')) :
+            rawLabels[i.status] || labels[colorKey(i)]) +
         '</span>' +
         '<p>📍 ' + escapeHtml(i.address || 'Адрес не указан') + '</p>' +
         (i.type === 'candidate' ? '<p>Район: ' + escapeHtml(i.district || 'Уточняется') +
           ' · ' + escapeHtml(i.category || 'Организация') + '</p>' +
           '<p><strong>Внешняя карточка, не CRM.</strong> ' +
-          escapeHtml(i.recommendation || 'Нужно сверить перед прозвоном') + '</p>' : '') +
+          escapeHtml(i.recommendation || 'Нужно сверить перед прозвоном') + '</p>' +
+          '<p><b>Этап:</b> ' + escapeHtml(candidateStatusLabel(i)) +
+          (candidateChannelLabel(i) ? ' · ' + escapeHtml(candidateChannelLabel(i)) : '') +
+          (i.next_contact_date ? ' · Следующий контакт: ' +
+            escapeHtml(i.next_contact_date) : '') + '</p>' +
+          (i.contact_note ? '<p>Комментарий: ' + escapeHtml(i.contact_note) + '</p>' : '') : '') +
+        (i.type === 'candidate' && !i.hidden ?
+          '<button type="button" class="hm-map-action hm-map-contact-start" ' +
+          'data-map-contact-start="' + escapeHtml(i.id) +
+          '">📝 Статус и канал связи</button>' : '') +
         (i.type === 'candidate' && !i.hidden ?
           '<button type="button" class="hm-map-action hm-map-review-start" ' +
           'data-map-review-start="' + escapeHtml(i.id) +
@@ -249,6 +272,123 @@
           escapeHtml(i.id) + '">Открыть в базе обзвона</button>' : '') +
         '</div>';
       return html;
+    }
+    // Mirrors the six CRM stages, with additional pre-CRM and messaging steps.
+    var candidateStatusLabels = {
+      candidate: 'Найден, ещё не проверен',
+      to_call: 'Ещё не звонили',
+      no_answer: 'Не дозвонились',
+      in_progress: 'В проработке',
+      message_sent: 'Сообщение отправлено',
+      waiting_reply: 'Ожидаю ответа',
+      meeting_scheduled: 'Встреча назначена',
+      meeting_held: 'Встреча состоялась',
+      signed: 'Сотрудничество согласовано',
+      declined: 'Отказ'
+    };
+    var contactChannelLabels = {
+      vk: 'ВК', tg: 'Telegram', max: 'MAX',
+      phone: 'Телефон', in_person: 'Лично'
+    };
+    function candidateStatusLabel(item) {
+      return candidateStatusLabels[item.status] || 'Найден, ещё не проверен';
+    }
+    function candidateChannelLabel(item) {
+      return contactChannelLabels[item.contact_channel] || '';
+    }
+    function contactForm(item) {
+      return '<form data-map-contact-form="' + escapeHtml(item.id) +
+        '" class="hm-map-review-form hm-map-contact-form">' +
+        '<label>Этап работы с салоном<select required data-map-contact-status>' +
+        Object.keys(candidateStatusLabels).map(function (key) {
+          return '<option value="' + key + '"' +
+            (item.status === key ? ' selected' : '') + '>' +
+            escapeHtml(candidateStatusLabels[key]) + '</option>';
+        }).join('') + '</select></label>' +
+        '<label>Как связались<select data-map-contact-channel>' +
+        '<option value="">Не выбран</option>' +
+        Object.keys(contactChannelLabels).map(function (key) {
+          return '<option value="' + key + '"' +
+            (item.contact_channel === key ? ' selected' : '') + '>' +
+            escapeHtml(contactChannelLabels[key]) + '</option>';
+        }).join('') + '</select></label>' +
+        '<p class="hm-map-review-hint">Для «Сообщение отправлено» и «Ожидаю ответа» ' +
+        'выберите ВК, Telegram или MAX.</p>' +
+        '<label>Дата следующего контакта<input type="date" data-map-contact-date value="' +
+          escapeHtml(item.next_contact_date || '') + '"></label>' +
+        '<label>Комментарий<textarea data-map-contact-note maxlength="500" rows="3" ' +
+          'placeholder="Кому написали, о чём договорились">' +
+          escapeHtml(item.contact_note || '') + '</textarea></label>' +
+        '<p class="hm-map-review-error" data-map-contact-error role="alert"></p>' +
+        '<div class="hm-map-review-actions"><button type="submit" class="hm-map-action">' +
+          'Сохранить статус</button><button type="button" data-map-contact-cancel>Отмена</button>' +
+        '</div></form>';
+    }
+    function startContact(item) {
+      if (!item || item.type !== 'candidate' || item.hidden) return;
+      var detail = root.querySelector('[data-map-detail]');
+      if (!detail) return;
+      detail.innerHTML = details(item, false) + contactForm(item);
+      if (typeof detail.scrollIntoView === 'function')
+        detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    async function saveContact(item, form) {
+      if (state.contactBusy || !item || item.type !== 'candidate' || item.hidden) return;
+      var statusEl = form.querySelector('[data-map-contact-status]');
+      var channelEl = form.querySelector('[data-map-contact-channel]');
+      var dateEl = form.querySelector('[data-map-contact-date]');
+      var noteEl = form.querySelector('[data-map-contact-note]');
+      var errorEl = form.querySelector('[data-map-contact-error]');
+      var payload = {
+        status: statusEl ? statusEl.value : '',
+        channel: channelEl ? channelEl.value : '',
+        next_contact_date: dateEl ? dateEl.value : '',
+        note: noteEl ? noteEl.value : ''
+      };
+      if (['message_sent','waiting_reply'].includes(payload.status) &&
+          !['vk','tg','max'].includes(payload.channel)) {
+        if (errorEl) errorEl.textContent = 'Укажите канал сообщения: ВК, Telegram или MAX.';
+        return;
+      }
+      if (!token()) {
+        if (errorEl) errorEl.textContent = 'Войдите повторно в кабинет сотрудника.';
+        return;
+      }
+      state.contactBusy = true;
+      var buttons = Array.from(form.querySelectorAll('button'));
+      buttons.forEach(function(btn) { btn.disabled = true; });
+      try {
+        var response = await fetch(
+          '/api/partner-leads/network-map/candidates/' + encodeURIComponent(item.id) + '/contact', {
+            method: 'POST', cache: 'no-store',
+            headers: {
+              'Authorization': 'Bearer ' + token(),
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          }
+        );
+        var saved = await response.json().catch(function() { return {}; });
+        if (!response.ok) throw new Error(saved.error || 'Не удалось сохранить статус');
+        if (current !== instance || !node.isConnected) return;
+        item.status = saved.contact_status || 'candidate';
+        item.contact_channel = saved.contact_channel || null;
+        item.contact_note = saved.contact_note || null;
+        item.next_contact_date = saved.next_contact_date || null;
+        item.contact_updated_at = saved.contact_updated_at || null;
+        state.notice = '✅ «' + item.name + '»: ' + candidateStatusLabel(item) +
+          (item.contact_channel ? ' · ' + candidateChannelLabel(item) : '') + '.';
+        ++state.generation;
+        resetMap();
+        renderShell();
+        draw();
+        selectItem(item, false);
+      } catch (error) {
+        if (errorEl) errorEl.textContent = error.message || 'Не удалось сохранить';
+      } finally {
+        state.contactBusy = false;
+        buttons.forEach(function(btn) { btn.disabled = false; });
+      }
     }
     function startReview(item) {
       if (!item || item.type !== 'candidate' || item.hidden) return;
@@ -372,7 +512,11 @@
           escapeHtml(itemId(item)) + '"><span class="hm-map-dot" style="background:' +
           colors[colorKey(item)] + '"></span><span><strong>' + escapeHtml(item.name) +
           '</strong><small>' + escapeHtml(item.address || 'Адрес отсутствует') +
-          ' · ' + escapeHtml(labels[colorKey(item)]) + '</small></span></button>';
+          ' · ' + escapeHtml(item.type === 'candidate' ? candidateStatusLabel(item) :
+            labels[colorKey(item)]) +
+          (item.type === 'candidate' && candidateChannelLabel(item) ?
+            ' · ' + escapeHtml(candidateChannelLabel(item)) : '') +
+          '</small></span></button>';
       }).join('') : '<p class="hm-map-muted">По выбранным фильтрам объектов нет.</p>';
     }
     function renderShell() {
@@ -636,6 +780,19 @@
         if (reviewedSection) reviewedSection.outerHTML = reviewedListMarkup();
         return;
       }
+      var contactBtn = event.target.closest('[data-map-contact-start]');
+      if (contactBtn) {
+        var contactItem = recordById('c:' + contactBtn.dataset.mapContactStart);
+        if (contactItem) startContact(contactItem);
+        return;
+      }
+      var contactCancel = event.target.closest('[data-map-contact-cancel]');
+      if (contactCancel) {
+        var contactFormEl = contactCancel.closest('[data-map-contact-form]');
+        var original = contactFormEl && recordById('c:' + contactFormEl.dataset.mapContactForm);
+        if (original) selectItem(original, false);
+        return;
+      }
       var startBtn = event.target.closest('[data-map-review-start]');
       if (startBtn) {
         var candidate = recordById('c:' + startBtn.dataset.mapReviewStart);
@@ -673,6 +830,13 @@
       }
     });
     root.addEventListener('submit', function(event) {
+      var contact = event.target.closest('[data-map-contact-form]');
+      if (contact) {
+        event.preventDefault();
+        var row = recordById('c:' + contact.dataset.mapContactForm);
+        if (row) saveContact(row, contact);
+        return;
+      }
       var form = event.target.closest('[data-map-review-form]');
       if (!form) return;
       event.preventDefault();

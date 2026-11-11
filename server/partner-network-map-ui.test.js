@@ -139,3 +139,26 @@ test('reviewing a candidate can hide and later restore it without changing CRM',
   assert.match(style, /hm-map-review-start/);
   assert.doesNotThrow(() => new Function(script));
 });
+
+
+test('candidate status editor exposes all CRM stages and VK, Telegram, MAX channels', () => {
+  const script=read('partner-network-map.js');
+  const css=read('partner-network-map.css');
+  for(const status of [
+    'Найден, ещё не проверен', 'Ещё не звонили', 'Не дозвонились',
+    'В проработке', 'Сообщение отправлено', 'Ожидаю ответа',
+    'Встреча назначена', 'Встреча состоялась',
+    'Сотрудничество согласовано', 'Отказ'
+  ]) assert.ok(script.includes(status),status);
+  for(const name of ['ВК','Telegram','MAX'])assert.ok(script.includes(name),name);
+  for(const hook of [
+    'data-map-contact-start','data-map-contact-form','data-map-contact-status',
+    'data-map-contact-channel','data-map-contact-date','data-map-contact-note',
+    'data-map-contact-error','saveContact','candidateStatusLabels'
+  ]) assert.ok(script.includes(hook),hook);
+  assert.match(script,/network-map\/candidates\//);
+  assert.match(script,/\/contact/);
+  assert.match(css,/hm-map-contact-start/);
+  assert.match(css,/hm-map-review-form input\[type=date\]/);
+  assert.doesNotThrow(()=>new Function(script));
+});

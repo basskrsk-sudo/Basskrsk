@@ -846,6 +846,31 @@ function ensureColumn(table, column, definition) {
   }
 }
 
+// Separate interaction history for UNAPPROVED external map candidates.
+// The original registry (114 rows) and the working CRM remain untouched.
+ensureColumn('partner_map_candidate_reviews', 'contact_status', 'TEXT');
+ensureColumn('partner_map_candidate_reviews', 'contact_channel', 'TEXT');
+ensureColumn('partner_map_candidate_reviews', 'contact_note', 'TEXT');
+ensureColumn('partner_map_candidate_reviews', 'next_contact_date', 'TEXT');
+ensureColumn('partner_map_candidate_reviews', 'contact_updated_at', 'TEXT');
+ensureColumn('partner_map_candidate_reviews', 'contact_updated_by_role', 'TEXT');
+ensureColumn('partner_map_candidate_reviews', 'contact_updated_by_id', 'INTEGER');
+db.exec(`
+CREATE TABLE IF NOT EXISTS partner_map_candidate_contact_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  candidate_id INTEGER NOT NULL,
+  contact_status TEXT NOT NULL,
+  contact_channel TEXT,
+  next_contact_date TEXT,
+  note TEXT,
+  actor_role TEXT NOT NULL,
+  actor_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_partner_map_candidate_contact_log
+ON partner_map_candidate_contact_log(candidate_id, id DESC);
+`);
+
 // Архивация вместо физического удаления товара: сохраняем историю и остатки.
 // archived_prev_active восстанавливает исходную видимость на сайте после возврата.
 ensureColumn('products', 'archived_at', 'TEXT');

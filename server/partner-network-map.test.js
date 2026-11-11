@@ -329,3 +329,111 @@ test('administrator can restore reviewed candidate and history stays in audit lo
   assert.deepEqual(log.map(row=>row.actor_role),['manager','admin']);
   assert.equal(db.prepare('SELECT hidden FROM partner_map_candidate_reviews WHERE candidate_id=?').get(id).hidden,0);
 });
+
+
+async function candidateContact(identity, id, body) {
+  const handler = handlers.get('POST /api/partner-leads/network-map/candidates/:id/contact');
+  assert.ok(handler, 'authenticated map contact status route exists');
+  const req={headers:{authorization:identity ? 'Bearer '+signToken(identity) : ''}};
+  const res={status:0,body:null,writeHead(code){this.status=code;return this;},
+    end(payload){this.body=JSON.parse(payload);}};
+  await handler(req,res,{params:{id:String(id)},body:body || {}});
+  return res;
+}
+test('all six CRM stages and extra pre-CRM/messaging stages are available to external candidates', async () => {
+  const id=47;
+  const crmBefore=db.prepare('SELECT COUNT(*) n FROM partner_leads').get().n;
+  const pointsBefore=db.prepare('SELECT COUNT(*) n FROM points').get().n;
+  const statuses=['candidate','to_call','no_answer','in_progress',
+    'message_sent','waiting_reply','meeting_scheduled','meeting_held','signed','declined'];
+  for(const status of statuses) {
+    const request={
+      status,
+      channel:['message_sent','waiting_reply'].includes(status)?'vk':'',
+      note:'Тестовая запись',
+      next_contact_date:'2026-11-13'
+    };
+    const response=await candidateContact({role:'manager',id:a},id,request);
+    assert.equal(response.status,200,'saving status '+status);
+    assert.equal(response.body.ok,true);
+    assert.equal(response.body.contact_status,status);
+    assert.equal(response.body.hidden,false);
+    assert.equal(response.body.next_contact_date,'2026-11-13');
+  }
+  for(const channel of ['vk','tg','max']) {
+    const response=await candidateContact({role:'manager',id:a},id,{
+      status:'waiting_reply',channel,note:'Написали в соцсетях',next_contact_date:'2026-11-14'
+    });
+    assert.equal(response.status,200);
+    assert.equal(response.body.contact_status,'waiting_reply');
+    assert.equal(response.body.contact_channel,channel);
+    assert.equal(response.body.contact_note,'Написали в соцсетях');
+    assert.equal(response.body.next_contact_date,'2026-11-14');
+  }
+  const map=await mapCall({role:'admin',id:995});
+  const candidate=map.body.candidates.find(x=>x.id===id);
+  assert.equal(candidate.status,'waiting_reply');
+  assert.equal(candidate.contact_channel,'max');
+  assert.equal(candidate.contact_note,'Написали в соцсетях');
+  assert.equal(candidate.next_contact_date,'2026-11-14');
+  assert.equal(candidate.hidden,false);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM partner_leads').get().n,crmBefore);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM points').get().n,pointsBefore);
+  assert.equal(require('./partner-map-candidates').length,114);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM partner_map_candidate_contact_log WHERE candidate_id=?')
+    .get(id).n,statuses.length+3);
+});
+test('candidate social status requires a valid channel and correct date; access stays scoped', async () => {
+  const id=48;
+  const user={role:'manager',id:a};
+  const value={status:'waiting_reply',channel:'vk',note:'Ожидаю ответа'};
+  for(const role of [null,{role:'customer',id:a},{role:'partner',id:a},
+    {role:'manager',id:inactive},{role:'admin',id:996}]) {
+    assert.equal((await candidateContact(role,id,value)).status,401);
+  }
+  assert.equal((await candidateContact({role:'manager',id:b},id,value)).status,403);
+  assert.equal((await candidateContact(user,999999,value)).status,404);
+  assert.equal((await candidateContact(user,'../48',value)).status,404);
+  assert.equal((await candidateContact(user,id,{status:'unknown',channel:'vk'})).status,400);
+  assert.equal((await candidateContact(user,id,{status:'message_sent',channel:''})).status,400);
+  assert.equal((await candidateContact(user,id,{status:'waiting_reply',channel:'phone'})).status,400);
+  assert.equal((await candidateContact(user,id,{status:'waiting_reply',channel:'telegram'})).status,400);
+  assert.equal((await candidateContact(user,id,{status:'meeting_held',channel:'fake'})).status,400);
+  assert.equal((await candidateContact(user,id,{status:'waiting_reply',channel:'vk',
+    note:'a'.repeat(501)})).status,400);
+  assert.equal((await candidateContact(user,id,{status:'waiting_reply',channel:'vk',
+    next_contact_date:'2026-02-31'})).status,400);
+  assert.equal((await candidateContact(user,id,{status:'waiting_reply',channel:'vk',
+    next_contact_date:{bad:true}})).status,400);
+  assert.equal((await candidateContact(user,id,{status:'waiting_reply',channel:'vk',
+    note:{bad:true}})).status,400);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM partner_map_candidate_contact_log WHERE candidate_id=?')
+    .get(id).n,0);
+});
+test('candidate status updates work for administrator and do not unhide a reviewed non-salon', async () => {
+  const id=49;
+  const first=await candidateContact({role:'admin',id:995},id,{
+    status:'message_sent',channel:'tg',note:'Отправили предложение'
+  });
+  assert.equal(first.status,200);
+  assert.equal(first.body.contact_status,'message_sent');
+  const hidden=await reviewCandidate({role:'manager',id:a},id,{
+    action:'hide',reason:'not_grooming',note:'Подтверждено'
+  });
+  assert.equal(hidden.status,200);
+  assert.equal(hidden.body.hidden,true);
+  assert.equal((await candidateContact({role:'admin',id:995},id,{
+    status:'waiting_reply',channel:'max'
+  })).status,409);
+  const hiddenMap=await mapCall({role:'admin',id:995});
+  assert.equal(hiddenMap.body.candidates.find(x=>x.id===id).hidden,true);
+  assert.equal(hiddenMap.body.candidates.find(x=>x.id===id).status,'message_sent');
+  const restored=await reviewCandidate({role:'admin',id:995},id,{action:'restore'});
+  assert.equal(restored.status,200);
+  const current=await mapCall({role:'manager',id:a});
+  assert.equal(current.body.candidates.find(x=>x.id===id).status,'message_sent');
+  assert.equal(current.body.candidates.find(x=>x.id===id).hidden,false);
+  const log=db.prepare('SELECT contact_status,contact_channel,actor_role FROM partner_map_candidate_contact_log WHERE candidate_id=?').all(id);
+  assert.equal(log.length,1);
+  assert.equal(log[0].actor_role,'admin');
+});
