@@ -7,7 +7,7 @@
 <meta name="description" content="ХвостМаркет — лакомства, игрушки и забота о питомцах рядом с вами.">
 <title>ХвостМаркет — магазин в Telegram</title>
 <meta name="hm-miniapp-rollout" content="calls-retry-20261110-r2">
-<meta name="hm-network-map-rollout" content="20261110-yandex-profile-links-r4">
+<meta name="hm-network-map-rollout" content="20261111-miniapp-staff-map-tab-r1">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="manifest" href="/manifest-miniapp.json">
 <link rel="apple-touch-icon" href="/images/hvostmarket-mark-v4-transparent.png">
@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="/miniapp-work.css?v=2">
 <link rel="stylesheet" href="/manager-leads.css?v=1">
 <link rel="stylesheet" href="/partner-network-map.css?v=4">
+<link rel="stylesheet" href="/miniapp-network-map.css?v=1">
 <link rel="stylesheet" href="/miniapp-leads.css?v=2">
 <link rel="stylesheet" href="/miniapp-home-screen.css">
 <link rel="stylesheet" href="/notification-settings.css">
@@ -93,6 +94,7 @@
     <section id="profilePage" class="hide"></section>
     <section id="workPage" class="hide"></section>
     <section id="leadsPage" class="hide"></section>
+    <section id="mapPage" class="hide"></section>
     <section id="resultPage" class="hide"></section>
   </main>
 </div>
@@ -103,6 +105,7 @@
   <button class="tab" type="button" data-view="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21c0-4.8 15-4.8 15 0"/></svg>Профиль</button>
   <button class="tab hide" type="button" data-view="work"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/></svg>Кабинеты</button>
   <button class="tab hide" type="button" data-view="leads"><svg viewBox="0 0 24 24"><path d="M6.5 3.5c-1 1-1.5 2.5-1 4.5a16 16 0 0 0 10.5 10.5c2 .5 3.5 0 4.5-1l-4-4-3 2-4.5-4.5 2-3-4-4Z"/></svg>Обзвон</button>
+  <button class="tab hide" type="button" data-view="map" aria-label="Карта точек для менеджера и администратора"><svg viewBox="0 0 24 24"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2V5Z"/><path d="M9 3v16m6-14v16"/><circle cx="15" cy="10" r="2"/></svg>Карта</button>
 </nav>
 <div class="sheet-cover hide" id="sheetCover"><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Выбор товара"></div></div>
 <div class="toast" id="toast" role="status"></div>
@@ -117,8 +120,10 @@
 <script src="/miniapp-admin-product-create.js"></script>
 <script src="/miniapp-promos.js"></script>
 <script src="/manager-leads.js?v=2"></script>
-<script src="/partner-network-map.js?v=5"></script>
-<script src="/miniapp-leads.js?v=2"></script>
+<script src="/config.js"></script>
+<script src="/partner-network-map.js?v=6"></script>
+<script src="/miniapp-network-map.js?v=1"></script>
+<script src="/miniapp-leads.js?v=3"></script>
 <script src="/miniapp-work.js"></script>
 <script src="/miniapp-customer.js"></script>
 <script>
@@ -153,14 +158,16 @@ function subtotal(){return state.cart.reduce(function(a,i){return a+i.price*i.qt
 function persistPoint(){try{localStorage.setItem('hm_miniapp_point',String(state.pointId))}catch(_){}}
 function readPoint(){try{return localStorage.getItem('hm_miniapp_point')||''}catch(_){return ''}}
 async function api(url,options){var r=await (window.HvostMiniAppReliability?window.HvostMiniAppReliability.request:fetch)(url,Object.assign({cache:'no-store'},options||{}));var data=await r.json().catch(function(){return {}});if(!r.ok){var err=new Error(data.error||'Ошибка сервера ('+r.status+')');err.status=r.status;if(r.status>=500)err.code='server';throw err}return data}
-function setView(view,skipWorkRender){
+function setView(view,skipWorkRender,target){
   if(view==='work'&&!isPhoneAccessUnlocked())view='profile';
   if(view==='leads'&&(!window.HvostMiniAppLeads||!window.HvostMiniAppLeads.available()))view='profile';
+  if(view==='map'&&(!window.HvostMiniAppNetworkMap||!window.HvostMiniAppNetworkMap.available()))view='profile';
   if(view!=='leads'&&window.HvostMiniAppLeads)window.HvostMiniAppLeads.close();
+  if(view!=='map'&&window.HvostMiniAppNetworkMap)window.HvostMiniAppNetworkMap.close();
   state.view=view;
-  ['shop','cart','checkout','profile','work','leads','result'].forEach(function(v){el(v+'Page').classList.toggle('hide',v!==view)});
+  ['shop','cart','checkout','profile','work','leads','map','result'].forEach(function(v){el(v+'Page').classList.toggle('hide',v!==view)});
   el('navigation').classList.toggle('hide',view==='result');
-  el('header').classList.toggle('hide',view==='result'||view==='work'||view==='profile'||view==='leads');
+  el('header').classList.toggle('hide',view==='result'||view==='work'||view==='profile'||view==='leads'||view==='map');
   Array.from(document.querySelectorAll('.tab')).forEach(function(btn){btn.classList.toggle('on',btn.dataset.view===view)});
   renderCartIndicators();
   if(view==='shop')renderProducts();
@@ -168,7 +175,12 @@ function setView(view,skipWorkRender){
   if(view==='checkout')renderCheckout();
   if(view==='profile')renderProfile();
   if(view==='work'&&!skipWorkRender&&window.HvostMiniAppWork)window.HvostMiniAppWork.render();
-  if(view==='leads'&&window.HvostMiniAppLeads)window.HvostMiniAppLeads.open();
+  if(view==='leads'&&window.HvostMiniAppLeads) {
+    if(target&&typeof window.HvostMiniAppLeads.openAt==='function')
+      window.HvostMiniAppLeads.openAt(target.id||target,target.role);
+    else window.HvostMiniAppLeads.open();
+  }
+  if(view==='map'&&window.HvostMiniAppNetworkMap)window.HvostMiniAppNetworkMap.open(target);
   window.scrollTo(0,0);
 }
 function isPhoneAccessUnlocked(){return !!(window.HvostMiniAppIdentity&&window.HvostMiniAppIdentity.getStatus().verified)}
@@ -178,14 +190,28 @@ function syncPhoneAccess(){
   var callsAllowed=!!(window.HvostMiniAppLeads&&window.HvostMiniAppLeads.available());
   var leadsTab=document.querySelector('[data-view="leads"]');
   if(leadsTab)leadsTab.classList.toggle('hide',!callsAllowed);
+  var mapAllowed=!!(window.HvostMiniAppNetworkMap&&window.HvostMiniAppNetworkMap.available());
+  var mapTab=document.querySelector('[data-view="map"]');
+  if(mapTab)mapTab.classList.toggle('hide',!mapAllowed);
   var count=document.querySelectorAll('#navigation .tab:not(.hide)').length;
   el('navigation').style.gridTemplateColumns='repeat('+count+',minmax(0,1fr))';
   if((!isPhoneAccessUnlocked()&&state.view==='work')||
-    (!callsAllowed&&state.view==='leads'))setView('profile');
+    (!callsAllowed&&state.view==='leads')||
+    (!mapAllowed&&state.view==='map'))setView('profile');
 }
 window.HvostMiniAppGoProfile=function(){
   if(window.HvostMiniAppCustomer)window.HvostMiniAppCustomer.showChoices();
   setView('profile');
+};
+window.HvostMiniAppGoMap=function(role){
+  if(window.HvostMiniAppNetworkMap&&window.HvostMiniAppNetworkMap.available())
+    return setView('map',false,role);
+  return setView('profile');
+};
+window.HvostMiniAppOpenLeadFromMap=function(id,role){
+  if(!/^\d{1,10}$/.test(String(id||'')))return;
+  if(window.HvostMiniAppLeads&&window.HvostMiniAppLeads.available())
+    setView('leads',false,{id:id,role:role});
 };
 window.HvostMiniAppGoShop=function(){
   if(window.HvostMiniAppIdentity)window.HvostMiniAppIdentity.rememberRole('shop');
@@ -271,6 +297,10 @@ async function refreshReadOnlyAfterReconnect(){
     await window.HvostMiniAppLeads.refresh();
     return;
   }
+  if(state.view==='map'&&window.HvostMiniAppNetworkMap&&window.HvostMiniAppNetworkMap.available()){
+    await window.HvostMiniAppNetworkMap.refresh();
+    return;
+  }
   var data=await Promise.all([api('/api/products'),api('/api/points')]);
   state.products=data[0].products||[];
   state.points=data[1].points||[];
@@ -305,6 +335,8 @@ async function init(){
     if(view==='shop'||!!query.get('point'))setView('shop');
     else if(view==='leads'&&window.HvostMiniAppLeads&&window.HvostMiniAppLeads.available())
       setView('leads');
+    else if(view==='map'&&window.HvostMiniAppNetworkMap&&window.HvostMiniAppNetworkMap.available())
+      setView('map');
     // Old ?view=work links safely show the phone and role picker too.
   }
   var catalogLoaded=false;

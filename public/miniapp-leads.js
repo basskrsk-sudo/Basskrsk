@@ -19,12 +19,16 @@
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
   });}
-  function roleNow(){
+  function roleNow(preferred){
     var status=identity&&identity.getStatus();
     if(!status||!status.verified||!Array.isArray(status.accounts))return '';
-    if(status.accounts.some(function(a){return a.role==='manager'}))return 'manager';
-    if(status.accounts.some(function(a){return a.role==='admin'}))return 'admin';
-    return '';
+    var allowed=function(r){return (r==='manager'||r==='admin')&&
+      status.accounts.some(function(a){return a.role===r;});};
+    if(allowed(preferred))return preferred;
+    if(allowed(role))return role;
+    if(allowed(status.preferredRole))return status.preferredRole;
+    if(allowed('manager'))return 'manager';
+    return allowed('admin')?'admin':'';
   }
   function label(list,value){
     var pair=list.find(function(row){return row[0]===value});
@@ -241,9 +245,9 @@
     }catch(e){if(req===serial){notice='⚠️ '+e.message;await load();}}
     finally{writing=false;}
   }
-  async function open(){
+  async function open(preferred){
     close();
-    role=roleNow();
+    role=roleNow(preferred);
     if(!role||!identity||typeof identity.session!=='function'){
       root.innerHTML=header('📞 Обзвон')+'<p class="hmleads-mini-empty">Подтвердите номер Telegram и доступ сотрудника.</p>';
       return;
@@ -260,6 +264,11 @@
         '<p class="hmleads-mini-error" role="alert">'+esc(e.message)+'</p>'+
         '<button type="button" class="hmleads-mini-refresh" data-call-action="retry">Повторить вход</button>';
     }}
+  }
+  async function openAt(id,preferred){
+    if(!/^\d{1,10}$/.test(String(id||'')))return;
+    await open(preferred);
+    if(token&&role&&roleNow()===role)return detail(id);
   }
   root.addEventListener('click',function(event){
     var button=event.target.closest('[data-call-action]');
@@ -288,5 +297,5 @@
       return load();
     }
   });
-  window.HvostMiniAppLeads={available:allowed,open:open,close:close,refresh:open};
+  window.HvostMiniAppLeads={available:allowed,open:open,openAt:openAt,close:close,refresh:open};
 })();
