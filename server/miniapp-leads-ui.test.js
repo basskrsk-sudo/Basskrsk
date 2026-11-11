@@ -14,9 +14,9 @@ test('Telegram has dedicated bottom-tab calls, not a new independent CRM',()=>{
   assert.match(html,/id="leadsPage"/);
   assert.match(html,/data-view="leads"/);
   assert.match(html,/name="hm-miniapp-rollout" content="calls-retry-20261110-r2"/);
-  assert.match(html,/miniapp-leads\.js\?v=2/);
+  assert.match(html,/miniapp-leads\.js\?v=3/);
   assert.match(html,/miniapp-leads\.css\?v=2/);
-  assert.match(html,/miniapp-leads\.js\?v=2/);
+  assert.match(html,/miniapp-leads\.js\?v=3/);
   assert.match(html,/miniapp-leads\.css\?v=2/);
   assert.match(html,/HvostMiniAppLeads\.open\(\)/);
   assert.match(html,/HvostMiniAppLeads\.available\(\)/);

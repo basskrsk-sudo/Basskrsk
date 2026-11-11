@@ -104,6 +104,9 @@
     if (!node || !options || typeof options.token !== 'function') return null;
     if (current && current.node === node) { current.refresh(); return current; }
     if (current) current.destroy();
+    var initialLimit = Number(options.maxInitialGeocode);
+    initialLimit = Number.isFinite(initialLimit) && initialLimit >= 5
+      ? Math.min(160, Math.floor(initialLimit)) : 160;
     var root = document.createElement('div');
     root.className = 'hm-network-map';
     node.textContent = '';
@@ -113,7 +116,7 @@
       district: '', showCandidates: true, candidateTotal: 0, matchedCandidates: [],
       cache: Object.create(null), geocodeStates: Object.create(null),
       markers: Object.create(null), generation: 0,
-      limit: 160, loading: false, cities: [], shown: [], error: ''
+      limit: initialLimit, loading: false, cities: [], shown: [], error: ''
     };
     function token() { return String(options.token() || ''); }
     function isAlive() { return current === instance && node.isConnected; }
@@ -483,14 +486,14 @@
       } else if (event.target.matches('[data-map-candidates]')) {
         state.showCandidates = !!event.target.checked;
       } else return;
-      state.limit = 160;
+      state.limit = initialLimit;
       draw();
     });
     root.addEventListener('click', function (event) {
       var refreshButton = event.target.closest('[data-map-refresh]');
       if (refreshButton) { refresh(); return; }
       var more = event.target.closest('[data-map-more]');
-      if (more) { state.limit += 80; draw(); return; }
+      if (more) { state.limit += initialLimit; draw(); return; }
       var leadBtn = event.target.closest('[data-map-open-lead]');
       if (leadBtn && typeof options.onOpenLead === 'function') {
         options.onOpenLead(leadBtn.dataset.mapOpenLead);

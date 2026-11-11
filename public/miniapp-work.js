@@ -1146,6 +1146,11 @@
     var role = activeRole;
     if (!((role === 'manager' && phoneRoleAvailable('manager')) ||
           (role === 'admin' && adminRegisterAuthorized())) || !getToken(role)) return;
+    // Use the dedicated staff map tab in the universal Mini App. Keep the
+    // legacy embedded view as a fallback for older cached HTML builds.
+    if (typeof window.HvostMiniAppGoMap === 'function') {
+      return window.HvostMiniAppGoMap(role);
+    }
     root.innerHTML = dashboardHeader(role) +
       '<button class="work-back" type="button" data-work-action="network-map-back">← В кабинет</button>' +
       '<div id="workPartnerNetworkMap"></div>';
