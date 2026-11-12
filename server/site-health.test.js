@@ -13,7 +13,7 @@ const {createApiPerformanceTracker}=require('./api-performance');
 const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,appendEvent,nextLoopState}=require('./site-health');
 const routes=new Map(),router={get:(name,handler)=>routes.set(name,handler)};
 registerSiteHealthRoutes(router);
-function call(pathname,role,id){
+async function call(pathname,role,id){
   const handler=routes.get(pathname);
   assert.ok(handler,'Missing route '+pathname);
   const res={
@@ -22,27 +22,29 @@ function call(pathname,role,id){
     writeHead(code,headers){this.code=code;Object.assign(this.headers,headers||{});return this;},
     end(raw){this.data=JSON.parse(raw);}
   };
-  handler({headers:role?{authorization:'Bearer '+signToken({role,id})}:{}},res,
+  await handler({headers:role?{authorization:'Bearer '+signToken({role,id})}:{}},res,
     {params:{},query:{},body:{}});
   return res;
 }
-test('liveness is lightweight, readiness actually checks SQLite and persistent disk',()=>{
-  const live=call('/api/live');
+test('liveness is lightweight, readiness actually checks SQLite and persistent disk',async()=>{
+  const live=await call('/api/live');
   assert.equal(live.code,200);
   assert.deepEqual(live.data,{status:'ok'});
-  const ready=call('/api/health');
+  const ready=await call('/api/health');
   assert.equal(ready.code,200);
   assert.equal(ready.data.status,'ok');
   assert.equal(ready.data.checks.database,'ok');
   assert.equal(ready.data.checks.storage,'ok');
   assert.equal(ready.headers['Cache-Control'],'no-store, no-cache, must-revalidate');
   assert.ok(Number.isFinite(ready.data.probe_ms));
+  assert.ok(Number.isFinite(ready.data.probe_sqlite_ms));
+  assert.ok(Number.isFinite(ready.data.probe_storage_ms));
   assert.ok(!JSON.stringify(ready.data).includes(dir),'never leak data path');
-  assert.equal(healthProbe(true).status,'ok');
+  assert.equal((await healthProbe(true)).status,'ok');
 });
-test('readiness becomes HTTP 503 if disk cannot be written, while liveness survives',()=>{
-  const original=fs.writeFileSync;
-  fs.writeFileSync=function(file,...rest) {
+test('readiness becomes HTTP 503 if disk cannot be written, while liveness survives',async()=>{
+  const original=fs.promises.open;
+  fs.promises.open=async function(file,...rest) {
     if(String(file).includes('.hm-health-')){
       const error=new Error('Read only');
       error.code='EROFS';
@@ -51,32 +53,32 @@ test('readiness becomes HTTP 503 if disk cannot be written, while liveness survi
     return original.call(this,file,...rest);
   };
   try {
-    const failed=healthProbe(true);
+    const failed=await healthProbe(true);
     assert.equal(failed.status,'degraded');
     assert.equal(failed.checks.storage,'error');
-    const reply=call('/api/health');
+    const reply=await call('/api/health');
     assert.equal(reply.code,503);
     assert.equal(reply.data.checks.storage,'error');
-    assert.equal(call('/api/live').code,200);
+    assert.equal((await call('/api/live')).code,200);
     assert.ok(!JSON.stringify(reply.data).includes('EROFS'));
   }finally{
-    fs.writeFileSync=original;
-    healthProbe(true);
+    fs.promises.open=original;
+    await healthProbe(true);
   }
 });
-test('only active admin can inspect process metrics and persistent restart log',()=>{
+test('only active admin can inspect process metrics and persistent restart log',async()=>{
   db.prepare('INSERT INTO admins(id,login,password_hash,role,active) VALUES(?,?,?,?,?)')
     .run(5991,'hm-monitor-admin','ignored','admin',1);
   db.prepare('INSERT INTO admins(id,login,password_hash,role,active) VALUES(?,?,?,?,?)')
     .run(5992,'hm-monitor-disabled','ignored','admin',0);
   for(const [role,id]of [[null,null],['manager',5991],['founder',5991],['admin',5992]]){
-    const reply=call('/api/admin/system-health',role,id);
+    const reply=await call('/api/admin/system-health',role,id);
     assert.equal(reply.code,401);
     assert.equal(reply.data.events,undefined);
   }
   startHealthWatcher();
   appendEvent('restart_gap','warning','Обнаружен перерыв наблюдения');
-  const r=call('/api/admin/system-health','admin',5991);
+  const r=await call('/api/admin/system-health','admin',5991);
   assert.equal(r.code,200);
   assert.ok(['ok','degraded'].includes(r.data.status));
   assert.ok(r.data.memory.rss_mb>0);
@@ -87,9 +89,10 @@ test('only active admin can inspect process metrics and persistent restart log',
   assert.ok(recentEvents().length>=2);
   assert.equal(r.data.events.some(x=>x.path||x.user_id||x.token),false);
   assert.equal(r.data.events.some(x=>String(x.detail).includes(dir)),false);
-  assert.ok(metrics().timestamp);
+  assert.ok((await metrics()).timestamp);
   assert.ok(r.data.api_performance);
   assert.ok(Array.isArray(r.data.api_performance.slow_routes));
+  assert.ok(r.data.io_probe === null || Number.isFinite(r.data.io_probe.storage_write_ms));
 });
 
 
@@ -113,12 +116,13 @@ test('event-loop alerts are based on actual histogram latency and remain quiet o
   assert.equal(nextLoopState(state2,155,900).warning,true,'two high p99 readings trigger');
 });
 
-test('diagnostics expose both timer drift and measured event-loop latency',()=>{
+test('diagnostics expose both timer drift and measured event-loop latency',async()=>{
   startHealthWatcher();
-  const sample=metrics();
+  const sample=await metrics();
   assert.ok(Number.isFinite(sample.event_loop_max_ms));
   assert.ok(Number.isFinite(sample.event_loop_p99_ms));
   assert.ok(Number.isFinite(sample.sample_schedule_drift_ms));
+  assert.ok(sample.io_probe === null || Number.isFinite(sample.io_probe.sqlite_ms));
   assert.equal(sample.event_loop_delay_ms,sample.event_loop_max_ms,'legacy field tracks actual maximum');
 });
 

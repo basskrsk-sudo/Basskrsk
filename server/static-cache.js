@@ -9,19 +9,11 @@ const crypto = require('node:crypto');
 const DEFAULT_CACHE_BYTES = 6 * 1024 * 1024;
 const DEFAULT_ASSET_BYTES = 256 * 1024;
 
-function digestFile(filePath) {
-  const hash = crypto.createHash('sha256');
-  const fd = fs.openSync(filePath, 'r');
-  const buffer = Buffer.allocUnsafe(64 * 1024);
-  try {
-    let n;
-    while ((n = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) {
-      hash.update(buffer.subarray(0, n));
-    }
-  } finally {
-    fs.closeSync(fd);
-  }
-  return hash.digest('hex').slice(0, 20);
+// For streamed assets, hashing the whole file synchronously would block
+// all API requests. Use filesystem identity for cache busting instead.
+function digestMetadata(stat) {
+  return digest(Buffer.from([stat.dev, stat.ino, stat.size,
+    stat.mtimeMs, stat.ctimeMs].join(':')));
 }
 
 function digest(body) {
@@ -31,7 +23,7 @@ function digest(body) {
 function matchesEtag(header, etag) {
   return String(header || '').split(',').some(value => {
     const tag = value.trim();
-    return tag === '*' || tag.replace(/^W\//, '') === etag;
+    return tag === '*' || tag.replace(/^W\//, '') === etag.replace(/^W\//, '');
   });
 }
 
@@ -89,7 +81,7 @@ function createStaticCache(publicDir, { maxCacheBytes = DEFAULT_CACHE_BYTES, max
     // Hash large assets in fixed 64 KiB chunks instead of keeping whole PDFs
     // and photos resident indefinitely. Preserve strong ETags and ?v= hashes.
     const body = needsBody ? fs.readFileSync(filePath) : null;
-    const entry = { stamp, body, version: body ? digest(body) : digestFile(filePath), rendered: null };
+    const entry = { stamp, body, version: body ? digest(body) : digestMetadata(stat), rendered: null };
     remember(filePath, entry);
     return entry;
   }
@@ -166,7 +158,7 @@ function createStaticCache(publicDir, { maxCacheBytes = DEFAULT_CACHE_BYTES, max
     const representation = html || css ? rendered(filePath, statHint) : entry;
     const body = representation.body;
     const representationVersion = representation.version;
-    const etag = '"' + representationVersion + '"';
+    const etag = (body === null ? 'W/' : '') + '"' + representationVersion + '"';
     const version = new URL(req.url || '/', 'https://static.local').searchParams.get('v');
     const immutable = !html && version === representationVersion && !noStore;
     const headers = {
