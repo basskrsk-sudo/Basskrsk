@@ -19,6 +19,17 @@ const REPORTS = Object.freeze({
   clubtopweek: {title:'Клуб партнёров · топ недели',role:'club'},
   clubtopall: {title:'Клуб партнёров · топ за всё время',role:'club'},
 });
+// Seven report families in the bot. Legacy type IDs remain valid for
+// existing messages, commands and pending one-use Telegram confirmations.
+const REPORT_GROUPS = Object.freeze([
+  {id:'sales', title:'📈 Продажи', types:['salesweek','nogroomer']},
+  {id:'finance', title:'💰 Финансы и выплаты', types:['business','payouts']},
+  {id:'network', title:'🏪 Сеть и точки', types:['businesspoints']},
+  {id:'stock', title:'📦 Остатки', types:['stock']},
+  {id:'qr', title:'📱 QR и маркетинг', types:['qrweek']},
+  {id:'management', title:'🧭 Управление', types:['gdweek']},
+  {id:'club', title:'🐾 Клуб партнёров', types:['clubdaily','clubweekly','clubtopweek','clubtopall']},
+]);
 db.exec(
   'CREATE TABLE IF NOT EXISTS report_approval_requests ('+
   'id INTEGER PRIMARY KEY AUTOINCREMENT,chat_id TEXT NOT NULL,'+
@@ -42,11 +53,30 @@ function canRequest(chatId,type) {
   return false;
 }
 function menu(chatId){
-  const types=Object.keys(REPORTS).filter(type=>canRequest(chatId,type));
-  if(!types.length)return {message:'Отчёты доступны только подключённым администраторам и исполнителям поручений.'};
-  return {message:'📊 Выберите отчёт. Без нажатия «Сформировать» данные и файлы не создаются.',
-    reply_markup:{inline_keyboard:types.map(type=>[
-      {text:REPORTS[type].title,callback_data:'report:new:'+type}])}};
+  const groups=REPORT_GROUPS.filter(group=>group.types.some(type=>canRequest(chatId,type)));
+  const tasks=canRequest(chatId,'taskpdf');
+  if(!groups.length)return {message:tasks
+    ? '📋 Мои поручения: /tasks — список, /taskpdf — PDF после подтверждения.'
+    : 'Отчёты доступны только подключённым администраторам и модераторам.'};
+  return {
+    message:'📊 Выберите раздел отчётности. Файлы формируются только после подтверждения в личном Telegram.'+
+      (tasks?'\n\nПоручения находятся в /tasks и /taskpdf.':''),
+    reply_markup:{inline_keyboard:groups.map(group=>[
+      {text:group.title,callback_data:'report:group:'+group.id}])},
+  };
+}
+function groupMenu(chatId,groupId){
+  const group=REPORT_GROUPS.find(item=>item.id===groupId);
+  const types=group ? group.types.filter(type=>canRequest(chatId,type)) : [];
+  if(!types.length)return {message:'Нет доступа к этому разделу отчётности.',
+    reply_markup:{inline_keyboard:[[{text:'◀️ К разделам',callback_data:'report:menu'}]]}};
+  return {
+    message:group.title+'\nВыберите детализацию. Сначала будет запрошено подтверждение, без него расчёт не запускается.',
+    reply_markup:{inline_keyboard:[
+      ...types.map(type=>[{text:REPORTS[type].title,callback_data:'report:new:'+type}]),
+      [{text:'◀️ К разделам',callback_data:'report:menu'}],
+    ]},
+  };
 }
 function escapeHtml(value){
   return String(value==null?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -114,4 +144,4 @@ function cancelPendingReports(chatId){
     "WHERE chat_id=? AND status='pending'"
   ).run(String(chatId)).changes>0;
 }
-module.exports={REPORTS,canRequest,menu,requestReport,decideReport,finishReport,cancelPendingReports};
+module.exports={REPORTS,REPORT_GROUPS,canRequest,menu,groupMenu,requestReport,decideReport,finishReport,cancelPendingReports};

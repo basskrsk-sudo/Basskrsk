@@ -85,14 +85,11 @@ const TELEGRAM_BOT_COMMANDS = Object.freeze([
       { command: 'reports', description: '📊 Отчёты: сформировать после подтверждения' },
       { command: 'newtask', description: 'Создать новую задачу' },
       { command: 'expense', description: 'Добавить трату бизнеса' },
-      { command: 'salesweek', description: 'Отчёт по продажам за 7 дней' },
-      { command: 'business', description: 'Бизнес по месяцам и за год' },
-      { command: 'businesspoints', description: 'Все точки: CSV со статистикой' },
-      { command: 'stock', description: 'Актуальные остатки центрального склада' },
+      // Legacy report commands remain callable manually; use /reports as the single entry point.
+
       { command: '2gis', description: '📍 Добавить заведение из 2ГИС в обзвон' },
       { command: 'contact', description: 'Контакт из Яндекс Карт или 2ГИС' },
-      { command: 'nogroomer', description: 'Оплаченные заказы без грумера' },
-      { command: 'payouts', description: 'Справка для выплат партнёрам' },
+
       { command: 'tierapprovals', description: 'Согласовать изменение процента грумера' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
       { command: 'newproduct', description: '📷 Рассылка о новом товаре' },
@@ -215,7 +212,7 @@ function buildWelcomeMessage() {
     '',
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Менеджерам и администраторам: /contact ссылка — контакт из Яндекс Карт или 2ГИС с согласованием. /2gis также работает.',
-    'Администраторам: /salesweek — продажи за 7 дней; /business — помесячные показатели и итоги года; /businesspoints — реестр всех точек; /stock — остатки центрального склада; /nogroomer — заказы без грумера; /payouts — справки для выплат.',
+    'Администраторам: /reports — единое меню из 7 разделов, отчёты создаются после подтверждения. Прежние команды /salesweek, /business, /businesspoints, /stock, /nogroomer и /payouts продолжают работать.',
     'Супер-администратору: /newproduct — рассылка новинки с фотографией и предпросмотром; /tierapprovals — заявки на снижение процента грумеров.',
     '',
     'Для быстрого входа в Mini App подтвердите свой номер Telegram — увидите зарегистрированные кабинеты без ввода пароля. Для админки нужна предварительная привязка Telegram из аккаунта сайта.',
@@ -228,18 +225,18 @@ function botActionButtons(chatId) {
     { text: '💳 Добавить трату', callback_data: 'expense:start' },
   ]];
   if (chatId && adminCanReadSales(chatId)) {
-    keyboard.push([{ text: '📊 Продажи за 7 дней', callback_data: 'sales:week' }]);
-    keyboard.push([{ text: '📈 Бизнес по месяцам и за год', callback_data: 'sales:business' }]);
-    keyboard.push([{ text: '🏪 Все точки · CSV', callback_data: 'sales:businesspoints' }]);
-    keyboard.push([{ text: '📦 Остатки центрального склада', callback_data: 'warehouse:stock' }]);
-    keyboard.push([{ text: '🔎 Заказы без грумера', callback_data: 'sales:nogroomer' }]);
-    keyboard.push([{ text: '💸 Справки к выплатам', callback_data: 'payouts:prepare' }]);
+    // Legacy callbacks are still accepted, but a single report menu replaces
+    // six visually duplicated buttons in the bot welcome keyboard.
     if (newProductBroadcast.isBroadcaster(chatId)) {
       keyboard.push([{ text: '📷 Рассылка о новинке', callback_data: 'newprod:new' }]);
     }
   }
-  if (chatId && (adminCanReadSales(chatId) || require('./task-daily-digest').assigneeByTelegram(chatId))) {
-    keyboard.push([{ text: '📊 Отчёты по запросу', callback_data: 'report:menu' }]);
+  if (chatId && (
+    adminCanReadSales(chatId) ||
+    require('./routes-partner-club').isClubModerator(chatId) ||
+    tierApprovals.activeSuperAdmin(chatId)
+  )) {
+    keyboard.push([{ text: '📊 Отчёты · 7 разделов', callback_data: 'report:menu' }]);
   }
   if (chatId && tierApprovals.activeSuperAdmin(chatId)) {
     keyboard.push([{ text: '📉 Согласования комиссий', callback_data: 'tier:list' }]);
@@ -768,7 +765,7 @@ async function processUpdate(update) {
       return;
     }
 
-    if (/^report:(?:menu|new:[a-z]+|(?:yes|no):[0-9]+)$/.test(callback.data||'')) {
+    if (/^report:(?:menu|group:[a-z]+|new:[a-z]+|(?:yes|no):[0-9]+)$/.test(callback.data||'')) {
       const data=callback.data||'',chat=callback.message?.chat;
       const allowed=chat?.type==='private' && String(chat.id)===String(callback.from?.id);
       try {
@@ -784,6 +781,11 @@ async function processUpdate(update) {
       if(data==='report:menu'){
         const menu=reportApprovals.menu(chat.id);
         await replyToChat(chat.id,menu.message,menu.reply_markup);
+        return;
+      }
+      if(data.startsWith('report:group:')){
+        const subgroup=reportApprovals.groupMenu(chat.id,data.slice('report:group:'.length));
+        await replyToChat(chat.id,subgroup.message,subgroup.reply_markup);
         return;
       }
       if(data.startsWith('report:new:')){
