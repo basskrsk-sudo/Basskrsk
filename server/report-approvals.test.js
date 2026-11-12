@@ -55,3 +55,45 @@ test('unapproved work is cancelable, with per-chat isolation',async()=>{
   assert.equal(approvals.cancelPendingReports('70002'),true);
   assert.equal(approvals.decideReport('70002','yes',one.id).ok,false);
 });
+
+test('consolidated Telegram report menu has seven groups while preserving every legacy report',()=>{
+  assert.equal(approvals.REPORT_GROUPS.length,7);
+  const covered=approvals.REPORT_GROUPS.flatMap(g=>g.types);
+  assert.equal(new Set(covered).size,covered.length,'report types cannot appear in multiple groups');
+  assert.deepEqual(covered.toSorted(),Object.keys(approvals.REPORTS)
+    .filter(type=>type!=='taskpdf').toSorted());
+  const superMenu=approvals.menu('70002');
+  assert.match(superMenu.message,/Выберите раздел/);
+  const choices=superMenu.reply_markup.inline_keyboard.flat().map(x=>x.callback_data);
+  assert.ok(choices.includes('report:group:sales'));
+  assert.ok(choices.includes('report:group:finance'));
+  assert.equal(choices.some(x=>x.startsWith('report:new:')),false,
+    'legacy subreports must not clutter the main menu');
+  const finance=approvals.groupMenu('70002','finance');
+  assert.ok(finance.reply_markup.inline_keyboard.some(row=>row[0].callback_data==='report:new:business'));
+  assert.ok(finance.reply_markup.inline_keyboard.some(row=>row[0].callback_data==='report:new:payouts'));
+  assert.ok(finance.reply_markup.inline_keyboard.some(row=>row[0].callback_data==='report:menu'));
+  const denied=approvals.groupMenu('70001','finance');
+  assert.match(denied.message,/Нет доступа/,'disabled admin cannot navigate secured reports');
+  const task=approvals.groupMenu('70002','taskpdf');
+  assert.match(task.message,/Нет доступа/,'task PDF is available only in the task workspace');
+});
+
+test('admin report center exposes eight primary sections, keeping approved report types',()=>{
+  const code=fs.readFileSync(path.join(__dirname,'..','public','admin-report-center.js'),'utf8');
+  const choices=[...code.matchAll(/\{name:'([^']+)',detail:/g)].map(x=>x[1]);
+  assert.deepEqual(choices,[
+    'Продажи','Финансы','Сеть','Остатки','QR и маркетинг',
+    'Выплаты','Управление','Клуб партнёров',
+  ]);
+  assert.match(code,/function renderReportCenterGroups\(/);
+  assert.match(code,/const members=visibleReportCatalog\(\)\.filter/);
+  for(const type of ['salesweek','nogroomer','business','payouts','gdweek','qrweek','businesspoints']){
+    assert.match(code,new RegExp("type:'"+type+"'"),'legacy report '+type+' missing');
+  }
+  const bot=fs.readFileSync(path.join(__dirname,'telegram-login-poller.js'),'utf8');
+  assert.match(bot,/report:group:/);
+  assert.match(bot,/reportApprovals\.groupMenu\(/);
+  assert.ok(!bot.includes("command: 'salesweek'"),'legacy menu items should be hidden, not removed');
+  assert.match(bot,/\/salesweek/,'old commands should remain supported by the bot');
+});

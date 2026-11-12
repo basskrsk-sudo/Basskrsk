@@ -11,7 +11,7 @@ const HM_REPORTS=Object.freeze([
   detail:'Интерактивная динамика двух периодов',target:'week-comparison',mode:'view'},
  {type:'business',cat:'Финансы',title:'Итоги бизнеса за год',
   detail:'Выручка, прибыль и расходы',mode:'telegram',year:true},
- {type:'payouts',cat:'Финансы',title:'Справки для выплат',
+ {type:'payouts',cat:'Выплаты',title:'Справки для выплат',
   detail:'PDF и CSV с подтверждением в боте',mode:'telegram'},
  {type:'economics',cat:'Финансы',title:'Экономика сети',
   detail:'Действующая экономическая модель',target:'economics',mode:'view'},
@@ -19,23 +19,83 @@ const HM_REPORTS=Object.freeze([
   detail:'Сводный реестр действующих точек',mode:'telegram',year:true},
  {type:'points',cat:'Сеть',title:'Эффективность точек',
   detail:'Список точек и их операционные показатели',target:'points',mode:'view'},
- {type:'stock',cat:'Склад',title:'Центральный склад',
+ {type:'stock',cat:'Остатки',title:'Центральный склад',
   detail:'Сводка остатков складов городов',mode:'telegram',city:true},
- {type:'pointstock',cat:'Склад',title:'Остатки минимаркетов',
+ {type:'pointstock',cat:'Остатки',title:'Остатки минимаркетов',
   detail:'Актуальные остатки на полках',target:'stock',mode:'view'},
- {type:'qrview',cat:'Маркетинг',title:'QR-воронка',
+ {type:'qrview',cat:'QR и маркетинг',title:'QR-воронка',
   detail:'Открытия, оплаты и конверсия по точкам',target:'qr-analytics',mode:'view',city:true,point:true,days:true},
- {type:'qrweek',cat:'Маркетинг',title:'Еженедельный QR-отчёт',
+ {type:'qrweek',cat:'QR и маркетинг',title:'Еженедельный QR-отчёт',
   detail:'CSV по точкам после подтверждения в Telegram',mode:'telegram',super:true},
  {type:'gdweek',cat:'Управление',title:'Отчёт для планёрки ГД',
   detail:'PDF и Excel за выбранный период',mode:'telegram',dates:true},
  {type:'gdarchive',cat:'Управление',title:'Архив отчётов ГД',
   detail:'Скачивание уже сформированных файлов',target:'weekly-reports',mode:'view'},
- {type:'payoutarchive',cat:'Управление',title:'Архив выплат партнёрам',
+ {type:'payoutarchive',cat:'Выплаты',title:'Архив выплат партнёрам',
   detail:'История и подтверждённые выплаты',target:'payout-reports',mode:'view'},
+ {type:'club',cat:'Клуб партнёров',title:'Публикации для партнёров',
+  detail:'Итоги дня, недели и рейтинги товаров в одном разделе',target:'/partner-club-settings.html',mode:'link',super:true},
 ]);
 
+const HM_REPORT_GROUPS=Object.freeze([
+ {name:'Продажи',detail:'Выручка, сравнение периодов, заказы без грумера'},
+ {name:'Финансы',detail:'Годовые итоги и экономика сети'},
+ {name:'Сеть',detail:'Реестр и эффективность минимаркетов'},
+ {name:'Остатки',detail:'Центральный склад и товар на полках'},
+ {name:'QR и маркетинг',detail:'Сканирования, конверсия и CSV'},
+ {name:'Выплаты',detail:'Справки и история перечислений'},
+ {name:'Управление',detail:'Отчёт ГД и архив'},
+ {name:'Клуб партнёров',detail:'Итоги дня, недели и рейтинги товаров'},
+]);
 const hmReportState={loaded:false,points:[],selected:'gdweek',result:''};
+function visibleReportCatalog(){
+ return HM_REPORTS.filter(r=>!r.super||currentAdminRole==='super');
+}
+// Keep the full set of report types, but expose only eight top-level cards.
+// Their submenus link to existing analytics and Telegram approvals.
+function renderReportCenterGroups(){
+ const cards=document.getElementById('rc-categories');
+ if(!cards)return;
+ const selected=currentReport();
+ cards.replaceChildren();
+ for(const group of HM_REPORT_GROUPS){
+   const members=visibleReportCatalog().filter(r=>r.cat===group.name);
+   if(!members.length)continue;
+   const active=selected.cat===group.name;
+   const box=document.createElement('div');
+   box.className='card';
+   box.style.cssText='margin:0;';
+   const heading=document.createElement('button');
+   heading.type='button';
+   heading.className='row-btn';
+   heading.style.cssText='width:100%;text-align:left;white-space:normal;font-weight:700;';
+   heading.textContent=group.name+(active?' · открыто':'');
+   heading.setAttribute('aria-expanded',String(active));
+   heading.addEventListener('click',()=>reportCenterSelect(members[0].type));
+   const caption=document.createElement('p');
+   caption.textContent=group.detail;
+   caption.style.cssText='font-size:.8rem;color:var(--muted);margin:.4rem 0;';
+   box.append(heading,caption);
+   if(active){
+     const submenu=document.createElement('div');
+     submenu.style.cssText='display:flex;flex-direction:column;gap:.25rem;padding-top:.3rem;';
+     for(const report of members){
+       const button=document.createElement('button');
+       button.type='button';button.className='row-btn';
+       button.style.cssText='display:block;width:100%;text-align:left;white-space:normal;';
+       button.textContent=(report.type===selected.type?'✓ ':'')+report.title;
+       button.addEventListener('click',()=>{
+         reportCenterSelect(report.type);
+         document.getElementById('rc-request')?.scrollIntoView({block:'nearest',behavior:'smooth'});
+       });
+       submenu.append(button);
+     }
+     box.append(submenu);
+   }
+   cards.append(box);
+ }
+}
+
 function reportCenterEscape(value){
  return String(value==null?'':value)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;')
@@ -59,7 +119,9 @@ function reportCenterSelect(type){
  }
  const action=document.getElementById('rc-request');
  if(action)action.textContent=report.mode==='telegram'?
-   'Запросить формирование в Telegram':'Открыть отчёт';
+   'Запросить формирование в Telegram':report.mode==='link'?
+   'Открыть раздел':'Открыть отчёт';
+ renderReportCenterGroups();
  const result=document.getElementById('rc-result');
  if(result)result.textContent='';
 }
@@ -82,42 +144,19 @@ async function loadReportCenter(){
  const select=document.getElementById('rc-report-type');
  if(!select)return;
  if(!hmReportState.loaded){
-  const cats=[...new Set(HM_REPORTS.map(r=>r.cat))];
+  const cats=HM_REPORT_GROUPS.map(g=>g.name);
   select.replaceChildren();
   cats.forEach(cat=>{
+   const members=visibleReportCatalog().filter(r=>r.cat===cat);
+   if(!members.length)return;
    const group=document.createElement('optgroup');group.label=cat;
-   HM_REPORTS.filter(r=>r.cat===cat&&(!r.super||currentAdminRole==='super')).forEach(r=>{
+   members.forEach(r=>{
      const option=document.createElement('option');
      option.value=r.type;option.textContent=r.title;
      group.append(option);
    });
    select.append(group);
   });
-  const cards=document.getElementById('rc-categories');
-  if(cards){
-   cards.replaceChildren();
-   cats.forEach(cat=>{
-     const box=document.createElement('div');
-     box.className='card';box.style.cssText='margin:0;';
-     const title=document.createElement('h3');
-     title.style.cssText='font-size:1rem;margin-bottom:.65rem;';
-     title.textContent=cat;
-     box.append(title);
-     HM_REPORTS.filter(r=>r.cat===cat&&(!r.super||currentAdminRole==='super'))
-       .forEach(r=>{
-         const button=document.createElement('button');
-         button.type='button';button.className='row-btn';
-         button.style.cssText='display:block;text-align:left;width:100%;margin:.35rem 0;white-space:normal;';
-         button.textContent=r.title;
-         button.addEventListener('click',()=>{
-           reportCenterSelect(r.type);
-           document.getElementById('rc-request')?.scrollIntoView({block:'nearest',behavior:'smooth'});
-         });
-         box.append(button);
-       });
-     cards.append(box);
-   });
-  }
   hmReportState.loaded=true;
   try{
     const res=await authFetch('/api/points?all=1');
@@ -148,6 +187,10 @@ async function reportCenterRun(){
  const button=document.getElementById('rc-request');
  if(report.super&&currentAdminRole!=='super'){
    if(output)output.textContent='Этот отчёт доступен только супер-администратору';
+   return;
+ }
+ if(report.mode==='link'){
+   window.location.assign(report.target);
    return;
  }
  if(report.mode==='view'){
