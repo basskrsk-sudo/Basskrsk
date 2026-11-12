@@ -9,7 +9,7 @@ const { safeFounder, activeFounder, getFounder, configureFounder, FOUNDER_SLOTS 
 const { listExpenseDocuments } = require('./expense-documents');
 const { buildGrowthPlanDashboard } = require('./growth-plan');
 const { buildOperationsCenter } = require('./routes-operations');
-const { collectWeeklyReport } = require('./weekly-report');
+const { collectWeeklyBscReport } = require('./weekly-report');
 
 const CAPITAL_PLAN_RUB = 1000000;
 const TAX_ESTIMATE_RATE = 0.06;
@@ -225,7 +225,7 @@ function strategicReadiness(now) {
 }
 function founderScorecard() {
   try {
-    const report=collectWeeklyReport();
+    const report=collectWeeklyBscReport();
     const bsc=report.bsc || {};
     return {
       period:report.period ? report.period.start_local + ' — ' + report.period.end_local : null,
