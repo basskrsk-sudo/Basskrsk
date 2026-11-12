@@ -1802,6 +1802,9 @@ ensureColumn('manager_points', 'referred_owner_amount', 'INTEGER');
   }
 })();
 
+// CRM list hydration and full contact history need indexed lead_id lookups.
+db.exec('CREATE INDEX IF NOT EXISTS idx_partner_lead_notes_lead_latest ON partner_lead_notes(lead_id,id DESC)');
+
 // Referral program: one immutable attribution per newly launched point.
 // Historical "bonus_paid" on manager_points means accrued, not transferred.
 // Reusable official 2GIS identity for CRM imports; nullable for other leads.

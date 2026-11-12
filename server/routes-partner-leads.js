@@ -148,6 +148,19 @@ function serializeLead(row) {
   };
 }
 
+// Keep the existing CRM JSON shape without 3 individual SQLite lookups per lead.
+function serializeListLead(row) {
+  const { last_note_id, last_note_author,
+    last_note_text, last_note_created_at, ...lead } = row;
+  return {
+    ...lead,
+    last_note: last_note_id == null ? null : {
+      note: last_note_text, author: last_note_author,
+      created_at: last_note_created_at,
+    },
+  };
+}
+
 function registerPartnerLeadRoutes(router, options = {}) {
   const mapGeocode = options.geocodeAddress || geocodeAddress;
   // POST /api/partner-leads/public — заявка «Стать партнёром» с главной
@@ -287,9 +300,10 @@ function registerPartnerLeadRoutes(router, options = {}) {
       'FROM partner_map_candidate_reviews'
     ].join(' ')).all();
     const reviewsById = new Map(candidateReviewRows.map(row => [row.candidate_id, row]));
+    const mappedVenues = points.concat(leads);
     const candidates = (!manager || manager.city_id === 'krsk')
       ? mapCandidates.map(candidate => {
-          const match = points.concat(leads).find(row => mapDuplicate(candidate, row));
+          const match = mappedVenues.find(row => mapDuplicate(candidate, row));
           const review = reviewsById.get(candidate.id);
           return { ...candidate, matched: match ? { type: match.type, id: match.id } : null,
             hidden: !!(review && review.hidden),
@@ -569,23 +583,34 @@ function registerPartnerLeadRoutes(router, options = {}) {
     const { status, city_id, q } = ctx.query || {};
     const manager = payload.role === 'manager' ? activeManager(payload, res) : null;
     if (payload.role === 'manager' && !manager) return;
-    let sql = 'SELECT * FROM partner_leads WHERE 1=1';
+    let sql = [
+      'SELECT l.*, m.full_name AS assigned_manager_name,',
+      'COALESCE(n.notes_count,0) AS notes_count,',
+      'last_note.id AS last_note_id,',
+      'last_note.author AS last_note_author, last_note.note AS last_note_text,',
+      'last_note.created_at AS last_note_created_at',
+      'FROM partner_leads l LEFT JOIN managers m ON m.id=l.assigned_manager_id',
+      'LEFT JOIN (SELECT lead_id,COUNT(*) AS notes_count,MAX(id) AS last_id',
+      'FROM partner_lead_notes GROUP BY lead_id) n ON n.lead_id=l.id',
+      'LEFT JOIN partner_lead_notes last_note ON last_note.id=n.last_id',
+      'WHERE 1=1',
+    ].join(' ');
     const args = [];
     // Assigned leads from any city + unassigned leads in the manager's own city.
     if (manager) {
-      sql += ' AND (assigned_manager_id = ? OR (assigned_manager_id IS NULL AND city_id = ?))';
+      sql += ' AND (l.assigned_manager_id = ? OR (l.assigned_manager_id IS NULL AND l.city_id = ?))';
       args.push(payload.id, manager.city_id == null ? '__no_manager_city__' : manager.city_id);
     }
-    if (status && STATUSES.includes(status)) { sql += ' AND status = ?'; args.push(status); }
-    if (city_id) { sql += ' AND city_id = ?'; args.push(city_id); }
+    if (status && STATUSES.includes(status)) { sql += ' AND l.status = ?'; args.push(status); }
+    if (city_id) { sql += ' AND l.city_id = ?'; args.push(city_id); }
     if (q && q.trim()) {
-      sql += ' AND (salon_name LIKE ? OR contact_name LIKE ? OR phone LIKE ?)';
+      sql += ' AND (l.salon_name LIKE ? OR l.contact_name LIKE ? OR l.phone LIKE ?)';
       const like = '%' + q.trim() + '%';
       args.push(like, like, like);
     }
-    sql += ' ORDER BY CASE WHEN next_contact_date IS NULL THEN 1 ELSE 0 END, next_contact_date ASC, id DESC';
+    sql += ' ORDER BY CASE WHEN l.next_contact_date IS NULL THEN 1 ELSE 0 END, l.next_contact_date ASC, l.id DESC';
     const rows = db.prepare(sql).all(...args);
-    sendJson(res, 200, { leads: rows.map(serializeLead) });
+    sendJson(res, 200, { leads: rows.map(serializeListLead) });
   });
 
   // GET /api/partner-leads/:id — карточка + полная история звонков
