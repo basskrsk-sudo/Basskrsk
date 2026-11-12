@@ -7,7 +7,8 @@ const path = require('node:path');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'hm-report-query-efficiency-'));
 const db = require('./db');
-const { collectWeeklyReport, collectWeeklyBscReport } = require('./weekly-report');
+const { collectWeeklyReport, collectWeeklyBscReport, getCachedWeeklyBsc } = require('./weekly-report');
+const { PAID_PHONE_KEY_SQL } = require('./report-phone-key');
 
 const now = new Date('2026-11-12T12:00:00.000Z');
 const products = [
@@ -98,7 +99,73 @@ test('point summary remains batch-based when the number of points grows', () => 
 test('BSC/admin and founder routes request the lightweight weekly dataset', () => {
   const bscRoute=fs.readFileSync(path.join(__dirname,'routes-bsc.js'),'utf8');
   const founderRoute=fs.readFileSync(path.join(__dirname,'routes-business-founders.js'),'utf8');
-  assert.match(bscRoute,/const bsc = collectWeeklyBscReport\(\)\.bsc/);
+  assert.match(bscRoute,/const bsc = getCachedWeeklyBsc\(\)\.bsc/);
   assert.doesNotMatch(bscRoute,/calculateBsc\(report\)/,'must not rescore an already scored BSC');
-  assert.match(founderRoute,/const report=collectWeeklyBscReport\(\)/);
+  assert.match(founderRoute,/const report=getCachedWeeklyBsc\(\)/);
+});
+
+
+test('scored BSC is shared within TTL and invalidates after a stock change', () => {
+  const first = getCachedWeeklyBsc(now);
+  const second = getCachedWeeklyBsc(now);
+  assert.strictEqual(first, second, 'admin and founders must share one scored BSC');
+  assert.equal(JSON.stringify(first).includes('79998887766'), false,
+    'cached BSC must not contain customer phone numbers');
+  const before = first.bsc.points.find(p=>p.id==='report-fast-0').stock_alerts;
+  db.prepare('UPDATE stock SET qty = 7 WHERE point_id=? AND variant_id=?')
+    .run('report-fast-0', variant);
+  const after = getCachedWeeklyBsc(now);
+  assert.notStrictEqual(first, after, 'revenue/stock/settings writes invalidate immediately');
+  assert.notEqual(after.bsc.points.find(p=>p.id==='report-fast-0').stock_alerts, before);
+  assert.strictEqual(getCachedWeeklyBsc(now), after, 'unchanged revision reuses the result');
+});
+
+test('SQL phone keys match legacy formatted customer numbers and preserve returning-customer counts', () => {
+  order('RPT-PHONE-OLD','report-fast-7','2026-10-20 10:00:00',90,
+    'paid',0,'+7 (999) 123-45-67');
+  order('RPT-PHONE-RETURN','report-fast-7','2026-11-04 10:00:00',130,
+    'paid',0,'8 999 123 45 67');
+  order('RPT-PHONE-NEW','report-fast-7','2026-11-05 10:00:00',170,
+    'paid',0,'+7-999-000-11-22');
+  order('RPT-PHONE-NBSP-OLD','report-fast-7','2026-10-22 10:00:00',110,
+    'paid',0,'+7\u202F(999)\u202F456\u201178\u201190');
+  order('RPT-PHONE-NBSP-RETURN','report-fast-7','2026-11-04 14:00:00',200,
+    'paid',0,'8 999 456 78 90');
+  const report=collectWeeklyBscReport(now);
+  const legacyRows=db.prepare(
+    "SELECT customer_phone, MIN(created_at) AS first_paid_at FROM orders WHERE status='paid' GROUP BY customer_phone"
+  ).all();
+  const normalize = value => String(value || '').replace(/\D/g,'').slice(-10);
+  const earliest=new Map();
+  for (const row of legacyRows) {
+    const key=normalize(row.customer_phone);
+    if(!key) continue;
+    if(!earliest.has(key) || row.first_paid_at<earliest.get(key)) earliest.set(key,row.first_paid_at);
+  }
+  const weekly=new Map();
+  for (const row of report.current.paidOrders) {
+    const key=normalize(row.customer_phone);
+    if(key) weekly.set(key,(weekly.get(key)||0)+1);
+  }
+  const newBuyers=[...weekly.keys()].filter(key=>
+    earliest.get(key)>=report.period.start_utc && earliest.get(key)<report.period.end_utc_exclusive
+  ).length;
+  assert.equal(report.customers.unique,weekly.size);
+  assert.equal(report.customers.new_customers,newBuyers);
+  assert.equal(report.customers.returning_customers,weekly.size-newBuyers);
+  const key=db.prepare('SELECT ' + PAID_PHONE_KEY_SQL + ' AS k FROM orders WHERE order_code=?')
+    .get('RPT-PHONE-RETURN').k;
+  assert.equal(key,'9991234567');
+  const index=db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name=?")
+    .get('idx_orders_paid_phone_key_created');
+  assert.equal(index?.name,'idx_orders_paid_phone_key_created');
+});
+
+test('business founder monthly sales are grouped in SQL without six full order loads', () => {
+  const founderRoute=fs.readFileSync(path.join(__dirname,'routes-business-founders.js'),'utf8');
+  const month=founderRoute.split('function monthHistory(now) {')[1]
+    .split('function pointRanking(start) {')[0];
+  assert.match(month,/GROUP BY month/);
+  assert.doesNotMatch(month,/ordersInRange\(/);
+  assert.match(month,/strftime\('%Y-%m', created_at, '\+7 hours'\)/);
 });

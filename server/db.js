@@ -5,6 +5,7 @@
 const { DatabaseSync } = require('node:sqlite');
 const path = require('node:path');
 const fs = require('node:fs');
+const { PAID_PHONE_KEY_SQL } = require('./report-phone-key');
 
 // На Amvera постоянное хранилище монтируется в /data (папка "Artifacts"/app
 // пересобирается и стирается при каждом деплое!). Локально при разработке —
@@ -1405,6 +1406,13 @@ db.exec(
   "CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);" +
   "CREATE INDEX IF NOT EXISTS idx_stock_point_variant ON stock(point_id,variant_id);"
 );
+
+// Historical first-purchase lookup now targets only phone keys visible in
+// the selected week. Creating the partial index once avoids rescanning all
+// earlier buyers whenever a business dashboard opens.
+db.exec(`CREATE INDEX IF NOT EXISTS idx_orders_paid_phone_key_created
+  ON orders(${PAID_PHONE_KEY_SQL}, created_at)
+  WHERE status='paid'`);
 
 // Игра «Поймай косточку» заменена викториной о собаках — старые таблицы
 // на уже развёрнутых серверах больше не используются нигде в коде, чистим их.

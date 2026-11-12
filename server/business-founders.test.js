@@ -173,3 +173,13 @@ test('Krasnoyarsk month period starts at first local day with UTC offset',()=>{
  assert.equal(t.date_from,'2026-11-01');
  assert.equal(t.from,'2026-10-31 17:00:00');
 });
+
+
+test('six-month founder sales keep the same net figures with one grouped SQL query', () => {
+  const d = collectFounderDashboard(getFounder(1),'30d',new Date('2026-11-01T12:00:00Z'));
+  assert.equal(d.sales.last_six_months.length,6);
+  const october=d.sales.last_six_months.find(row => row.month==='2026-10');
+  assert.deepEqual(october,{month:'2026-10',revenue:1000,orders:1,avg_check:1000});
+  const november=d.sales.last_six_months.find(row => row.month==='2026-11');
+  assert.deepEqual(november,{month:'2026-11',revenue:0,orders:0,avg_check:0});
+});
