@@ -123,6 +123,7 @@ test('large static files are streamed with stable ETags and no retained file bod
     assert.equal(first.status,200);
     assert.equal(first.body,null);
     assert.equal(first.streamPath,pdf);
+    assert.match(first.headers.ETag,/^W\//,'streamed assets must use weak metadata validators');
     assert.equal(cache.stats().resident_bytes,0);
     const check=cache.response(pdf,{...req,headers:{'if-none-match':first.headers.ETag}},'application/pdf');
     assert.equal(check.status,304);
@@ -145,4 +146,22 @@ test('small assets are LRU-limited without losing their content on the next requ
     assert.equal(cache.response(paths[0],req,'application/javascript').body.toString(),'0'.repeat(90));
     assert.ok(cache.stats().resident_bytes<=140);
   } finally { fs.rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('large static assets never synchronously read every byte to generate ETags', () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hm-static-nonblocking-'));
+  const file=path.join(dir,'large-image.webp');
+  fs.writeFileSync(file,Buffer.alloc(512*1024,1));
+  const original=fs.readSync;
+  try {
+    fs.readSync=()=>{throw new Error('synchronous full-file read blocked the event loop');};
+    const cache=createStaticCache(dir,{maxAssetBytes:1024});
+    const response=cache.response(file,{method:'GET',url:'/large-image.webp',headers:{}},'image/webp');
+    assert.equal(response.body,null);
+    assert.equal(response.streamPath,file);
+    assert.match(response.headers.ETag,/^W\//);
+  } finally {
+    fs.readSync=original;
+    fs.rmSync(dir,{recursive:true,force:true});
+  }
 });
