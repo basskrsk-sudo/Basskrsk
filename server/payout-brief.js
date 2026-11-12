@@ -5,6 +5,7 @@ const {getUnpaidOrders}=require('./partner-payouts');
 const {getOwnerUnpaidOrders}=require('./owner-payouts');
 const {getManagerUnpaidOrders}=require('./manager-payouts');
 const {getBonuses}=require('./report-bonuses');
+const {createHash}=require('node:crypto');
 
 const ROLES=Object.freeze({partner:'Грумер',owner:'Владелец салона',manager:'Менеджер'});
 const formatter=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0});
@@ -164,6 +165,13 @@ function roleStatement(account,refundQuery,getItems){
     bonuses,
   };
 }
+// Stable, opaque selection key for a person who may have multiple roles.
+// Never select by display index: payout totals can change between button
+// creation and confirmation.
+function recipientKeyForAccounts(accounts){
+  const identities=(accounts||[]).map(account=>String(account.role)+':'+String(account.id)).sort();
+  return createHash('sha256').update(identities.join('|')).digest('hex').slice(0,16);
+}
 function groupStatements(entries){
   const people=[];
   for(const entry of entries){
@@ -183,6 +191,7 @@ function groupStatements(entries){
     const roles=[...new Set(p.statements.map(s=>s.role))];
     const total=key=>p.statements.reduce((sum,s)=>sum+num(s[key]),0);
     return {name:p.name,roles,roles_label:roles.map(role=>ROLES[role]).join(' + '),
+      selection_key:recipientKeyForAccounts(p.accounts),
       period:personPeriod(p.statements),
       statements:p.statements,commission:total('commission'),bonus:total('bonus'),
       total:total('total'),held_orders:new Set(p.statements.flatMap(s=>s.held_order_ids)).size,
@@ -241,12 +250,12 @@ function formatPayoutBriefMessage(report){
     const line=p.index+'. '+clean(p.name,44)+' — '+money(p.total)+' ('+
       p.roles.map(role=>ROLES[role]).join(' + ')+')'+(p.held_orders?' · ⚠️ возвраты: '+p.held_orders:'');
     if((lines.join('\n')+'\n'+line).length>3000){
-      lines.push('… остальные получатели — в PDF/CSV.');break;
+      lines.push('… остальные получатели — в CSV.');break;
     }
     lines.push(line);
   }
-  lines.push('','📎 PDF: одна справка на получателя с разбивкой по ролям.',
-    '📊 CSV: детализация по получателям, ролям и точкам.');
+  lines.push('','📊 CSV: общая детализация по получателям, ролям и точкам.',
+    '📄 Персональные PDF: только после выбора получателя и отдельного подтверждения.');
   if(report.held_orders)lines.push('⚠️ Заказов с возвратами на сверке: '+report.held_orders+'. Не включены.');
   if(report.identities_to_verify.length)lines.push('⚠️ ФИО совпадают, но личность не подтверждена: '+
     report.identities_to_verify.slice(0,5).join(', ')+'. Не объединены.');
@@ -329,5 +338,5 @@ function buildPayoutBriefCsv(report){
   return '\uFEFF'+rows.join('\r\n')+'\r\n';
 }
 module.exports={collectPayoutBrief,formatPayoutBriefMessage,buildPayoutBriefCsv,
-  groupStatements,sameRecipient,normalizePhone,namesCompatible,money,clean,
+  groupStatements,recipientKeyForAccounts,sameRecipient,normalizePhone,namesCompatible,money,clean,
   formatRecipientPayoutMessage,formatSaleDateTime,personPeriod,itemListLabel};

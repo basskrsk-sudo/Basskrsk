@@ -61,7 +61,7 @@ test('consolidated Telegram report menu has seven groups while preserving every 
   const covered=approvals.REPORT_GROUPS.flatMap(g=>g.types);
   assert.equal(new Set(covered).size,covered.length,'report types cannot appear in multiple groups');
   assert.deepEqual(covered.toSorted(),Object.keys(approvals.REPORTS)
-    .filter(type=>type!=='taskpdf').toSorted());
+    .filter(type=>type!=='taskpdf'&&type!=='payoutpdf').toSorted());
   const superMenu=approvals.menu('70002');
   assert.match(superMenu.message,/Выберите раздел/);
   const choices=superMenu.reply_markup.inline_keyboard.flat().map(x=>x.callback_data);
@@ -96,4 +96,22 @@ test('admin report center exposes eight primary sections, keeping approved repor
   assert.match(bot,/reportApprovals\.groupMenu\(/);
   assert.ok(!bot.includes("command: 'salesweek'"),'legacy menu items should be hidden, not removed');
   assert.match(bot,/\/salesweek/,'old commands should remain supported by the bot');
+});
+
+test('individual payout PDF remains hidden until separate one-use Telegram approval',async()=>{
+  const recipientKey='e123456789abcdef';
+  assert.equal(approvals.REPORT_GROUPS.some(g=>g.types.includes('payoutpdf')),false);
+  const req=await approvals.requestReport('70002','payoutpdf',
+    {recipientKey,recipientName:'Иван Петров',expectedTotal:1250},send);
+  assert.equal(req.ok,true);
+  const message=prompts.findLast(p=>p.buttons.inline_keyboard[0][0].callback_data==='report:yes:'+req.id);
+  assert.match(message.text,/Иван Петров/);
+  assert.match(message.text,/1250/);
+  const click=approvals.decideReport('70002','yes',req.id);
+  assert.equal(click.ok,true);
+  assert.equal(click.request.type,'payoutpdf');
+  assert.equal(click.request.params.recipientKey,recipientKey);
+  assert.equal(approvals.decideReport('70002','yes',req.id).ok,false,
+    'personal PDF confirmation must not be repeatable');
+  approvals.finishReport(req.id,true);
 });

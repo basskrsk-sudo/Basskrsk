@@ -10,7 +10,10 @@ const REPORTS = Object.freeze({
   businesspoints: {title:'Реестр точек · CSV',role:'admin'},
   stock: {title:'Остатки центрального склада',role:'admin'},
   nogroomer: {title:'Заказы без грумера',role:'admin'},
-  payouts: {title:'Справки для выплат · PDF и CSV',role:'admin'},
+  payouts: {title:'Сводка выплат и общий CSV',role:'admin'},
+  // Hidden from the seven-group menu. A recipient button requests a separate
+  // one-use confirmation before its PDF is ever rendered.
+  payoutpdf: {title:'Персональная справка к выплате · PDF',role:'admin'},
   taskpdf: {title:'Мои поручения · PDF',role:'assignee'},
   gdweek: {title:'Отчёт для планёрки ГД · PDF и Excel',role:'admin-record'},
   qrweek: {title:'QR-аналитика за неделю · CSV',role:'super'},
@@ -83,6 +86,8 @@ function escapeHtml(value){
 }
 function details(params){
   const items=[];
+  if(params.recipientName)items.push('Получатель: '+escapeHtml(String(params.recipientName).slice(0,100)));
+  if(params.expectedTotal!==undefined)items.push('К выплате: '+escapeHtml(params.expectedTotal)+' ₽');
   if(params.year)items.push('Год: '+escapeHtml(params.year));
   if(params.days)items.push('Период: '+escapeHtml(params.days)+' дней');
   if(params.citySelector)items.push('Город: '+escapeHtml(params.citySelector));
