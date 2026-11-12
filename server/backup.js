@@ -17,7 +17,8 @@ const { getRestorePaths, validateDatabaseFile } = require('./database-restore');
 const BACKUP_EMAIL = process.env.BACKUP_EMAIL || process.env.BUSINESS_COPY_EMAIL || '';
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // раз в сутки
 
-async function sendDatabaseBackup() {
+let backupInFlight = null;
+async function performDatabaseBackup() {
   if (!BACKUP_EMAIL) {
     console.warn('Резервное копирование пропущено: не задан BACKUP_EMAIL или BUSINESS_COPY_EMAIL');
     return { ok: false, skipped: true };
@@ -28,8 +29,10 @@ async function sendDatabaseBackup() {
     // VACUUM INTO — создаёт полноценный, консистентный снимок базы отдельным
     // файлом прямо средствами SQLite, безопасно при параллельной работе сервера.
     await createDatabaseSnapshot(db.DB_PATH, tempPath);
-    const fileBuffer = fs.readFileSync(tempPath);
-    const sizeKb = Math.round(fileBuffer.length / 1024);
+    // Keep the SQLite file on disk and stream Base64 chunks to SMTP. The
+    // snapshot is not copied into the Node.js heap on a small Amvera plan.
+    const stat = await fs.promises.stat(tempPath);
+    const sizeKb = Math.round(stat.size / 1024);
 
     const today = new Date().toLocaleDateString('ru-RU');
     const result = await sendEmail({
@@ -37,7 +40,7 @@ async function sendDatabaseBackup() {
       subject: 'Резервная копия базы Тайга — ' + today,
       text: 'Во вложении — резервная копия базы данных сайта на ' + today + ' (размер ~' + sizeKb + ' КБ).\n\n' +
             'Это автоматическое письмо, отвечать на него не нужно. Файл можно открыть любой программой для просмотра SQLite (например, DB Browser for SQLite).',
-      attachments: [{ filename: 'taiga-backup-' + today.replace(/\./g, '-') + '.db', content: fileBuffer, contentType: 'application/x-sqlite3' }],
+      attachments: [{ filename: 'taiga-backup-' + today.replace(/\./g, '-') + '.db', filePath: tempPath, contentType: 'application/x-sqlite3' }],
     });
 
     if (result.ok) {
@@ -50,8 +53,16 @@ async function sendDatabaseBackup() {
     console.error('Ошибка создания резервной копии:', e.message);
     return { ok: false, error: e.message };
   } finally {
-    try { fs.unlinkSync(tempPath); } catch (e) {}
+    try { await fs.promises.unlink(tempPath); } catch (_) {}
   }
+}
+
+// Manual and scheduled copies share a single snapshot + SMTP send. This
+// prevents duplicate mail and overlapping memory use after a restart.
+function sendDatabaseBackup() {
+  if (backupInFlight) return backupInFlight;
+  backupInFlight = performDatabaseBackup().finally(() => { backupInFlight = null; });
+  return backupInFlight;
 }
 
 function scheduleBackups() {
@@ -61,8 +72,10 @@ function scheduleBackups() {
   }
   // Первый бэкап — вскоре после запуска сервера (не сразу, чтобы не мешать
   // старту), дальше — раз в сутки.
-  setTimeout(sendDatabaseBackup, 2 * 60 * 1000); // через 2 минуты после старта
-  setInterval(sendDatabaseBackup, BACKUP_INTERVAL_MS);
+  const initial = setTimeout(() => { void sendDatabaseBackup(); }, 2 * 60 * 1000);
+  const daily = setInterval(() => { void sendDatabaseBackup(); }, BACKUP_INTERVAL_MS);
+  initial.unref?.();
+  daily.unref?.();
   console.log('Резервное копирование базы настроено: раз в сутки на ' + BACKUP_EMAIL);
 }
 
