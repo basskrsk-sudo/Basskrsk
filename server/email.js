@@ -5,6 +5,7 @@
 
 const tls = require('node:tls');
 const net = require('node:net');
+const fs = require('node:fs');
 
 const SMTP_HOST = process.env.SMTP_HOST || '';
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '465', 10);
@@ -111,6 +112,70 @@ function buildMessage({ from, to, subject, text, attachments }) {
   ].join('\r\n');
 }
 
+// Write a large file attachment incrementally instead of loading and base64-
+// encoding the entire SQLite database into the server heap. Each raw block is
+// exactly 57 KiB (a multiple of 57 bytes), so Base64 line wrapping stays
+// valid across chunk boundaries. Honor SMTP socket backpressure.
+async function writeSocketChunk(socket, chunk) {
+  if (socket.write(chunk)) return;
+  await new Promise((resolve, reject) => {
+    function cleanup() {
+      socket.removeListener('drain', onDrain);
+      socket.removeListener('close', onClose);
+    }
+    function onDrain() { cleanup(); resolve(); }
+    function onClose() {
+      cleanup();
+      reject(new Error('SMTP-соединение закрылось при отправке вложения'));
+    }
+    socket.once('drain', onDrain);
+    socket.once('close', onClose);
+  });
+}
+
+async function streamMimeMessage(socket, { from, to, subject, text, attachments }) {
+  const boundary='taiga-stream-'+Date.now().toString(36)+Math.random().toString(36).slice(2);
+  const header=[
+    'From: '+from,
+    'To: '+to,
+    'Subject: '+encodeSubject(subject),
+    'MIME-Version: 1.0',
+    'Content-Type: multipart/mixed; boundary="'+boundary+'"',
+    '',
+    '--'+boundary,
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    b64(text).replace(/(.{76})/g, '$1\r\n'),
+    '',
+  ].join('\r\n');
+  await writeSocketChunk(socket, header);
+  for (const att of attachments) {
+    const filename=String(att.filename || 'attachment').replace(/[\r\n"]/g, '_');
+    await writeSocketChunk(socket, [
+      '--'+boundary,
+      'Content-Type: '+(att.contentType || 'application/octet-stream')+'; name="'+filename+'"',
+      'Content-Transfer-Encoding: base64',
+      'Content-Disposition: attachment; filename="'+filename+'"',
+      '',
+    ].join('\r\n')+'\r\n');
+    if (att.filePath) {
+      const file=fs.createReadStream(att.filePath, { highWaterMark: 57*1024 });
+      for await (const block of file) {
+        const lines=block.toString('base64').replace(/(.{76})/g, '$1\r\n');
+        await writeSocketChunk(socket, lines);
+      }
+    } else if (Buffer.isBuffer(att.content)) {
+      // Small existing buffers still work through the same MIME transport.
+      await writeSocketChunk(socket, b64Buffer(att.content));
+    } else {
+      throw new Error('Вложение не содержит файла или данных');
+    }
+    await writeSocketChunk(socket, '\r\n');
+  }
+  await writeSocketChunk(socket, '--'+boundary+'--\r\n.\r\n');
+}
+
 async function sendEmail({ to, subject, text, attachments }) {
   const recipient = to || BUSINESS_COPY_EMAIL;
   if (!isConfigured() || !recipient) {
@@ -165,8 +230,12 @@ async function sendEmail({ to, subject, text, attachments }) {
         sendLine(socket, 'DATA');
         await readResponse(socket); // 354 продолжайте, завершите точкой на отдельной строке
 
-        const message = buildMessage({ from: SMTP_USER, to: recipient, subject, text, attachments });
-        sendLine(socket, message);
+        if (attachments?.some(att => att.filePath)) {
+          await streamMimeMessage(socket, { from: SMTP_USER, to: recipient, subject, text, attachments });
+        } else {
+          const message = buildMessage({ from: SMTP_USER, to: recipient, subject, text, attachments });
+          sendLine(socket, message);
+        }
         const dataRes = await readResponse(socket); // 250 письмо принято к отправке
 
         sendLine(socket, 'QUIT');
@@ -179,4 +248,4 @@ async function sendEmail({ to, subject, text, attachments }) {
   });
 }
 
-module.exports = { sendEmail, isConfigured };
+module.exports = { sendEmail, isConfigured, streamMimeMessage };
