@@ -185,29 +185,49 @@ function buildPoints(current, previous) {
     FROM points p LEFT JOIN cities c ON c.id = p.city_id
     ORDER BY p.active DESC, c.name, p.name
   `).all();
+
+  // Aggregate once in memory. Filtering every order once per point was
+  // O(points * orders), and SQLite was queried separately for every point.
+  const paidByPoint = new Map();
+  for (const order of current.paidOrders) {
+    const id = String(order.point_id);
+    let totals = paidByPoint.get(id);
+    if (!totals) {
+      totals = { revenue: 0, count: 0 };
+      paidByPoint.set(id, totals);
+    }
+    totals.revenue += effectiveRevenue(order);
+    totals.count++;
+  }
   const previousRevenue = new Map();
-  previous.paidOrders.forEach((order) => {
-    const key = String(order.point_id || 'other');
-    previousRevenue.set(key, (previousRevenue.get(key) || 0) + effectiveRevenue(order));
-  });
-  return points.map((point) => {
-    const orders = current.paidOrders.filter((order) => String(order.point_id) === String(point.id));
-    const revenue = orders.reduce((total, order) => total + effectiveRevenue(order), 0);
-    const stock = db.prepare(`
-      SELECT COUNT(*) AS positions,
-             SUM(CASE WHEN s.qty = 0 THEN 1 ELSE 0 END) AS out_count,
-             SUM(CASE WHEN s.qty BETWEEN 1 AND 2 THEN 1 ELSE 0 END) AS low_count,
-             COALESCE(SUM(s.qty * v.price), 0) AS retail_value
-      FROM stock s
-      JOIN product_variants v ON v.id = s.variant_id AND v.active = 1
-      JOIN products pr ON pr.id = v.product_id AND pr.active = 1
-      WHERE s.point_id = ?
-    `).get(point.id);
-    const prevRevenue = previousRevenue.get(String(point.id)) || 0;
+  for (const order of previous.paidOrders) {
+    const id = String(order.point_id || 'other');
+    previousRevenue.set(id, (previousRevenue.get(id) || 0) + effectiveRevenue(order));
+  }
+
+  const stockRows = db.prepare(`
+    SELECT s.point_id, COUNT(*) AS positions,
+           SUM(CASE WHEN s.qty = 0 THEN 1 ELSE 0 END) AS out_count,
+           SUM(CASE WHEN s.qty BETWEEN 1 AND 2 THEN 1 ELSE 0 END) AS low_count,
+           COALESCE(SUM(s.qty * v.price), 0) AS retail_value
+    FROM stock s
+    JOIN product_variants v ON v.id = s.variant_id AND v.active = 1
+    JOIN products pr ON pr.id = v.product_id AND pr.active = 1
+    GROUP BY s.point_id
+  `).all();
+  const stockByPoint = new Map(stockRows.map(row => [String(row.point_id), row]));
+
+  return points.map(point => {
+    const id = String(point.id);
+    const currentTotals = paidByPoint.get(id) || { revenue: 0, count: 0 };
+    const revenue = currentTotals.revenue;
+    const count = currentTotals.count;
+    const stock = stockByPoint.get(id) || {};
+    const prevRevenue = previousRevenue.get(id) || 0;
     return {
       id: point.id, name: point.name, city: point.city_name || point.city_id || '—', active: !!point.active,
       revenue, previous_revenue: prevRevenue, change_percent: pctChange(revenue, prevRevenue),
-      orders_count: orders.length, average_check: orders.length ? Math.round(revenue / orders.length) : 0,
+      orders_count: count, average_check: count ? Math.round(revenue / count) : 0,
       out_count: Number(stock.out_count || 0), low_count: Number(stock.low_count || 0),
       retail_stock_value: Number(stock.retail_value || 0),
     };
@@ -379,6 +399,33 @@ function collectWeeklyReportForPeriod(period) {
   };
   report.growth_plan = buildGrowthPlanDashboard();
   report.alerts = buildAlerts(report);
+  report.bsc = calculateBsc(report);
+  return report;
+}
+
+// BSC needs the core weekly KPIs, point stock and one movement count. Avoid
+// generating product rankings, daily series, full operations, growth forecasts
+// and PDF-only alerts every time an owner opens a dashboard.
+function collectWeeklyBscReport(now = new Date()) {
+  const period = previousCompletedWeek(now);
+  const current = collectMetrics(period.start_utc, period.end_utc_exclusive, period);
+  const previous = collectMetrics(period.previous_start_utc, period.previous_end_utc_exclusive, {
+    start_local: period.previous_start_local,
+    end_local: period.previous_end_local,
+  });
+  const points = buildPoints(current, previous);
+  const customers = buildCustomers(current, period);
+  const pending = db.prepare(
+    "SELECT COUNT(*) AS count FROM stock_movements WHERE status='pending'"
+  ).get();
+  const report = {
+    period, current, previous, points, customers,
+    operations: { movements: { pending: Number(pending.count || 0) } },
+    comparison: {
+      revenue_change_percent: pctChange(current.revenue, previous.revenue),
+      orders_change_percent: pctChange(current.paidOrders.length, previous.paidOrders.length),
+    },
+  };
   report.bsc = calculateBsc(report);
   return report;
 }
@@ -676,6 +723,7 @@ module.exports = {
   REPORTS_DIR,
   buildSpreadsheet,
   collectWeeklyReport,
+  collectWeeklyBscReport,
   collectWeeklyReportForPeriod,
   createWeeklyReport,
   customPeriod,
