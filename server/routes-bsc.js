@@ -4,7 +4,7 @@
 const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth, requireSuperAdmin } = require('./routes-auth');
-const { collectWeeklyBscReport } = require('./weekly-report');
+const { getCachedWeeklyBsc } = require('./weekly-report');
 const { KPI_DEFINITIONS, PERSPECTIVES, seedSettings } = require('./bsc');
 
 const ALLOWED_STATUSES = new Set(['planned', 'in_progress', 'done', 'cancelled']);
@@ -30,7 +30,7 @@ function registerBscRoutes(router) {
   router.get('/api/bsc/dashboard', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    const bsc = collectWeeklyBscReport().bsc;
+    const bsc = getCachedWeeklyBsc().bsc;
     sendJson(res, 200, {
       ...bsc,
       initiatives: listInitiatives(),

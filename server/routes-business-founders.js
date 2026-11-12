@@ -9,7 +9,7 @@ const { safeFounder, activeFounder, getFounder, configureFounder, FOUNDER_SLOTS 
 const { listExpenseDocuments } = require('./expense-documents');
 const { buildGrowthPlanDashboard } = require('./growth-plan');
 const { buildOperationsCenter } = require('./routes-operations');
-const { collectWeeklyBscReport } = require('./weekly-report');
+const { getCachedWeeklyBsc } = require('./weekly-report');
 
 const CAPITAL_PLAN_RUB = 1000000;
 const TAX_ESTIMATE_RATE = 0.06;
@@ -112,17 +112,35 @@ function estimatedEconomics(orders, startDate, endDate) {
 }
 function monthHistory(now) {
   const local = new Date(now.getTime() + ZONE_SHIFT);
+  const firstMs = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - 5, 1) - ZONE_SHIFT;
+  const lastMs = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 1, 1) - ZONE_SHIFT;
+  const sql = ms => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+  // One SQL GROUP BY instead of reading every paid order in six separate
+  // queries and materializing its payment fields in Node.js.
+  const monthly = db.prepare(`
+    SELECT strftime('%Y-%m', created_at, '+7 hours') AS month,
+      ROUND(COALESCE(SUM(CASE WHEN refund_status = 'refunded' THEN 0
+        ELSE MAX(0, total - COALESCE(refunded_amount, 0)) END), 0)) AS revenue,
+      SUM(CASE WHEN refund_status = 'refunded'
+        OR total - COALESCE(refunded_amount, 0) <= 0 THEN 0 ELSE 1 END) AS orders
+    FROM orders
+    WHERE status = 'paid' AND created_at >= ? AND created_at < ?
+    GROUP BY month
+  `).all(sql(firstMs), sql(lastMs));
+  const byMonth = new Map(monthly.map(row => [row.month, row]));
   const results = [];
   for (let step = 5; step >= 0; step--) {
-    const fromMs = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - step, 1) - ZONE_SHIFT;
-    const toMs = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - step + 1, 1) - ZONE_SHIFT;
-    const sql = ms => new Date(ms).toISOString().slice(0,19).replace('T',' ');
-    const rows = ordersInRange(sql(fromMs), sql(toMs));
-    const summary = summarizeOrders(rows);
-    results.push({ month: new Date(fromMs + ZONE_SHIFT).toISOString().slice(0,7), ...summary });
+    const month = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - step, 1))
+      .toISOString().slice(0, 7);
+    const row = byMonth.get(month);
+    const revenue = row ? Math.round(safeNumber(row.revenue)) : 0;
+    const orders = row ? Number(row.orders || 0) : 0;
+    results.push({ month, revenue, orders,
+      avg_check: orders ? Math.round(revenue / orders) : 0 });
   }
   return results;
 }
+
 function pointRanking(start) {
   const points = db.prepare(
     'SELECT id,name,addr,city_id,created_at FROM points WHERE active = 1 AND COALESCE(is_hub,0) = 0 ORDER BY name'
@@ -225,7 +243,7 @@ function strategicReadiness(now) {
 }
 function founderScorecard() {
   try {
-    const report=collectWeeklyBscReport();
+    const report=getCachedWeeklyBsc();
     const bsc=report.bsc || {};
     return {
       period:report.period ? report.period.start_local + ' — ' + report.period.end_local : null,

@@ -10,6 +10,8 @@ const { findFont, writePdfFromJpegs } = require('./weekly-report-pdf');
 const { renderWeeklyPdf } = require('./weekly-report-pdf-runner');
 const { sendTelegram, sendTelegramDocument } = require('./telegram');
 const { calculateBsc } = require('./bsc');
+const { createAnalyticsCache } = require('./analytics-cache');
+const { PAID_PHONE_KEY_SQL } = require('./report-phone-key');
 const { buildGrowthPlanDashboard, syncGrowthPlanTasks } = require('./growth-plan');
 
 const REPORTS_DIR = path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'reports');
@@ -250,28 +252,32 @@ function buildProducts(period, previousPeriod) {
 }
 
 function buildCustomers(current, period) {
-  const firstOrderRows = db.prepare(`
-    SELECT customer_phone, MIN(created_at) AS first_paid_at
-    FROM orders WHERE status = 'paid' GROUP BY customer_phone
-  `).all();
-  const firstByPhone = new Map();
-  firstOrderRows.forEach((row) => {
-    const phone = normalizePhone(row.customer_phone);
-    if (!phone) return;
-    const existing = firstByPhone.get(phone);
-    if (!existing || row.first_paid_at < existing) firstByPhone.set(phone, row.first_paid_at);
-  });
   const counts = new Map();
-  current.paidOrders.forEach((order) => {
+  current.paidOrders.forEach(order => {
     const phone = normalizePhone(order.customer_phone);
     if (phone) counts.set(phone, (counts.get(phone) || 0) + 1);
   });
   const phones = Array.from(counts.keys());
-  const newCustomers = phones.filter((phone) => {
+
+  // Query only phones present in this period. The matching expression is
+  // indexed for paid orders, so historical phones stay in SQLite, not in JS.
+  const firstByPhone = new Map();
+  for (let i = 0; i < phones.length; i += 200) {
+    const batch = phones.slice(i, i + 200);
+    const placeholders = batch.map(() => '?').join(',');
+    const rows = db.prepare(`
+      SELECT ${PAID_PHONE_KEY_SQL} AS phone_key, MIN(created_at) AS first_paid_at
+      FROM orders WHERE status = 'paid'
+        AND ${PAID_PHONE_KEY_SQL} IN (${placeholders})
+      GROUP BY ${PAID_PHONE_KEY_SQL}
+    `).all(...batch);
+    rows.forEach(row => firstByPhone.set(row.phone_key, row.first_paid_at));
+  }
+  const newCustomers = phones.filter(phone => {
     const first = firstByPhone.get(phone);
     return first && first >= period.start_utc && first < period.end_utc_exclusive;
   }).length;
-  const repeatWithinWeek = phones.filter((phone) => counts.get(phone) > 1).length;
+  const repeatWithinWeek = phones.filter(phone => counts.get(phone) > 1).length;
   const returning = phones.length - newCustomers;
   const bones = db.prepare(`
     SELECT
@@ -428,6 +434,23 @@ function collectWeeklyBscReport(now = new Date()) {
   };
   report.bsc = calculateBsc(report);
   return report;
+}
+
+// Share only scored BSC and its period across the administrator and founders.
+// Raw orders, phone numbers, personal investments, payment state and stock
+// availability for checkout are never cached.
+const revisionChanges = db.prepare('SELECT total_changes() AS n');
+const revisionExternal = db.prepare('PRAGMA data_version');
+const bscCache = createAnalyticsCache(
+  () => revisionChanges.get().n + ':' + revisionExternal.get().data_version,
+  { ttlMs: 30000, maxEntries: 2 }
+);
+function getCachedWeeklyBsc(now = new Date()) {
+  const period = previousCompletedWeek(now);
+  return bscCache.get(period.start_utc, () => {
+    const report = collectWeeklyBscReport(now);
+    return { period: report.period, bsc: report.bsc };
+  });
 }
 
 function collectWeeklyReport(now = new Date()) {
@@ -724,6 +747,7 @@ module.exports = {
   buildSpreadsheet,
   collectWeeklyReport,
   collectWeeklyBscReport,
+  getCachedWeeklyBsc,
   collectWeeklyReportForPeriod,
   createWeeklyReport,
   customPeriod,
