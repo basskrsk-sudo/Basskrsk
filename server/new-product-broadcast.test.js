@@ -182,11 +182,12 @@ test('catalog image is attached as a local Telegram photo without using external
     process.env.TG_TOKEN = 'test-telegram-secret';
     global.fetch = async (url, options) => {
       seen.push({url,options});
-      return {ok:true,status:200,json:async()=>({ok:true})};
+      return {ok:true,status:200,json:async()=>({ok:true,result:{photo:[{file_id:'AAAbbb_1234567890_QWERTY'}]}})};
     };
     const result = await marketing.sendProductPhoto('71001', picture,
       '<b>Фото товара</b>', {inline_keyboard:[[{text:'Каталог',url:'https://хвостмаркет.рф/'}]]});
     assert.equal(result.ok, true);
+    assert.equal(result.file_id,'AAAbbb_1234567890_QWERTY');
     assert.equal(seen.length, 1);
     assert.match(seen[0].url, /\/sendPhoto$/);
     assert.equal(seen[0].options.method, 'POST');
@@ -202,4 +203,36 @@ test('catalog image is attached as a local Telegram photo without using external
     if (savedToken === undefined) delete process.env.TG_TOKEN;
     else process.env.TG_TOKEN = savedToken;
   }
+});
+
+
+test('a campaign sends one catalog upload and reuses the returned Telegram file_id', async () => {
+  const photoId='AAAbbb_1234567890_QWERTY';
+  const campaign=id(
+    'INSERT INTO new_product_campaigns(admin_chat_id,product_id,product_name,audience,photo_ref,caption_html) VALUES(?,?,?,?,?,?)',
+    '71001',product,'Товар с каталожным фото','all','catalog:images/hero-sir-barsik.jpg','Тест');
+  db.prepare('INSERT INTO new_product_deliveries(campaign_id,chat_id,consents_json) VALUES(?,?,?)')
+    .run(campaign,'71003',JSON.stringify([{role:'partner',id:groomer,key:'new_products'}]));
+  db.prepare('INSERT INTO new_product_deliveries(campaign_id,chat_id,consents_json) VALUES(?,?,?)')
+    .run(campaign,groupChat,JSON.stringify([{role:'club'}]));
+  const seen=[];
+  const send=async (chat,ref) => {
+    seen.push({chat,ref});
+    return {ok:true,file_id:photoId};
+  };
+  await marketing.processBroadcastQueue(send, async()=>{});
+  await marketing.processBroadcastQueue(send, async()=>{});
+  assert.equal(seen.length,2);
+  assert.equal(seen[0].ref,'catalog:images/hero-sir-barsik.jpg');
+  assert.equal(seen[1].ref,'tg:'+photoId);
+  assert.equal(db.prepare('SELECT state FROM new_product_campaigns WHERE id=?').get(campaign).state,'done');
+});
+
+test('campaign worker uses adaptive idle polling and image conversion is asynchronous', () => {
+  const source=fs.readFileSync(path.join(__dirname,'new-product-broadcast.js'),'utf8');
+  assert.match(source,/BROADCAST_IDLE_MS = 60 \* 1000/);
+  assert.match(source,/wakeBroadcastWorker\(\);/);
+  assert.doesNotMatch(source,/setInterval\(/);
+  assert.doesNotMatch(source,/execFileSync/);
+  assert.match(source,/await convertImage\(/);
 });

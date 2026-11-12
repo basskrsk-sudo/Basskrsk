@@ -220,3 +220,26 @@ test('desktop and Telegram manager UIs use the shared call-list module and CSS',
   assert.match(widget,/\/api\/partner-leads/);
   assert.doesNotThrow(()=>new Function(widget));
 });
+
+
+test('bulk CRM list preserves latest note, note count and manager access boundaries', async () => {
+  const created=makeLead('Пакетный список CRM','krsk',a);
+  const insert=db.prepare('INSERT INTO partner_lead_notes(lead_id,author,note) VALUES(?,?,?)');
+  insert.run(created,'Менеджер ML-A','Первый контакт');
+  insert.run(created,'Менеджер ML-A','Ожидаем ответ в Telegram');
+  const list=await call('GET','/api/partner-leads',admin);
+  assert.equal(list.status,200);
+  const row=list.body.leads.find(lead=>lead.id===created);
+  assert.ok(row);
+  const detail=await call('GET','/api/partner-leads/:id',admin,null,{id:created});
+  assert.equal(detail.status,200);
+  assert.equal(row.notes_count,2);
+  assert.equal(row.assigned_manager_name,'Менеджер ML-A');
+  assert.deepEqual(row.last_note,detail.body.lead.last_note);
+  const withoutNotes=list.body.leads.find(lead=>lead.id===noCity);
+  assert.equal(withoutNotes.notes_count,0);
+  assert.equal(withoutNotes.last_note,null);
+  assert.equal(withoutNotes.assigned_manager_name,null);
+  const unauthorizedList=await call('GET','/api/partner-leads',stranger);
+  assert.equal(unauthorizedList.body.leads.some(lead=>lead.id===created),false);
+});

@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const { execFileSync } = require('node:child_process');
+const { convertImage } = require('./image-converter');
 const db = require('./db');
 const { preference } = require('./notification-preferences');
 
@@ -310,6 +310,7 @@ function stopCampaign(chatId, id) {
     .get(Number(id), String(chatId));
   if (!row) return { ok: false, message: 'Рассылка не найдена.' };
   if (!['queued', 'running'].includes(row.state)) return campaignStatus(id, chatId);
+  uploadedPhotoIds.delete(Number(id));
   db.exec('BEGIN IMMEDIATE');
   try {
     db.prepare("UPDATE new_product_campaigns SET state='cancelled',finished_at=CURRENT_TIMESTAMP WHERE id=? AND admin_chat_id=? AND state IN ('queued','running')")
@@ -346,6 +347,8 @@ function confirmCampaign(chatId) {
     db.prepare('DELETE FROM new_product_bot_drafts WHERE chat_id=?').run(String(chatId));
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
+  // Start newly approved campaigns immediately without waiting for idle polling.
+  wakeBroadcastWorker();
   return reply('✅ Рассылка #' + campaignId + ' поставлена в очередь.\n' +
     'Адресатов: ' + receivers.length + '.\n' +
     'Бот отправит фото и сообщение по очереди, сохраняя результат каждой доставки.\n' +
@@ -444,16 +447,13 @@ async function sendProductPhoto(chatId, ref, caption, replyMarkup) {
       let file = photoFile(ref);
       if (/\.webp$/i.test(file)) {
         // Product uploads are WebP. Telegram sendPhoto is safest with JPEG.
-        tempFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'hvost-product-photo-'));
+        tempFolder = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'hvost-product-photo-'));
         const output = path.join(tempFolder, 'photo.jpg');
-        try { execFileSync('magick', [file, '-auto-orient', '-strip', '-quality', '87', output]); }
-        catch (error) {
-          if (error.code !== 'ENOENT') throw error;
-          execFileSync('convert', [file, '-auto-orient', '-strip', '-quality', '87', output]);
-        }
+        // Share the bounded async ImageMagick queue with product uploads.
+        await convertImage([file, '-auto-orient', '-strip', '-quality', '87', output]);
         file = output;
       }
-      const buffer = fs.readFileSync(file);
+      const buffer = await fs.promises.readFile(file);
       if (!buffer.length || buffer.length > PHOTO_LIMIT) throw Error('Изображение слишком большое для Telegram');
       const form = new FormData();
       form.append('chat_id', data.chat_id);
@@ -470,14 +470,23 @@ async function sendProductPhoto(chatId, ref, caption, replyMarkup) {
       signal: AbortSignal.timeout(20000),
     });
     const json = await response.json().catch(() => ({}));
+    // Telegram provides a reusable file_id for later recipients in this campaign.
+    const photos = json.result && Array.isArray(json.result.photo) ? json.result.photo : [];
+    const fileId = photos.length ? photos[photos.length - 1].file_id : null;
     return { ok: !!response.ok && json.ok === true,
       status: response.status, retry_after: json.parameters?.retry_after,
+      file_id: typeof fileId === 'string' && /^[A-Za-z0-9_-]{15,300}$/.test(fileId) ? fileId : null,
       error: json.description || (!response.ok ? 'HTTP ' + response.status : undefined) };
   } catch (error) {
-    // No automatic retry for uncertain network errors: a photo might have arrived.
+    // When local conversion was rejected before contacting Telegram, retry is safe.
+    // Network errors remain uncertain: Telegram might have delivered the photo.
+    if (error.statusCode === 503) {
+      return { ok: false, retryable: true, retry_after: 10,
+        error: 'Локальный конвертер изображений занят' };
+    }
     return { ok: false, uncertain: true, error: String(error.message || error) };
   } finally {
-    if (tempFolder) try { fs.rmSync(tempFolder, { recursive: true, force: true }); } catch (_) {}
+    if (tempFolder) try { await fs.promises.rm(tempFolder, { recursive: true, force: true }); } catch (_) {}
   }
 }
 function subscribedNow(delivery) {
@@ -516,6 +525,7 @@ async function finalizeCompleted(notify) {
       "WHERE id=? AND state IN ('queued','running')"
     ).run(row.id);
     if (!result.changes) continue;
+    uploadedPhotoIds.delete(row.id);
     const counts = statusCounts(row.id);
     const summary = '🐾 Рассылка #' + row.id + ' завершена: ' + row.product_name +
       '\n✅ Отправлено: ' + (counts.sent || 0) +
@@ -526,6 +536,9 @@ async function finalizeCompleted(notify) {
     catch (e) { console.warn('[new-product] Status notification failed:', e.message); }
   }
 }
+// Reuse Telegram-hosted photo IDs within a live campaign, not source image bytes.
+// Entries are bounded and cleared when a campaign completes or is cancelled.
+const uploadedPhotoIds = new Map();
 let tickBusy = false;
 async function processBroadcastQueue(send = sendProductPhoto, notify = async (chat, message) => {
   await require('./telegram').sendToChat(chat, html(message));
@@ -553,17 +566,26 @@ async function processBroadcastQueue(send = sendProductPhoto, notify = async (ch
             .run(row.id);
         } else {
           let result;
-          try { result = await send(row.chat_id, row.photo_ref, row.caption_html,
-            { inline_keyboard: [[{ text: '🛍 Перейти в каталог', url: SHOP_URL }]] }); }
-          catch (error) { result = { ok: false, uncertain: true, error: error.message }; }
+          try {
+            const reused = row.photo_ref.startsWith('catalog:') && uploadedPhotoIds.get(row.campaign_id);
+            result = await send(row.chat_id, reused ? 'tg:' + reused : row.photo_ref, row.caption_html,
+              { inline_keyboard: [[{ text: '🛍 Перейти в каталог', url: SHOP_URL }]] });
+          } catch (error) { result = { ok: false, uncertain: true, error: error.message }; }
           if (result.ok) {
+            if (row.photo_ref.startsWith('catalog:') &&
+                typeof result.file_id === 'string' && /^[A-Za-z0-9_-]{15,300}$/.test(result.file_id)) {
+              if (uploadedPhotoIds.size >= 64 && !uploadedPhotoIds.has(row.campaign_id))
+                uploadedPhotoIds.delete(uploadedPhotoIds.keys().next().value);
+              uploadedPhotoIds.set(row.campaign_id, result.file_id);
+            }
             db.prepare("UPDATE new_product_deliveries SET status='sent',error=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?")
               .run(row.id);
-          } else if (result.status === 429 && row.attempts < 3) {
+          } else if ((result.status === 429 || result.retryable) && row.attempts < 3) {
             const delay = Math.max(5, Math.min(300, Number(result.retry_after) || 30));
             db.prepare("UPDATE new_product_deliveries SET status='pending',next_attempt_at=?," +
               "error=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-              .run(Math.floor(Date.now()/1000) + delay, 'Telegram ограничил скорость (429)', row.id);
+              .run(Math.floor(Date.now()/1000) + delay,
+                result.retryable ? 'Локальный конвертер занят' : 'Telegram ограничил скорость (429)', row.id);
           } else {
             db.prepare("UPDATE new_product_deliveries SET status=?,error=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
               .run(result.uncertain ? 'uncertain' : 'failed', label(result.error || 'Telegram не подтвердил отправку', 400), row.id);
@@ -575,18 +597,69 @@ async function processBroadcastQueue(send = sendProductPhoto, notify = async (ch
     return !!row;
   } finally { tickBusy = false; }
 }
-let worker = null;
+// Adaptive scheduling keeps the SQLite queue idle when no photos are due.
+// New confirmed campaigns signal the worker immediately (no 60s wait).
+const BROADCAST_ACTIVE_MS = 1700;
+const BROADCAST_IDLE_MS = 60 * 1000;
+let workerStarted = false;
+let workerTimer = null;
+let workerRunning = false;
+let wakeRequested = false;
+function nextBroadcastPollDelay() {
+  const row = db.prepare(
+    "SELECT MIN(d.next_attempt_at) AS next_due FROM new_product_deliveries d " +
+    "JOIN new_product_campaigns c ON c.id=d.campaign_id " +
+    "WHERE d.status='pending' AND c.state IN ('queued','running')"
+  ).get();
+  if (row.next_due == null) return BROADCAST_IDLE_MS;
+  return Math.max(BROADCAST_ACTIVE_MS,
+    Math.min(BROADCAST_IDLE_MS, Number(row.next_due) * 1000 - Date.now()));
+}
+function scheduleBroadcastTick(delayMs) {
+  if (!workerStarted) return;
+  if (workerTimer) clearTimeout(workerTimer);
+  workerTimer = setTimeout(() => {
+    workerTimer = null;
+    void runBroadcastTick();
+  }, delayMs);
+  workerTimer.unref?.();
+}
+function wakeBroadcastWorker() {
+  if (!workerStarted) return;
+  if (workerRunning) { wakeRequested = true; return; }
+  scheduleBroadcastTick(0);
+}
+async function runBroadcastTick() {
+  if (workerRunning) { wakeRequested = true; return; }
+  workerRunning = true;
+  let worked = false;
+  try {
+    worked = await processBroadcastQueue();
+  } catch (error) {
+    console.warn('[new-product] delivery:', error.message);
+  } finally {
+    workerRunning = false;
+    if (wakeRequested) {
+      wakeRequested = false;
+      scheduleBroadcastTick(0);
+      return;
+    }
+    let delay = worked ? BROADCAST_ACTIVE_MS : BROADCAST_IDLE_MS;
+    if (!worked) {
+      try { delay = nextBroadcastPollDelay(); }
+      catch (error) { console.warn('[new-product] schedule:', error.message); }
+    }
+    scheduleBroadcastTick(delay);
+  }
+}
 function startBroadcastWorker() {
-  if (worker) return;
-  // Do not blindly retry interrupted sends: Telegram might have delivered them.
+  if (workerStarted) return;
+  // Interruption is uncertain: Telegram might have delivered the photo.
   db.prepare("UPDATE new_product_deliveries SET status='uncertain'," +
     "error='Сервер перезапущен во время отправки',updated_at=CURRENT_TIMESTAMP " +
     "WHERE status='sending'").run();
-  worker = setInterval(() => {
-    processBroadcastQueue().catch(e => console.warn('[new-product] delivery:', e.message));
-  }, 1700);
-  worker.unref?.();
-  processBroadcastQueue().catch(e => console.warn('[new-product] initial delivery:', e.message));
+  workerStarted = true;
+  wakeBroadcastWorker();
 }
 module.exports = {
   AUDIENCES, isBroadcaster, productById, recipientSnapshot,

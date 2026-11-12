@@ -13,6 +13,8 @@ test('point, paid-order and stock lookups have usable SQLite indexes',()=>{
     ['idx_orders_point_status_created',"SELECT id FROM orders INDEXED BY idx_orders_point_status_created WHERE point_id='x' AND status='paid'"],
     ['idx_order_items_order','SELECT id FROM order_items INDEXED BY idx_order_items_order WHERE order_id=1'],
     ['idx_stock_point_variant',"SELECT qty FROM stock INDEXED BY idx_stock_point_variant WHERE point_id='x'"],
+    ['idx_partner_lead_notes_lead_latest',
+      'SELECT id,note FROM partner_lead_notes INDEXED BY idx_partner_lead_notes_lead_latest WHERE lead_id=1 ORDER BY id DESC LIMIT 1'],
   ];
   for(const [index,sql] of cases){
     const plan=db.prepare('EXPLAIN QUERY PLAN '+sql).all();
