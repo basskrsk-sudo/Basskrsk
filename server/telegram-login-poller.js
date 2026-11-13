@@ -53,6 +53,7 @@ const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessa
 const newProductBroadcast = require('./new-product-broadcast');
 const tierApprovals = require('./partner-tier-approvals');
 const reportApprovals = require('./report-approvals');
+const messageEdits = require('./telegram-message-edit');
 const { createPetNewsService } = require('./pet-news-digest');
 let lastUpdateId = 0;
 let polling = false;
@@ -93,6 +94,7 @@ const TELEGRAM_BOT_COMMANDS = Object.freeze([
 
       { command: 'tierapprovals', description: 'Согласовать изменение процента грумера' },
       { command: 'clubpost', description: 'Сообщение в Клуб партнёров' },
+      { command: 'edit', description: '✏️ Изменить публикацию бота в группе' },
       { command: 'newproduct', description: '📷 Рассылка о новом товаре' },
       { command: 'cancel', description: 'Отменить текущее действие' },
       { command: 'news', description: '📰 Новости зоовендинга (админам)' },
@@ -234,6 +236,7 @@ function buildWelcomeMessage() {
     'Менеджерам и администраторам: /contact ссылка — контакт из Яндекс Карт или 2ГИС с согласованием. /2gis также работает.',
     'Администраторам: /reports — единое меню из 7 разделов, отчёты создаются после подтверждения. Прежние команды /salesweek, /business, /businesspoints, /stock, /nogroomer и /payouts продолжают работать.',
     'Супер-администратору: /newproduct — рассылка новинки с фотографией и предпросмотром; /tierapprovals — заявки на снижение процента грумеров.',
+    'Администраторам: ответьте /edit на сообщение бота в Клубе партнёров, затем пришлите новый текст боту лично.',
     '',
     'Для быстрого входа в Mini App подтвердите свой номер Telegram — увидите зарегистрированные кабинеты без ввода пароля. Для админки нужна предварительная привязка Telegram из аккаунта сайта.',
     'Администраторам: /news — новости зоовендинга; /news_refresh — обновить источники; /news_on — ежедневный дайджест после 09:00 по Красноярску; /news_off — отключить.',
@@ -1175,6 +1178,13 @@ async function processUpdate(update) {
 
   const msg = update.message;
   if (!msg) return;
+  if (msg.chat?.type === 'private' && typeof msg.text === 'string') {
+    const edited = await messageEdits.handlePrivateMessage(msg, callBotApi);
+    if (edited) {
+      await replyToChat(msg.chat.id, edited.message);
+      return;
+    }
+  }
   if (msg.contact) {
     // Bot API delivers a self-contact message even when the consent was
     // requested by Mini App WebApp.requestContact(), not a bot command.
@@ -1263,6 +1273,13 @@ async function processUpdate(update) {
     }
     return;
   }
+  if (msg.chat.type === 'private' && /^\/edit(?:@\w+)?$/i.test(text)) {
+    await replyToChat(msg.chat.id,
+      messageEdits.isLinkedAdmin(msg.chat.id) && String(msg.from?.id) === String(msg.chat.id)
+        ? '✏️ В Клубе партнёров ответьте командой /edit на сообщение бота. Затем отправьте мне исправленный текст в личном чате.'
+        : '🔒 Команда доступна только привязанным администраторам ХвостМаркета.');
+    return;
+  }
   if (msg.chat.type==='private' && /^\/reports(?:@\w+)?$/i.test(text)) {
     const menu=reportApprovals.menu(msg.chat.id);
     await replyToChat(msg.chat.id,menu.message,menu.reply_markup);
@@ -1295,6 +1312,11 @@ async function processUpdate(update) {
 
   // Respond to group ID requests; never run private task/account commands in groups.
   if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+    const editResult = await messageEdits.startGroupEdit(msg, callBotApi);
+    if (editResult) {
+      await replyToChat(msg.chat.id, editResult.message);
+      return;
+    }
     if (/^\/chatid(?:@\w+)?$/i.test(text)) {
       await replyToChat(msg.chat.id, '🐾 ID этой группы: ' + String(msg.chat.id) + '\nСкопируйте число для подключения Клуба партнёров.');
     }
@@ -1424,9 +1446,10 @@ async function processUpdate(update) {
     const newProductCancelled = newProductBroadcast.cancelDraft(msg.chat.id);
     const clubPhotoCancelled = require('./routes-partner-club').cancelClubInput(msg.chat.id);
     const reportCancelled = reportApprovals.cancelPendingReports(msg.chat.id);
+    const editCancelled = messageEdits.cancelEdit(msg.chat.id);
     await replyToChat(
       msg.chat.id,
-      createCancelled || expenseCancelled || statusCancelled || dateCancelled || newProductCancelled || clubPhotoCancelled || reportCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
+      createCancelled || expenseCancelled || statusCancelled || dateCancelled || newProductCancelled || clubPhotoCancelled || reportCancelled || editCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
       botActionButtons(msg.chat.id)
     );
     return;

@@ -37,6 +37,7 @@ global.fetch = async (url, init = {}) => {
 
 test('command menu is published and verified for default, all private, and Russian private scopes',async()=>{
   assert.ok(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command==='contact'));
+  assert.ok(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command==='edit'));
   assert.ok(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command==='2gis'));
   assert.equal(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command==='syncmenu'),false,
     'the admin-only diagnostic command should remain hidden');
