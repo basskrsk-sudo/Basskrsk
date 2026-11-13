@@ -23,6 +23,19 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+  // Search only within organization names already returned by the authorized API.
+  // Russian е/ё, punctuation, extra spaces and word order don't block matches.
+  function normalizedName(value) {
+    return String(value == null ? '' : value).toLocaleLowerCase('ru')
+      .replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+  }
+  function matchesName(name, query) {
+    var needle = normalizedName(query);
+    if (!needle) return true;
+    var haystack = normalizedName(name);
+    return needle.split(' ').every(function(word) { return haystack.includes(word); }) ||
+      haystack.replace(/ /g, '').includes(needle.replace(/ /g, ''));
+  }
   function validCoordinate(value, min, max) {
     return value !== null && value !== undefined && value !== '' &&
       Number.isFinite(Number(value)) && Number(value) >= min && Number(value) <= max;
@@ -120,7 +133,7 @@
     node.textContent = '';
     node.appendChild(root);
     var state = {
-      node: node, map: null, records: [], city: '', status: 'all',
+      node: node, map: null, records: [], city: '', status: 'all', nameQuery: '',
       district: '', showCandidates: true, candidateTotal: 0, matchedCandidates: [],
       contactBusy: false,
       reviewedCandidates: [], showReviewed: false, reviewBusy: false, notice: '',
@@ -128,11 +141,13 @@
       markers: Object.create(null), generation: 0,
       limit: initialLimit, loading: false, cities: [], shown: [], error: ''
     };
+    var searchTimer = null;
     function token() { return String(options.token() || ''); }
     function isAlive() { return current === instance && node.isConnected; }
     function items() {
       return state.records.filter(function (i) {
-        return (!state.city || String(i.city_id || '') === state.city) &&
+        return matchesName(i.name, state.nameQuery) &&
+          (!state.city || String(i.city_id || '') === state.city) &&
           (state.status === 'all' ||
             (state.status === 'candidate' ? i.type === 'candidate' :
               colorKey(i) === state.status)) &&
@@ -495,7 +510,8 @@
       var all = items();
       var mapped = all.filter(function (i) { return !!itemPosition(i); }).length;
       var missing = all.length - mapped;
-      return 'На карте: ' + mapped + ' из ' + all.length +
+      return (state.nameQuery.trim() ? 'Найдено по названию: ' + all.length + ' · ' : '') +
+        'На карте: ' + mapped + ' из ' + all.length +
         (missing ? ' · Не нанесены: ' + missing : ' · Все объекты нанесены');
     }
     function updateCount() {
@@ -517,7 +533,9 @@
           (item.type === 'candidate' && candidateChannelLabel(item) ?
             ' · ' + escapeHtml(candidateChannelLabel(item)) : '') +
           '</small></span></button>';
-      }).join('') : '<p class="hm-map-muted">По выбранным фильтрам объектов нет.</p>';
+      }).join('') : '<p class="hm-map-muted">' +
+          (state.nameQuery.trim() ? 'По названию ничего не найдено. Проверьте выбранные фильтры или очистите поиск.' :
+            'По выбранным фильтрам объектов нет.') + '</p>';
     }
     function renderShell() {
       root.innerHTML = '<div class="hm-map-top"><div><h2>🗺️ Карта партнёрской сети</h2>' +
@@ -526,6 +544,13 @@
         '<button type="button" class="hm-map-reload" data-map-refresh>↻ Обновить</button></div>' +
         '<p class="hm-map-review-notice" data-map-review-notice role="status">' +
         escapeHtml(state.notice) + '</p>' +
+        '<div class="hm-map-name-search"><label for="hm-network-name-search">🔎 Поиск по названию</label>' +
+        '<div class="hm-map-name-search-row"><input id="hm-network-name-search" type="search" ' +
+        'data-map-name-search maxlength="120" autocomplete="off" ' +
+        'placeholder="Например, Дог Стиль" value="' + escapeHtml(state.nameQuery) + '" ' +
+        'aria-label="Найти организацию по названию">' +
+        '<button type="button" data-map-search-clear aria-label="Очистить поиск по названию">Очистить</button>' +
+        '</div></div>' +
         '<div class="hm-map-controls"><label>Город <select data-map-city><option value="">Все города</option>' +
         cityOptions() + '</select></label><label>Статус <select data-map-status>' +
         '<option value="all">Все статусы</option>' + Object.keys(colors).map(function (key) {
@@ -556,7 +581,8 @@
         '<div class="hm-map-legend">' + legend() + '</div>' +
         '<section class="hm-map-attention" data-map-attention hidden></section>' +
         '<div class="hm-map-canvas" data-map-canvas><p class="hm-map-muted">Загружаем карту…</p></div>' +
-        '<div class="hm-map-counter" data-map-count>' + statusText() + '</div>' +
+        '<div class="hm-map-counter" data-map-count role="status" aria-live="polite">' +
+        statusText() + '</div>' +
         '<button type="button" class="hm-map-more" data-map-more hidden>📍 Разместить ещё адреса</button>' +
         '<div class="hm-map-bottom"><div><h3>Объекты на карте и без координат</h3>' +
         '<div class="hm-map-list" data-map-list></div></div>' +
@@ -605,7 +631,9 @@
       var more = root.querySelector('[data-map-more]');
       if (!filtered.length) {
         resetMap();
-        canvas.innerHTML = '<p class="hm-map-muted">Нет объектов с этим статусом.</p>';
+        canvas.innerHTML = '<p class="hm-map-muted">' +
+          (state.nameQuery.trim() ? 'По этому названию объектов нет. Проверьте фильтры или очистите поиск.' :
+            'Нет объектов с этим статусом.') + '</p>';
         more.hidden = true;
         return;
       }
@@ -721,6 +749,7 @@
       }
     }
     async function refresh() {
+      if (searchTimer) { clearTimeout(searchTimer); searchTimer = null; }
       ++state.generation;
       state.error = '';
       state.geocodeStates = Object.create(null);
@@ -756,6 +785,24 @@
           'data-map-refresh>Повторить</button>';
       }
     }
+    root.addEventListener('input', function (event) {
+      if (!event.target.matches('[data-map-name-search]')) return;
+      state.nameQuery = String(event.target.value || '').slice(0, 120);
+      // Make the list responsive immediately, but debounce Yandex map redraws
+      // and coordinate resolution to avoid extra work on every keystroke.
+      ++state.generation;
+      updateList();
+      var legendEl = root.querySelector('.hm-map-legend');
+      if (legendEl) legendEl.innerHTML = legend();
+      updateCount();
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () {
+        searchTimer = null;
+        if (!isAlive()) return;
+        state.limit = initialLimit;
+        draw();
+      }, 250);
+    });
     root.addEventListener('change', function (event) {
       if (event.target.matches('[data-map-city]')) state.city = event.target.value;
       else if (event.target.matches('[data-map-status]')) state.status = event.target.value;
@@ -773,6 +820,17 @@
       draw();
     });
     root.addEventListener('click', function (event) {
+      var clearSearch = event.target.closest('[data-map-search-clear]');
+      if (clearSearch) {
+        if (searchTimer) { clearTimeout(searchTimer); searchTimer = null; }
+        state.nameQuery = '';
+        ++state.generation;
+        var input = root.querySelector('[data-map-name-search]');
+        if (input) { input.value = ''; if (typeof input.focus === 'function') input.focus(); }
+        state.limit = initialLimit;
+        draw();
+        return;
+      }
       var toggleReviewed = event.target.closest('[data-map-reviewed-toggle]');
       if (toggleReviewed) {
         state.showReviewed = !state.showReviewed;
@@ -846,6 +904,7 @@
     var instance = {
       node: node, refresh: refresh,
       destroy: function () {
+        if (searchTimer) { clearTimeout(searchTimer); searchTimer = null; }
         ++state.generation;
         resetMap();
         if (current === instance) current = null;
@@ -855,5 +914,6 @@
     refresh();
     return instance;
   }
-  window.HvostPartnerNetworkMap = { mount: mount, venueYandexLink: venueYandexLink };
+  window.HvostPartnerNetworkMap = { mount: mount, venueYandexLink: venueYandexLink,
+    matchesName: matchesName };
 })();

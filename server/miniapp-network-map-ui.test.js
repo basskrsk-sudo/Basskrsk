@@ -16,9 +16,9 @@ test('mini-app has a standalone role-gated bottom map tab using the same site ma
   assert.match(html, /class="tab hide" type="button" data-view="map"/);
   assert.match(html, /miniapp-network-map\.js\?v=1/);
   assert.match(html, /miniapp-network-map\.css\?v=1/);
-  assert.match(html, /partner-network-map\.js\?v=9/);
-  assert.ok(html.indexOf('src="/config.js"') < html.indexOf('src="/partner-network-map.js?v=9"'));
-  assert.ok(html.indexOf('src="/partner-network-map.js?v=9"') < html.indexOf('src="/miniapp-network-map.js?v=1"'));
+  assert.match(html, /partner-network-map\.js\?v=10/);
+  assert.ok(html.indexOf('src="/config.js"') < html.indexOf('src="/partner-network-map.js?v=10"'));
+  assert.ok(html.indexOf('src="/partner-network-map.js?v=10"') < html.indexOf('src="/miniapp-network-map.js?v=1"'));
   assert.match(html, /HvostMiniAppNetworkMap\.available\(\)/);
   assert.match(html, /HvostMiniAppNetworkMap\.close\(\)/);
   assert.match(html, /HvostMiniAppNetworkMap\.open\(target\)/);
@@ -27,6 +27,7 @@ test('mini-app has a standalone role-gated bottom map tab using the same site ma
   assert.match(html, /window\.HvostMiniAppOpenLeadFromMap/);
   assert.match(work, /window\.HvostMiniAppGoMap\(role\)/);
   assert.match(css, /#mapPage \.hm-map-canvas/);
+  assert.match(read('partner-network-map.js'), /data-map-name-search/);
   assert.doesNotThrow(() => new Function(read('miniapp-network-map.js')));
   assert.doesNotThrow(() => new Function(read('partner-network-map.js')));
 });
