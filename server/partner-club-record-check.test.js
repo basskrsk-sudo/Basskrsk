@@ -73,7 +73,7 @@ test('only a strictly higher real customer payment creates an independent record
   const draft=announcement(recordToModerate);
   assert.match(draft.message,/Рекордный чек:\n750 ₽/);
   assert.doesNotMatch(draft.message,/Рекордный чек:[^\\n]*\\d+ ₽/);
-  assert.match(draft.message,/^💚 Рекордный чек:\\n750 ₽$/m);
+  assert.match(draft.message,/^💚 Рекордный чек:\n750 ₽$/m);
   assert.match(draft.message,/Предыдущий рекорд:\n400 ₽/);
   assert.match(draft.message,/Превышение:\n\+350 ₽/);
   assert.match(draft.message,/Дог Стиль/);
