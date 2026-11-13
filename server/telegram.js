@@ -5,6 +5,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { escapeTelegramHtml } = require('./telegram-formatting');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
 const TG_CHAT_ID = process.env.TG_CHAT_ID || '';
@@ -163,6 +164,7 @@ async function sendTelegramDocument(filePath, caption) {
 }
 
 function buildOrderMessage(order, items) {
+  const { visibleOrderNumber } = require('./order-display-number');
   const itemsText = items.map((i) =>
     (i.is_custom ? '✏️ [НЕ ИЗ КАТАЛОГА] ' : '• ') + i.name + ' (' + i.weight + ') × ' + i.qty + ' — ' + (i.price * i.qty) + ' ₽'
   ).join('\n');
@@ -193,7 +195,8 @@ function buildOrderMessage(order, items) {
   return [
     deliveryFlag + customFlag + '💰 <b>Новая продажа — ХвостМаркет</b>',
     '',
-    '📋 Заказ: ' + order.order_code,
+    '📋 Заказ: ' + escapeTelegramHtml(visibleOrderNumber(order)),
+    ...(order.display_number ? ['🔎 Технический код: ' + escapeTelegramHtml(order.order_code)] : []),
     '👤 ' + (order.customer_name + ' ' + (order.customer_lname || '')).trim(),
     '📞 ' + order.customer_phone,
     (isHomeDelivery ? '🏠 Адрес доставки: ' + order.delivery_address : '📍 Точка: ' + order.pickup_point),

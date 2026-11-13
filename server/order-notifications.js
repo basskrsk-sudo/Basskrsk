@@ -4,6 +4,7 @@
 'use strict';
 
 const db = require('./db');
+const {visibleOrderNumber} = require('./order-display-number');
 const { sendToChat } = require('./telegram');
 const { preference } = require('./notification-preferences');
 
@@ -64,7 +65,8 @@ function buildCustomerMessage(order, items) {
   return [
     '✅ <b>Заказ оплачен — ХвостМаркет</b>',
     '',
-    '📋 Заказ: ' + escapeHtml(order.order_code),
+    '📋 Заказ: ' + escapeHtml(visibleOrderNumber(order)),
+    ...(order.display_number ? ['🔐 Технический код для привязки заказа: ' + escapeHtml(order.order_code)] : []),
     destination,
     '',
     itemsText(items),
@@ -84,7 +86,7 @@ function buildPartnerMessage(order, items, partner) {
   return [
     '💰 <b>Новая продажа у вас</b>',
     '',
-    '📋 Заказ: ' + escapeHtml(order.order_code),
+    '📋 Заказ: ' + escapeHtml(visibleOrderNumber(order)),
     '📍 Точка: ' + escapeHtml(order.pickup_point || partner.point_name || ''),
     // Staff receives order details, not the customer's personal contacts.
     '',
@@ -103,7 +105,7 @@ function buildManagerMessage(order, items, manager, point, partner, managerRate)
   const lines = [
     '📈 <b>Новая продажа на вашей точке</b>',
     '',
-    '📋 Заказ: ' + escapeHtml(order.order_code),
+    '📋 Заказ: ' + escapeHtml(visibleOrderNumber(order)),
     '📍 Точка: ' + escapeHtml((point && point.name) || order.pickup_point || ''),
     '✂️ Грумер: ' + escapeHtml(groomerName),
     // No personal customer data in a manager's optional sales notice.
@@ -168,7 +170,7 @@ function buildMinimalSaleNotice(order, items, kind) {
     '🐾 <b>' + escapeHtml(kind) + '</b>',
     '',
     '🏪 ' + escapeHtml(order.pickup_point || 'Партнёрская точка'),
-    '📋 Заказ: ' + escapeHtml(order.order_code),
+    '📋 Заказ: ' + escapeHtml(visibleOrderNumber(order)),
     itemsText(items),
     '',
     '💚 <b>' + money(order.total) + '</b>',

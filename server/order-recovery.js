@@ -1,4 +1,5 @@
 'use strict';
+const {assignDisplayNumber} = require('./order-display-number');
 
 function fail(message, statusCode = 400) {
   throw Object.assign(new Error(message), { statusCode });
@@ -91,6 +92,7 @@ async function recoverOrder(db, gateway, body, admin) {
         point.name + (point.addr ? ' — ' + point.addr : ''), point.id, partner?.id || null, partner?.full_name || null,
         subtotal, discount, total, rate / 100, body.is_self_order ? 1 : 0, used, point.id, payment.id, createdAt, 'Восстановлен: ' + reason);
     const id = Number(info.lastInsertRowid);
+    const displayNumber = assignDisplayNumber(db,id);
     for (const item of items) {
       db.prepare('INSERT INTO order_items (order_id, variant_id, name, weight, price, qty) VALUES (?, ?, ?, ?, ?, ?)').run(id, item.id, item.name, item.weight, item.price, item.qty);
       if (body.inventory_mode === 'deduct') {
@@ -116,7 +118,7 @@ async function recoverOrder(db, gateway, body, admin) {
     db.prepare('INSERT INTO order_recovery_log (order_id, order_code, payment_id, admin_id, admin_login, reason, snapshot) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .run(id, code, payment.id, admin.id || null, admin.login || null, reason, JSON.stringify({ ...body, items, verified_amount: payment.amount, payment_created_at: payment.created_at }));
     db.exec('COMMIT');
-    return { id, order_code: code, total, created_at: createdAt };
+    return { id, order_code: code, display_number:displayNumber, total, created_at: createdAt };
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;

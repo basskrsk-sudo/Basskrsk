@@ -664,6 +664,7 @@ CREATE TABLE IF NOT EXISTS site_settings (
 CREATE TABLE IF NOT EXISTS orders (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   order_code       TEXT UNIQUE NOT NULL,   -- 'TG-...'
+  display_number   TEXT,                   -- 'ХМ-00127' for new orders; legacy remains NULL
   customer_name    TEXT NOT NULL,
   customer_lname   TEXT,
   customer_phone   TEXT NOT NULL,
@@ -1383,6 +1384,12 @@ ensureColumn('customers', 'profile_bones_awarded', 'INTEGER NOT NULL DEFAULT 0')
 ensureColumn('orders', 'bones_used', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'commission_rate', 'REAL');
 ensureColumn('orders', 'is_partner_self_order', 'INTEGER NOT NULL DEFAULT 0');
+ // Never rewrite legacy order_code: it is referenced by existing bank
+ // metadata, returns and account claims. A nullable public display number
+ // starts with newly created rows only; old orders keep their original label.
+ensureColumn('orders', 'display_number', 'TEXT');
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_display_number " +
+  "ON orders(display_number) WHERE display_number IS NOT NULL");
 // Резерв товара и косточек на время оплаты. Старые заказы получают 'none' и
 // не затрагиваются; новые pending-заказы держат резерв до оплаты/отмены.
 ensureColumn('orders', 'reservation_status', "TEXT NOT NULL DEFAULT 'none'");

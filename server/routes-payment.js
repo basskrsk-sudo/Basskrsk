@@ -5,6 +5,7 @@
 'use strict';
 
 const db = require('./db');
+const { assignDisplayNumber } = require('./order-display-number');
 const { resolveCheckoutGroomer } = require('./auto-groomer');
 const yookassa = require('./yookassa');
 const { sendTelegram, buildOrderMessage } = require('./telegram');
@@ -177,7 +178,10 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
       orderData.referralCode || null, orderData.bonesUsed, orderData.commissionRate, orderData.isSelfOrder ? 1 : 0,
       newReservationExpiry(), inventorySource.type, inventorySource.id
     );
-    const orderRowId = info.lastInsertRowid;
+    const orderRowId = Number(info.lastInsertRowid);
+    // Assigned inside the same SQLite reservation transaction. Unpaid and
+    // failed orders retain their number; no reuse on refunds/deletions.
+    assignDisplayNumber(db, orderRowId);
     const insertItem = db.prepare(
       'INSERT INTO order_items (order_id, variant_id, name, weight, price, qty, is_custom) VALUES (?, ?, ?, ?, ?, ?, 0)'
     );
@@ -513,7 +517,9 @@ function registerPaymentRoutes(router) {
       // Явный тестовый режим проходит через ту же атомарную логику резерва,
       // после чего сразу превращает резерв в оплаченное списание.
       await finalizePaidOrder(orderRowId, true);
-      return sendJson(res, 200, { demo: true, order_id: orderRowId, is_partner_self_order: isSelfOrder });
+      return sendJson(res, 200, { demo: true, order_id: orderRowId,
+        display_number: db.prepare('SELECT display_number FROM orders WHERE id=?').get(orderRowId)?.display_number,
+        is_partner_self_order: isSelfOrder });
     }
 
     try {
@@ -533,6 +539,7 @@ function registerPaymentRoutes(router) {
       db.prepare('UPDATE orders SET yookassa_payment_id = ? WHERE id = ?').run(payment.id, orderRowId);
       sendJson(res, 201, {
         order_id: orderRowId,
+        display_number: db.prepare('SELECT display_number FROM orders WHERE id=?').get(orderRowId)?.display_number,
         payment_id: payment.id,
         confirmation_token: payment.confirmation && payment.confirmation.confirmation_token,
         confirmation_url: payment.confirmation && payment.confirmation.confirmation_url,
@@ -578,6 +585,7 @@ function registerPaymentRoutes(router) {
       paid: order.status === 'paid',
       status: order.status,
       order_code: order.order_code,
+      display_number: order.display_number || null,
       is_partner_self_order: !!order.is_partner_self_order,
     });
   });
@@ -606,6 +614,7 @@ function registerPaymentRoutes(router) {
       paid: order.status === 'paid',
       status: order.status,
       order_code: order.order_code,
+      display_number: order.display_number || null,
       is_partner_self_order: !!order.is_partner_self_order,
     });
   });

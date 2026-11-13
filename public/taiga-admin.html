@@ -4990,7 +4990,10 @@ function renderOrders() {
       + selfBadge
       + '<br><span style="font-size:.75rem;color:var(--muted);">' + o.customer_phone + '</span>';
     return '<tr>' +
-      '<td style="font-family:monospace;font-size:.78rem;">' + o.order_code + '</td>' +
+      '<td style="font-family:monospace;font-size:.78rem;">' +
+        escapeOrderCell(o.display_number || o.order_code) +
+        (o.display_number ? '<br><small style="font-size:.63rem;color:var(--muted);">Код: '+escapeOrderCell(o.order_code)+'</small>' : '') +
+      '</td>' +
       '<td style="font-size:.8rem;color:var(--muted);">' + parseOrderDate(o.created_at).toLocaleString('ru-RU') + '</td>' +
       '<td>' + customerCell + '</td>' +
       '<td>' + o.pickup_point + '</td>' +
@@ -5088,7 +5091,7 @@ async function submitOrderRecovery(event) {
     if (!res.ok) throw new Error(data.error || 'Не удалось восстановить заказ');
     document.getElementById('order-recovery-modal').style.display = 'none';
     await loadOrders(); renderOrders();
-    alert('Заказ ' + data.order.order_code + ' восстановлен.');
+    alert('Заказ ' + (data.order.display_number || data.order.order_code) + ' восстановлен.');
   } catch (e) { error.textContent = e.message; }
   finally { button.disabled = false; }
 }
@@ -5312,7 +5315,7 @@ function openRefundModal(orderId) {
   const order = allOrders.find(function(o) { return o.id === orderId; });
   if (!order) return;
   refundingOrderId = orderId;
-  document.getElementById('refund-order-info').textContent = 'Заказ ' + order.order_code + ' — ' + order.total.toLocaleString('ru-RU') + ' ₽, ' + order.customer_name;
+  document.getElementById('refund-order-info').textContent = 'Заказ ' + (order.display_number || order.order_code) + ' — ' + order.total.toLocaleString('ru-RU') + ' ₽, ' + order.customer_name;
   document.getElementById('rf-amount').value = order.total;
   document.getElementById('rf-amount').max = order.total;
   document.getElementById('rf-reason').value = '';

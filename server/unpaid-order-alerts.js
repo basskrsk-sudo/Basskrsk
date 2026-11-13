@@ -4,6 +4,7 @@
 'use strict';
 
 const db = require('./db');
+const {visibleOrderNumber} = require('./order-display-number');
 const { createSingleFlightJob } = require('./single-flight-job');
 const { sendToChat } = require('./telegram');
 const { connectedChatId, findManagerAndPoint } = require('./order-notifications');
@@ -53,7 +54,8 @@ function buildUnpaidOrderMessage(order, items, alertType, reason) {
   const lines = [
     heading,
     '',
-    '📋 Заказ: ' + escapeHtml(order.order_code),
+    '📋 Заказ: ' + escapeHtml(visibleOrderNumber(order)),
+    ...(order.display_number ? ['🔎 Технический код: ' + escapeHtml(order.order_code)] : []),
     '👤 ' + escapeHtml(customerName),
     '📞 ' + escapeHtml(order.customer_phone),
     '📍 ' + escapeHtml(order.pickup_point),
