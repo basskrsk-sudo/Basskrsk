@@ -19,6 +19,6 @@ jobs:
         with:
           node-version: '22'
       - name: Syntax
-        run: node --check server/pet-news-digest.js && node --check server/telegram-login-poller.js
+        run: node --check server/pet-news-digest.js && node --check server/pet-news-worker.js && node --check server/pet-news-worker-runner.js && node --check server/pet-news-worker.test.js && node --check server/telegram-login-poller.js
       - name: News and Telegram menu regression tests
-        run: node --test server/pet-news-digest.test.js server/telegram-command-menu.test.js
+        run: node --test --test-concurrency=1 server/pet-news-digest.test.js server/pet-news-worker.test.js server/telegram-command-menu.test.js
