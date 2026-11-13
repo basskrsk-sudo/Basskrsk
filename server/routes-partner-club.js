@@ -2,6 +2,7 @@
 // Deliberately NO Telegram integration or outbound network activity.
 'use strict';
 const db = require('./db');
+const dailyRecords = require('./partner-club-daily-records').createDailySalesRecords(db);
 const { sendJson } = require('./http-utils');
 const { requireSuperAdmin } = require('./routes-auth');
 const { safeMarkdownHtml, htmlFromTelegramEntities } = require('./telegram-formatting');
@@ -9,8 +10,8 @@ const { SALE_ENDINGS, saleEndingAt } = require('./partner-club-sale-endings');
 const { saleMessage, saleMessageHtml, withSaleEnding } = require('./partner-club-sale-format');
 const clubPhotos = require('./partner-club-photo-posts');
 
-const FLAGS=['sales','record_check','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
-const DEFAULTS=Object.freeze({sales:true,record_check:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
+const FLAGS=['sales','record_check','record_day','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
+const DEFAULTS=Object.freeze({sales:true,record_check:true,record_day:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
 db.exec(`CREATE TABLE IF NOT EXISTS partner_club_settings(id INTEGER PRIMARY KEY CHECK(id=1),config_json TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS partner_club_events(id INTEGER PRIMARY KEY AUTOINCREMENT,event_key TEXT UNIQUE NOT NULL,event_type TEXT NOT NULL,message TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL DEFAULT 'draft' CHECK(status='draft'));
 CREATE INDEX IF NOT EXISTS idx_partner_club_events_created ON partner_club_events(created_at DESC);`);
@@ -136,7 +137,7 @@ function analytics(period='yesterday'){
  const points=db.prepare(`SELECT COALESCE(p.name,o.pickup_point,'Без точки') name,COUNT(*) sales,COALESCE(SUM(o.total),0) revenue FROM orders o LEFT JOIN points p ON p.id=o.point_id WHERE ${where} GROUP BY o.point_id,COALESCE(p.name,o.pickup_point) ORDER BY sales DESC,revenue DESC LIMIT 20`).all();
  const groomers=db.prepare(`SELECT o.partner_id id,COALESCE(p.full_name,'Без рекомендации') name,COUNT(*) sales FROM orders o LEFT JOIN partners p ON p.id=o.partner_id WHERE ${where} AND o.partner_id IS NOT NULL GROUP BY o.partner_id ORDER BY sales DESC LIMIT 10`).all();
  const top=db.prepare(`SELECT oi.name, SUM(oi.qty) qty FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE ${where} GROUP BY oi.name ORDER BY qty DESC LIMIT 1`).get();
- return {period,...totals,points,groomers,top_product:top||null,calculation_note:'Период рассчитывается по дате создания оплаченного заказа (UTC в БД), а не по времени подтверждения оплаты'};
+ return {period,...totals,points,groomers,top_product:top||null,records:dailyRecords.metrics(),calculation_note:'Период рассчитывается по дате создания оплаченного заказа (UTC в БД), а не по времени подтверждения оплаты'};
 }
 
 function topProducts(period='week'){
@@ -169,6 +170,10 @@ function preview(type,data={}){
   case 'sales':return saleMessage('🐾 Новая покупка!',
     '🏪 Партнёрская точка: «'+point+'»','🦴 '+item,'💚 '+money(amount),nextSaleEnding());
   case 'record_check':return recordCheckMessage('🏪 Партнёрская точка: «'+point+'»',item,amount,Math.max(0,Number(data.previous_amount)||3500));
+  case 'record_day':return require('./partner-club-daily-records').message(
+    '2026-11-12',Math.max(2,count),
+    Math.min(Math.max(2,count)-1,Math.max(1,Number(data.previous_count)||12)),
+    {point_name:point,sales:Math.max(1,Math.round(count/2))});
   case 'first_sale':return saleMessage('🎉 Первая продажа!',
     '🏪 Партнёрская точка: «'+point+'»','🦴 '+item,'💚 '+money(amount),
     '👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾');
@@ -187,6 +192,7 @@ function report(type){
  const period=type==='daily'?'yesterday':'week';const a=analytics(period);
  let message=(type==='daily'?'☀️ Вчерашние итоги':'🏆 Итоги недели')+'\n🐾 Продаж: '+a.sales+'\n💚 Выручка: '+money(a.revenue)+'\n🏪 Активных точек: '+a.active_points+'\n👩‍🦰 Активных грумеров: '+a.active_groomers;
  if(a.top_product)message+='\n🦴 Хит: '+safeText(a.top_product.name);
+ if(a.records.max_daily_sales)message+='\n🏆 Рекорд продаж за день: '+a.records.max_daily_sales.sales+' ('+a.records.max_daily_sales.day+')';
 
  return {message,stats:a};
 }
@@ -316,7 +322,7 @@ function clubMessageHtml(event){
    return saleMessageHtml(changed || event.message);
  }
  // Older drafts and first sales keep the same paragraph spacing and bold salon.
- if (event.event_type === 'first_sale' || event.event_type === 'record_check') return saleMessageHtml(event.message);
+ if (event.event_type === 'first_sale' || event.event_type === 'record_check' || event.event_type === 'record_day') return saleMessageHtml(event.message);
  return safeMarkdownHtml(event.message);
 }
 
@@ -405,6 +411,8 @@ async function handleClubCallback(chatId,data){
    if(!recordedOrder||recordedOrder.status!=='paid'||recordedOrder.refund_status==='refunded')
      return {ok:false,message:'Публикация заблокирована: рекордный заказ отменён или возвращён.'};
  }
+ if(row.event_type==='record_day' && !dailyRecords.validate(row.event_key))
+   return {ok:false,message:'Продажи изменились после создания черновика. Рекорд больше не актуален — публикация заблокирована.'};
  if(row.event_type==='sales'&&c.sales_mode==='limit'){
    const count=db.prepare("SELECT COUNT(*) n FROM partner_club_delivery_log WHERE delivered_at>=datetime('now','-1 hour')").get().n;
    if(count>=5)return {ok:false,message:'Лимит 5 публикаций за час достигнут. Можно подтвердить позднее.'};
@@ -652,6 +660,7 @@ async function sendClubUpdates(){
  const reviewer=reviewerForClub();if(!reviewer)return;
  workerBusy=true;
  try{
+  dailyRecords.checkYesterday(new Date(),cfg,queue);
   const events=db.prepare("SELECT e.* FROM partner_club_events e LEFT JOIN partner_club_reviews r ON r.event_id=e.id WHERE r.event_id IS NULL AND e.created_at>=? AND e.status='draft' ORDER BY e.id LIMIT 5").all(cfg.club_started_at);
   for(const ev of events){
    if(!settings().enabled)break;
@@ -675,4 +684,4 @@ function generateApprovedClubReport(type,{approved=false}={}){
   return {ok:true,created:queue(key,selected,result.message),message:result.message};
 }
 
-module.exports={generateApprovedClubReport,registerPartnerClubRoutes,settings,preview,analytics,report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,handleClubCallback,handleClubEdit,isClubModerator,startClubPost,handleClubPostInput,cancelClubInput,handleClubPhotoMessage,handleClubPhotoCallback,sendClubReviewPreview};
+module.exports={generateApprovedClubReport,registerPartnerClubRoutes,settings,preview,analytics,dailySalesRecords:dailyRecords.metrics,checkDailySalesRecord:(now)=>dailyRecords.checkYesterday(now,settings(),queue),report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,handleClubCallback,handleClubEdit,isClubModerator,startClubPost,handleClubPostInput,cancelClubInput,handleClubPhotoMessage,handleClubPhotoCallback,sendClubReviewPreview};
