@@ -89,14 +89,14 @@ function registerProductRoutes(router) {
       return sendJson(res, 400, { error: 'Пустой файл или больше 15 МБ' });
     }
 
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    await fs.promises.mkdir(UPLOADS_DIR, { recursive: true });
     const id = crypto.randomBytes(8).toString('hex');
     const tempPath = path.join(UPLOADS_DIR, 'tmp-' + id + '.' + srcExt);
     const finalName = 'product-' + id + '.webp';
     const finalPath = path.join(UPLOADS_DIR, finalName);
 
     try {
-      fs.writeFileSync(tempPath, buffer);
+      await fs.promises.writeFile(tempPath, buffer);
       // Приводим к единому размеру (макс. 800×800, с сохранением пропорций)
       // и конвертируем в webp — чтобы каталог не раздувался большими фото с телефона.
       // ImageMagick 7 переименовал основную команду в `magick` и считает
@@ -106,9 +106,9 @@ function registerProductRoutes(router) {
       // (ENOENT), а не если она есть, но упала по другой причине.
       // Spawn ImageMagick asynchronously: uploads must not stall Node.js requests.
       await convertImage([tempPath, '-auto-orient', '-resize', '800x800>', '-quality', '85', finalPath]);
-      fs.unlinkSync(tempPath);
+      await fs.promises.unlink(tempPath);
     } catch (e) {
-      try { fs.unlinkSync(tempPath); } catch (e2) {}
+      try { await fs.promises.unlink(tempPath); } catch (e2) {}
       // Настоящая причина сбоя ImageMagick (stderr) гораздо информативнее общей
       // фразы — например, "no decode delegate for this image format" означает,
       // что файл на самом деле не JPEG/PNG внутри (частый случай — HEIC-фото с
@@ -533,7 +533,7 @@ function registerProductRoutes(router) {
 
   // DELETE /api/points/:id — окончательное удаление (только если нет заказов с этой точки —
   // иначе рекомендуем деактивировать, чтобы не терять историю)
-  router.delete('/api/points/:id', (req, res, ctx) => {
+  router.delete('/api/points/:id', async (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
     const existing = db.prepare('SELECT * FROM points WHERE id = ?').get(ctx.params.id);
@@ -573,7 +573,7 @@ function registerProductRoutes(router) {
     db.prepare('UPDATE manager_points SET point_id = NULL WHERE point_id = ?').run(ctx.params.id);
     db.prepare('DELETE FROM points WHERE id = ?').run(ctx.params.id);
     try {
-      writeSalonPagesSnapshot();
+      await writeSalonPagesSnapshot();
     } catch (error) {
       console.error(`Не удалось обновить страховочную копию страниц салонов после удаления точки: ${error.message}`);
     }
@@ -657,7 +657,7 @@ function registerProductRoutes(router) {
       return sendJson(res, 400, { error: 'Файл не распознан как JPG, PNG или WebP' });
     }
 
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    await fs.promises.mkdir(UPLOADS_DIR, { recursive: true });
     const id = crypto.randomBytes(8).toString('hex');
     const safePointId = String(point.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'point';
     const tempPath = path.join(UPLOADS_DIR, `tmp-salon-${id}.${srcExt}`);
@@ -666,13 +666,13 @@ function registerProductRoutes(router) {
     let storedPath = finalPath;
 
     try {
-      fs.writeFileSync(tempPath, buffer);
+      await fs.promises.writeFile(tempPath, buffer);
       const args = [tempPath, '-auto-orient', '-resize', '1600x1200>', '-quality', '84', finalPath];
       await convertImage(args);
-      fs.unlinkSync(tempPath);
+      await fs.promises.unlink(tempPath);
     } catch (error) {
       if (error.statusCode === 503) {
-        try { fs.unlinkSync(tempPath); } catch (_) {}
+        try { await fs.promises.unlink(tempPath); } catch (_) {}
         return sendJson(res, 503, {error:'Обработка фотографий временно занята. Повторите попытку позже.'});
       }
       // В некоторых сборках Amvera ImageMagick установлен без рабочего
@@ -680,16 +680,16 @@ function registerProductRoutes(router) {
       // сохраняем уже проверенный исходник (новый клиент предварительно сам
       // уменьшает его до 1600×1200). Это также поддерживает старую кэшированную
       // версию кабинета, которая ещё отправляет исходный файл.
-      try { fs.unlinkSync(finalPath); } catch (cleanupError) {}
+      try { await fs.promises.unlink(finalPath); } catch (cleanupError) {}
       const rawError = (error.stderr ? error.stderr.toString() : '') || error.message || '';
       finalName = `salon-${safePointId}-${id}.${detectedExt}`;
       const fallbackPath = path.join(UPLOADS_DIR, finalName);
       try {
-        fs.renameSync(tempPath, fallbackPath);
+        await fs.promises.rename(tempPath, fallbackPath);
         storedPath = fallbackPath;
         console.warn('Фото салона сохранено без серверной конвертации:', rawError.slice(0, 300));
       } catch (fallbackError) {
-        try { fs.unlinkSync(tempPath); } catch (cleanupError) {}
+        try { await fs.promises.unlink(tempPath); } catch (cleanupError) {}
         console.error('Ошибка сохранения фотографии салона:', fallbackError.message || fallbackError);
         return sendJson(res, 500, { error: 'Не удалось сохранить фотографию. Повторите попытку.' });
       }
@@ -703,10 +703,16 @@ function registerProductRoutes(router) {
         UPDATE points SET salon_photo_url = ?, salon_photo_urls = ?, salon_page_updated_at = ?
         WHERE id = ?
       `).run(nextPhotos[0], JSON.stringify(nextPhotos), updatedAt, point.id);
-      writeSalonPagesSnapshot();
     } catch (error) {
-      try { fs.unlinkSync(storedPath); } catch (cleanupError) {}
+      try { await fs.promises.unlink(storedPath); } catch (cleanupError) {}
       throw error;
+    }
+    try {
+      await writeSalonPagesSnapshot();
+    } catch (error) {
+      // The authoritative DB write succeeded. Do not delete its referenced
+      // image if the secondary insurance snapshot is temporarily unavailable.
+      console.error('[salon-pages] Snapshot after photo upload:', error.message);
     }
     sendJson(res, 201, { ok: true, path: publicPath, photos: nextPhotos });
   });
@@ -733,7 +739,7 @@ function registerProductRoutes(router) {
   // грумер. Теперь принадлежит точке напрямую: доступна для любой точки
   // (в том числе будущей, без партнёра), и её могут вести администратор,
   // менеджер (только свои точки), партнёр и владелец (только свою точку).
-  router.put('/api/points/:id/salon-page', (req, res, ctx) => {
+  router.put('/api/points/:id/salon-page', async (req, res, ctx) => {
     const payload = requireAuth(['admin', 'manager', 'partner', 'owner'])(req, res, ctx);
     if (!payload) return;
     const point = db.prepare('SELECT * FROM points WHERE id = ?').get(ctx.params.id);
@@ -787,7 +793,7 @@ function registerProductRoutes(router) {
     );
 
     try {
-      writeSalonPagesSnapshot();
+      await writeSalonPagesSnapshot();
     } catch (error) {
       // Основная запись уже надёжно сохранена в SQLite. Ошибка дополнительной
       // копии не должна мешать пользователю, но обязательно видна в логах.
@@ -800,7 +806,7 @@ function registerProductRoutes(router) {
     for (const removedUrl of currentPhotos.filter((url) => !nextPhotos.includes(url))) {
       const fileName = path.basename(removedUrl);
       if (!/^salon-[a-zA-Z0-9_-]+-[a-f0-9]{16}\.(?:jpe?g|png|webp)$/.test(fileName)) continue;
-      try { fs.unlinkSync(path.join(UPLOADS_DIR, fileName)); }
+      try { await fs.promises.unlink(path.join(UPLOADS_DIR, fileName)); }
       catch (error) { if (error.code !== 'ENOENT') console.error(`Не удалось удалить старое фото салона: ${error.message}`); }
     }
 

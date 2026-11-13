@@ -52,21 +52,36 @@ function timestamp(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+
+let pendingSnapshot = Promise.resolve();
+
+// Serialize writes and read the CURRENT database state only when the previous
+// snapshot is finished. This prevents slower disk writes from overwriting newer
+// salon edits, while keeping all filesystem I/O off the HTTP event loop.
 function writeSalonPagesSnapshot() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const snapshot = {
-    version: 1,
-    saved_at: new Date().toISOString(),
-    salons: getSalonPages(),
-  };
-  const temporaryPath = `${SNAPSHOT_PATH}.tmp`;
-  try {
-    fs.writeFileSync(temporaryPath, JSON.stringify(snapshot, null, 2), { encoding: 'utf8', mode: 0o600 });
-    fs.renameSync(temporaryPath, SNAPSHOT_PATH);
-  } finally {
-    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
-  }
-  return snapshot.salons.length;
+  const job = pendingSnapshot.then(async () => {
+    const snapshot = {
+      version: 1,
+      saved_at: new Date().toISOString(),
+      salons: getSalonPages(),
+    };
+    await fs.promises.mkdir(DATA_DIR, { recursive: true });
+    const temporaryPath = SNAPSHOT_PATH + '.' + process.pid + '-' +
+      require('node:crypto').randomBytes(6).toString('hex') + '.tmp';
+    try {
+      await fs.promises.writeFile(temporaryPath, JSON.stringify(snapshot, null, 2),
+        { encoding: 'utf8', mode: 0o600 });
+      await fs.promises.rename(temporaryPath, SNAPSHOT_PATH);
+    } finally {
+      try { await fs.promises.unlink(temporaryPath); }
+      catch (error) { if (error.code !== 'ENOENT') console.warn('[salon-pages] temp cleanup:', error.code || 'error'); }
+    }
+    return snapshot.salons.length;
+  });
+  // Keep the chain usable after a write failure; the caller still sees the
+  // original rejected promise and can log the failed insurance copy.
+  pendingSnapshot = job.catch(() => {});
+  return job;
 }
 
 function restoreSalonPagesSnapshot() {
@@ -139,12 +154,11 @@ function initializeSalonPagePersistence() {
     console.error(`Не удалось восстановить страницы салонов: ${error.message}`);
   }
 
-  try {
-    const saved = writeSalonPagesSnapshot();
-    console.log(`Страховочная копия страниц салонов: ${SNAPSHOT_PATH} (${saved})`);
-  } catch (error) {
+  void writeSalonPagesSnapshot().then(saved => {
+    console.log(`Страховочная копия страниц салонов сохранена (${saved})`);
+  }).catch(error => {
     console.error(`Не удалось сохранить страховочную копию страниц салонов: ${error.message}`);
-  }
+  });
   return restored;
 }
 

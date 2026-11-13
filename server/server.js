@@ -193,7 +193,7 @@ function serveStatic(req, res, pathname) {
   }
   if (pathname === '/' || pathname === '') filePath = path.join(PUBLIC_DIR, 'index.html');
 
-  fs.stat(filePath, (err, stat) => {
+  fs.stat(filePath, async (err, stat) => {
     if (err || !stat.isFile()) {
       const notFoundPath = path.join(PUBLIC_DIR, '404.html');
       res.writeHead(404, {
@@ -217,7 +217,7 @@ function serveStatic(req, res, pathname) {
       return;
     }
     try {
-      const result = staticCache.response(filePath, req, MIME[ext] || 'application/octet-stream', stat);
+      const result = await staticCache.responseAsync(filePath, req, MIME[ext] || 'application/octet-stream', stat);
       res.writeHead(result.status, result.headers);
       if (result.status === 304 || req.method === 'HEAD') return res.end();
       if (result.streamPath) {
