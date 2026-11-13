@@ -10,7 +10,7 @@ process.env.TOKEN_SECRET='healthcheck-test-token';
 const db=require('./db');
 const {signToken}=require('./auth');
 const {createApiPerformanceTracker}=require('./api-performance');
-const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,appendEvent,nextLoopState}=require('./site-health');
+const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,appendEvent,nextLoopState,describeIoSpike}=require('./site-health');
 const routes=new Map(),router={get:(name,handler)=>routes.set(name,handler)};
 registerSiteHealthRoutes(router);
 async function call(pathname,role,id){
@@ -145,4 +145,26 @@ test('API diagnostics use bounded samples and registered route templates',()=>{
   assert.equal(products.p95_ms,50);
   assert.equal(products.avg_ms,33);
   assert.equal(result.slow_routes.some(row=>row.route.includes('some-private-id')),false);
+});
+
+
+test('two separate async file probes distinguish /data from /tmp slowdown',()=>{
+  assert.match(describeIoSpike({storage_write_ms:12500,temp_write_ms:40,temp_status:'ok'}),/\/data/);
+  assert.match(describeIoSpike({storage_write_ms:5000,temp_write_ms:6000,temp_status:'ok'}),/Обе файловые пробы/);
+  assert.match(describeIoSpike({storage_write_ms:15,temp_write_ms:20,temp_status:'ok'}),/Файловые пробы быстрые/);
+  assert.match(describeIoSpike({storage_write_ms:15,temp_write_ms:6000,temp_status:'ok'}),/\/tmp/);
+  assert.match(describeIoSpike({storage_write_ms:6000,temp_write_ms:100,temp_status:'error'}),/не прошло проверку/);
+});
+
+test('monitoring compares /data and /tmp without exposing private filesystem paths',async()=>{
+  startHealthWatcher();
+  const m=await metrics();
+  assert.ok(m.io_probe===null || Number.isFinite(m.io_probe.sqlite_ms));
+  if(m.io_probe!==null){
+    assert.ok(Number.isFinite(m.io_probe.storage_write_ms));
+    assert.ok(Number.isFinite(m.io_probe.temp_write_ms));
+    assert.ok(['ok','error'].includes(m.io_probe.temp_status));
+  }
+  const raw=JSON.stringify(m);
+  assert.ok(!raw.includes(dir),'full data directory must never be returned to clients');
 });

@@ -5,6 +5,7 @@
 // active admin account. Independent outage detection lives in GitHub Actions.
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const { monitorEventLoopDelay, performance } = require('node:perf_hooks');
 const db = require('./db');
 const { sendJson } = require('./http-utils');
@@ -79,14 +80,14 @@ function appendEvent(type, severity, detail) {
 }
 // Persistent-storage readiness is intentionally asynchronous: a slow /data
 // mount must never freeze HTTP requests, Telegram polling or payments.
-async function checkStorageWritable() {
+async function checkStorageWritable(directory = DATA_DIR) {
   const started = performance.now();
   let storage = 'ok', handle = null;
-  const dataDir = path.resolve(DATA_DIR);
-  const name = path.join(dataDir, '.hm-health-' + process.pid + '-' +
+  const probeDir = path.resolve(directory);
+  const name = path.join(probeDir, '.hm-health-' + process.pid + '-' +
     Date.now() + '-' + (++healthFileCounter));
   try {
-    await fs.promises.mkdir(dataDir, { recursive: true });
+    await fs.promises.mkdir(probeDir, { recursive: true });
     handle = await fs.promises.open(name, 'wx', 0o600);
     await handle.writeFile('1');
   } catch (_) { storage = 'error'; }
@@ -179,6 +180,23 @@ function transition(type, bad, severity, detail) {
 // Two consecutive abnormal minute-long samples avoid noise from isolated
 // scheduler slippage, while an extreme >=5s pause is reported immediately.
 // Two clean samples are required before declaring a recovery.
+function describeIoSpike(probe) {
+  if (!probe) return 'Источник задержки ввода-вывода не установлен.';
+  const data = Number(probe.storage_write_ms);
+  const tmp = Number(probe.temp_write_ms);
+  if (!Number.isFinite(data) || !Number.isFinite(tmp))
+    return 'Недостаточно данных для сравнения /data и /tmp.';
+  if (probe.temp_status !== 'ok')
+    return 'Временное хранилище /tmp также не прошло проверку записи.';
+  if (data >= 1500 && data >= Math.max(1200, tmp * 3))
+    return 'Проба /data существенно медленнее /tmp: проверьте постоянное хранилище и синхронные операции SQLite.';
+  if (data >= 1500 && tmp >= 1500)
+    return 'Обе файловые пробы медленные: возможны пауза event loop или общая задержка файловых операций.';
+  if (tmp >= 1500)
+    return 'Медленная проба /tmp: проверьте общие задержки Node.js и дисковой подсистемы.';
+  return 'Файловые пробы быстрые; ищите синхронный код и длительные SQL-запросы.';
+}
+
 function nextLoopState(previous,maxMs,p99Ms) {
   const abnormal=maxMs>1500 || p99Ms>750;
   const slowSamples=abnormal?previous.slowSamples+1:0;
@@ -215,13 +233,21 @@ async function sample() {
       event_loop_p99_ms:p99LoopDelayMs,sample_schedule_drift_ms:Math.round(delay),
       cpu_percent:cpuPercent,io_probe:null};
 
-    const health = await healthProbe(true);
+    // Start both probes together. If /data is slow while /tmp is fast,
+    // the persistent volume deserves investigation. If both are delayed,
+    // an event-loop stall or host-wide I/O contention is more likely.
+    // Async timing alone is never proof of the underlying storage cause.
+    const [health, temporary] = await Promise.all([
+      healthProbe(true), checkStorageWritable(os.tmpdir()),
+    ]);
     const statStarted = performance.now();
     const free = await storageFreeBytes();
     const statMs = Math.round(performance.now() - statStarted);
     lastSample.io_probe = {
       sqlite_ms: health.probe_sqlite_ms,
       storage_write_ms: health.probe_storage_ms,
+      temp_write_ms: temporary.durationMs,
+      temp_status: temporary.storage,
       storage_stat_ms: statMs,
     };
     const cap = limitMemory();
@@ -236,8 +262,9 @@ async function sample() {
     transition('event_loop',loopState.warning,'warning',
       'Задержка Node.js: максимум '+maxLoopDelayMs+' мс, p99 '+p99LoopDelayMs+
       ' мс; CPU '+cpuPercent+'%, RAM '+rssMb+' МБ. '+
-      'Проверки: SQLite '+health.probe_sqlite_ms+' мс, диск '+
-      health.probe_storage_ms+' мс. Проверьте длительные синхронные операции.');
+      'Проверки: SQLite '+health.probe_sqlite_ms+' мс, /data '+
+      health.probe_storage_ms+' мс, /tmp '+temporary.durationMs+' мс, statfs '+statMs+
+      ' мс. '+describeIoSpike(lastSample.io_probe));
     try {
       db.prepare('INSERT INTO site_health_heartbeat(id,last_seen_at,boot_id) VALUES(1,?,?) '+
         'ON CONFLICT(id) DO UPDATE SET last_seen_at=excluded.last_seen_at,boot_id=excluded.boot_id')
@@ -295,4 +322,4 @@ function registerSiteHealthRoutes(router) {
   });
 }
 module.exports={registerSiteHealthRoutes,healthProbe,metrics,recentEvents,
-  sample,startHealthWatcher,limitMemory,storageFreeBytes,appendEvent,nextLoopState};
+  sample,startHealthWatcher,limitMemory,storageFreeBytes,appendEvent,nextLoopState,describeIoSpike};

@@ -144,8 +144,130 @@ function createStaticCache(publicDir, { maxCacheBytes = DEFAULT_CACHE_BYTES, max
     }
   }
 
+
+  // The HTTP server must never call statSync/readFileSync while waiting on
+  // slow storage. Keep the original synchronous helpers for compatibility
+  // with legacy consumers, but use this async path for every web request.
+  const readFlights = new Map();
+  const renderFlights = new Map();
+  async function readAsync(filePath, statHint = null) {
+    if (readFlights.has(filePath)) return readFlights.get(filePath);
+    const job = (async () => {
+      const stat = statHint || await fs.promises.stat(filePath);
+      const stamp = stat.mtimeMs + ':' + stat.ctimeMs + ':' + stat.size;
+      const ext = path.extname(filePath).toLowerCase();
+      const needsBody = stat.size <= maxBufferedAssetBytes || ext === '.html' || ext === '.css';
+      const old = files.get(filePath);
+      if (old && old.stamp === stamp) {
+        files.delete(filePath); files.set(filePath, old);
+        if (needsBody && old.body === null) {
+          const body = await fs.promises.readFile(filePath);
+          // A cache entry could have been replaced by a concurrent request.
+          if (files.get(filePath) === old) {
+            old.body = body; cachedBytes += body.length;
+            trim(filePath);
+          }
+        }
+        return old;
+      }
+      const body = needsBody ? await fs.promises.readFile(filePath) : null;
+      const entry = {stamp, body, version: body ? digest(body) : digestMetadata(stat), rendered: null};
+      remember(filePath, entry);
+      return entry;
+    })();
+    readFlights.set(filePath, job);
+    try { return await job; }
+    finally { if (readFlights.get(filePath) === job) readFlights.delete(filePath); }
+  }
+
+  async function replaceAsync(text, pattern, handler) {
+    let out = '', cursor = 0, match;
+    pattern.lastIndex = 0;
+    while ((match = pattern.exec(text))) {
+      out += text.slice(cursor, match.index) + await handler(match);
+      cursor = match.index + match[0].length;
+    }
+    return out + text.slice(cursor);
+  }
+
+  async function assetVersionAsync(filePath, visiting) {
+    try {
+      if (path.extname(filePath).toLowerCase() === '.css' && !visiting.has(filePath))
+        return (await renderedAsync(filePath, null, visiting)).version;
+      return (await readAsync(filePath)).version;
+    } catch (_) { return MISSING; }
+  }
+
+  async function versionUrlAsync(url, dependencies, visiting) {
+    const parsed = new URL(url, 'https://static.local');
+    if (parsed.pathname.startsWith('/images/uploads/')) return url;
+    const filePath = path.resolve(publicDir, '.' + parsed.pathname);
+    if (!filePath.startsWith(publicDir + path.sep)) return url;
+    const version = await assetVersionAsync(filePath, visiting);
+    dependencies.set(filePath, version);
+    if (version === MISSING) return url;
+    parsed.searchParams.set('v', version);
+    const pathname = url.startsWith('/') ? parsed.pathname : parsed.pathname.slice(1);
+    return pathname + parsed.search + parsed.hash;
+  }
+
+  async function versionHtmlAsync(html, dependencies, visiting) {
+    const withImages = await replaceAsync(html,
+      /(["'(])((?:\/?(?:images|fonts)\/)[^"'()\s\x60<>?\x24{}]+)(?:\?[^"'()\s\x60<>]*)?/g,
+      async match => match[1] + await versionUrlAsync(match[2], dependencies, visiting));
+    return replaceAsync(withImages,
+      /((?:src|href)=["'])(\/?[^/"'<>\s?]+\.(?:css|js))(?:\?[^"'<>\s]*)?/g,
+      async match => match[1] + await versionUrlAsync(match[2], dependencies, visiting));
+  }
+
+  async function renderedAsync(filePath, statHint = null, visiting = new Set()) {
+    const entry = await readAsync(filePath, statHint);
+    if (visiting.has(filePath)) return {body:entry.body,version:entry.version};
+    if (renderFlights.has(filePath)) return renderFlights.get(filePath);
+    const job = (async () => {
+      const nextVisiting = new Set(visiting);
+      nextVisiting.add(filePath);
+      if (entry.rendered) {
+        let upToDate = true;
+        for (const [dependency, version] of entry.rendered.dependencies) {
+          if (await assetVersionAsync(dependency, nextVisiting) !== version) {
+            upToDate = false; break;
+          }
+        }
+        if (upToDate) return entry.rendered;
+      }
+      const dependencies = new Map();
+      const body = Buffer.from(await versionHtmlAsync(entry.body.toString('utf8'),
+        dependencies, nextVisiting));
+      const next = {body,version:digest(body),dependencies};
+      if (entry.rendered) cachedBytes -= entry.rendered.body.length;
+      entry.rendered = next;
+      cachedBytes += body.length;
+      trim(filePath);
+      return next;
+    })();
+    renderFlights.set(filePath, job);
+    try { return await job; }
+    finally { if (renderFlights.get(filePath) === job) renderFlights.delete(filePath); }
+  }
+
+  async function responseAsync(filePath, req, mime, statHint = null) {
+    const entry = await readAsync(filePath, statHint);
+    const ext = path.extname(filePath).toLowerCase();
+    const representation = ext === '.html' || ext === '.css'
+      ? await renderedAsync(filePath, statHint) : entry;
+    return composeResponse(filePath, req, mime, representation);
+  }
+
   function response(filePath, req, mime, statHint = null) {
     const entry = read(filePath, statHint);
+    const ext = path.extname(filePath).toLowerCase();
+    const representation = ext === '.html' || ext === '.css'
+      ? rendered(filePath, statHint) : entry;
+    return composeResponse(filePath, req, mime, representation);
+  }
+
+  function composeResponse(filePath, req, mime, representation) {
     const name = path.basename(filePath);
     const html = path.extname(filePath) === '.html';
     const css = path.extname(filePath) === '.css';
@@ -155,7 +277,6 @@ function createStaticCache(publicDir, { maxCacheBytes = DEFAULT_CACHE_BYTES, max
     const noStore = privatePage || name === 'miniapp.html' ||
       name === 'config.js' || name === 'sw.js';
     // Cache transformed HTML/CSS bytes and ETags; revalidate asset stamps.
-    const representation = html || css ? rendered(filePath, statHint) : entry;
     const body = representation.body;
     const representationVersion = representation.version;
     const etag = (body === null ? 'W/' : '') + '"' + representationVersion + '"';
@@ -174,7 +295,7 @@ function createStaticCache(publicDir, { maxCacheBytes = DEFAULT_CACHE_BYTES, max
     return { resident_bytes: cachedBytes, limit_bytes: maxResidentBytes, entries: files.size,
       streamed_assets: [...files.values()].filter(entry => entry.body === null).length };
   }
-  return { response, versionHtml, stats };
+  return { response, responseAsync, versionHtml, stats };
 }
 
 module.exports = { createStaticCache, matchesEtag };
