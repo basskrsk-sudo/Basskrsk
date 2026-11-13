@@ -200,6 +200,7 @@ var QR_VISIT_ID = (function(){try {var k='hvost_qr_visit:'+location.pathname;var
 function recordQrEvent(type,orderCode){if(!CTX.pointId||!CTX.product)return;fetch('/api/qr-analytics/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({point_id:CTX.pointId,product_id:CTX.product.id,event_type:type,visit_id:QR_VISIT_ID,order_code:orderCode||null}),keepalive:true}).catch(function(){});}
 var SUCCESS_PHONE = '';
 var SUCCESS_ORDER_ID = '';
+var QR_PUBLIC_NUMBER = '';
 var QR_SELF_ORDER = false;
 var QR_PROMO_VALID = false;
 var QR_PROMO_PERCENT = 0;
@@ -536,6 +537,7 @@ async function startPayment() {
   btn.disabled = true; btn.textContent = 'Готовим оплату…';
 
   var orderId = 'TG-' + Date.now();
+  QR_PUBLIC_NUMBER = '';
   var v = CTX.selVariant;
   var paymentAmount = qrPayAmount();
   var funnelKey = 'qr:' + CTX.pointId + ':' + v.id;
@@ -582,6 +584,7 @@ async function startPayment() {
     });
     var data = await res.json();
     if (!res.ok) throw new Error((data && data.error) || 'Не удалось создать заказ');
+    QR_PUBLIC_NUMBER = data.display_number || '';
 
     recordQrEvent('payment_created',orderId);
     trackGoalOnce('payment_created', orderId, {
@@ -590,7 +593,7 @@ async function startPayment() {
       confirmation_mode: confirmationMode,
     });
 
-    if (data.demo === true) { showSuccess(orderId, phone, !!data.is_partner_self_order); return; }
+    if (data.demo === true) { showSuccess(orderId, phone, !!data.is_partner_self_order, data.display_number); return; }
 
     if (!data.confirmation_token) {
       if (confirmationMode === 'redirect' && data.confirmation_url) {
@@ -631,7 +634,7 @@ async function startPayment() {
         if (!r.ok) return;
         var st = await r.json();
         if (finished) return;
-        if (st.paid) { finished = true; if (stopTimer) clearInterval(stopTimer); try { checkout.destroy(); } catch (e) {} showSuccess(orderId, phone, !!st.is_partner_self_order); }
+        if (st.paid) { finished = true; if (stopTimer) clearInterval(stopTimer); try { checkout.destroy(); } catch (e) {} showSuccess(orderId, phone, !!st.is_partner_self_order, st.display_number); }
         else if (st.status === 'failed' || st.status === 'canceled') {
           finished = true; if (stopTimer) clearInterval(stopTimer); try { checkout.destroy(); } catch (e) {}
           box.style.display = 'none';
@@ -666,7 +669,8 @@ async function startPayment() {
 }
 
 /* ── Экран 4: успех ── */
-function showSuccess(orderId, phone, isSelfOrder) {
+function showSuccess(orderId, phone, isSelfOrder, displayNumber) {
+  var shownNumber = displayNumber || QR_PUBLIC_NUMBER || orderId;
   QR_SELF_ORDER = !!isSelfOrder;
   SUCCESS_PHONE = phone || '';
   SUCCESS_ORDER_ID = orderId || '';
@@ -683,7 +687,8 @@ function showSuccess(orderId, phone, isSelfOrder) {
     + '<p>Обращаться к сотруднику не нужно.</p>'
     + '<div class="success-product"><b>' + esc(CTX.product.name) + '</b><span>' + esc(CTX.selVariant.weight) + ' · 1 шт.</span></div>'
     + (CTX.point ? '<p class="small" style="margin-top:12px">📍 ' + esc(CTX.point.name) + (CTX.point.addr ? '<br>' + esc(CTX.point.addr) : '') + '</p>' : '')
-    + '<div class="order-code">Заказ ' + esc(orderId) + '</div>'
+    + '<div class="order-code">Заказ ' + esc(shownNumber) + '</div>'
+    + (shownNumber !== orderId ? '<p class="small">🔐 Технический код: ' + esc(orderId) + '</p>' : '')
     + (phone ? '<p class="small" style="margin-top:14px">Заказ привязан к номеру ' + esc(phone) + '.<br>' + (QR_SELF_ORDER ? '🐾 Самозаказ: вознаграждение начислено по вашему тарифу; косточки не списываются и не начисляются.' : 'Косточки-бонусы начислятся на этот номер.') + '</p>' : '')
     + '<button class="link-btn" onclick="location.href=\'/?page=account&open_orders=1\'">Открыть мой заказ</button>'
     + '<div class="notify-title">Получать уведомления о заказах</div>'
@@ -772,7 +777,7 @@ async function handlePaymentReturn(orderCode) {
       var response = await fetch('/api/order-payment-status/' + encodeURIComponent(orderCode), { cache:'no-store' });
       var result = await response.json();
       if (response.ok && result.paid) {
-        showSuccess(result.order_code || orderCode, knownPhone() === '+7' ? '' : knownPhone(), !!result.is_partner_self_order);
+        showSuccess(result.order_code || orderCode, knownPhone() === '+7' ? '' : knownPhone(), !!result.is_partner_self_order, result.display_number);
         return;
       }
       if (response.ok && (result.status === 'failed' || result.status === 'canceled')) {

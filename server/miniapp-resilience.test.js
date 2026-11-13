@@ -67,7 +67,7 @@ test('Mini App loads reliability before auth and prevents blind payment retries'
  assert.ok(html.indexOf('src="/miniapp-reliability.js"')<html.indexOf('src="/miniapp-identity.js"'));
  assert.match(html,/registerRecovery\(refreshReadOnlyAfterReconnect\)/);
  assert.match(html,/paymentUncertain/);
- assert.match(html,/state\.pendingCode=orderCode;paymentRequestStarted=true;var data=await api/);
+ assert.match(html,/state\.pendingCode=orderCode;state\.pendingPublicNumber=null;paymentRequestStarted=true;var data=await api/);
  assert.match(html,/if\(paymentRequestStarted&&e&&\['timeout','network','offline','server'\]/);
 });
 test('SW never intercepts HTML, APIs, config or unversioned JS',()=>{

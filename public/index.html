@@ -1495,7 +1495,7 @@
           <p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.6;">Заведите пароль по номеру телефона и номеру одного из ваших заказов (он был на экране после оплаты и в чеке на почту).</p>
           <div id="account-claim-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.82rem;padding:.6rem .8rem;border-radius:6px;margin-bottom:.8rem;"></div>
           <div class="form-group"><label>Телефон</label><input type="tel" id="acc-claim-phone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this)"></div>
-          <div class="form-group"><label>Номер заказа</label><input type="text" id="acc-claim-order" placeholder="TG-..."></div>
+          <div class="form-group"><label>Технический код заказа</label><input type="text" id="acc-claim-order" placeholder="TG-… или TMA-…"><small style="color:var(--muted);">Для защиты аккаунта нужен технический код из подтверждения покупки, а не короткий номер ХМ-…</small></div>
           <div class="form-group"><label>Придумайте пароль</label><input type="password" id="acc-claim-password" placeholder="Не короче 6 символов"></div>
           <button class="btn-outline" style="width:100%;background:var(--deep);color:#fff;border:none;" onclick="submitAccountClaim()">Создать пароль</button>
         </div>
@@ -4181,7 +4181,7 @@ async function renderAccountPage() {
     listEl.innerHTML = ordersData.orders.length ? ordersData.orders.map((o) => `
       <div style="background:var(--white);border-radius:12px;padding:1.2rem 1.5rem;margin-bottom:1rem;box-shadow:var(--shadow);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
-          <span style="font-family:monospace;font-size:.8rem;color:var(--muted);">${o.order_code}</span>
+          <span style="font-family:monospace;font-size:.8rem;color:var(--muted);">${escapeHtml(o.display_number || o.order_code)}${o.display_number ? `<small style="display:block;font-size:.65rem;">Код: ${escapeHtml(o.order_code)}</small>` : ''}</span>
           <span style="font-size:.78rem;color:var(--muted);">${new Date(o.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('ru-RU')}</span>
         </div>
         <div style="font-size:.85rem;color:var(--text);line-height:1.7;">
@@ -5755,6 +5755,7 @@ let checkoutMaxPhone = '';
 let lastPaidCheckoutPhone = '';
 let lastPaidCheckoutPointId = '';
 let lastPaidCheckoutOrderId = '';
+let lastPaidCheckoutDisplayNumber = '';
 const checkoutPaymentMethod = 'yookassa';
 let checkoutOrigin = 'catalog';
 
@@ -6467,7 +6468,7 @@ async function checkConfirmedPayment(paymentId) {
     );
     if (!res.ok) return { paid: false, status: 'pending' };
     const data = JSON.parse(res.body || '{}');
-    if (data.paid) return { paid: true, status: 'paid', is_partner_self_order: !!data.is_partner_self_order };
+    if (data.paid) return { paid: true, status: 'paid', display_number: data.display_number || null, is_partner_self_order: !!data.is_partner_self_order };
     return { paid: false, status: data.status || 'pending', is_partner_self_order: !!data.is_partner_self_order };
   } catch (e) {
     return { paid: false, status: 'pending' };
@@ -6668,6 +6669,11 @@ async function launchYooKassaPayment() {
       throw new Error((data && data.error) || 'Не удалось создать заказ');
     }
 
+    // Keep technical orderId in the bank return URL and attribution events;
+    // the short public number is strictly for customer-facing displays.
+    lastPaidCheckoutDisplayNumber = data.display_number || '';
+    savePendingSuccess(orderId, { ...(readPendingSuccess(orderId) || {}),
+      display_number: lastPaidCheckoutDisplayNumber });
     trackGoalOnce('payment_created', orderId, {
       scenario: 'catalog', source: checkoutOrigin, order_id: orderId,
       point_id: successPointId || '', revenue: total,
@@ -6775,6 +6781,7 @@ async function launchYooKassaPayment() {
       const confirmed = await checkConfirmedPayment(data.payment_id);
       paymentStatusCheckRunning = false;
       if (confirmed.paid) {
+        lastPaidCheckoutDisplayNumber = confirmed.display_number || lastPaidCheckoutDisplayNumber;
         isCurrentOrderSelfOrder = !!confirmed.is_partner_self_order;
         showConfirmedPayment();
       }
@@ -6852,12 +6859,14 @@ async function handleRedirectPaymentReturn() {
         configureSuccessFulfillment(successType);
         renderSuccessProducts(pending && pending.items ? pending.items : []);
         lastPaidCheckoutOrderId = data.order_code || orderCode;
+        lastPaidCheckoutDisplayNumber = data.display_number || (pending && pending.display_number) || '';
         lastPaidCheckoutPhone = pending && pending.phone ? pending.phone : getKnownPhone();
         lastPaidCheckoutPointId = pending && pending.pointId ? pending.pointId : '';
         document.getElementById('success-details').innerHTML = `
           <div style="display:flex;flex-direction:column;gap:.4rem;">
             <div style="color:#2D7D46;">✅ <strong>Статус:</strong> оплата подтверждена</div>
-            <div>📋 <strong>Заказ:</strong> ${escapeHtml(data.order_code || orderCode)}</div>
+            <div>📋 <strong>Заказ:</strong> ${escapeHtml(data.display_number || orderCode)}</div>
+            ${data.display_number ? `<div style="font-size:.75rem;color:var(--muted);">🔐 Технический код для привязки заказа: ${escapeHtml(data.order_code || orderCode)}</div>` : ''}
             ${pending && pending.pickup ? `<div>📍 <strong>${successType === 'home_delivery' ? 'Доставка' : 'Минимаркет'}:</strong> ${escapeHtml(pending.pickup)}</div>` : ''}
             ${pending && pending.total ? `<div>💳 <strong>Оплачено:</strong> <span style="color:var(--amber);font-weight:700;">${Number(pending.total)} ₽</span></div>` : ''}
             ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 <strong>Самозаказ:</strong> вознаграждение по тарифу; косточки не списываются и не начисляются.</div>' : ''}
@@ -6994,7 +7003,8 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
   document.getElementById('success-details').innerHTML = `
     <div style="display:flex;flex-direction:column;gap:.4rem;">
       <div style="color:#2D7D46;">✅ <strong>Статус:</strong> оплата подтверждена</div>
-      <div>📋 <strong>Заказ:</strong> ${escapeHtml(orderId)}</div>
+      <div>📋 <strong>Заказ:</strong> ${escapeHtml(lastPaidCheckoutDisplayNumber || orderId)}</div>
+      ${lastPaidCheckoutDisplayNumber ? `<div style="font-size:.75rem;color:var(--muted);">🔐 Технический код для привязки заказа: ${escapeHtml(orderId)}</div>` : ''}
       <div>📞 <strong>Телефон:</strong> ${escapeHtml(phone)}</div>
       <div>📍 <strong>${fulfillmentType === 'home_delivery' ? 'Доставка' : 'Минимаркет'}:</strong> ${escapeHtml(pickup)}</div>
       ${comment && comment.trim() ? `<div>💬 <strong>Пожелание:</strong> ${escapeHtml(comment.trim())}</div>` : ''}

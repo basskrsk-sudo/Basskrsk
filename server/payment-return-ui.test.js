@@ -59,6 +59,20 @@ test('возврат из банка открывает подтверждени
   assert.equal(new URL(context.window.location.href).searchParams.get('payment_return'), 'TG-test');
 });
 
+test('оплаченный заказ показывает короткий номер без изменения URL и платёжного кода', async () => {
+  const { context, elements, pages } = catalogContext({
+    paid: true, status: 'paid', order_code: 'TG-test', display_number: 'ХМ-00127',
+  });
+  await context.handleRedirectPaymentReturn();
+  assert.deepEqual(pages,['payment-result','success']);
+  const html=elements.get('success-details').innerHTML;
+  assert.match(html,/Заказ:<\/strong> ХМ-00127/);
+  assert.match(html,/Технический код для привязки заказа: TG-test/);
+  assert.equal(new URL(context.window.location.href).searchParams.get('payment_return'),'TG-test');
+  const data=await context.checkConfirmedPayment('test-payment');
+  assert.equal(data.display_number,'ХМ-00127');
+});
+
 test('задержка подтверждения оставляет экран проверки и кнопку повтора', async () => {
   const { context, elements, pages } = catalogContext({ paid: false, status: 'pending' });
   await context.handleRedirectPaymentReturn();
@@ -84,7 +98,7 @@ test('QR возврат проверяет оплату даже после пр
         : url === '/api/points' ? { points: [{ id: 'p1', name: 'Точка' }] } : { partners: [] }
     }),
     document: { getElementById: () => ({ style: {} }) },
-    rememberQrPoint() {}, trackGoalOnce() {},
+    rememberQrPoint() {}, trackGoalOnce() {}, recordQrEvent() {},
     handlePaymentReturn: async (code) => returned.push(code),
     failState() { throw Error('Нельзя блокировать результат остатками'); },
     renderCard() { throw Error('Ожидалось подтверждение оплаты'); },
