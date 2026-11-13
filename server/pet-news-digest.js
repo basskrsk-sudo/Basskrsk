@@ -145,6 +145,58 @@ async function fetchBounded(url,fetchFn){
   return Buffer.concat(chunks).toString('utf8');
 }
 
+
+const MAX_REFRESH_ARTICLES = 180;
+const INSERT_BATCH_SIZE = 24;
+
+// Pure network and HTML parsing. Production runs it in a bounded Worker
+// Thread with no access to SQLite or private customer records.
+async function collectPetNewsSources(sources = SOURCES, fetchFn = globalThis.fetch) {
+  const started = Date.now(), outcomes = [];
+  for (const src of sources) {
+    try {
+      const response = await fetchBounded(src.url, fetchFn);
+      const raw = src.kind === 'telegram' ? parseTelegram(response, src) :
+        /^\s*(?:<\?xml|<rss|<feed)/i.test(response) ? parseFeed(response, src) :
+          parseWebsite(response, src);
+      const items = [];
+      for (const post of raw.slice(0, 50)) {
+        const item = scoreItem(post);
+        if (item) items.push(item);
+      }
+      outcomes.push({source:src.name,count:items.length,error:null,items});
+    } catch (error) {
+      outcomes.push({source:src.name,count:0,
+        error:shorten(error.message || error,110),items:[]});
+    }
+  }
+  // Round-robin distribution across sources with a fixed workload ceiling.
+  const articles = [], seen = new Set();
+  let round = 0;
+  while (articles.length < MAX_REFRESH_ARTICLES) {
+    let remaining = false;
+    for (const outcome of outcomes) {
+      if (round >= outcome.items.length) continue;
+      remaining = true;
+      const article = outcome.items[round];
+      if (seen.has(article.url)) continue;
+      seen.add(article.url);
+      articles.push(article);
+      if (articles.length === MAX_REFRESH_ARTICLES) break;
+    }
+    if (!remaining) break;
+    round++;
+  }
+  return {
+    sources:outcomes.map(({source,count,error})=>({source,count,error})),
+    articles,
+    healthy:outcomes.filter(x=>!x.error).length,
+    total:sources.length,
+    candidates:articles.length,
+    workerMs:Date.now()-started,
+  };
+}
+
 function createPetNewsService({db,send,fetchFn=globalThis.fetch,clock=Date.now,isAuthorized=()=>false,sources=SOURCES}={}){
   if(!db||typeof send!=='function')throw Error('db and send required');
   db.exec(`CREATE TABLE IF NOT EXISTS pet_news_articles (
@@ -160,17 +212,25 @@ function createPetNewsService({db,send,fetchFn=globalThis.fetch,clock=Date.now,i
       source TEXT PRIMARY KEY,last_check INTEGER NOT NULL,last_count INTEGER NOT NULL,error TEXT);
     CREATE TABLE IF NOT EXISTS pet_news_meta (key TEXT PRIMARY KEY,value TEXT);`);
   const setMeta=db.prepare('INSERT INTO pet_news_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
-  const getMeta=key=>db.prepare('SELECT value FROM pet_news_meta WHERE key=?').get(key)?.value;
+  const readMeta=db.prepare('SELECT value FROM pet_news_meta WHERE key=?');
+  const getMeta=key=>readMeta.get(key)?.value;
   const getPrefs=id=>{const row=db.prepare('SELECT topics FROM pet_news_subscribers WHERE chat_id=?').get(String(id));try{return JSON.parse(row?.topics||'{}')}catch{return {}}};
   const configuredTopics=(id)=>Object.keys(TOPICS).filter(topic=>getPrefs(id)[topic]!==false);
   let pending=null, timer=null, autoPending=false;
   function listCandidates(chatId,daily=false){
     const pref=getPrefs(chatId);
-    const stored=db.prepare('SELECT * FROM pet_news_articles WHERE found_at>=? ORDER BY score DESC,COALESCE(published,found_at) DESC LIMIT 180').all(clock()-14*DAY);
+    const stored=daily
+      ? db.prepare(`
+          SELECT a.* FROM pet_news_articles a
+          WHERE a.found_at>=? AND NOT EXISTS (
+            SELECT 1 FROM pet_news_delivery d WHERE d.chat_id=? AND d.url=a.url
+          )
+          ORDER BY a.score DESC,COALESCE(a.published,a.found_at) DESC LIMIT 180
+        `).all(clock()-14*DAY,String(chatId))
+      : db.prepare('SELECT * FROM pet_news_articles WHERE found_at>=? ORDER BY score DESC,COALESCE(published,found_at) DESC LIMIT 180').all(clock()-14*DAY);
     const selected=[];
     for(const it of stored){
       if(pref[it.topic]===false)continue;
-      if(daily && db.prepare('SELECT 1 FROM pet_news_delivery WHERE chat_id=? AND url=?').get(String(chatId),it.url))continue;
       if(selected.some(x=>duplicate(x,it)))continue;
       selected.push(it);if(selected.length===8)break;
     }
@@ -230,36 +290,71 @@ function createPetNewsService({db,send,fetchFn=globalThis.fetch,clock=Date.now,i
     const prior=Number(getMeta('last_fetch')||0);
     if(clock()-prior<minInterval)return {skipped:true,updated:0};
     pending=(async()=>{
-      // Persist before making network calls to prevent accidental fast retry loops.
+      const started=Date.now();
+      // Persist cooldown before network access, even if the worker fails.
       setMeta.run('last_fetch',String(clock()));
-      let added=0,healthy=0;
-      const insert=db.prepare(`INSERT OR IGNORE INTO pet_news_articles
-        (url,title,snippet,source,topic,score,published,found_at) VALUES (?,?,?,?,?,?,?,?)`);
-      const saveStatus=db.prepare(`INSERT INTO pet_news_sources(source,last_check,last_count,error) VALUES (?,?,?,?)
-        ON CONFLICT(source) DO UPDATE SET last_check=excluded.last_check,last_count=excluded.last_count,error=excluded.error`);
-      // Sequential bounded fetch: avoids simultaneous resource spikes on the sales server.
-      for(const src of sources){
-        try{
-          const response=await fetchBounded(src.url,fetchFn);
-          const articles=src.kind==='telegram'?parseTelegram(response,src):
-            /^\s*(?:<\?xml|<rss|<feed)/i.test(response)?parseFeed(response,src):parseWebsite(response,src);
-          let count=0;
-          for(const raw of articles.slice(0,50)){
-            const item=scoreItem(raw);if(!item)continue;
-            const info=insert.run(item.url,item.title,item.snippet,item.source,item.topic,item.score,item.published,clock());
-            added+=info.changes;count++;
+      try {
+        // Tests inject a fetch function. Production HTTP parsing and downloads
+        // are isolated in a bounded Worker Thread without SQLite.
+        const collected=fetchFn===globalThis.fetch
+          ? await require('./pet-news-worker-runner').runPetNewsWorker(sources)
+          : await collectPetNewsSources(sources,fetchFn);
+        const dbStarted=Date.now();
+        let added=0;
+        // Short transaction with at most 180 candidates and 24 rows per
+        // INSERT. SQLite writes remain on the main thread but are bounded.
+        db.exec('BEGIN');
+        try {
+          const insertBase='INSERT OR IGNORE INTO pet_news_articles '+
+            '(url,title,snippet,source,topic,score,published,found_at) VALUES ';
+          const fetchedAt=clock();
+          for(let i=0;i<collected.articles.length;i+=INSERT_BATCH_SIZE){
+            const batch=collected.articles.slice(i,i+INSERT_BATCH_SIZE);
+            const sql=insertBase+batch.map(()=>'(?,?,?,?,?,?,?,?)').join(',');
+            const values=batch.flatMap(it=>[
+              it.url,it.title,it.snippet,it.source,it.topic,it.score,it.published,fetchedAt,
+            ]);
+            added+=Number(db.prepare(sql).run(...values).changes);
           }
-          healthy++;
-          saveStatus.run(src.name,clock(),count,null);
-        } catch(error){
-          saveStatus.run(src.name,clock(),0,shorten(error.message,110));
+          const saveStatus=db.prepare(`INSERT INTO pet_news_sources
+            (source,last_check,last_count,error) VALUES (?,?,?,?)
+            ON CONFLICT(source) DO UPDATE SET last_check=excluded.last_check,
+              last_count=excluded.last_count,error=excluded.error`);
+          for(const source of collected.sources){
+            saveStatus.run(source.source,clock(),source.count,source.error);
+          }
+          db.prepare('DELETE FROM pet_news_articles WHERE url NOT IN (SELECT url FROM pet_news_articles ORDER BY found_at DESC LIMIT 500)').run();
+          db.prepare('DELETE FROM pet_news_delivery WHERE delivered_at<?').run(clock()-45*DAY);
+          setMeta.run('last_completed',String(clock()));
+          setMeta.run('last_candidates',String(collected.candidates));
+          setMeta.run('last_added',String(added));
+          setMeta.run('last_healthy',String(collected.healthy));
+          setMeta.run('last_worker_ms',String(collected.workerMs));
+          setMeta.run('last_error','');
+          db.exec('COMMIT');
+        }catch(error){
+          db.exec('ROLLBACK');
+          throw error;
         }
+        const dbMs=Date.now()-dbStarted;
+        // Optional AI enriches at most 8 articles, never private chat data.
+        await enrichRussianSummaries();
+        const durationMs=Date.now()-started;
+        setMeta.run('last_db_ms',String(dbMs));
+        setMeta.run('last_duration_ms',String(durationMs));
+        console.info('[pet-news] refresh',{
+          healthy:collected.healthy,total:collected.total,
+          candidates:collected.candidates,added,
+          worker_ms:collected.workerMs,db_ms:dbMs,total_ms:durationMs,
+        });
+        return {updated:added,healthy:collected.healthy,total:collected.total,
+          candidates:collected.candidates,worker_ms:collected.workerMs,
+          db_ms:dbMs,duration_ms:durationMs};
+      }catch(error){
+        setMeta.run('last_error',shorten(error.message||error,150));
+        setMeta.run('last_duration_ms',String(Date.now()-started));
+        throw error;
       }
-      await enrichRussianSummaries();
-      db.prepare('DELETE FROM pet_news_articles WHERE url NOT IN (SELECT url FROM pet_news_articles ORDER BY found_at DESC LIMIT 500)').run();
-      db.prepare('DELETE FROM pet_news_delivery WHERE delivered_at<?').run(clock()-45*DAY);
-      setMeta.run('last_completed',String(clock()));
-      return {updated:added,healthy,total:sources.length};
     })();
     try{return await pending;}finally{pending=null;}
   }
@@ -300,6 +395,12 @@ function createPetNewsService({db,send,fetchFn=globalThis.fetch,clock=Date.now,i
       const statuses=sources.map(source=>{const info=rows.find(r=>r.source===source.name);return `${info?.error?'⚠️':info?'✅':'▫️'} ${source.name}: ${info?.error||((info?.last_count||0)+' по теме')}`;});
       await send(id,'🐾 Состояние новостного пилота\nРассылка: '+(subscription?.enabled?'включена':'выключена')+
         '\nПоследний сбор: '+(getMeta('last_completed')?new Date(Number(getMeta('last_completed'))).toLocaleString('ru-RU',{timeZone:'Asia/Krasnoyarsk'}):'не запускался')+
+        '\nДлительность: '+(getMeta('last_duration_ms')||'—')+' мс; Worker: '+
+        (getMeta('last_worker_ms')||'—')+' мс; SQLite: '+(getMeta('last_db_ms')||'—')+' мс'+
+        '\nОтобрано: '+(getMeta('last_candidates')||'0')+
+        '; новых: '+(getMeta('last_added')||'0')+
+        '; источников доступно: '+(getMeta('last_healthy')||'0')+'/'+sources.length+
+        (getMeta('last_error')?'\nПоследняя ошибка: '+shorten(getMeta('last_error'),110):'')+
         '\n'+statuses.join('\n'));return true;
     }
     if(command==='news_refresh'){
@@ -343,4 +444,4 @@ function createPetNewsService({db,send,fetchFn=globalThis.fetch,clock=Date.now,i
   function stop(){if(timer)clearInterval(timer);timer=null;}
   return {processCommand,refresh,dailyTick,start,stop,listCandidates,sendDigest};
 }
-module.exports={createPetNewsService,parseTelegram,parseFeed,parseWebsite,scoreItem,duplicate,htmlText,safeUrl,timeInKrasnoyarsk};
+module.exports={createPetNewsService,collectPetNewsSources,parseTelegram,parseFeed,parseWebsite,scoreItem,duplicate,htmlText,safeUrl,timeInKrasnoyarsk};
