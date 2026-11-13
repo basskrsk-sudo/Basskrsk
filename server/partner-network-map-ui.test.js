@@ -162,3 +162,29 @@ test('candidate status editor exposes all CRM stages and VK, Telegram, MAX chann
   assert.match(css,/hm-map-review-form input\[type=date\]/);
   assert.doesNotThrow(()=>new Function(script));
 });
+
+
+test('shared map name search matches visible organization names, ignoring case, ё and separators', () => {
+  const vm = require('node:vm');
+  const context = {window:{}};
+  vm.runInNewContext(read('partner-network-map.js'), context);
+  const matches = context.window.HvostPartnerNetworkMap.matchesName;
+  assert.equal(matches('Дог Стиль', 'доГ'), true);
+  assert.equal(matches('Дог Стиль', 'СТИЛЬ ДОГ'), true);
+  assert.equal(matches('Дог-Стиль', 'дог стиль'), true);
+  assert.equal(matches('Дог Стиль', 'догстиль'), true);
+  assert.equal(matches('Ёжик Грум', 'ежик'), true);
+  assert.equal(matches('Ёжик Грум', 'ёжик'), true);
+  assert.equal(matches('Лапочки', 'дог стиль'), false);
+  assert.equal(matches('Лапочки', ''), true);
+  assert.equal(matches('Дог Стиль', '<img>'), false);
+  const script = read('partner-network-map.js');
+  const css = read('partner-network-map.css');
+  assert.match(script, /data-map-name-search/);
+  assert.match(script, /data-map-search-clear/);
+  assert.match(script, /matchesName\(i\.name, state\.nameQuery\)/);
+  assert.match(script, /root\.addEventListener\('input'/);
+  assert.match(script, /setTimeout\(function \(\) \{/);
+  assert.match(script, /if \(searchTimer\) \{ clearTimeout\(searchTimer\); searchTimer = null; \}/);
+  assert.match(css, /hm-map-name-search input/);
+});

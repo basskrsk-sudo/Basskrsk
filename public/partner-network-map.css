@@ -96,3 +96,13 @@
 .hm-map-review-form input[type=date]{display:block;margin-top:6px;width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccbddd;border-radius:9px;font:inherit;color:#294a3c;background:#fff;min-height:42px}
 .hm-map-card .hm-map-tag{max-width:100%;white-space:normal;overflow-wrap:anywhere}
 .hm-map-contact-form label select{min-height:42px}
+
+/* Responsive, local-only name search shared with the staff Mini App map. */
+.hm-map-name-search{display:grid;gap:6px;margin:10px 0 12px}
+.hm-map-name-search>label{font-size:13px;font-weight:800;color:#195f45}
+.hm-map-name-search-row{display:flex;gap:8px;min-width:0}
+.hm-map-name-search input{min-width:0;flex:1;width:100%;height:46px;border:1px solid #b9d8c6;border-radius:11px;background:#fff;color:#24473a;padding:10px 13px;font:inherit;font-size:15px;box-sizing:border-box}
+.hm-map-name-search input:focus-visible{outline:2px solid #208357;outline-offset:1px}
+.hm-map-name-search button{flex:0 0 auto;min-height:44px;padding:9px 12px;background:#eaf5ed;border:1px solid #c2ddc9;border-radius:10px;color:#156449;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.hm-map-name-search button:hover,.hm-map-name-search button:focus-visible{background:#dff0e3}
+@media(max-width:420px){.hm-map-name-search-row{gap:6px}.hm-map-name-search button{padding:8px 10px}}
