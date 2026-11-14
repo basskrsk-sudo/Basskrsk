@@ -266,8 +266,11 @@ function pendingOrderIds(options = {}) {
   // Keep the 30-minute recovery window from the previous implementation.
   // An admin may still need the notice after a manager's notification was
   // already logged, and an admin retry must not resend successful chats.
+  // The 15-second scheduler needs only the ID and the point to decide whom
+  // to alert. Full order details (including private contacts) are read only
+  // when a notification is actually due.
   const rows = trackSync('unpaid_order_sql', () => db.prepare(
-    "SELECT * FROM orders WHERE status='pending' AND reservation_status='active' " +
+    "SELECT id, point_id FROM orders WHERE status='pending' AND reservation_status='active' " +
     "AND created_at<=datetime('now','-1 minute') " +
     "AND created_at>=datetime('now','-30 minutes') ORDER BY id"
   ).all());

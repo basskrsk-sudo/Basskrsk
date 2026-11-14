@@ -45,6 +45,12 @@ function sender() {
   }};
 }
 
+test('frequent unpaid-order scans load only required routing columns, not full orders',()=>{
+  const source=fs.readFileSync(path.join(__dirname,'unpaid-order-alerts.js'),'utf8');
+  assert.match(source,/SELECT id, point_id FROM orders WHERE status='pending'/);
+  assert.doesNotMatch(source,/SELECT \* FROM orders WHERE status='pending' AND reservation_status='active'/);
+});
+
 test('one-minute rule ignores legacy three-minute env, polls every 15 seconds', () => {
   assert.equal(ALERT_DELAY_MINUTES,1);
   assert.equal(POLL_INTERVAL_MS,15000);
