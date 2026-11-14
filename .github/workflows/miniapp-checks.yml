@@ -102,6 +102,8 @@ on:
       - server/routes-audit.js
       - server/db.js
       - server/db-indexes.test.js
+      - server/routes-operations.js
+      - server/operations-center-query.test.js
       - server/warehouse-list-query.js
       - server/warehouse-list-query.test.js
       - server/routes-warehouse.js
@@ -297,6 +299,8 @@ jobs:
           node --check server/weekly-report-pdf-runner.js
           node --check server/weekly-report-pdf-runner.test.js
           node --check server/db.js
+          node --check server/routes-operations.js
+          node --check server/operations-center-query.test.js
           node --check server/warehouse-list-query.js
           node --check server/warehouse-list-query.test.js
           node --check server/routes-warehouse.js
@@ -490,6 +494,8 @@ jobs:
         run: node --test server/telegram-login-polling.test.js
       - name: Verify batched warehouse lists
         run: node --test server/warehouse-list-query.test.js
+      - name: Verify indexed operations-center queries
+        run: node --test server/operations-center-query.test.js
       - name: Verify no games remain on storefront or API
         run: node --test server/retired-games.test.js
       - name: Check Mini App inline JavaScript syntax
