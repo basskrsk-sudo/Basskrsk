@@ -1952,6 +1952,50 @@ db.exec(`
     );
 `);
 
+// Indexed 10-digit customer lookup, preserving exact JS /\D/g semantics.
+// Triggers maintain the key for all INSERT/UPDATE paths, including legacy
+// numbers containing Unicode spaces, punctuation and arbitrary characters.
+ensureColumn('customers', 'phone_last10', 'TEXT');
+const customerPhoneLast10Sql = `(WITH RECURSIVE digits_at(pos, digits) AS (
+  SELECT 1, ''
+  UNION ALL
+  SELECT pos+1, digits ||
+    CASE WHEN substr(NEW.phone,pos,1) GLOB '[0-9]' THEN substr(NEW.phone,pos,1) ELSE '' END
+  FROM digits_at WHERE pos <= length(NEW.phone)
+) SELECT substr(digits,-10) FROM digits_at ORDER BY pos DESC LIMIT 1)`;
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS trg_customers_phone_last10_insert
+  AFTER INSERT ON customers
+  BEGIN
+    UPDATE customers SET phone_last10=${customerPhoneLast10Sql} WHERE id=NEW.id;
+  END;
+  CREATE TRIGGER IF NOT EXISTS trg_customers_phone_last10_update
+  AFTER UPDATE OF phone ON customers
+  BEGIN
+    UPDATE customers SET phone_last10=${customerPhoneLast10Sql} WHERE id=NEW.id;
+  END;
+  CREATE INDEX IF NOT EXISTS idx_customers_phone_last10
+    ON customers(phone_last10,id);
+`);
+// Backfill legacy clients once. Subsequent restarts use an indexed NULL scan
+// and perform no writes unless an incomplete migration needs repair.
+const missingCustomerPhoneKeys = db.prepare(
+  'SELECT id,phone FROM customers WHERE phone_last10 IS NULL'
+).all();
+if (missingCustomerPhoneKeys.length) {
+  const updateKey = db.prepare('UPDATE customers SET phone_last10=? WHERE id=?');
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (const row of missingCustomerPhoneKeys) {
+      const digits = String(row.phone || '').replace(/\D/g, '');
+      updateKey.run(digits.slice(-10),row.id);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 require('./payout-reports').initializeReports(db);
 module.exports = db;
 module.exports.DB_PATH = DB_PATH;
