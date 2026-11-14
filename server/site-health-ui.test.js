@@ -7,9 +7,11 @@ const ui=fs.readFileSync(path.join(__dirname,'../public/miniapp-work.js'),'utf8'
 const html=fs.readFileSync(path.join(__dirname,'../public/taiga-admin.html'),'utf8');
 const navigation=fs.readFileSync(path.join(__dirname,'../public/admin-navigation.js'),'utf8');
 test('admin Mini App retrieves health from authenticated route without adding it to non-admin dashboards',()=>{
-  assert.match(ui,/var wantSystemHealth=role==='admin'/);
-  assert.match(ui,/fetchJSON\('\/api\/admin\/system-health',token\)/);
-  assert.match(ui,/if \(role === 'admin'\) html \+= adminDashboard\(data,diagnosticData,systemData\)/);
+  assert.doesNotMatch(ui,/var wantSystemHealth=role==='admin'/);
+  assert.match(ui,/data-work-action="admin-health-check"/);
+  assert.match(ui,/fetchJSON\('\/api\/admin\/system-health', token\)/);
+  assert.match(ui,/function adminHealthMarkup\(diagnostics,systemHealth\)/);
+  assert.match(ui,/if \(role === 'admin'\) html \+= adminDashboard\(data\)/);
   assert.match(ui,/surface\('💓 Состояние системы',healthContent\)/);
   assert.match(ui,/event_loop_delay_ms/);
   assert.match(ui,/event_loop_p99_ms/);
