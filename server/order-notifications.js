@@ -120,14 +120,17 @@ function buildManagerMessage(order, items, manager, point, partner, managerRate)
   return lines.join('\n');
 }
 
+// Reuse this indexed statement across paid-order notifications.
+const customerByPhoneKey = db.prepare(
+  'SELECT id,phone,telegram_chat_id FROM customers WHERE phone_last10=? LIMIT 2'
+);
 function findCustomer(phone) {
   const normalized = phoneLast10(phone);
   if (normalized.length !== 10) return null;
-  const matches=db.prepare('SELECT id,phone,telegram_chat_id FROM customers').all()
-    .filter(row=>phoneLast10(row.phone)===normalized);
-  // An ambiguous legacy phone must not cause an order receipt to reach
-  // a randomly selected customer's linked Telegram account.
-  return matches.length===1?matches[0]:null;
+  const matches = customerByPhoneKey.all(normalized);
+  // Two different customers with the same last 10 digits must never
+  // cause a private receipt to reach an arbitrarily selected chat.
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function findPartner(order) {
@@ -247,4 +250,5 @@ module.exports = {
   buildManagerMessage,
   connectedChatId,
   findManagerAndPoint,
+  findCustomer,
 };

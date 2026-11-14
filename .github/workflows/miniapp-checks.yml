@@ -129,6 +129,7 @@ on:
       - server/routes-telegram-connections.js
       - server/telegram-connections.test.js
       - server/order-notifications.js
+      - server/customer-phone-lookup.test.js
       - server/unpaid-order-alerts.js
       - server/unpaid-order-alerts.test.js
       - server/qr-weekly-telegram.js
@@ -502,6 +503,7 @@ jobs:
           node --check server/notification-preferences.js
           node --check server/routes-notification-preferences.js
           node --check server/order-notifications.js
+          node --check server/customer-phone-lookup.test.js
           node --check server/unpaid-order-alerts.js
           node --check server/unpaid-order-alerts.test.js
           node --check server/qr-weekly-telegram.js
@@ -526,6 +528,8 @@ jobs:
         run: node --test server/admin-essential-metrics-ui.test.js
       - name: Verify restart-safe daily SQLite backup scheduling
         run: node --test server/backup-schedule.test.js
+      - name: Verify indexed, unambiguous customer phone lookup
+        run: node --test server/customer-phone-lookup.test.js
       - name: Verify indexed operations-center queries
         run: node --test server/operations-center-query.test.js
       - name: Verify admin orders load items in one indexed batch
