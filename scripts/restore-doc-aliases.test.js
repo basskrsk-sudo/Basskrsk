@@ -2,16 +2,14 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {legacyAlias,restoreAliases}=require('./restore-doc-aliases');
-test('checked-in Russian PDF aliases are byte-identical to all canonical files',()=>{
+test('canonical Russian PDF guides have no duplicate encoded files in Git',()=>{
   const root=path.join(__dirname,'..','public','docs');
   const canonical=fs.readdirSync(root).filter(f=>f.endsWith('.pdf')&&/[\u0400-\u04ff]/.test(f));
   assert.ok(canonical.length>=12);
   for(const file of canonical){
     const alias=legacyAlias(file);
     assert.notEqual(alias,file);
-    assert.ok(fs.existsSync(path.join(root,alias)), 'missing alias '+alias);
-    assert.ok(fs.readFileSync(path.join(root,alias)).equals(fs.readFileSync(path.join(root,file))),
-      'different bytes for '+file);
+    assert.equal(fs.existsSync(path.join(root,alias)),false,'redundant PDF duplicate '+alias);
   }
 });
 test('recreated symlinks retain both legacy and modern URLs and exact bytes',()=>{
