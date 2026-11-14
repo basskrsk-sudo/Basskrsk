@@ -31,6 +31,32 @@ const SILENT_POINTS_SQL = `
   ORDER BY CASE WHEN last_sale IS NULL THEN 0 ELSE 1 END, last_sale
 `;
 
+// Collect point/variant pairs once for the past 30 days. The previous
+// correlated EXISTS repeated this join for every zero-stock item.
+// DISTINCT retains the one-alert-per-stock-row behavior after repeat sales.
+const STOCK_ALERTS_SQL = `
+  WITH recently_sold AS (
+    SELECT DISTINCT o.point_id, oi.variant_id
+    FROM orders o
+    JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.status = 'paid'
+      AND o.created_at >= datetime('now', '-30 days')
+      AND o.point_id IS NOT NULL AND oi.variant_id IS NOT NULL
+  )
+  SELECT s.point_id, pt.name AS point_name, pr.name AS product_name,
+         pv.weight, s.qty,
+         CASE WHEN s.qty <= 0 THEN 1 ELSE 0 END AS is_out
+  FROM stock s
+  JOIN points pt ON pt.id = s.point_id AND pt.active = 1
+  JOIN product_variants pv ON pv.id = s.variant_id AND pv.active = 1
+  JOIN products pr ON pr.id = pv.product_id AND pr.active = 1
+  LEFT JOIN recently_sold recent
+    ON recent.point_id = s.point_id AND recent.variant_id = s.variant_id
+  WHERE s.qty BETWEEN 1 AND 2
+     OR (s.qty <= 0 AND recent.variant_id IS NOT NULL)
+  ORDER BY is_out DESC, s.qty, pt.name, pr.name
+`;
+
 function buildOperationsCenter() {
   const issues = [];
 
@@ -65,23 +91,7 @@ function buildOperationsCenter() {
   // Нулевой остаток показываем только по товарам, которые реально продавались
   // на этой точке за 30 дней. Иначе каждая ещё не заполненная матрица создала
   // бы десятки ложных тревог. Остаток 1–2 единицы всегда требует внимания.
-  const stockRows = db.prepare(`
-    SELECT s.point_id, pt.name AS point_name, pr.name AS product_name,
-           pv.weight, s.qty,
-           CASE WHEN s.qty <= 0 THEN 1 ELSE 0 END AS is_out
-    FROM stock s
-    JOIN points pt ON pt.id = s.point_id AND pt.active = 1
-    JOIN product_variants pv ON pv.id = s.variant_id AND pv.active = 1
-    JOIN products pr ON pr.id = pv.product_id AND pr.active = 1
-    WHERE s.qty BETWEEN 1 AND 2
-       OR (s.qty <= 0 AND EXISTS (
-         SELECT 1 FROM order_items oi
-         JOIN orders o ON o.id = oi.order_id
-         WHERE oi.variant_id = s.variant_id AND o.point_id = s.point_id
-           AND o.status = 'paid' AND o.created_at >= datetime('now', '-30 days')
-       ))
-    ORDER BY is_out DESC, s.qty, pt.name, pr.name
-  `).all();
+  const stockRows = trackSync('operations_stock_alerts', () => db.prepare(STOCK_ALERTS_SQL).all());
   const outCount = stockRows.filter((row) => row.is_out).length;
   addIssue(issues, {
     key: 'stock', severity: outCount ? 'critical' : 'warning', icon: '📦',
@@ -288,4 +298,4 @@ function registerOperationsRoutes(router) {
   });
 }
 
-module.exports = { buildOperationsCenter, registerOperationsRoutes, SILENT_POINTS_SQL };
+module.exports = { buildOperationsCenter, registerOperationsRoutes, SILENT_POINTS_SQL, STOCK_ALERTS_SQL };
