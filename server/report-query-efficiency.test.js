@@ -128,12 +128,13 @@ test('point summary remains batch-based when the number of points grows', () => 
   assert.doesNotMatch(section,/current\.paidOrders\.filter\(/,'no full-order scan per point');
 });
 
-test('BSC/admin and founder routes request the lightweight weekly dataset', () => {
-  const bscRoute=fs.readFileSync(path.join(__dirname,'routes-bsc.js'),'utf8');
+test('founder dashboard and weekly reports use the shared lightweight BSC dataset', () => {
+  const weekly=fs.readFileSync(path.join(__dirname,'weekly-report.js'),'utf8');
   const founderRoute=fs.readFileSync(path.join(__dirname,'routes-business-founders.js'),'utf8');
-  assert.match(bscRoute,/const bsc = getCachedWeeklyBsc\(\)\.bsc/);
-  assert.doesNotMatch(bscRoute,/calculateBsc\(report\)/,'must not rescore an already scored BSC');
+  assert.match(weekly,/function collectWeeklyBscReport\(/);
+  assert.match(weekly,/function getCachedWeeklyBsc\(/);
   assert.match(founderRoute,/const report=getCachedWeeklyBsc\(\)/);
+  assert.doesNotMatch(founderRoute,/calculateBsc\(report\)/,'must not rescore an already scored BSC');
 });
 
 
