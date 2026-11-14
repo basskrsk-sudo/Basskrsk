@@ -271,6 +271,7 @@ on:
       - .github/workflows/site-uptime.yml
       - server/task-seed-bootstrap.js
       - server/task-seed-bootstrap.test.js
+      - server/repository-database-exclusion.test.js
       - server/task-seed-2026-11-01.js
       - server/task-seed-2026-11-01.test.js
       - server/task-seed-2026-11-02.js
@@ -355,6 +356,7 @@ jobs:
           node --check public/sw.js
           node --check server/task-seed-bootstrap.js
           node --check server/task-seed-bootstrap.test.js
+          node --check server/repository-database-exclusion.test.js
           node --check server/task-seed-2026-11-01.js
           node --check server/task-seed-2026-11-01.test.js
           node --check server/task-seed-2026-11-02.js
@@ -514,6 +516,8 @@ jobs:
         run: node --test server/admin-essential-metrics-ui.test.js
       - name: Verify indexed operations-center queries
         run: node --test server/operations-center-query.test.js
+      - name: Verify only persistent Amvera storage holds live SQLite data
+        run: node --test server/repository-database-exclusion.test.js
       - name: Verify legacy task imports are skipped after migration
         run: node --test server/task-seed-bootstrap.test.js
       - name: Verify no games remain on storefront or API
