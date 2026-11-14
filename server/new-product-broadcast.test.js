@@ -230,9 +230,36 @@ test('a campaign sends one catalog upload and reuses the returned Telegram file_
 
 test('campaign worker uses adaptive idle polling and image conversion is asynchronous', () => {
   const source=fs.readFileSync(path.join(__dirname,'new-product-broadcast.js'),'utf8');
-  assert.match(source,/BROADCAST_IDLE_MS = 60 \* 1000/);
+  assert.match(source,/BROADCAST_IDLE_MS = 5 \* 60 \* 1000/);
   assert.match(source,/wakeBroadcastWorker\(\);/);
   assert.doesNotMatch(source,/setInterval\(/);
   assert.doesNotMatch(source,/execFileSync/);
   assert.match(source,/await convertImage\(/);
+});
+
+
+test('idle broadcast queue checks every five minutes but scheduled retries remain punctual',()=>{
+  const {DatabaseSync}=require('node:sqlite');
+  const database=new DatabaseSync(':memory:');
+  try {
+    database.exec("CREATE TABLE new_product_campaigns (id INTEGER PRIMARY KEY,state TEXT);" +
+      "CREATE TABLE new_product_deliveries (campaign_id INTEGER,status TEXT,next_attempt_at INTEGER);" +
+      "INSERT INTO new_product_campaigns(id,state) VALUES(1,'queued');");
+    const clock=1730000000000;
+    assert.equal(marketing.nextBroadcastPollDelay(database,clock),300000);
+    database.prepare(
+      "INSERT INTO new_product_deliveries(campaign_id,status,next_attempt_at) VALUES(1,'pending',?)"
+    ).run(Math.floor((clock+180000)/1000));
+    assert.equal(marketing.nextBroadcastPollDelay(database,clock),180000,
+      'do not postpone an existing retry for the five-minute idle timeout');
+    database.prepare("UPDATE new_product_deliveries SET next_attempt_at=?").run(Math.floor((clock+1000)/1000));
+    assert.equal(marketing.nextBroadcastPollDelay(database,clock),1700,
+      'ready deliveries use the active worker interval');
+    database.prepare("UPDATE new_product_deliveries SET next_attempt_at=?").run(Math.floor((clock+600000)/1000));
+    assert.equal(marketing.nextBroadcastPollDelay(database,clock),300000,
+      'far-future retries retain a five-minute safety scan');
+    database.prepare("UPDATE new_product_campaigns SET state='cancelled'").run();
+    assert.equal(marketing.nextBroadcastPollDelay(database,clock),300000,
+      'cancelled campaigns do not keep the worker busy');
+  } finally { database.close(); }
 });
