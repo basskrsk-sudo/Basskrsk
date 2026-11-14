@@ -1,7 +1,7 @@
 // backup.js — резервное копирование базы данных на почту компании.
-// Раз в сутки (и один раз при первом запуске сервера) создаёт консистентный
-// снимок базы через SQL-команду VACUUM INTO (безопасно даже если в этот
-// момент кто-то пишет в базу — в отличие от простого копирования файла)
+// Создаёт консистентный снимок базы через SQL-команду VACUUM INTO
+// не чаще раза в сутки после последней успешной отправки. Перезапуск
+// Node.js не вызывает повторный бэкап, если предыдущий уже свежий.
 // и отправляет вложением на BACKUP_EMAIL (или BUSINESS_COPY_EMAIL, если
 // отдельный адрес для бэкапов не задан).
 'use strict';
@@ -17,6 +17,37 @@ const { getRestorePaths, validateDatabaseFile } = require('./database-restore');
 
 const BACKUP_EMAIL = process.env.BACKUP_EMAIL || process.env.BUSINESS_COPY_EMAIL || '';
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // раз в сутки
+const BACKUP_START_DELAY_MS = 2 * 60 * 1000;
+const BACKUP_RETRY_MS = 60 * 60 * 1000;
+
+// The single successful-send timestamp lives in persistent SQLite /data.
+// A deploy or crash must not reset the daily SMTP/snapshot budget.
+db.exec(`CREATE TABLE IF NOT EXISTS backup_email_schedule (
+  id INTEGER PRIMARY KEY CHECK(id=1),
+  last_attempt_at TEXT,
+  last_success_at TEXT
+)`);
+
+function backupScheduleState() {
+  return db.prepare('SELECT last_attempt_at,last_success_at FROM backup_email_schedule WHERE id=1').get() || {};
+}
+function markBackupAttempt() {
+  db.prepare(`INSERT INTO backup_email_schedule(id,last_attempt_at)
+    VALUES(1,?) ON CONFLICT(id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at`)
+    .run(new Date().toISOString());
+}
+function markBackupSuccess() {
+  db.prepare(`INSERT INTO backup_email_schedule(id,last_attempt_at,last_success_at)
+    VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET last_success_at=excluded.last_success_at`)
+    .run(new Date().toISOString(), new Date().toISOString());
+}
+function nextBackupDelay(state = {}, nowMs = Date.now()) {
+  const sentAt = Date.parse(state.last_success_at || '');
+  const attemptedAt = Date.parse(state.last_attempt_at || '');
+  const successWait = Number.isFinite(sentAt) ? sentAt + BACKUP_INTERVAL_MS - nowMs : 0;
+  const retryWait = Number.isFinite(attemptedAt) ? attemptedAt + BACKUP_RETRY_MS - nowMs : 0;
+  return Math.max(BACKUP_START_DELAY_MS, successWait, retryWait);
+}
 
 let backupInFlight = null;
 async function performDatabaseBackup() {
@@ -27,6 +58,8 @@ async function performDatabaseBackup() {
 
   const tempPath = path.join(path.dirname(db.DB_PATH), 'backup-tmp-' + randomUUID() + '.db');
   try {
+    try { markBackupAttempt(); }
+    catch (error) { console.warn('[backup] Не удалось сохранить время попытки:', error.code || 'unknown'); }
     // VACUUM INTO — создаёт полноценный, консистентный снимок базы отдельным
     // файлом прямо средствами SQLite, безопасно при параллельной работе сервера.
     await createDatabaseSnapshot(db.DB_PATH, tempPath);
@@ -45,6 +78,8 @@ async function performDatabaseBackup() {
     });
 
     if (result.ok) {
+      try { markBackupSuccess(); }
+      catch (error) { console.warn('[backup] Не удалось сохранить время успешной отправки:', error.code || 'unknown'); }
       console.log('Резервная копия базы отправлена на почту (' + sizeKb + ' КБ)');
     } else {
       console.error('Не удалось отправить резервную копию:', result.error || 'неизвестная ошибка');
@@ -67,18 +102,63 @@ function sendDatabaseBackup() {
   return backupInFlight;
 }
 
+function createBackupScheduler({
+  readState = backupScheduleState,
+  send = sendDatabaseBackup,
+  now = Date.now,
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+  enabled = Boolean(BACKUP_EMAIL),
+} = {}) {
+  let started = false, timer = null, running = false;
+  function scheduleNext() {
+    if (!started) return;
+    let delay = BACKUP_START_DELAY_MS;
+    try { delay = nextBackupDelay(readState(), now()); }
+    catch (error) { console.warn('[backup] Не удалось прочитать расписание:', error.code || 'unknown'); }
+    timer = setTimer(() => {
+      timer = null;
+      return runTick();
+    }, delay);
+    timer?.unref?.();
+  }
+  async function runTick() {
+    if (!started || running) return;
+    running = true;
+    try {
+      // A manual backup might have succeeded while the timer was waiting.
+      // Recheck the database before any expensive snapshot or SMTP upload.
+      if (nextBackupDelay(readState(), now()) <= BACKUP_START_DELAY_MS) {
+        await send();
+      }
+    } catch (error) {
+      console.warn('[backup] Фоновая отправка не удалась:', error.code || error.message);
+    } finally {
+      running = false;
+      if (started) scheduleNext();
+    }
+  }
+  return {
+    start() {
+      if (!enabled || started) return;
+      started = true;
+      scheduleNext();
+    },
+    stop() {
+      started = false;
+      if (timer) clearTimer(timer);
+      timer = null;
+    },
+  };
+}
+const scheduledBackup = createBackupScheduler();
 function scheduleBackups() {
   if (!BACKUP_EMAIL) {
     console.warn('Автоматическое резервное копирование выключено — не задан BACKUP_EMAIL/BUSINESS_COPY_EMAIL');
     return;
   }
-  // Первый бэкап — вскоре после запуска сервера (не сразу, чтобы не мешать
-  // старту), дальше — раз в сутки.
-  const initial = setTimeout(() => { void sendDatabaseBackup(); }, 2 * 60 * 1000);
-  const daily = setInterval(() => { void sendDatabaseBackup(); }, BACKUP_INTERVAL_MS);
-  initial.unref?.();
-  daily.unref?.();
-  console.log('Резервное копирование базы настроено: раз в сутки на ' + BACKUP_EMAIL);
+  scheduledBackup.start();
+  console.log('Резервное копирование базы настроено: по факту последней успешной отправки, раз в сутки на ' + BACKUP_EMAIL);
 }
 
 function registerBackupRoutes(router) {
@@ -174,4 +254,8 @@ function registerBackupRoutes(router) {
   });
 }
 
-module.exports = { sendDatabaseBackup, scheduleBackups, registerBackupRoutes };
+module.exports = {
+  sendDatabaseBackup, scheduleBackups, registerBackupRoutes,
+  createBackupScheduler, nextBackupDelay, BACKUP_INTERVAL_MS,
+  BACKUP_START_DELAY_MS, BACKUP_RETRY_MS,
+};
