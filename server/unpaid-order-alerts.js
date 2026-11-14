@@ -5,7 +5,6 @@
 
 const db = require('./db');
 const {visibleOrderNumber} = require('./order-display-number');
-const { createSingleFlightJob } = require('./single-flight-job');
 const { trackSync, trackAsync } = require('./runtime-diagnostics');
 const { sendToChat } = require('./telegram');
 const { connectedChatId, findManagerAndPoint } = require('./order-notifications');
@@ -14,6 +13,7 @@ const { connectedChatId, findManagerAndPoint } = require('./order-notifications'
 // never silently keep the historical 3-minute notification threshold.
 const ALERT_DELAY_MINUTES = 1;
 const POLL_INTERVAL_MS = 15 * 1000;
+const IDLE_INTERVAL_MS = 5 * 60 * 1000;
 
 // Admin recipients must be deduplicated independently from managers.
 db.exec('CREATE TABLE IF NOT EXISTS unpaid_order_admin_alert_log (' +
@@ -296,23 +296,97 @@ async function runUnpaidOrderAlertCheck(options = {}) {
   return results;
 }
 
-let schedulerStarted = false;
+// The payment path explicitly wakes this scheduler after a successful order
+// reservation. No orders: check for legacy/recovered orders every five minutes.
+// Newly reserved orders: wake at their earliest one-minute reminder deadline.
+// Pending due orders: retain the old 15-second cadence (including retries).
+// The partial orders index prevents reading the paid sales history.
+function nextUnpaidAlertDelay(nowMs = Date.now(), database = db) {
+  const row = database.prepare(
+    "SELECT MIN(created_at) AS oldest FROM orders " +
+    "WHERE status='pending' AND reservation_status='active' " +
+    "AND created_at>=datetime('now','-30 minutes')"
+  ).get();
+  if (!row || !row.oldest) return IDLE_INTERVAL_MS;
+  const createdMs = Date.parse(String(row.oldest).replace(' ', 'T') + 'Z');
+  if (!Number.isFinite(createdMs)) return POLL_INTERVAL_MS;
+  const dueMs = createdMs + ALERT_DELAY_MINUTES * 60 * 1000;
+  if (nowMs >= dueMs) return POLL_INTERVAL_MS;
+  // SQLite timestamps are second precision. A one-second cushion prevents
+  // checking before the exact due timestamp, not the alert SLA.
+  return Math.max(1000, Math.min(IDLE_INTERVAL_MS, dueMs - nowMs + 1000));
+}
+function createUnpaidAlertScheduler({
+  database = db,
+  scan = () => trackAsync('unpaid_order_scan', () => runUnpaidOrderAlertCheck()),
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+  now = Date.now,
+} = {}) {
+  let started = false, running = false, timer = null, dueAt = Infinity;
+  let wakeRequested = false;
+  function schedule(delayMs) {
+    if (!started) return;
+    const delay = Math.max(0, Math.round(delayMs));
+    const due = now() + delay;
+    if (timer && dueAt <= due) return;
+    if (timer) clearTimer(timer);
+    dueAt = due;
+    timer = setTimer(() => {
+      timer = null; dueAt = Infinity;
+      void tick();
+    }, delay);
+    timer?.unref?.();
+  }
+  async function tick() {
+    if (!started) return;
+    if (running) { wakeRequested = true; return; }
+    running = true;
+    let delay = POLL_INTERVAL_MS;
+    try {
+      await scan();
+      delay = nextUnpaidAlertDelay(now(), database);
+    } catch (error) {
+      console.warn('Неоплаченные заказы: ошибка проверки:', error.message);
+    } finally {
+      running = false;
+    }
+    if (!started) return;
+    const wake = wakeRequested;
+    wakeRequested = false;
+    schedule(wake ? 0 : delay);
+  }
+  return {
+    start() {
+      if (started) return;
+      started = true;
+      schedule(3000); // Recover work quickly after a restart.
+    },
+    wake() {
+      if (!started) return;
+      if (running) wakeRequested = true;
+      else schedule(0);
+    },
+    stop() {
+      started = false; wakeRequested = false;
+      if (timer) clearTimer(timer);
+      timer = null; dueAt = Infinity;
+    },
+  };
+}
+const unpaidAlertScheduler = createUnpaidAlertScheduler();
 function scheduleUnpaidOrderAlerts() {
-  if (schedulerStarted) return;
-  schedulerStarted = true;
-  const run = createSingleFlightJob(
-    () => trackAsync('unpaid_order_scan', () => runUnpaidOrderAlertCheck()),
-    (error) => console.warn('Неоплаченные заказы: ошибка проверки:', error.message)
-  );
-  const first = setTimeout(run, 3000);
-  const interval = setInterval(run, POLL_INTERVAL_MS);
-  if (typeof first.unref === 'function') first.unref();
-  if (typeof interval.unref === 'function') interval.unref();
+  unpaidAlertScheduler.start();
+}
+function wakeUnpaidOrderAlertScheduler() {
+  unpaidAlertScheduler.wake();
 }
 
 module.exports = {
   ALERT_DELAY_MINUTES,
   POLL_INTERVAL_MS,
+  IDLE_INTERVAL_MS, nextUnpaidAlertDelay, createUnpaidAlertScheduler,
+  wakeUnpaidOrderAlertScheduler,
   buildUnpaidOrderMessage,
   responsibleManagerChat,
   adminRecipientChats,

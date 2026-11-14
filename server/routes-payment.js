@@ -16,7 +16,7 @@ const { recordCustomerOrder, normalizePhone } = require('./routes-customers');
 const { spendBones, computeMaxUsableBones, getMaxBonesShare } = require('./bones');
 const { sendEmail } = require('./email');
 const { checkAndPayManagerBonus } = require('./bonus-logic');
-const { sendUnpaidOrderAlert } = require('./unpaid-order-alerts');
+const { sendUnpaidOrderAlert, wakeUnpaidOrderAlertScheduler } = require('./unpaid-order-alerts');
 const { priceCatalogCart, calculateDeliveryFee, buildReceiptItems } = require('./order-pricing');
 const {
   FIRST_PURCHASE_DISCOUNT_PERCENT,
@@ -512,6 +512,10 @@ function registerPaymentRoutes(router) {
       console.warn(`[create-payment] Заказ ${orderId}: резерв не создан — ${e.message}`);
       return sendJson(res, e.statusCode || 409, { error: e.message, code: e.code || 'RESERVATION_ERROR', details: e.details });
     }
+
+    // The order reservation has committed. Schedule its 1-minute alert
+    // without a 15-second empty-order poll (do not send anything yet).
+    wakeUnpaidOrderAlertScheduler();
 
     if (!yookassa.isConfigured() && isDemoModeEnabled()) {
       // Явный тестовый режим проходит через ту же атомарную логику резерва,

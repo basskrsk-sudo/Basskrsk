@@ -10,7 +10,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'hm-unpaid-point-ma
 process.env.UNPAID_ORDER_ALERT_MINUTES = '3'; // Old Amvera override must not keep the former delay.
 const db = require('./db');
 const {
-  ALERT_DELAY_MINUTES, POLL_INTERVAL_MS, responsibleManagerChat,
+  ALERT_DELAY_MINUTES, POLL_INTERVAL_MS, IDLE_INTERVAL_MS,
+  nextUnpaidAlertDelay, createUnpaidAlertScheduler, responsibleManagerChat,
   pendingOrderIds, runUnpaidOrderAlertCheck, sendUnpaidOrderAlert,
   buildUnpaidOrderMessage,
 } = require('./unpaid-order-alerts');
@@ -58,6 +59,62 @@ test('one-minute rule ignores legacy three-minute env, polls every 15 seconds', 
     customer_name:'Клиент',order_code:'TG-SLA',customer_phone:'79131111111',
     pickup_point:'Zveryuga',payment_method:'sbp',total:250,
   },[], 'pending'),/Заказ не оплачен 1 минуту/);
+});
+
+
+test('scheduler only probes an empty queue every five minutes, waking on new paid-checkout reservations',async()=>{
+  const tasks=new Map();let nextId=0;let runs=0;
+  const fakeTimer=(fn,delay)=>{const task={id:++nextId,fn,delay,unref(){}};tasks.set(task.id,task);return task;};
+  const scheduler=createUnpaidAlertScheduler({
+    database:db,scan:async()=>{runs++;},
+    setTimer:fakeTimer,clearTimer:(task)=>tasks.delete(task.id),
+    now:Date.now,
+  });
+  const delay=()=>[...tasks.values()][0]?.delay;
+  async function tick(){
+    const task=[...tasks.values()][0];assert.ok(task);
+    tasks.delete(task.id);task.fn();
+    await new Promise(resolve=>setImmediate(resolve));
+    await new Promise(resolve=>setImmediate(resolve));
+  }
+  try {
+    scheduler.start();scheduler.start();
+    assert.equal(tasks.size,1);
+    assert.equal(delay(),3000);
+    await tick();
+    // Fixture contains no pending orders yet: an idle worker should sleep.
+    assert.equal(delay(),IDLE_INTERVAL_MS);
+    const id=order('TG-SCHED-NEW',null,'-10 seconds');
+    scheduler.wake();
+    assert.equal(delay(),0,'new orders must preempt the idle sleep');
+    await tick();
+    assert.ok(delay()>=48000 && delay()<=52000,'wake near the one-minute threshold');
+    db.prepare("UPDATE orders SET created_at=datetime('now','-2 minutes') WHERE id=?").run(id);
+    scheduler.wake();
+    await tick();
+    assert.equal(delay(),POLL_INTERVAL_MS,'due orders retain 15-second retry checks');
+    db.prepare("UPDATE orders SET status='paid' WHERE id=?").run(id);
+    scheduler.wake();
+    await tick();
+    assert.equal(delay(),IDLE_INTERVAL_MS,'cleared order returns to idle mode');
+    assert.equal(runs,4);
+  } finally {
+    scheduler.stop();
+  }
+});
+
+test('the SQL scan scheduler selects deadlines without selecting private customer records',()=>{
+  const id=order('TG-SCHED-DEADLINE',null,'-5 seconds');
+  try {
+    const next=nextUnpaidAlertDelay();
+    assert.ok(next>=53000&&next<=57000,'pending order wakes close to 60 seconds');
+    db.prepare("UPDATE orders SET created_at=datetime('now','-2 minutes') WHERE id=?").run(id);
+    assert.equal(nextUnpaidAlertDelay(),POLL_INTERVAL_MS);
+    db.prepare("UPDATE orders SET reservation_status='released' WHERE id=?").run(id);
+    assert.equal(nextUnpaidAlertDelay(),IDLE_INTERVAL_MS);
+  } finally {
+    db.prepare("DELETE FROM orders WHERE id=?").run(id);
+  }
 });
 
 test('pending orders alert only their active point manager, once', async () => {
