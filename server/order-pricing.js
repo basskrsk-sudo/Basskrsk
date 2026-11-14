@@ -19,23 +19,38 @@ function pricingError(message, code, statusCode = 400) {
   return error;
 }
 
-function resolveVariant(item) {
+// Read current product prices in a single indexed query per checkout, rather
+// than one SQLite SELECT per basket line. A cart is capped at 50 lines.
+function fetchCartVariants(cartItems, database) {
+  const ids = [...new Set(cartItems.map((item) => {
+    const rawId = item && (item.variantId ?? item.variant_id);
+    return Number(rawId);
+  }).filter((id) => Number.isInteger(id) && id > 0))];
+  if (!ids.length) return new Map();
+
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = database.prepare(`
+    SELECT v.id AS variant_id, v.product_id, v.weight, v.price,
+           p.name, p.active AS product_active, v.active AS variant_active
+    FROM product_variants v JOIN products p ON p.id = v.product_id
+    WHERE v.id IN (${placeholders})
+  `).all(...ids);
+  return new Map(rows.map((row) => [row.variant_id, row]));
+}
+
+function resolveVariant(item, variantsById, database) {
   const rawId = item && (item.variantId ?? item.variant_id);
   const variantId = Number(rawId);
   if (Number.isInteger(variantId) && variantId > 0) {
-    return db.prepare(`
-      SELECT v.id AS variant_id, v.product_id, v.weight, v.price,
-             p.name, p.active AS product_active, v.active AS variant_active
-      FROM product_variants v JOIN products p ON p.id = v.product_id
-      WHERE v.id = ?
-    `).get(variantId);
+    // A missing explicit ID cannot silently fall back to legacy name+weight.
+    return variantsById.get(variantId) || null;
   }
 
   // Совместимость с уже открытыми/закэшированными страницами старой версии:
   // они ещё могут прислать name+weight. Цена из такого запроса всё равно
   // игнорируется — вариант находится в базе, и берётся только серверная цена.
   if (item && item.name && item.weight) {
-    const rows = db.prepare(`
+    const rows = database.prepare(`
       SELECT v.id AS variant_id, v.product_id, v.weight, v.price,
              p.name, p.active AS product_active, v.active AS variant_active
       FROM product_variants v JOIN products p ON p.id = v.product_id
@@ -49,7 +64,7 @@ function resolveVariant(item) {
   return null;
 }
 
-function priceCatalogCart(cartItems) {
+function priceCatalogCart(cartItems, database = db) {
   if (!Array.isArray(cartItems) || cartItems.length === 0) {
     throw pricingError('Корзина пуста', 'EMPTY_CART');
   }
@@ -57,6 +72,7 @@ function priceCatalogCart(cartItems) {
     throw pricingError('В корзине слишком много разных позиций', 'TOO_MANY_LINES');
   }
 
+  const variantsById = fetchCartVariants(cartItems, database);
   const merged = new Map();
   for (const item of cartItems) {
     if (item && (item.isCustom || item.is_custom)) {
@@ -66,7 +82,7 @@ function priceCatalogCart(cartItems) {
     if (!Number.isInteger(qty) || qty < 1 || qty > MAX_ITEM_QTY) {
       throw pricingError(`Количество каждой позиции должно быть от 1 до ${MAX_ITEM_QTY}`, 'INVALID_QUANTITY');
     }
-    const variant = resolveVariant(item);
+    const variant = resolveVariant(item, variantsById, database);
     if (!variant) throw pricingError('Один из товаров не найден. Обновите каталог и соберите корзину заново.', 'VARIANT_NOT_FOUND', 409);
     if (!variant.product_active || !variant.variant_active) {
       throw pricingError(`«${variant.name} (${variant.weight})» больше не продаётся`, 'VARIANT_INACTIVE', 409);

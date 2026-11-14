@@ -154,6 +154,8 @@ on:
       - server/product-catalog.js
       - server/product-sales-cache.js
       - server/product-catalog.test.js
+      - server/order-pricing.js
+      - server/order-pricing-batch.test.js
       - server/image-converter.js
       - server/image-converter.test.js
       - server/manager-miniapp-create-point.test.js
@@ -382,6 +384,8 @@ jobs:
           node --check server/product-catalog.js
           node --check server/product-sales-cache.js
           node --check server/product-catalog.test.js
+          node --check server/order-pricing.js
+          node --check server/order-pricing-batch.test.js
           node --check server/image-converter.js
           node --check server/image-converter.test.js
           node --check server/manager-miniapp-create-point.test.js
@@ -532,6 +536,8 @@ jobs:
         run: node --test server/backup-schedule.test.js
       - name: Verify indexed groomer phone checks for Gold loyalty
         run: node --test server/partner-phone-lookup.test.js
+      - name: Verify single-query live checkout pricing and receipt totals
+        run: node --test server/order-pricing-batch.test.js
       - name: Verify indexed, unambiguous customer phone lookup
         run: node --test server/customer-phone-lookup.test.js
       - name: Verify indexed operations-center queries
