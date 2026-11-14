@@ -4821,6 +4821,9 @@ async function renderSystemHealth() {
       ['Event loop: максимум',info.event_loop_delay_ms==null?'—':n(info.event_loop_delay_ms)+' мс','p99: '+(info.event_loop_p99_ms==null?'—':n(info.event_loop_p99_ms)+' мс')],
       ['Отклонение таймера',info.sample_schedule_drift_ms==null?'—':n(info.sample_schedule_drift_ms)+' мс','Не равно задержке запросов'],
       ['Нагрузка CPU',info.cpu_percent==null?'—':n(info.cpu_percent)+' %','Приблизительно, на одно ядро'],
+      ['Ограничения CPU',info.cpu_throttle?.available
+        ? (info.cpu_throttle.throttled_periods_pct==null?'Сбор начат':n(info.cpu_throttle.throttled_periods_pct)+'% периодов')
+        : 'Нет данных','cgroup: '+(info.cpu_throttle?.throttled_ms==null?'—':n(info.cpu_throttle.throttled_ms)+' мс задержки')],
     ];
     const grid=values.map(row=>'<div style="padding:12px;border:1px solid var(--border);border-radius:9px">'+
       '<small style="color:var(--muted)">'+safe(row[0])+'</small><strong style="display:block;margin:4px 0">'+
@@ -4829,7 +4832,11 @@ async function renderSystemHealth() {
       '</td><td>'+safe(event.event_type)+'</td><td>'+safe(event.severity)+'</td><td>'+
       safe(event.detail)+'</td></tr>').join('');
     target.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:10px">'+
-      grid+'</div><h3 style="margin:18px 0 8px">История событий</h3>'+
+      grid+'</div><h3 style="margin:18px 0 8px">Длительность фоновых задач и SQL</h3>'+ 
+      '<div style="overflow-x:auto"><table class="admin-table"><thead><tr><th>Операция</th><th>Запусков</th><th>Среднее</th><th>Максимум</th></tr></thead><tbody>'+ 
+      ((info.slow_operations||[]).map(op=>'<tr><td>'+safe(op.name)+'</td><td>'+n(op.calls)+'</td><td>'+n(op.avg_ms)+' мс</td><td>'+n(op.max_ms)+' мс</td></tr>').join('')||
+        '<tr><td colspan="4">Наблюдения появятся после запусков задач</td></tr>')+
+      '</tbody></table></div><h3 style="margin:18px 0 8px">История событий</h3>'+
       '<div style="overflow-x:auto"><table class="admin-table"><thead><tr><th>Время</th>'+
       '<th>Событие</th><th>Уровень</th><th>Описание</th></tr></thead><tbody>'+
       (history||'<tr><td colspan="4">Событий пока нет</td></tr>')+'</tbody></table></div>';

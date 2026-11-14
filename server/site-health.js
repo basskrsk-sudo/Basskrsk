@@ -12,6 +12,7 @@ const { sendJson } = require('./http-utils');
 const { requireActiveAdmin } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { snapshotApiPerformance } = require('./api-performance');
+const { sampleCpuThrottling, snapshotOperations } = require('./runtime-diagnostics');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const BOOTED_AT = Date.now();
@@ -184,6 +185,8 @@ async function metrics() {
     sampled_at:lastSample ? lastSample.time : null,
     io_probe:lastSample ? lastSample.io_probe : null,
     api_performance:snapshotApiPerformance(),
+    cpu_throttle:lastSample ? lastSample.cpu_throttle : null,
+    slow_operations:snapshotOperations(),
     news_collector:newsCollectorSnapshot(),
   };
 }
@@ -263,15 +266,16 @@ async function sample() {
     lastSample = {time:new Date(now).toISOString(),
       event_loop_delay_ms:maxLoopDelayMs,event_loop_max_ms:maxLoopDelayMs,
       event_loop_p99_ms:p99LoopDelayMs,sample_schedule_drift_ms:Math.round(delay),
-      cpu_percent:cpuPercent,io_probe:null};
+      cpu_percent:cpuPercent,cpu_throttle:null,io_probe:null};
 
     // Start both probes together. If /data is slow while /tmp is fast,
     // the persistent volume deserves investigation. If both are delayed,
     // an event-loop stall or host-wide I/O contention is more likely.
     // Async timing alone is never proof of the underlying storage cause.
-    const [health, temporary] = await Promise.all([
-      healthProbe(true), checkStorageWritable(os.tmpdir()),
+    const [health, temporary, cpuThrottle] = await Promise.all([
+      healthProbe(true), checkStorageWritable(os.tmpdir()), sampleCpuThrottling(),
     ]);
+    lastSample.cpu_throttle = cpuThrottle;
     const statStarted = performance.now();
     const free = await storageFreeBytes();
     const statMs = Math.round(performance.now() - statStarted);
@@ -293,7 +297,10 @@ async function sample() {
       'Нагрузка Node.js на одно ядро выше 90% два измерения подряд');
     transition('event_loop',loopState.warning,'warning',
       'Задержка Node.js: максимум '+maxLoopDelayMs+' мс, p99 '+p99LoopDelayMs+
-      ' мс; CPU '+cpuPercent+'%, RAM '+rssMb+' МБ. '+
+      ' мс; отклонение таймера '+Math.round(delay)+' мс; CPU '+cpuPercent+'%, RAM '+rssMb+' МБ. '+
+      (cpuThrottle.available && cpuThrottle.throttled_periods_pct != null
+        ? 'CPU cgroup throttled '+cpuThrottle.throttled_periods_pct+'% периодов, '+
+          cpuThrottle.throttled_ms+' мс. ' : '')+
       'Проверки: SQLite '+health.probe_sqlite_ms+' мс, /data '+
       health.probe_storage_ms+' мс, /tmp '+temporary.durationMs+' мс, statfs '+statMs+
       ' мс. '+describeIoSpike(lastSample.io_probe));

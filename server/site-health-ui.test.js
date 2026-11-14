@@ -16,6 +16,9 @@ test('admin Mini App retrieves health from authenticated route without adding it
   assert.match(ui,/sample_schedule_drift_ms/);
   assert.match(html,/Event loop: максимум/);
   assert.match(html,/Отклонение таймера/);
+  assert.match(html,/Ограничения CPU/);
+  assert.match(html,/Длительность фоновых задач и SQL/);
+  assert.match(ui,/Ограничения CPU/);
   assert.match(ui,/cpu_percent/);
 });
 test('full administration System navigation includes a reachable monitoring page',()=>{

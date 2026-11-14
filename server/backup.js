@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { createDatabaseSnapshot } = require('./database-snapshot');
+const { trackAsync } = require('./runtime-diagnostics');
 const db = require('./db');
 const { sendEmail } = require('./email');
 const { getRestorePaths, validateDatabaseFile } = require('./database-restore');
@@ -61,7 +62,8 @@ async function performDatabaseBackup() {
 // prevents duplicate mail and overlapping memory use after a restart.
 function sendDatabaseBackup() {
   if (backupInFlight) return backupInFlight;
-  backupInFlight = performDatabaseBackup().finally(() => { backupInFlight = null; });
+  backupInFlight = trackAsync('database_backup', performDatabaseBackup)
+    .finally(() => { backupInFlight = null; });
   return backupInFlight;
 }
 
