@@ -57,9 +57,25 @@ function registerOrderRoutes(router) {
           FROM orders o LEFT JOIN partners p ON p.id = o.partner_id
           ORDER BY o.id DESC LIMIT ?
         `).all(limit);
-    const getItems = db.prepare('SELECT variant_id, name, weight, price, qty, is_custom FROM order_items WHERE order_id = ?');
+    // One indexed batch fetch replaces up to 500 per-order SELECTs. Keep
+    // item order and the exact response shape expected by the admin UI.
+    const itemsByOrder = new Map();
+    if (orders.length > 0) {
+      const ids = orders.map((order) => order.id);
+      const markers = ids.map(() => '?').join(',');
+      const items = db.prepare(`
+        SELECT order_id, variant_id, name, weight, price, qty, is_custom
+        FROM order_items
+        WHERE order_id IN (${markers})
+        ORDER BY order_id, id
+      `).all(...ids);
+      for (const { order_id, ...item } of items) {
+        if (!itemsByOrder.has(order_id)) itemsByOrder.set(order_id, []);
+        itemsByOrder.get(order_id).push(item);
+      }
+    }
     sendJson(res, 200, {
-      orders: orders.map((o) => ({ ...o, items: getItems.all(o.id) })),
+      orders: orders.map((o) => ({ ...o, items: itemsByOrder.get(o.id) || [] })),
     });
   });
 

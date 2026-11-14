@@ -20,6 +20,7 @@ on:
       - server/order-recovery.test.js
       - server/payment-return-ui.test.js
       - server/routes-orders.js
+      - server/admin-orders-batch.test.js
       - server/telegram-formatting.js
       - public/hvost-pomoshchi.html
       - server/charity-pause-ui.test.js
@@ -313,6 +314,7 @@ jobs:
           node --check server/routes-warehouse.js
           node --check server/order-display-number.js
           node --check server/order-display-number.test.js
+          node --check server/admin-orders-batch.test.js
           node --check server/order-recovery.js
           node --check server/order-recovery.test.js
           node --check server/payment-return-ui.test.js
@@ -516,6 +518,8 @@ jobs:
         run: node --test server/admin-essential-metrics-ui.test.js
       - name: Verify indexed operations-center queries
         run: node --test server/operations-center-query.test.js
+      - name: Verify admin orders load items in one indexed batch
+        run: node --test server/admin-orders-batch.test.js
       - name: Verify only persistent Amvera storage holds live SQLite data
         run: node --test server/repository-database-exclusion.test.js
       - name: Verify legacy task imports are skipped after migration
