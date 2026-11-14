@@ -246,6 +246,7 @@ on:
       - server/miniapp-customer-first.test.js
       - server/miniapp-header-contrast.test.js
       - server/routes-payment.js
+      - server/checkout-partner-index.test.js
       - server/server.js
       - server/database-snapshot.js
       - server/database-snapshot-worker.js
@@ -377,6 +378,7 @@ jobs:
           node --check server/task-seed-2026-11-02.js
           node --check server/task-seed-2026-11-02.test.js
           node --check server/routes-payment.js
+          node --check server/checkout-partner-index.test.js
           node --check server/routes-miniapp.js
           node --check server/routes-managers.js
           node --check server/routes-products.js
@@ -540,6 +542,8 @@ jobs:
         run: node --test server/partner-phone-lookup.test.js
       - name: Verify batch loading of a customer's own order history
         run: node --test server/customer-order-history-batch.test.js
+      - name: Verify indexed self-order grooming attribution and bounded commission checks
+        run: node --test server/checkout-partner-index.test.js
       - name: Verify single-query live checkout pricing and receipt totals
         run: node --test server/order-pricing-batch.test.js
       - name: Verify indexed, unambiguous customer phone lookup
