@@ -12,4 +12,18 @@ const stripped = SEPARATORS.reduce(
   "COALESCE(customer_phone, '')"
 );
 const PAID_PHONE_KEY_SQL = `substr(${stripped}, -10)`;
-module.exports = { PAID_PHONE_KEY_SQL };
+
+// Preserve the exact legacy matching rules used by /api/customer/me/orders.
+// Unlike the paid-only BSC index, this key covers pending, paid and canceled
+// orders. Both the history query and its index reuse this identical SQL.
+const HISTORY_PHONE_SEPARATORS = [
+  "' '", "'+'", "'('", "')'", "'-'", "'.'",
+  'char(9)', 'char(10)', 'char(13)',
+];
+const historyStripped = HISTORY_PHONE_SEPARATORS.reduce(
+  (expression, separator) => `REPLACE(${expression},${separator},'')`,
+  'customer_phone'
+);
+const ORDER_HISTORY_PHONE_KEY_SQL = `substr(${historyStripped}, -10)`;
+
+module.exports = { PAID_PHONE_KEY_SQL, ORDER_HISTORY_PHONE_KEY_SQL };

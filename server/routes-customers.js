@@ -6,6 +6,7 @@ const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { hashPassword } = require('./auth');
 const { getDiscountSettings } = require('./settings');
+const { ORDER_HISTORY_PHONE_KEY_SQL } = require('./report-phone-key');
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '');
@@ -310,15 +311,13 @@ function registerCustomerRoutes(router) {
     // Filter BY THIS CUSTOMER in SQLite before limiting results. The old code
     // read the 500 latest orders across the entire network first, which hid
     // older purchases from legitimate customers as the business grew.
-    // Support stored phones with 8, +7, spaces, hyphens, parentheses or dots.
-    // Never accept a short/incomplete number as a cross-account match.
+    // Require a complete authenticated customer phone before looking up
+    // histories. Reuse the exact SQL expression of the SQLite index, so the
+    // lookup is indexed and still supports all original legacy separators.
     const customerMobile = normalizePhone(customer.phone).slice(-10);
-    const storedDigits = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(" +
-      "REPLACE(REPLACE(REPLACE(customer_phone,' ',''),'+',''),'(',''),')','')," +
-      "'-',''),'.',''),char(9),''),char(10),''),char(13),'')";
     const orders = customerMobile.length === 10
-      ? db.prepare('SELECT * FROM orders WHERE substr(' + storedDigits +
-        ', -10) = ? ORDER BY id DESC LIMIT 500').all(customerMobile)
+      ? db.prepare('SELECT * FROM orders WHERE ' + ORDER_HISTORY_PHONE_KEY_SQL +
+        ' = ? ORDER BY id DESC LIMIT 500').all(customerMobile)
       : [];
     // Fetch item descriptions only for these verified customer orders.
     // A single indexed batch query replaces up to 500 queries per profile load.
