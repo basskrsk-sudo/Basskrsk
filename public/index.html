@@ -1114,6 +1114,7 @@
 @media(max-width:560px){.success-notify-grid{grid-template-columns:1fr}.success-product-item{grid-template-columns:56px minmax(0,1fr) auto}.success-product-image{width:56px;height:56px}}
 </style>
 <script src="config.js"></script>
+<script src="/telegram-login-polling.js?v=1"></script>
 <script>
   // Яндекс.Метрика — подключается только если задан номер счётчика в config.js.
   // Строим тег вручную (не статичным <script>), чтобы номер счётчика брался
@@ -3180,7 +3181,7 @@ async function submitAccountTelegramCode() {
       errEl.style.display = 'block';
       return;
     }
-    if (telegramPollTimer) { clearInterval(telegramPollTimer); telegramPollTimer = null; }
+    if (telegramPollTimer) { telegramPollTimer.stop(); telegramPollTimer = null; }
     localStorage.setItem(ACCOUNT_TOKEN_KEY, data.token);
     await renderAccountPage();
   } catch (e) {
@@ -3190,19 +3191,30 @@ async function submitAccountTelegramCode() {
 }
 
 function startTelegramPolling(token) {
-  if (telegramPollTimer) clearInterval(telegramPollTimer);
-  telegramPollTimer = setInterval(async () => {
-    try {
-      const res = await fetch('/api/customer/telegram/check?token=' + encodeURIComponent(token));
+  if (telegramPollTimer) telegramPollTimer.stop();
+  telegramPollTimer = window.HvostTelegramLoginPolling.start({
+    check: async function(signal){
+      const res = await fetch('/api/customer/telegram/check?token=' + encodeURIComponent(token), {signal});
+      if ([400,404,410].includes(res.status)) return {expired:true};
+      if (!res.ok) return null;
       const data = await res.json();
-      if (data.verified && data.token) {
-        clearInterval(telegramPollTimer);
-        telegramPollTimer = null;
-        localStorage.setItem(ACCOUNT_TOKEN_KEY, data.token);
-        await renderAccountPage();
-      }
-    } catch (e) { /* пробуем на следующей итерации */ }
-  }, 2000);
+      return data.verified && data.token ? {done:true,data} : null;
+    },
+    onSuccess: async function(data){
+      telegramPollTimer = null;
+      localStorage.setItem(ACCOUNT_TOKEN_KEY, data.token);
+      await renderAccountPage();
+    },
+    onExpired: function(){
+      telegramPollTimer = null;
+      const err = document.getElementById('account-tg-error');
+      if (err) { err.textContent='Время ожидания Telegram истекло. Запросите новую ссылку.'; err.style.display='block'; }
+      const phone = document.getElementById('account-auth-start');
+      const waiting = document.getElementById('account-tg-step-waiting');
+      if (phone) phone.style.display='block';
+      if (waiting) waiting.style.display='none';
+    },
+  });
 }
 
 let maxPollTimer = null;
@@ -3528,7 +3540,7 @@ function copyReferralLink() {
 
 function logoutAccount() {
   localStorage.removeItem(ACCOUNT_TOKEN_KEY);
-  if (telegramPollTimer) { clearInterval(telegramPollTimer); telegramPollTimer = null; }
+  if (telegramPollTimer) { telegramPollTimer.stop(); telegramPollTimer = null; }
   if (maxPollTimer) { clearInterval(maxPollTimer); maxPollTimer = null; }
   renderAccountPage();
 }
@@ -5401,38 +5413,31 @@ async function connectCheckoutMax() {
 }
 
 async function pollCheckoutTelegramConnection(token, phone) {
-  if (checkoutTelegramPollTimer) clearInterval(checkoutTelegramPollTimer);
-  let attempts = 0;
-  const check = async () => {
-    attempts++;
-    try {
-      const res = await fetch('/api/customer/telegram/check?token=' + encodeURIComponent(token));
+  if (checkoutTelegramPollTimer) checkoutTelegramPollTimer.stop();
+  checkoutTelegramPollTimer = window.HvostTelegramLoginPolling.start({
+    check: async function(signal) {
+      const res = await fetch('/api/customer/telegram/check?token=' + encodeURIComponent(token), {signal});
+      if ([400,404,410].includes(res.status)) return {expired:true};
+      if (!res.ok) return null;
       const data = await res.json();
-      if (data.verified && data.token) {
-        clearInterval(checkoutTelegramPollTimer);
-        checkoutTelegramPollTimer = null;
-        localStorage.setItem(ACCOUNT_TOKEN_KEY, data.token);
-        setCheckoutTelegramConnected(phone);
-        trackGoalOnce('notifications_connected', 'telegram:' + (lastPaidCheckoutOrderId || 'checkout'), {
-          scenario: 'catalog', channel: 'telegram', order_id: lastPaidCheckoutOrderId || '',
-        });
-        return true;
-      } else if (attempts >= 150) {
-        clearInterval(checkoutTelegramPollTimer);
-        checkoutTelegramPollTimer = null;
-        const status = document.getElementById('checkout-tg-status');
-        const button = document.getElementById('checkout-tg-button');
-        if (status) status.textContent = 'Не увидели подтверждение. Нажмите кнопку и запустите бота ещё раз.';
-        if (button) { button.disabled = false; button.style.opacity = '1'; button.textContent = '✈️ Запустить бота снова'; }
-        return true;
-      }
-    } catch (e) { /* временный сетевой сбой — повторим */ }
-    return false;
-  };
-  const finished = await check();
-  if (!finished) {
-    checkoutTelegramPollTimer = setInterval(check, 2000);
-  }
+      return data.verified && data.token ? {done:true,data} : null;
+    },
+    onSuccess: function(data) {
+      checkoutTelegramPollTimer = null;
+      localStorage.setItem(ACCOUNT_TOKEN_KEY, data.token);
+      setCheckoutTelegramConnected(phone);
+      trackGoalOnce('notifications_connected', 'telegram:' + (lastPaidCheckoutOrderId || 'checkout'), {
+        scenario: 'catalog', channel: 'telegram', order_id: lastPaidCheckoutOrderId || '',
+      });
+    },
+    onExpired: function() {
+      checkoutTelegramPollTimer = null;
+      const status = document.getElementById('checkout-tg-status');
+      const button = document.getElementById('checkout-tg-button');
+      if (status) status.textContent = 'Не увидели подтверждение за 5 минут. Нажмите кнопку и запустите бота ещё раз.';
+      if (button) { button.disabled = false; button.style.opacity = '1'; button.textContent = '✈️ Запустить бота снова'; }
+    },
+  });
 }
 
 async function connectCheckoutTelegram() {

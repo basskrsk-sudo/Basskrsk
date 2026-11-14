@@ -8,6 +8,8 @@ on:
       - scripts/restore-doc-aliases.js
       - scripts/restore-doc-aliases.test.js
       - public/miniapp.html
+      - public/telegram-login-polling.js
+      - server/telegram-login-polling.test.js
       - public/index.html
       - public/p.html
       - server/order-display-number.js
@@ -359,6 +361,8 @@ jobs:
           node --check server/miniapp-manager-messages.test.js
           node --check public/miniapp-tasks.js
           node --check server/telegram-login-poller.js
+          node --check public/telegram-login-polling.js
+          node --check server/telegram-login-polling.test.js
           node --check server/telegram-message-edit.js
           node --check server/telegram-message-edit.test.js
           node --check server/telegram-command-menu.test.js
@@ -476,6 +480,8 @@ jobs:
         run: node --test scripts/restore-doc-aliases.test.js
       - name: Verify the external pet news collector is retired
         run: node --test server/retired-pet-news.test.js
+      - name: Verify Telegram login polling limits
+        run: node --test server/telegram-login-polling.test.js
       - name: Verify no games remain on storefront or API
         run: node --test server/retired-games.test.js
       - name: Check Mini App inline JavaScript syntax

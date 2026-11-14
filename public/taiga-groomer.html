@@ -283,6 +283,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <script src="config.js"></script>
 <script src="payout-schedule.js"></script>
 <script src="telegram-connect.js?v=38"></script>
+<script src="/telegram-login-polling.js?v=1"></script>
 <script src="max-connect.js?v=41"></script>
 <script src="cabinet-navigation.js?v=46"></script>
 <link rel="stylesheet" href="/notification-settings.css">
@@ -1272,18 +1273,27 @@ async function submitLoginViaTelegram() {
     document.getElementById('tg-login-code-block').style.display = 'none';
     document.getElementById('tg-login-code').value = '';
     window.open(data.deep_link, '_blank');
-    if (partnerTgPollTimer) clearInterval(partnerTgPollTimer);
-    partnerTgPollTimer = setInterval(async () => {
-      try {
-        const r = await fetch('/api/partners/telegram/check?token=' + encodeURIComponent(data.token));
+    if (partnerTgPollTimer) partnerTgPollTimer.stop();
+    partnerTgPollTimer = window.HvostTelegramLoginPolling.start({
+      check: async function(signal) {
+        const r = await fetch('/api/partners/telegram/check?token=' + encodeURIComponent(data.token), {signal});
+        if ([400,404,410].includes(r.status)) return {expired:true};
+        if (!r.ok) return null;
         const d = await r.json();
-        if (d.verified && d.token) {
-          clearInterval(partnerTgPollTimer);
-          partnerTgPollTimer = null;
-          await onPartnerLoginSuccess(d);
-        }
-      } catch (e) { /* пробуем на следующей итерации */ }
-    }, 2000);
+        return d.verified && d.token ? {done:true,data:d} : null;
+      },
+      onSuccess: async function(result) {
+        partnerTgPollTimer = null;
+        await onPartnerLoginSuccess(result);
+      },
+      onExpired: function() {
+        partnerTgPollTimer = null;
+        const err = document.getElementById('tg-login-error');
+        if (err) { err.textContent='Время ожидания Telegram истекло. Запросите новую ссылку.'; err.style.display='block'; }
+        document.getElementById('tg-login-step-phone').style.display='block';
+        document.getElementById('tg-login-step-waiting').style.display='none';
+      },
+    });
   } catch (e) {
     errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
     errEl.style.display = 'block';
@@ -1315,7 +1325,7 @@ async function submitTelegramCode() {
       errEl.style.display = 'block';
       return;
     }
-    if (partnerTgPollTimer) { clearInterval(partnerTgPollTimer); partnerTgPollTimer = null; }
+    if (partnerTgPollTimer) { partnerTgPollTimer.stop(); partnerTgPollTimer = null; }
     await onPartnerLoginSuccess(d);
   } catch (e) {
     errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
