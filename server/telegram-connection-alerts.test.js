@@ -8,7 +8,7 @@ const {DatabaseSync}=require('node:sqlite');
 process.env.DATA_DIR=fs.mkdtempSync(path.join(os.tmpdir(),'hm-bot-connection-alerts-'));
 const {
   ensureBotConnectionAlertTables,bindTelegramAccount,
-  flushBotConnectionAlerts,formatConnectionAlert,
+  flushBotConnectionAlerts,formatConnectionAlert,createBotConnectionAlertScheduler,
 }=require('./telegram-connection-alerts');
 
 function fixture(){
@@ -215,6 +215,107 @@ test('service group never receives private connection alert without explicit opt
   assert.ok(sent.includes('-100123456789'));
   assert.equal(sent.filter(x=>x==='-100123456789').length,1);
   database.close();
+});
+
+
+test('connection worker sleeps for five minutes when idle and wakes on a new binding',async()=>{
+  const database=fixture();
+  const timers=new Map();let id=0,time=0,scans=0;
+  const setTimer=(fn,delay)=>{
+    const timer={id:++id,fn,delay,unref(){}};
+    timers.set(timer.id,timer);
+    return timer;
+  };
+  const clearTimer=timer=>timers.delete(timer.id);
+  const nextDelay=()=>[...timers.values()][0]?.delay;
+  const messages=[];
+  const scheduler=createBotConnectionAlertScheduler({
+    database,setTimer,clearTimer,now:()=>time,
+    flush:async()=>{
+      scans++;
+      return flushBotConnectionAlerts({database,businessChatId:'',
+        sendToChat:async(chat,text)=>{
+          messages.push({chat,text});return {ok:true};
+        }});
+    },
+  });
+  async function fire(){
+    const timer=[...timers.values()][0];
+    assert.ok(timer,'expected a scheduled worker check');
+    timers.delete(timer.id);
+    time+=timer.delay;
+    timer.fn();
+    await new Promise(resolve=>setImmediate(resolve));
+  }
+  try {
+    scheduler.start();
+    scheduler.start();
+    assert.equal(timers.size,1,'starting twice must not duplicate workers');
+    assert.equal(nextDelay(),0,'deploy immediately recovers pending deliveries');
+    await fire();
+    assert.equal(scans,1);
+    assert.equal(nextDelay(),300000);
+
+    const result=bindTelegramAccount('partner',10,'10010',settings(database));
+    assert.equal(result.recipients,2);
+    scheduler.wake();
+    assert.equal(nextDelay(),0,'new account must preempt the five-minute idle check');
+    await fire();
+    assert.equal(scans,2);
+    assert.equal(messages.length,2);
+    assert.equal(nextDelay(),300000,'after successful sends, worker becomes idle');
+
+    const failed=bindTelegramAccount('manager',13,'10013',settings(database));
+    assert.equal(failed.recipients,2);
+    scheduler.wake();
+    scheduler.stop();
+    assert.equal(timers.size,0,'stop cancels the pending timer');
+  } finally {
+    scheduler.stop();database.close();
+  }
+});
+
+test('failed connection alerts keep retry polling and defer before the cooldown',async()=>{
+  const database=fixture();
+  const tasks=new Map();let id=0,time=0,attempts=0;
+  const scheduler=createBotConnectionAlertScheduler({
+    database,
+    setTimer:(fn,delay)=>{const task={id:++id,fn,delay,unref(){}};tasks.set(task.id,task);return task;},
+    clearTimer:task=>tasks.delete(task.id),
+    now:()=>time,
+    flush:()=>flushBotConnectionAlerts({database,businessChatId:'',
+      sendToChat:async()=>{
+        attempts++;
+        return {ok:attempts>2};
+      }}),
+  });
+  async function fire(){
+    const task=[...tasks.values()][0];
+    assert.ok(task);
+    tasks.delete(task.id);
+    time+=task.delay;
+    task.fn();
+    await new Promise(resolve=>setImmediate(resolve));
+  }
+  try{
+    bindTelegramAccount('customer',11,'10011',settings(database));
+    scheduler.start();
+    await fire();
+    assert.equal(attempts,2);
+    assert.equal([...tasks.values()][0].delay,60000,'pending failures use active retry cadence');
+    await fire();
+    assert.equal(attempts,2,'SQLite cooldown prevents early redelivery');
+    assert.equal([...tasks.values()][0].delay,60000);
+
+    // Simulate the database-backed two-minute retry window expiring.
+    database.prepare(
+      "UPDATE bot_connection_deliveries SET last_attempt_at=datetime('now','-3 minutes') "+
+      "WHERE state='pending'"
+    ).run();
+    await fire();
+    assert.equal(attempts,4);
+    assert.equal([...tasks.values()][0].delay,300000);
+  }finally{scheduler.stop();database.close()}
 });
 
 test.after(()=>{

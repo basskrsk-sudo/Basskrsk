@@ -1550,6 +1550,7 @@ async function startPolling() {
 
 function stopPolling() {
   polling = false;
+  require('./telegram-connection-alerts').stopBotConnectionAlertWorker();
   if (commandMenuRetryTimer) clearTimeout(commandMenuRetryTimer);
   commandMenuRetryTimer = null;
   commandMenuRetryCount = 0;
