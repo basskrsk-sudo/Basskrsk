@@ -6,6 +6,7 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { getAllPointLaunchSummaries } = require('./point-launch-checklist');
+const { trackSync } = require('./runtime-diagnostics');
 
 function addIssue(issues, issue) {
   if (Number(issue.count || 0) > 0) issues.push(issue);
@@ -14,6 +15,21 @@ function addIssue(issues, issue) {
 function money(value) {
   return Math.round(Number(value || 0));
 }
+
+// Use point/status/date indexes instead of grouping all historic paid orders.
+const SILENT_POINTS_SQL = `
+  SELECT p.id, p.name, p.addr,
+    (SELECT o.created_at FROM orders o
+     WHERE o.point_id = p.id AND o.status = 'paid'
+     ORDER BY o.created_at DESC, o.id DESC LIMIT 1) AS last_sale
+  FROM points p
+  WHERE p.active = 1 AND NOT EXISTS (
+    SELECT 1 FROM orders recent
+    WHERE recent.point_id = p.id AND recent.status = 'paid'
+      AND recent.created_at >= datetime('now','-7 days')
+  )
+  ORDER BY CASE WHEN last_sale IS NULL THEN 0 ELSE 1 END, last_sale
+`;
 
 function buildOperationsCenter() {
   const issues = [];
@@ -82,15 +98,7 @@ function buildOperationsCenter() {
     })),
   });
 
-  const noSalesRows = db.prepare(`
-    SELECT p.id, p.name, p.addr, MAX(o.created_at) AS last_sale
-    FROM points p
-    LEFT JOIN orders o ON o.point_id = p.id AND o.status = 'paid'
-    WHERE p.active = 1
-    GROUP BY p.id
-    HAVING last_sale IS NULL OR last_sale < datetime('now', '-7 days')
-    ORDER BY CASE WHEN last_sale IS NULL THEN 0 ELSE 1 END, last_sale
-  `).all();
+  const noSalesRows = db.prepare(SILENT_POINTS_SQL).all();
   addIssue(issues, {
     key: 'silent_points', severity: 'warning', icon: '📉', title: 'Точки без продаж',
     count: noSalesRows.length,
@@ -276,8 +284,8 @@ function registerOperationsRoutes(router) {
   router.get('/api/operations-center', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    sendJson(res, 200, buildOperationsCenter());
+    sendJson(res, 200, trackSync('operations_center_build', buildOperationsCenter));
   });
 }
 
-module.exports = { buildOperationsCenter, registerOperationsRoutes };
+module.exports = { buildOperationsCenter, registerOperationsRoutes, SILENT_POINTS_SQL };
