@@ -725,18 +725,9 @@
       var normalCalls=endpoints[role].map(function(url) { return fetchJSON(url, token); });
       var wantsTasks=!!(taskPanel && (role==='founder'||role==='manager'));
       if (wantsTasks) normalCalls.push(fetchJSON('/api/miniapp/tasks',token));
-      var wantDiagnostics = role === 'admin';
-      if(wantDiagnostics)normalCalls.push(fetchJSON('/api/miniapp/diagnostics-summary',token));
-      var wantSystemHealth=role==='admin';
-      if(wantSystemHealth)normalCalls.push(fetchJSON('/api/admin/system-health',token));
+      // Skip the optional diagnostics until the administrator taps "Check".
       var results = await Promise.allSettled(normalCalls);
       if (mySerial !== serial || role !== activeRole) return;
-      var systemResponse=wantSystemHealth ? results.pop() : null;
-      var systemData=systemResponse && systemResponse.status==='fulfilled'
-        ? systemResponse.value : null;
-      var diagnosticResponse=wantDiagnostics ? results.pop() : null;
-      var diagnosticData=diagnosticResponse && diagnosticResponse.status==='fulfilled'
-        ? diagnosticResponse.value : null;
       var taskResponse=wantsTasks ? results.pop() : null;
       taskData=taskResponse && taskResponse.status==='fulfilled' &&
         taskResponse.value && taskResponse.value.actor ? taskResponse.value : null;
@@ -753,7 +744,7 @@
       if (role === 'manager') html += managerDashboard(data);
       if (role === 'owner') html += ownerDashboard(data);
       if (role === 'founder' && window.HvostBusinessFounder) html += window.HvostBusinessFounder.render(data[0],token);
-      if (role === 'admin') html += adminDashboard(data,diagnosticData,systemData);
+      if (role === 'admin') html += adminDashboard(data);
       dashboardMarkup = html + dashboardFooter(role);
       root.innerHTML = dashboardMarkup;
       if (role === 'admin' && currentUser && currentUser.role === 'super' && window.HvostBusinessFounderAdmin) window.HvostBusinessFounderAdmin.populate();
@@ -1527,24 +1518,8 @@
       adminRegistrationBusy = false;
     }
   }
-  function adminDashboard(data,diagnostics,systemHealth) {
-    var allPoints = data[0] && data[0].points || [];
-    // Match the founder network counter: only current, non-hub minimarkets.
-    var points = allPoints.filter(function(p) {
-      return Number(p.active) !== 0 && Number(p.is_hub) !== 1;
-    });
-    var allOrders = data[1] && data[1].orders || [];
-    var paidOrders = allOrders.filter(function(o) {
-      return netPaidAmount(o) > 0;
-    });
-    var revenue = paidOrders.reduce(function(s, o) { return s + netPaidAmount(o); }, 0);
-    var html = '<div class="work-stats">' +
-      stat('Активных точек', data[0] ? number(points.length) : '—', 'По всей сети') +
-      stat('Последние покупки', data[1] ? number(paidOrders.length) : '—', 'Оплаченных среди 100 последних заказов') +
-      stat('Выручка последних заказов', data[1] ? rub(revenue) : '—', 'Оплаченные среди 100 последних') +
-      '<div class="work-stat"><small>Сигналы контроля</small><strong id="workAdminOpsCount">—</strong>' +
-      '<span>По запросу</span></div>' +
-      '</div>';
+  // Detailed health metrics are computed only when explicitly requested.
+  function adminHealthMarkup(diagnostics,systemHealth) {
     // Read-only 7-day aggregate metrics. No names, phones, IDs or tokens.
     var diag=diagnostics && diagnostics.summary || null;
     var platformRows=diagnostics && diagnostics.rows || [];
@@ -1587,8 +1562,31 @@
         }))
       : '<p class="work-note">Данные контроля сервера пока недоступны. '
         + 'Попробуйте обновить кабинет.</p>';
-    html += surface('💓 Состояние системы',healthContent);
-    html += surface('🩺 Надёжность Mini App',reliabilityContent);
+    return surface('💓 Состояние системы',healthContent) +
+      surface('🩺 Надёжность Mini App',reliabilityContent);
+  }
+  function adminDashboard(data) {
+    var allPoints = data[0] && data[0].points || [];
+    // Match the founder network counter: only current, non-hub minimarkets.
+    var points = allPoints.filter(function(p) {
+      return Number(p.active) !== 0 && Number(p.is_hub) !== 1;
+    });
+    var allOrders = data[1] && data[1].orders || [];
+    var paidOrders = allOrders.filter(function(o) {
+      return netPaidAmount(o) > 0;
+    });
+    var revenue = paidOrders.reduce(function(s, o) { return s + netPaidAmount(o); }, 0);
+    var html = '<div class="work-stats">' +
+      stat('Активных точек', data[0] ? number(points.length) : '—', 'По всей сети') +
+      stat('Последние покупки', data[1] ? number(paidOrders.length) : '—', 'Оплаченных среди 100 последних заказов') +
+      stat('Выручка последних заказов', data[1] ? rub(revenue) : '—', 'Оплаченные среди 100 последних') +
+      '<div class="work-stat"><small>Сигналы контроля</small><strong id="workAdminOpsCount">—</strong>' +
+      '<span>По запросу</span></div>' +
+      '</div>';
+    html += '<div class="work-action-bar"><button type="button" class="work-secondary" ' +
+      'data-work-action="admin-health-check">🔎 Проверить сервер и Mini App</button></div>';
+    html += '<div id="workAdminHealthResults" aria-live="polite">' +
+      '<p class="work-note">Диагностика загружается только по запросу.</p></div>';
     html += surface('🏷️ Каталог товаров',
       '<button class="work-primary" type="button" data-work-action="admin-product-create">' +
       '➕ Создать новый товар</button>' +
@@ -1623,6 +1621,46 @@
     }
     return html;
   }
+  async function checkAdminHealth(button) {
+    if (activeRole !== 'admin' || !currentUser || !getToken('admin') || button.disabled) return;
+    var currentSerial = serial;
+    var target = document.getElementById('workAdminHealthResults');
+    if (!target) return;
+    button.disabled = true;
+    button.textContent = 'Проверяем…';
+    target.innerHTML = '<p class="work-note">Получаем состояние сервера и Mini App…</p>';
+    try {
+      var token = getToken('admin');
+      var checks = await Promise.allSettled([
+        fetchJSON('/api/miniapp/diagnostics-summary', token),
+        fetchJSON('/api/admin/system-health', token)
+      ]);
+      if (currentSerial !== serial || activeRole !== 'admin' ||
+          !root.innerHTML.includes('id="workAdminHealthResults"')) return;
+      var denied = checks.some(function(r) {
+        return r.status === 'rejected' && r.reason &&
+          (r.reason.status === 401 || r.reason.status === 403);
+      });
+      if (denied) {
+        clearToken('admin'); currentUser = null; serial++;
+        return renderLogin('Сессия истекла. Войдите ещё раз.');
+      }
+      var diagnostics = checks[0].status === 'fulfilled' ? checks[0].value : null;
+      var health = checks[1].status === 'fulfilled' ? checks[1].value : null;
+      target.innerHTML = (checks.some(function(r){return r.status === 'rejected';})
+        ? problem('Некоторые сведения не удалось получить. Повторите проверку.') : '') +
+        adminHealthMarkup(diagnostics, health);
+    } catch (error) {
+      if (currentSerial === serial && activeRole === 'admin')
+        target.innerHTML = problem(error.message || 'Ошибка проверки сервера.');
+    } finally {
+      if (currentSerial === serial && activeRole === 'admin') {
+        button.disabled = false;
+        button.textContent = '↻ Проверить снова';
+      }
+    }
+  }
+
   async function checkAdminOperations(button) {
     if (activeRole !== 'admin' || !currentUser || !getToken('admin') || button.disabled) return;
     var currentSerial = serial;
@@ -1744,6 +1782,7 @@
           token:getToken('admin'),isValid:adminRegisterAuthorized,
           onBack:function(){return chooseRole('admin');},
         });
+    if (action === 'admin-health-check' && activeRole === 'admin') return checkAdminHealth(button);
     if (action === 'admin-ops-check' && activeRole === 'admin') return checkAdminOperations(button);
     if (action === 'admin-reg-point' && activeRole === 'admin') return openAdminRegistration('point');
     if (action === 'admin-reg-owner' && activeRole === 'admin') return openAdminRegistration('owner');

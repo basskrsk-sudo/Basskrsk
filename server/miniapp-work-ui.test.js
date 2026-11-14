@@ -705,6 +705,36 @@ test('admin metrics are sourced from live admin endpoints (not demo numbers)', a
 });
 
 
+test('admin monitoring is loaded only after explicit request in Mini App', async () => {
+  const h = createHarness({
+    '/api/admin/me': { admin: { id: 1, active: 1, role: 'admin', full_name: 'Администратор' } },
+    '/api/points': { points: [] },
+    '/api/orders?limit=100': { orders: [] },
+    '/api/miniapp/diagnostics-summary': {
+      summary: { successful_launches: 12, reported_errors: 3 },
+      rows: [{ result: 'failure', stage: 'startup', code: 'network',
+        platform: 'ios', day: '2026-11-14', build: '1', occurrences: 2 }],
+    },
+    '/api/admin/system-health': { body: {
+      status: 'ok', uptime_seconds: 3600,
+      checks: { database: 'ok', storage: 'ok' },
+      memory: { rss_mb: 190, limit_mb: 512 },
+      events: [],
+    } },
+  }, { taiga_admin_token: 'admin-token' });
+  await h.window.HvostMiniAppWork.chooseRole('admin');
+  assert.match(h.root.innerHTML, /data-work-action="admin-health-check"/);
+  assert.equal(h.calls.some(c => c.url === '/api/miniapp/diagnostics-summary'), false);
+  assert.equal(h.calls.some(c => c.url === '/api/admin/system-health'), false);
+  await h.click('admin-health-check', 'admin');
+  assert.equal(h.calls.filter(c => c.url === '/api/miniapp/diagnostics-summary').length, 1);
+  assert.equal(h.calls.filter(c => c.url === '/api/admin/system-health').length, 1);
+  assert.match(h.elements.workAdminHealthResults.innerHTML, /Успешных запусков/);
+  assert.match(h.elements.workAdminHealthResults.innerHTML, /Node.js/);
+  assert.match(h.elements.workAdminHealthResults.innerHTML, /190 МБ/);
+  assert.ok(h.calls.every(c => c.opts.headers.Authorization === 'Bearer admin-token'));
+});
+
 test('admin counts only active non-hub minimarkets and subtracts all refunds', async () => {
   const h=createHarness({
     '/api/admin/me': {admin:{id:10,full_name:'Администратор',active:1,role:'admin'}},
