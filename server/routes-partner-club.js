@@ -25,7 +25,12 @@ if (!db.prepare("SELECT 1 FROM partner_club_migrations WHERE key='anonymous_week
 function settings(){let row=db.prepare('SELECT config_json FROM partner_club_settings WHERE id=1').get(),saved={};try{if(row)saved=JSON.parse(row.config_json)}catch(_){}
 return {...DEFAULTS,...saved,include_groomer_names:false};}
 function money(n){return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(Number(n)||0)+' ₽';}
-function queue(key,type,message){return db.prepare("INSERT OR IGNORE INTO partner_club_events(event_key,event_type,message,status) VALUES (?,?,?,'draft')").run(key,type,message).changes>0;}
+function queue(key,type,message){
+  const inserted=db.prepare("INSERT OR IGNORE INTO partner_club_events(event_key,event_type,message,status) VALUES (?,?,?,'draft')").run(key,type,message).changes>0;
+  // New sales wake moderation without waiting for a periodic SQLite scan.
+  if(inserted)wakeClubWorker();
+  return inserted;
+}
 function nextSaleEnding(){
   // Persist rotation via the database: rejected and pending posts still count.
   // No reset when the server restarts; retries of an order cannot add new events.
@@ -207,13 +212,14 @@ function registerPartnerClubRoutes(router){
   if(Object.hasOwn(body,'sales_mode')){if(!['all','limit','digest'].includes(body.sales_mode))return sendJson(res,400,{error:'Некорректная частота'});next.sales_mode=body.sales_mode;}
   next.enabled=settings().enabled;next.chat_id=settings().chat_id;next.include_groomer_names=false;
   db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify(next));
+  wakeClubWorker();
   sendJson(res,200,{ok:true,settings:next,delivery_enabled:false});
  });
  // The club is an independent outbound channel; existing personal bot stays untouched.
  function clubStatus(){const c=settings();const drafts=db.prepare("SELECT COUNT(*) AS n FROM partner_club_events WHERE status='draft'").get().n;return {status:c.enabled?'running':c.chat_id?'stopped':'not_connected',status_label:c.enabled?'Работает':c.chat_id?'Остановлена':'Не подключён',running:!!c.enabled,connected:!!c.chat_id,can_start:!!c.chat_id&&!!process.env.TG_TOKEN,drafts,delivery_enabled:!!c.enabled,reason:c.enabled?'Рассылка активна':c.chat_id?'Группа готова. Рассылка отключена.':'Сначала подключите группу',personal_notifications_affected:false};}
- router.post('/api/admin/partner-club/reviewer',(req,res,ctx)=>{const admin=requireSuperAdmin(req,res,ctx);if(!admin)return;const linked=db.prepare('SELECT telegram_chat_id FROM admins WHERE id=? AND role=?').get(admin.id,'super');if(!linked?.telegram_chat_id)return sendJson(res,409,{error:'Сначала подключите Telegram в кабинете супер-администратора'});const cfg={...settings(),reviewer_admin_id:admin.id};db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json').run(JSON.stringify(cfg));sendJson(res,200,{ok:true,message:'Черновики будут приходить в личный Telegram супер-администратора'});});
+ router.post('/api/admin/partner-club/reviewer',(req,res,ctx)=>{const admin=requireSuperAdmin(req,res,ctx);if(!admin)return;const linked=db.prepare('SELECT telegram_chat_id FROM admins WHERE id=? AND role=?').get(admin.id,'super');if(!linked?.telegram_chat_id)return sendJson(res,409,{error:'Сначала подключите Telegram в кабинете супер-администратора'});const cfg={...settings(),reviewer_admin_id:admin.id};db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json').run(JSON.stringify(cfg));wakeClubWorker();sendJson(res,200,{ok:true,message:'Черновики будут приходить в личный Telegram супер-администратора'});});
  router.get('/api/admin/partner-club/status',(req,res,ctx)=>{if(!auth(req,res,ctx))return;sendJson(res,200,clubStatus());});
- router.post('/api/admin/partner-club/start',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const c=settings();if(!c.chat_id||!process.env.TG_TOKEN)return sendJson(res,409,{error:'Группа не настроена'});db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify({...c,enabled:true,club_started_at:new Date().toISOString().slice(0,19).replace('T',' ')}));sendJson(res,200,{ok:true,...clubStatus()});});
+ router.post('/api/admin/partner-club/start',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const c=settings();if(!c.chat_id||!process.env.TG_TOKEN)return sendJson(res,409,{error:'Группа не настроена'});db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify({...c,enabled:true,club_started_at:new Date().toISOString().slice(0,19).replace('T',' ')}));wakeClubWorker();sendJson(res,200,{ok:true,...clubStatus()});});
  router.post('/api/admin/partner-club/stop',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const c=settings();db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify({...c,enabled:false}));sendJson(res,200,{ok:true,...clubStatus()});});
 
  // Bind/test the group without enabling automatic broadcasts.
@@ -654,26 +660,78 @@ async function createClubPhotoDraft(chatId,draft){
  return {ok:true,message:'✅ Черновик #'+id+' готов. Для отправки нажмите кнопку под фотографией или альбомом выше.'};
 }
 
-let workerBusy=false;
+// An idle partner club no longer scans SQLite every 30 seconds. A new sale
+// wakes the moderator promptly; a five-minute safety pass recovers drafts
+// after restarts and checks the completed Krasnoyarsk calendar day.
+const CLUB_IDLE_MS=5*60*1000;
+const CLUB_RETRY_MS=30*1000;
+const CLUB_WAKE_MS=250;
+let workerBusy=false,workerStarted=false,workerTimer=null,workerDueAt=0,workerWakeRequested=false;
+function scheduleClubWorker(delayMs){
+ if(!workerStarted)return;
+ const wait=Math.max(0,delayMs);
+ const due=Date.now()+wait;
+ if(workerTimer&&workerDueAt<=due)return; // keep the earlier wake-up
+ if(workerTimer)clearTimeout(workerTimer);
+ workerDueAt=due;
+ workerTimer=setTimeout(()=>{
+   workerTimer=null;workerDueAt=0;
+   void runClubWorker();
+ },wait);
+ workerTimer.unref?.();
+}
+function wakeClubWorker(){
+ if(!workerStarted)return;
+ if(workerBusy){workerWakeRequested=true;return;}
+ scheduleClubWorker(CLUB_WAKE_MS);
+}
 async function sendClubUpdates(){
- if(workerBusy)return;
- const cfg=settings();if(!cfg.enabled||!cfg.chat_id||!cfg.club_started_at)return;
- const reviewer=reviewerForClub();if(!reviewer)return;
+ if(workerBusy)return {hasMore:true};
+ const cfg=settings();if(!cfg.enabled||!cfg.chat_id||!cfg.club_started_at)return {hasMore:false};
+ const reviewer=reviewerForClub();if(!reviewer)return {hasMore:false};
  workerBusy=true;
  try{
-  trackSync('club_daily_record', () => dailyRecords.checkYesterday(new Date(),cfg,queue));
-  const events=db.prepare("SELECT e.* FROM partner_club_events e LEFT JOIN partner_club_reviews r ON r.event_id=e.id WHERE r.event_id IS NULL AND e.created_at>=? AND e.status='draft' ORDER BY e.id LIMIT 5").all(cfg.club_started_at);
-  for(const ev of events){
-   if(!settings().enabled)break;
-   if(!settings()[ev.event_type])continue;
+  trackSync('club_daily_record',()=>dailyRecords.checkYesterday(new Date(),cfg,queue));
+  // Disabled event types must not occupy the first five rows and hide new
+  // sales. The query params come from fixed, known setting keys only.
+  const enabled=FLAGS.filter(type=>cfg[type]===true);
+  if(!enabled.length)return {hasMore:false};
+  const placeholders=enabled.map(()=>'?').join(',');
+  const events=db.prepare(
+    "SELECT e.* FROM partner_club_events e LEFT JOIN partner_club_reviews r ON r.event_id=e.id "+
+    "WHERE r.event_id IS NULL AND e.created_at>=? AND e.status='draft' "+
+    "AND e.event_type IN ("+placeholders+") ORDER BY e.id LIMIT 6"
+  ).all(cfg.club_started_at,...enabled);
+  for(const ev of events.slice(0,5)){
+   const latest=settings();
+   if(!latest.enabled)return {hasMore:false};
+   if(!latest[ev.event_type])continue;
    const message='🐾 <b>Черновик для Клуба партнёров #'+ev.id+'</b>\n\n'+clubMessageHtml(ev);
    const result=await require('./telegram').sendToChat(reviewer,message,{reply_markup:reviewButtons(ev.id,ev.event_type==='sales')});
-   if(!result.ok)break;
+   if(!result.ok)return {retry:true};
    db.prepare("INSERT OR IGNORE INTO partner_club_reviews(event_id,state,reviewer_chat_id,requested_at) VALUES(?,'pending',?,CURRENT_TIMESTAMP)").run(ev.id,reviewer);
   }
- }catch(e){console.warn('Partner club moderation:',e.message)}finally{workerBusy=false}
+  return {hasMore:events.length>5};
+ }catch(e){
+  console.warn('Partner club moderation:',e.message);
+  return {retry:true};
+ }finally{workerBusy=false}
 }
-function startPartnerClubWorker(){const timer=setInterval(()=>trackAsync('club_moderation',sendClubUpdates).catch(e=>console.warn('Partner club:',e.message)),30000);timer.unref?.()}
+async function runClubWorker(){
+ let outcome;
+ try{outcome=await trackAsync('club_moderation',sendClubUpdates);}
+ catch(e){console.warn('Partner club:',e.message);outcome={retry:true};}
+ const wake=workerWakeRequested;
+ workerWakeRequested=false;
+ scheduleClubWorker(outcome?.retry?CLUB_RETRY_MS:
+   outcome?.hasMore||wake?CLUB_WAKE_MS:CLUB_IDLE_MS);
+}
+function startPartnerClubWorker(){
+ if(workerStarted)return;
+ workerStarted=true;
+ // A restart must recover queued drafts without waiting for five minutes.
+ scheduleClubWorker(0);
+}
 function generateApprovedClubReport(type,{approved=false}={}){
   if(!approved)return {ok:false,error:'Сначала подтвердите формирование в Telegram'};
   const types={clubdaily:'daily',clubweekly:'weekly',clubtopweek:'top_products_week',clubtopall:'top_products_all'};
