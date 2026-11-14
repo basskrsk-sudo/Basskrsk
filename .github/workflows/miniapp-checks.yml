@@ -269,6 +269,8 @@ on:
       - scripts/site-uptime-monitor.js
       - scripts/site-uptime-monitor.test.js
       - .github/workflows/site-uptime.yml
+      - server/task-seed-bootstrap.js
+      - server/task-seed-bootstrap.test.js
       - server/task-seed-2026-11-01.js
       - server/task-seed-2026-11-01.test.js
       - server/task-seed-2026-11-02.js
@@ -351,6 +353,8 @@ jobs:
           node --check server/miniapp-resilience.test.js
           node --check public/miniapp-reliability.js
           node --check public/sw.js
+          node --check server/task-seed-bootstrap.js
+          node --check server/task-seed-bootstrap.test.js
           node --check server/task-seed-2026-11-01.js
           node --check server/task-seed-2026-11-01.test.js
           node --check server/task-seed-2026-11-02.js
@@ -510,6 +514,8 @@ jobs:
         run: node --test server/admin-essential-metrics-ui.test.js
       - name: Verify indexed operations-center queries
         run: node --test server/operations-center-query.test.js
+      - name: Verify legacy task imports are skipped after migration
+        run: node --test server/task-seed-bootstrap.test.js
       - name: Verify no games remain on storefront or API
         run: node --test server/retired-games.test.js
       - name: Verify superseded PNG mascot assets are removed

@@ -68,10 +68,8 @@ const { registerPointLaunchRoutes } = require('./routes-point-launch');
 const { registerPartnerClubRoutes } = require('./routes-partner-club');
 
 require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
-require('./task-seed').seedMeetingTasks();
-require('./task-seed-2026-10-25').seedMeeting20261025();
-require('./task-seed-2026-11-01').seedMeeting20261101();
-require('./task-seed-2026-11-02').seedKrasnoyarskSupplyStrategy();
+// Historical meeting imports are only loaded when their migration versions are missing.
+require('./task-seed-bootstrap').runPendingTaskSeeds();
 ensureTaskAccountBindings();
 // Страницы партнёрских салонов дополнительно сохраняются отдельным снимком
 // в /data и при необходимости восстанавливаются до запуска HTTP-сервера.
