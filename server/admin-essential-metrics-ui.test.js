@@ -38,6 +38,15 @@ test('retired BSC is absent from admin interface, navigation, and registered API
   assert.match(read('server/routes-business-founders.js'),/getCachedWeeklyBsc/);
   assert.match(read('server/db.js'),/bsc_initiatives/);
 });
+test('saving a salon page does not trigger heavy operations checks',()=>{
+  const handler=html.split('async function saveSalonPageModal() {')[1]
+    .split('function openPointModal() {')[0];
+  assert.ok(handler,'salon editor must remain available');
+  assert.doesNotMatch(handler,/loadOperationsCenter\s*\(/);
+  assert.match(handler,/ops-summary/);
+  assert.match(handler,/Требуется обновление/);
+});
+
 test('heavy operations check is opt-in on the admin dashboard',()=>{
   const dashboardLoader=nav.split("if (id === 'dashboard')")[1].split('\n')[0];
   assert.doesNotMatch(dashboardLoader,/loadOperationsCenter/);
