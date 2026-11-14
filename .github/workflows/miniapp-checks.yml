@@ -235,6 +235,7 @@ on:
       - server/telegram-bot-identity.test.js
       - server/miniapp-phone-identity.js
       - server/routes-customers.js
+      - server/customer-order-history-batch.test.js
       - server/partner-phone-lookup.test.js
       - server/routes-partners.js
       - server/routes-owners.js
@@ -474,6 +475,7 @@ jobs:
           node --check public/miniapp-founder.js
           node --check public/miniapp-founder-admin.js
           node --check server/routes-customers.js
+          node --check server/customer-order-history-batch.test.js
           node --check server/partner-phone-lookup.test.js
           node --check server/routes-partners.js
           node --check server/routes-owners.js
@@ -536,6 +538,8 @@ jobs:
         run: node --test server/backup-schedule.test.js
       - name: Verify indexed groomer phone checks for Gold loyalty
         run: node --test server/partner-phone-lookup.test.js
+      - name: Verify batch loading of a customer's own order history
+        run: node --test server/customer-order-history-batch.test.js
       - name: Verify single-query live checkout pricing and receipt totals
         run: node --test server/order-pricing-batch.test.js
       - name: Verify indexed, unambiguous customer phone lookup
