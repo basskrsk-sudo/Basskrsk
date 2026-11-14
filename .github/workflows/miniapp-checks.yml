@@ -183,6 +183,7 @@ on:
       - server/routes-max-admin.test.js
       - public/max-admin.js
       - public/admin-navigation.js
+      - server/admin-essential-metrics-ui.test.js
       - public/admin-point.js
       - public/admin-report-center.js
       - server/routes-admin-point-workspace.js
@@ -399,6 +400,7 @@ jobs:
           node --check server/routes-max-admin.test.js
           node --check public/max-admin.js
           node --check public/admin-navigation.js
+          node --check server/admin-essential-metrics-ui.test.js
           node --check public/admin-point.js
           node --check public/admin-report-center.js
           node --check server/routes-admin-point-workspace.js
@@ -500,6 +502,8 @@ jobs:
         run: node --test server/warehouse-list-query.test.js
       - name: Verify exact economics totals after streaming paid orders
         run: node --test server/economics-dashboard-performance.test.js
+      - name: Verify simplified admin business metrics
+        run: node --test server/admin-essential-metrics-ui.test.js
       - name: Verify indexed operations-center queries
         run: node --test server/operations-center-query.test.js
       - name: Verify no games remain on storefront or API

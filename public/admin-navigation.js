@@ -8,7 +8,7 @@ const sections=[...document.querySelectorAll('[id^="sec-"]')]
 const titles={
   launch:'План запуска', 'system-health':'Состояние системы',
   guides:'Инструкции',dashboard:'Операционный центр',
-  bsc:'Стратегия и KPI',tasks:'Контроль поручений',
+  tasks:'Контроль поручений',
   economics:'Экономика проекта','business-expenses':'Траты бизнеса',
   'week-comparison':'Неделя к неделе','weekly-reports':'Отчёт ГД',
   'payout-reports':'Отчёты партнёрам','report-center':'Центр отчётности',
@@ -34,7 +34,7 @@ const sectionGroups={
   'report-center':'finance',economics:'finance','business-expenses':'finance',
   'payout-reports':'finance','week-comparison':'finance','weekly-reports':'finance',
   'qr-analytics':'finance',
-  tasks:'team',bsc:'team',launch:'team',
+  tasks:'team',launch:'team',
   'system-health':'system','telegram-connections':'system',
   max:'system',audit:'system',admins:'system',backup:'system',guides:'system'
 };
@@ -51,7 +51,7 @@ const contextTabs={
     ['winback','Возврат клиентов'],['reviews','Отзывы']],
   finance:[['report-center','Центр отчётов'],['economics','Экономика'],
     ['business-expenses','Расходы']],
-  team:[['tasks','Поручения'],['bsc','Стратегия и KPI'],['launch','План запуска']],
+  team:[['tasks','Поручения'],['launch','План запуска']],
   system:[['system-health','Мониторинг'],['telegram-connections','Telegram'],
     ['max','MAX'],['backup','Резервные копии'],['admins','Администраторы',true],
     ['audit','Журнал',true],['guides','Инструкции']]
@@ -101,6 +101,8 @@ window.addEventListener('resize', function() {
 
 
 async function showSection(id) {
+  // Old links to the removed BSC dashboard return to the business overview.
+  if (!sections.includes(id)) id = 'dashboard';
   sections.forEach(function(s) {
     const el = document.getElementById('sec-' + s);
     if (el) el.style.display = (s === id) ? 'block' : 'none';
@@ -121,7 +123,6 @@ async function showSection(id) {
   if (id === 'launch')      await showLaunchTab(launchActiveTab);
   if (id === 'system-health') await renderSystemHealth();
   if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo(), loadOperationsCenter()]); renderDashboard(); }
-  if (id === 'bsc')         await renderBscDashboard();
   if (id === 'tasks')       await loadTaskLinks();
   if (id === 'economics')   await renderEconomics();
   if (id === 'business-expenses') await renderBusinessExpenses();
