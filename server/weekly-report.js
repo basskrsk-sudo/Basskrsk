@@ -12,6 +12,7 @@ const { sendTelegram, sendTelegramDocument } = require('./telegram');
 const { calculateBsc } = require('./bsc');
 const { createAnalyticsCache } = require('./analytics-cache');
 const { PAID_PHONE_KEY_SQL } = require('./report-phone-key');
+const { trackSync } = require('./runtime-diagnostics');
 const { buildGrowthPlanDashboard, syncGrowthPlanTasks } = require('./growth-plan');
 
 const REPORTS_DIR = path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'reports');
@@ -95,11 +96,12 @@ function pctChange(current, previous) {
 function percent(value) { return Math.round(Number(value || 0) * 10) / 10; }
 
 function getOrders(start, end) {
+  // The full report uses order columns, not the joined point/city aliases.
+  // Avoid two unnecessary joins for each selected order (current and previous
+  // report periods); point names and cities are loaded by buildPoints().
   return db.prepare(`
-    SELECT o.*, p.name AS point_name, p.city_id, c.name AS city_name
+    SELECT o.*
     FROM orders o
-    LEFT JOIN points p ON p.id = o.point_id
-    LEFT JOIN cities c ON c.id = p.city_id
     WHERE o.created_at >= ? AND o.created_at < ?
     ORDER BY o.created_at, o.id
   `).all(start, end);
@@ -295,22 +297,34 @@ function buildCustomers(current, period) {
 }
 
 function buildDaily(current, previous, period) {
+  // Each paid order contributes to one Krasnoyarsk calendar day. Previously,
+  // orders were filtered again for each of up to 31 days (O(days * orders)).
+  const groupDays = (orders) => {
+    const byDay = new Map();
+    for (const order of orders) {
+      const date = localDateKey(order.created_at);
+      const totals = byDay.get(date) || { revenue: 0, orders_count: 0 };
+      totals.revenue += effectiveRevenue(order);
+      totals.orders_count++;
+      byDay.set(date, totals);
+    }
+    return byDay;
+  };
+  const currentDays = groupDays(current.paidOrders);
+  const previousDays = groupDays(previous.paidOrders);
   const rows = [];
   const startLocalMs = Date.parse(period.start_local + 'T00:00:00Z');
-  // Длина выбранного периода в днях: для недели — 7, для произвольного — сколько выбрали.
-  // Сравнение идёт день-в-день с окном той же длины непосредственно перед периодом.
+  // Week and custom windows remain inclusive. Emit an explicit zero for
+  // empty days and keep the previous period aligned by day offset.
   const days = Math.round((Date.parse(period.end_local + 'T00:00:00Z') - startLocalMs) / DAY_MS) + 1;
-  for (let index = 0; index < days; index += 1) {
+  for (let index = 0; index < days; index++) {
     const date = localDateKeyFromMs(startLocalMs + index * DAY_MS);
-    const currentOrders = current.paidOrders.filter((order) => localDateKey(order.created_at) === date);
-    const previousDate = localDateKeyFromMs(startLocalMs + (index - days) * DAY_MS);
-    const previousOrders = previous.paidOrders.filter((order) => localDateKey(order.created_at) === previousDate);
+    const prevDate = localDateKeyFromMs(startLocalMs + (index - days) * DAY_MS);
+    const today = currentDays.get(date) || { revenue: 0, orders_count: 0 };
+    const before = previousDays.get(prevDate) || { revenue: 0, orders_count: 0 };
     rows.push({
-      date,
-      revenue: currentOrders.reduce((total, order) => total + effectiveRevenue(order), 0),
-      orders_count: currentOrders.length,
-      previous_revenue: previousOrders.reduce((total, order) => total + effectiveRevenue(order), 0),
-      previous_orders_count: previousOrders.length,
+      date, revenue: today.revenue, orders_count: today.orders_count,
+      previous_revenue: before.revenue, previous_orders_count: before.orders_count,
     });
   }
   return rows;
@@ -383,6 +397,7 @@ function buildAlerts(report) {
 }
 
 function collectWeeklyReportForPeriod(period) {
+ return trackSync('weekly_report_build', () => {
   const current = collectMetrics(period.start_utc, period.end_utc_exclusive, period);
   const previous = collectMetrics(period.previous_start_utc, period.previous_end_utc_exclusive, {
     start_local: period.previous_start_local,
@@ -407,6 +422,7 @@ function collectWeeklyReportForPeriod(period) {
   report.alerts = buildAlerts(report);
   report.bsc = calculateBsc(report);
   return report;
+ });
 }
 
 // BSC needs the core weekly KPIs, point stock and one movement count. Avoid
@@ -448,7 +464,7 @@ const bscCache = createAnalyticsCache(
 function getCachedWeeklyBsc(now = new Date()) {
   const period = previousCompletedWeek(now);
   return bscCache.get(period.start_utc, () => {
-    const report = collectWeeklyBscReport(now);
+    const report = trackSync('weekly_bsc_build', () => collectWeeklyBscReport(now));
     return { period: report.period, bsc: report.bsc };
   });
 }
