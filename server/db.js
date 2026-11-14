@@ -2018,6 +2018,8 @@ db.exec(`
   END;
   CREATE INDEX IF NOT EXISTS idx_partners_phone_last10_active
     ON partners(phone_last10,active);
+  CREATE INDEX IF NOT EXISTS idx_partners_point_active
+    ON partners(point_id,active,id);
 `);
 const missingPartnerPhoneKeys = db.prepare(
   'SELECT id,phone FROM partners WHERE phone_last10 IS NULL'

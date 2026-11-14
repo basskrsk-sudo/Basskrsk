@@ -97,7 +97,9 @@ function resolveOrderCommission(pointId, partnerId, customerPhone, advisorSelect
     // истории это не смешивалось со старыми заказами без атрибуции.
     return { rate: 0, isSelfOrder: false };
   } else if (pointId) {
-    const pointPartners = db.prepare('SELECT phone, commission_rate FROM partners WHERE point_id = ? AND active = 1').all(pointId);
+    const pointPartners = db.prepare(
+      'SELECT phone, commission_rate FROM partners WHERE point_id = ? AND active = 1 LIMIT 2'
+    ).all(pointId);
     // Без выбора клиента ставку можно однозначно связать с партнёром только
     // когда он на точке один. При нескольких не выбираем первого случайно.
     partner = pointPartners.length === 1 ? pointPartners[0] : null;
@@ -107,12 +109,17 @@ function resolveOrderCommission(pointId, partnerId, customerPhone, advisorSelect
   return { rate: partner.commission_rate, isSelfOrder };
 }
 
+const selfOrderingPartnerQuery = db.prepare(`
+  SELECT id, point_id, full_name, phone, commission_rate
+  FROM partners
+  WHERE point_id = ? AND active = 1 AND phone_last10 = ?
+  ORDER BY id LIMIT 1
+`);
 function findSelfOrderingPartner(pointId, customerPhone) {
   if (!pointId) return null;
-  return db.prepare(`
-    SELECT id, point_id, full_name, phone, commission_rate
-    FROM partners WHERE point_id = ? AND active = 1
-  `).all(pointId).find((partner) => phonesMatchLast10(partner.phone, customerPhone)) || null;
+  const phone = String(customerPhone || '').replace(/\D/g, '').slice(-10);
+  if (phone.length !== 10) return null;
+  return selfOrderingPartnerQuery.get(pointId, phone) || null;
 }
 
 // Определяет, чей уровень нужно проверить после этого заказа: если клиент
@@ -126,7 +133,9 @@ async function checkPartnerTierForOrder(pointId, partnerId) {
     return;
   }
   if (!pointId) return;
-  const solePartner = db.prepare('SELECT id FROM partners WHERE point_id = ? AND active = 1').all(pointId);
+  const solePartner = db.prepare(
+    'SELECT id FROM partners WHERE point_id = ? AND active = 1 LIMIT 2'
+  ).all(pointId);
   if (solePartner.length === 1) await checkAndUpgradePartnerTier(solePartner[0].id);
 }
 
@@ -660,4 +669,4 @@ function registerPaymentRoutes(router) {
   });
 }
 
-module.exports = { registerPaymentRoutes };
+module.exports = { registerPaymentRoutes, findSelfOrderingPartner, resolveOrderCommission };
