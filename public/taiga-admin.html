@@ -3322,9 +3322,15 @@ let adminSalesSummary = null;
 let currentPeriod = 7;
 
 async function loadAdminSalesSummary() {
-  const res = await authFetch('/api/admin/sales-summary?days=' + periodDays());
+  const days = periodDays();
+  const res = await authFetch('/api/admin/sales-summary?days=' + days);
   if (!res.ok) throw new Error('Не удалось загрузить ключевые показатели');
-  adminSalesSummary = await res.json();
+  const summary = await res.json();
+  // Ignore stale responses if a different period was selected meanwhile.
+  if (days !== periodDays()) return;
+  adminSalesSummary = summary;
+  const activeCount = document.getElementById('kpi-active-points');
+  if (activeCount) activeCount.textContent = Number(summary.active_points_count || 0).toLocaleString('ru-RU');
 }
 
 async function loadOrders() {
