@@ -320,8 +320,28 @@ function registerCustomerRoutes(router) {
       ? db.prepare('SELECT * FROM orders WHERE substr(' + storedDigits +
         ', -10) = ? ORDER BY id DESC LIMIT 500').all(customerMobile)
       : [];
-    const getItems = db.prepare('SELECT name, weight, price, qty, is_custom FROM order_items WHERE order_id = ?');
-    sendJson(res, 200, { orders: orders.map((o) => ({ ...o, items: getItems.all(o.id) })) });
+    // Fetch item descriptions only for these verified customer orders.
+    // A single indexed batch query replaces up to 500 queries per profile load.
+    const itemsByOrder = new Map();
+    if (orders.length) {
+      const ids = orders.map((order) => order.id);
+      const placeholders = ids.map(() => '?').join(',');
+      const items = db.prepare(`
+        SELECT order_id, name, weight, price, qty, is_custom
+        FROM order_items
+        WHERE order_id IN (${placeholders})
+        ORDER BY order_id, id
+      `).all(...ids);
+      for (const { order_id, ...item } of items) {
+        if (!itemsByOrder.has(order_id)) itemsByOrder.set(order_id, []);
+        itemsByOrder.get(order_id).push(item);
+      }
+    }
+    sendJson(res, 200, {
+      orders: orders.map((order) => ({
+        ...order, items: itemsByOrder.get(order.id) || [],
+      })),
+    });
   });
 
   // GET /api/referral/validate?code=X&phone=Y — публичный, вызывается при
