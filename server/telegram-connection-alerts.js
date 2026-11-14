@@ -146,6 +146,9 @@ function bindTelegramAccount(role,accountId,chatId,options={}){
       // Never delay or fail the user's successful Telegram login because an
       // administrator blocked the bot, Telegram was down, or a chat was moved.
       Promise.resolve().then(()=>flushBotConnectionAlerts({database}))
+        // Immediate delivery is preserved. Recheck the retry schedule when
+        // Telegram rejects a delivery, even if the periodic worker is idle.
+        .finally(()=>{if(database===db)connectionAlertScheduler.wake();})
         .catch(e=>console.error('Telegram connection alert:',e.message));
     }
     return {changed:true,eventId,recipients:recipients.size};
@@ -230,17 +233,90 @@ async function flushBotConnectionAlerts(options={}){
   try{return await inProgress;}finally{inProgress=null;}
 }
 
-let worker=null;
+// Empty queue: a five-minute safety scan instead of polling SQLite every
+// minute. Pending retries retain the former one-minute cadence and their
+// database-backed two-minute cooldown. An actual new binding still sends
+// immediately through bindTelegramAccount(), independently of this scheduler.
+const ALERT_IDLE_MS=5*60*1000;
+const ALERT_RETRY_MS=60*1000;
+function createBotConnectionAlertScheduler({
+  database=db,
+  flush=()=>flushBotConnectionAlerts({database}),
+  setTimer=setTimeout,
+  clearTimer=clearTimeout,
+  now=Date.now,
+}={}){
+  let started=false,timer=null,dueAt=Infinity,running=false,wakeRequested=false;
+  const pending=database.prepare(
+    "SELECT 1 FROM bot_connection_deliveries WHERE state='pending' AND attempts<30 LIMIT 1"
+  );
+  function schedule(delayMs){
+    if(!started)return;
+    const target=now()+delayMs;
+    // An incoming connection can shorten the idle timer; never postpone a
+    // previously scheduled wake (including a retry).
+    if(timer&&dueAt<=target)return;
+    if(timer)clearTimer(timer);
+    dueAt=target;
+    timer=setTimer(()=>{
+      timer=null;dueAt=Infinity;
+      void tick();
+    },delayMs);
+    timer?.unref?.();
+  }
+  async function tick(){
+    if(!started)return;
+    if(running){wakeRequested=true;return;}
+    running=true;
+    let failed=false;
+    try{
+      await flush();
+    }catch(error){
+      failed=true;
+      console.warn('Telegram alerts:',error.message);
+    }finally{
+      running=false;
+    }
+    if(!started)return;
+    let next=ALERT_RETRY_MS;
+    if(!failed){
+      try{next=pending.get()?ALERT_RETRY_MS:ALERT_IDLE_MS;}
+      catch(error){console.warn('Telegram alerts queue:',error.message);}
+    }
+    const wake=wakeRequested;
+    wakeRequested=false;
+    schedule(wake?0:next);
+  }
+  return {
+    start(){
+      if(started)return;
+      started=true;
+      // Redeploy recovery: any undelivered notifications are checked at once.
+      schedule(0);
+    },
+    wake(){
+      if(!started)return;
+      if(running)wakeRequested=true;
+      else schedule(0);
+    },
+    stop(){
+      started=false;wakeRequested=false;
+      if(timer)clearTimer(timer);
+      timer=null;dueAt=Infinity;
+    },
+  };
+}
+const connectionAlertScheduler=createBotConnectionAlertScheduler();
 function startBotConnectionAlertWorker(){
-  if(worker||!process.env.TG_TOKEN)return;
-  flushBotConnectionAlerts().catch(e=>console.error('Telegram alerts:',e.message));
-  worker=setInterval(()=>{
-    flushBotConnectionAlerts().catch(e=>console.error('Telegram alerts:',e.message));
-  },60*1000);
-  if(typeof worker.unref==='function')worker.unref();
+  if(!process.env.TG_TOKEN)return;
+  connectionAlertScheduler.start();
+}
+function stopBotConnectionAlertWorker(){
+  connectionAlertScheduler.stop();
 }
 
 module.exports={
   bindTelegramAccount,flushBotConnectionAlerts,formatConnectionAlert,
   ensureBotConnectionAlertTables,startBotConnectionAlertWorker,
+  stopBotConnectionAlertWorker,createBotConnectionAlertScheduler,
 };
