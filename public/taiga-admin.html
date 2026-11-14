@@ -5325,7 +5325,12 @@ async function saveSalonPageModal() {
     if (currentPoint && currentPoint.id === salonModalPointId) {
       await loadPointLaunchChecklist(salonModalPointId);
     }
-    loadOperationsCenter();
+    // Check the operations dashboard only when the administrator explicitly asks.
+    // A salon edit can change its warnings, so invalidate displayed results instead.
+    const opsSummary = document.getElementById('ops-summary');
+    const opsGrid = document.getElementById('ops-grid');
+    if (opsSummary) opsSummary.innerHTML = '<span class="ops-summary-pill info">Требуется обновление</span>';
+    if (opsGrid) opsGrid.innerHTML = '<div class="ops-ok" style="color:var(--muted);">Данные о салоне изменились. Нажмите «Проверить снова», чтобы обновить сигналы.</div>';
   } catch (e) {
     errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
     errEl.style.display = 'block';
