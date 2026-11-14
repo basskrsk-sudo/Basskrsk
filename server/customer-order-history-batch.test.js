@@ -12,6 +12,7 @@ process.env.TOKEN_SECRET = 'isolated-customer-history-batch-secret';
 const db = require('./db');
 const { signToken } = require('./auth');
 const { registerCustomerRoutes } = require('./routes-customers');
+const { ORDER_HISTORY_PHONE_KEY_SQL, PAID_PHONE_KEY_SQL } = require('./report-phone-key');
 
 const routes = new Map();
 registerCustomerRoutes(new Proxy({}, {
@@ -111,6 +112,51 @@ test('SQLite plan uses the existing order_items order index',()=>{
   ).all(1,2,3).map(row=>row.detail).join('\n');
   assert.match(plan,/idx_order_items_order/);
   assert.doesNotMatch(section,/JOIN customers ON/);
+});
+
+
+test('history lookup uses a dedicated indexed expression without scanning orders', () => {
+  const sql='SELECT * FROM orders WHERE ' + ORDER_HISTORY_PHONE_KEY_SQL +
+    ' = ? ORDER BY id DESC LIMIT 500';
+  const plan=db.prepare('EXPLAIN QUERY PLAN ' + sql)
+    .all('9135550001').map(row => String(row.detail)).join('\n');
+  assert.match(plan,/idx_orders_history_phone_key_id/);
+  assert.doesNotMatch(plan,/SCAN orders\b/);
+  const index=db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='index' AND name=?"
+  ).get('idx_orders_history_phone_key_id');
+  assert.equal(index.name,'idx_orders_history_phone_key_id');
+  const route=fs.readFileSync(path.join(__dirname,'routes-customers.js'),'utf8');
+  assert.match(route,/ORDER_HISTORY_PHONE_KEY_SQL/);
+  assert.doesNotMatch(route,/const storedDigits =/);
+  // Existing BSC phone matching remains untouched and paid-only.
+  assert.notEqual(PAID_PHONE_KEY_SQL,ORDER_HISTORY_PHONE_KEY_SQL);
+});
+
+test('indexed history preserves legacy phone separators for all order statuses', () => {
+  order('HISTORY-INDEX-PENDING','+7 (913)\t555-00-01',[]);
+  order('HISTORY-INDEX-CANCELLED','8\n913 555.00.01',[]);
+  order('HISTORY-INDEX-OTHER','8 913 555 00 02',[]);
+  db.prepare("UPDATE orders SET status='pending' WHERE order_code='HISTORY-INDEX-PENDING'").run();
+  db.prepare("UPDATE orders SET status='failed' WHERE order_code='HISTORY-INDEX-CANCELLED'").run();
+  const own=history(customerId);
+  assert.ok(own.body.orders.some(o=>o.order_code==='HISTORY-INDEX-PENDING'));
+  assert.ok(own.body.orders.some(o=>o.order_code==='HISTORY-INDEX-CANCELLED'));
+  assert.ok(!own.body.orders.some(o=>o.order_code==='HISTORY-INDEX-OTHER'));
+  assert.equal(
+    db.prepare('SELECT ' + ORDER_HISTORY_PHONE_KEY_SQL +
+      ' AS k FROM orders WHERE order_code=?').get('HISTORY-INDEX-CANCELLED').k,
+    '9135550001'
+  );
+});
+
+test('order phone changes update the history expression index immediately', () => {
+  const id=order('HISTORY-INDEX-CHANGE','79135550002',[]);
+  assert.ok(!history(customerId).body.orders.some(o=>o.id===id));
+  db.prepare('UPDATE orders SET customer_phone=? WHERE id=?')
+    .run('8 (913) 555-00-01',id);
+  assert.ok(history(customerId).body.orders.some(o=>o.id===id));
+  assert.ok(!history(otherId).body.orders.some(o=>o.id===id));
 });
 
 test.after(()=>{
