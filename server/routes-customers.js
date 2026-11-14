@@ -16,12 +16,14 @@ function normalizePhone(phone) {
 // за то, что размещают у себя стойку. Телефон партнёров при регистрации
 // сохраняется БЕЗ нормализации (см. routes-auth.js) — сравниваем по последним
 // 10 цифрам, как и везде в проекте для таблицы partners.
+const activePartnerByPhoneKey = db.prepare(
+  'SELECT 1 FROM partners WHERE phone_last10=? AND active=1 LIMIT 1'
+);
 function isActivePartnerPhone(digits) {
   if (!digits) return false;
-  const target = digits.slice(-10);
+  const target = String(digits).replace(/\D/g, '').slice(-10);
   if (target.length < 10) return false;
-  const partners = db.prepare('SELECT phone FROM partners WHERE active = 1').all();
-  return partners.some((p) => String(p.phone || '').replace(/\D/g, '').slice(-10) === target);
+  return !!activePartnerByPhoneKey.get(target);
 }
 
 // Уровни программы лояльности — по количеству уже оплаченных заказов ДО

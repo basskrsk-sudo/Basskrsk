@@ -1996,6 +1996,40 @@ if (missingCustomerPhoneKeys.length) {
     throw error;
   }
 }
+// The partner Gold-loyalty check used to load every active partner phone
+// for every checkout. A trigger-maintained key keeps legacy phone formats
+// compatible without repeatedly scanning the partners table.
+ensureColumn('partners', 'phone_last10', 'TEXT');
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS trg_partners_phone_last10_insert
+  AFTER INSERT ON partners
+  BEGIN
+    UPDATE partners SET phone_last10=${customerPhoneLast10Sql} WHERE id=NEW.id;
+  END;
+  CREATE TRIGGER IF NOT EXISTS trg_partners_phone_last10_update
+  AFTER UPDATE OF phone ON partners
+  BEGIN
+    UPDATE partners SET phone_last10=${customerPhoneLast10Sql} WHERE id=NEW.id;
+  END;
+  CREATE INDEX IF NOT EXISTS idx_partners_phone_last10_active
+    ON partners(phone_last10,active);
+`);
+const missingPartnerPhoneKeys = db.prepare(
+  'SELECT id,phone FROM partners WHERE phone_last10 IS NULL'
+).all();
+if (missingPartnerPhoneKeys.length) {
+  const updateKey = db.prepare('UPDATE partners SET phone_last10=? WHERE id=?');
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (const row of missingPartnerPhoneKeys) {
+      updateKey.run(String(row.phone || '').replace(/\D/g, '').slice(-10),row.id);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 require('./payout-reports').initializeReports(db);
 module.exports = db;
 module.exports.DB_PATH = DB_PATH;
