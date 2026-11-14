@@ -132,6 +132,7 @@ on:
       - server/qr-weekly-telegram.test.js
       - server/payout-reminders.js
       - server/winback.js
+      - server/winback-manual-only.test.js
       - public/taiga-warehouse.html
       - public/miniapp-return.js
       - server/miniapp-work-ui.test.js
@@ -491,11 +492,14 @@ jobs:
           node --check server/qr-weekly-telegram.test.js
           node --check server/payout-reminders.js
           node --check server/winback.js
+          node --check server/winback-manual-only.test.js
           node --check public/miniapp-return.js
       - name: Validate Docker PDF link compatibility
         run: node --test scripts/restore-doc-aliases.test.js
       - name: Verify the external pet news collector is retired
         run: node --test server/retired-pet-news.test.js
+      - name: Verify Win-back sends messages only after an admin action
+        run: node --test server/winback-manual-only.test.js
       - name: Verify Telegram login polling limits
         run: node --test server/telegram-login-polling.test.js
       - name: Verify batched warehouse lists
