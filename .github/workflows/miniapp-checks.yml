@@ -19,6 +19,9 @@ on:
       - server/telegram-formatting.js
       - public/hvost-pomoshchi.html
       - server/charity-pause-ui.test.js
+      - server/retired-games.test.js
+      - server/routes-chess.js
+      - server/routes-quiz.js
       - public/miniapp-reliability.js
       - public/sw.js
       - server/miniapp-diagnostics.js
@@ -441,6 +444,7 @@ jobs:
           node --check public/miniapp-customer.js
           node --check public/miniapp-work.js
           node --check server/charity-pause-ui.test.js
+          node --check server/retired-games.test.js
           node --check public/miniapp-promos.js
           node --check server/referral-program.js
           node --check server/referral-flow.test.js
@@ -476,6 +480,8 @@ jobs:
           node --check public/miniapp-return.js
       - name: Validate Docker PDF link compatibility
         run: node --test scripts/restore-doc-aliases.test.js
+      - name: Verify no games remain on storefront or API
+        run: node --test server/retired-games.test.js
       - name: Check Mini App inline JavaScript syntax
         run: |
           node -e "const fs=require('node:fs');const s=fs.readFileSync('public/miniapp.html','utf8');const m=s.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);if(!m)throw new Error('missing Mini App script');new Function(m[1]);console.log('Mini App JavaScript syntax OK');"

@@ -40,8 +40,6 @@ const { registerCustomerRestockRoutes } = require('./customer-restock-requests')
 const { registerWarehouseKeeperRoutes } = require('./routes-warehouse-keepers');
 const { registerOwnerRoutes } = require('./routes-owners');
 const { registerCustomerRoutes } = require('./routes-customers');
-const { registerChessRoutes } = require('./routes-chess');
-const { registerQuizRoutes } = require('./routes-quiz');
 const { registerSettingsRoutes } = require('./routes-settings');
 const { registerNewsRoutes } = require('./routes-news');
 const { registerBackupRoutes } = require('./backup');
@@ -132,8 +130,6 @@ registerCustomerRestockRoutes(router);
 registerWarehouseKeeperRoutes(router);
 registerOwnerRoutes(router);
 registerCustomerRoutes(router);
-registerChessRoutes(router);
-registerQuizRoutes(router);
 registerSettingsRoutes(router);
 registerNewsRoutes(router);
 registerBackupRoutes(router);
