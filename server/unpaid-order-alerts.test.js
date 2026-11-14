@@ -48,7 +48,10 @@ function sender() {
 
 test('frequent unpaid-order scans load only required routing columns, not full orders',()=>{
   const source=fs.readFileSync(path.join(__dirname,'unpaid-order-alerts.js'),'utf8');
-  assert.match(source,/SELECT id, point_id FROM orders WHERE status='pending'/);
+  assert.match(source,/SELECT o\.id, o\.point_id, ml\.order_id AS manager_logged/);
+  assert.match(source,/WHERE o\.status='pending' AND o\.reservation_status='active'/);
+  assert.match(source,/LEFT JOIN unpaid_order_admin_alert_log al/);
+  assert.doesNotMatch(source,/adminDeliveryDue\(/);
   assert.doesNotMatch(source,/SELECT \* FROM orders WHERE status='pending' AND reservation_status='active'/);
 });
 
@@ -380,4 +383,85 @@ test('pending-order polling uses a partial index instead of scanning paid order 
   assert.match(row.sql,/WHERE status='pending' AND reservation_status='active'/);
   // The indexed condition matches the actual scheduled query verbatim.
   assert.ok(!row.sql.includes("status='paid'"));
+});
+
+
+test('batched polling preserves each admin recipient retry and manager deduplication',()=>{
+  isolateAdminAlerts();
+  const mgr=manager('batch-loop-manager','900000000101');
+  point('batch-loop-point',mgr);
+  admin('batch-loop-a','900000000102');
+  admin('batch-loop-b','900000000103');
+  const first=order('TG-BATCH-01','batch-loop-point','-2 minutes');
+  const second=order('TG-BATCH-02','batch-loop-point','-2 minutes');
+  const third=order('TG-BATCH-03','batch-loop-point','-2 minutes');
+  const opts={businessChatId:''};
+  const initially=pendingOrderIds(opts);
+  for(const id of [first,second,third])assert.ok(initially.includes(id));
+  // The manager already received all three; admin A received the first
+  // and failed on the second, while admin B has not received anything.
+  for(const id of [first,second,third]){
+    db.prepare("INSERT INTO unpaid_order_alert_log(order_id,alert_type,status) VALUES(?,'pending','sent')")
+      .run(id);
+  }
+  db.prepare("INSERT INTO unpaid_order_admin_alert_log(order_id,alert_type,target_chat_id,status) VALUES(?,'pending',?,'sent')")
+    .run(first,'900000000102');
+  db.prepare("INSERT INTO unpaid_order_admin_alert_log(order_id,alert_type,target_chat_id,status,created_at) " +
+    "VALUES(?,'pending',?,'failed',datetime('now','-31 seconds'))").run(second,'900000000102');
+  db.prepare("INSERT INTO unpaid_order_admin_alert_log(order_id,alert_type,target_chat_id,status) " +
+    "VALUES(?,'pending',?,'sent')").run(second,'900000000103');
+  assert.ok(pendingOrderIds(opts).includes(first),'admin B has not received first order');
+  assert.ok(pendingOrderIds(opts).includes(second),'admin A failed and retry is due');
+  assert.ok(pendingOrderIds(opts).includes(third),'admin A and B never received third');
+  // Once both admins have received, the manager ledger suppresses duplicates.
+  db.prepare("INSERT INTO unpaid_order_admin_alert_log(order_id,alert_type,target_chat_id,status) VALUES(?,'pending',?,'sent')")
+    .run(first,'900000000103');
+  db.prepare("UPDATE unpaid_order_admin_alert_log SET status='sent' WHERE order_id=? AND target_chat_id=?")
+    .run(second,'900000000102');
+  db.prepare("INSERT INTO unpaid_order_admin_alert_log(order_id,alert_type,target_chat_id,status) VALUES(?,'pending',?,'sent')")
+    .run(third,'900000000102');
+  db.prepare("INSERT INTO unpaid_order_admin_alert_log(order_id,alert_type,target_chat_id,status) VALUES(?,'pending',?,'sent')")
+    .run(third,'900000000103');
+  for(const id of [first,second,third])assert.ok(!pendingOrderIds(opts).includes(id));
+  // A new admin must still receive every pending order.
+  admin('batch-loop-new','900000000104');
+  for(const id of [first,second,third])assert.ok(pendingOrderIds(opts).includes(id));
+});
+
+test('batched pending scan uses the existing partial and ledger indexes',()=>{
+  const sql=[
+    "SELECT o.id, o.point_id, ml.order_id AS manager_logged,",
+    "al.target_chat_id AS admin_chat_id, al.status AS admin_status",
+    "FROM orders o",
+    "LEFT JOIN unpaid_order_alert_log ml ON ml.order_id=o.id AND ml.alert_type='pending'",
+    "LEFT JOIN unpaid_order_admin_alert_log al ON al.order_id=o.id AND al.alert_type='pending'",
+    "WHERE o.status='pending' AND o.reservation_status='active'",
+    "AND o.created_at<=datetime('now','-1 minute')",
+    "AND o.created_at>=datetime('now','-30 minutes') ORDER BY o.id"
+  ].join(' ');
+  const plan=db.prepare('EXPLAIN QUERY PLAN '+sql).all().map(row=>String(row.detail)).join('\n');
+  // SQLite may prefer the selective status+date index for this range scan,
+  // or the smaller partial index when the pending queue is sparse.
+  assert.match(plan,/idx_orders_(?:pending_notification_scan|status_created)/);
+  assert.doesNotMatch(plan,/SCAN o\b/);
+  assert.match(plan,/sqlite_autoindex_unpaid_order_alert_log_1/);
+  assert.match(plan,/sqlite_autoindex_unpaid_order_admin_alert_log_1/);
+  // Never load raw phone, buyer names or order items in the frequent scan.
+  const source=fs.readFileSync(path.join(__dirname,'unpaid-order-alerts.js'),'utf8');
+  const scan=source.split('function pendingOrderIds(options = {}) {')[1]
+    .split('async function runUnpaidOrderAlertCheck')[0];
+  assert.doesNotMatch(scan,/customer_phone|customer_name|order_items|SELECT \*/);
+  assert.equal((scan.match(/\.all\(\)/g)||[]).length,1,
+    'the scan must use one SQLite query even for multiple pending orders and admins');
+});
+
+test('fresh orders, released reservations and payments never trigger batched alerts',()=>{
+  isolateAdminAlerts();
+  admin('batch-only-admin','900000000105');
+  const fresh=order('TG-BATCH-FRESH',null,'-10 seconds');
+  const released=order('TG-BATCH-RELEASED',null,'-2 minutes','pending','released');
+  const paid=order('TG-BATCH-PAID',null,'-2 minutes','paid','active');
+  const old=order('TG-BATCH-OLD',null,'-40 minutes','pending','active');
+  const ids=pendingOrderIds({businessChatId:''});
+  for(const id of [fresh,released,paid,old])assert.ok(!ids.includes(id));
 });
