@@ -84,6 +84,9 @@ COPY package.json ./
 COPY backlog.json ./
 COPY server ./server
 COPY public ./public
+# Recreate legacy #Uxxxx PDF URLs using symlinks, avoiding 12 duplicate copies.
+COPY scripts/restore-doc-aliases.js ./scripts/restore-doc-aliases.js
+RUN node ./scripts/restore-doc-aliases.js
 
 # Stamp every image with a unique build version and the GitHub HEAD at build time.
 # Amvera may omit commit build args; query the linked public repository instead.

@@ -1,0 +1,4 @@
+# Production runtime excludes test-only Node modules.
+server/*.test.js
+# Encoded aliases are recreated as symlinks to canonical Russian PDFs.
+public/docs/#U*.pdf
