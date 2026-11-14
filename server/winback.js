@@ -1,9 +1,8 @@
-// winback.js — автоматический «возврат неактивного клиента»: если клиент не
-// заказывал 30+ дней и мы знаем его Telegram (он хотя бы раз входил через
-// Telegram на сайте), раз в сутки проверяем и начисляем ему косточки —
-// разовый подарок за возвращение, приходит сообщением с призывом заказать
-// снова. Раньше это была скидка через промокод — с переходом на единую
-// систему лояльности (только косточки) заменено на прямое начисление.
+// winback.js — ручная акция для возврата неактивных покупателей.
+// Только по действию администратора ищем клиентов без заказов 30+ дней,
+// отправляем сообщение через Telegram и начисляем 100 бонусных косточек.
+// Автоматический ежедневный запуск удалён, чтобы избежать фоновых проверок
+// и непреднамеренных рекламных отправок.
 //
 // Ограничение по дизайну: достучаться можно только до тех, у кого есть
 // customers.telegram_chat_id — то есть кто хотя бы раз логинился в личный
@@ -14,8 +13,6 @@
 'use strict';
 
 const db = require('./db');
-const { createSingleFlightJob } = require('./single-flight-job');
-const { trackAsync } = require('./runtime-diagnostics');
 const { sendToChat } = require('./telegram');
 const { preference } = require('./notification-preferences');
 const { awardBones } = require('./bones');
@@ -47,7 +44,7 @@ function buildWinbackMessage(customer) {
   ].join('\n');
 }
 
-// Основная функция — вызывается по расписанию и вручную из админки.
+// Основная функция — вызывается только вручную из админки.
 // Возвращает сводку (сколько нашли, скольким реально отправили) для
 // логирования/показа в интерфейсе.
 async function runWinbackCheck() {
@@ -81,30 +78,18 @@ async function runWinbackCheck() {
   return summary;
 }
 
-function scheduleWinback() {
-  // Первая проверка — вскоре после старта сервера (не мгновенно, чтобы не
-  // мешать запуску), дальше — раз в сутки, как и остальные плановые задачи.
-  const run = createSingleFlightJob(
-    () => trackAsync('winback_check', runWinbackCheck),
-    (error) => console.warn('Win-back: ошибка проверки:', error.message)
-  );
-  setTimeout(run, 5 * 60 * 1000);
-  setInterval(run, 24 * 60 * 60 * 1000);
-  console.log(`Win-back рассылка настроена: клиенты без заказов ${WINBACK_INACTIVE_DAYS}+ дней, проверка раз в сутки`);
-}
-
 function registerWinbackRoutes(router) {
   const { sendJson } = require('./http-utils');
   const { requireAuth } = require('./routes-auth');
 
-  // GET /api/admin/winback/candidates — кому бы отправили при следующей проверке (без отправки)
+  // GET /api/admin/winback/candidates — предварительный просмотр перед ручным запуском
   router.get('/api/admin/winback/candidates', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
     sendJson(res, 200, { candidates: findWinbackCandidates(), inactive_days: WINBACK_INACTIVE_DAYS, bones: WINBACK_BONES });
   });
 
-  // POST /api/admin/winback/run — запустить проверку и рассылку прямо сейчас, не дожидаясь суток
+  // POST /api/admin/winback/run — вручную проверить кандидатов и отправить предложения
   router.post('/api/admin/winback/run', async (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
@@ -117,4 +102,4 @@ function registerWinbackRoutes(router) {
   });
 }
 
-module.exports = { runWinbackCheck, scheduleWinback, registerWinbackRoutes, findWinbackCandidates, WINBACK_INACTIVE_DAYS, WINBACK_BONES };
+module.exports = { runWinbackCheck, registerWinbackRoutes, findWinbackCandidates, WINBACK_INACTIVE_DAYS, WINBACK_BONES };

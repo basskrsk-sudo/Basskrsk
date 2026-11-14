@@ -356,7 +356,8 @@ server.listen(PORT, () => {
   const { checkAllPartnerTiers } = require('./partner-tiers');
   setInterval(() => { checkAllPartnerTiers().catch((e) => console.warn('Ошибка ежесуточной проверки уровней:', e.message)); }, 24 * 60 * 60 * 1000);
 
-  require('./winback').scheduleWinback();
+  // Win-back promotional messages are now sent only by an explicit admin action.
+  // Keep the protected /api/admin/winback/run endpoint without background scans.
   // PDF task digests and QR analytics run only after Telegram approval.
   console.log('Автоматическое формирование отчётов отключено; запросы — через Telegram.');
   require('./unpaid-order-alerts').scheduleUnpaidOrderAlerts();
