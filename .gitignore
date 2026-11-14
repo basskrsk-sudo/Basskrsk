@@ -1,0 +1,5 @@
+# The live SQLite database is stored in persistent /data on Amvera.
+# A local development database is created automatically as needed.
+data/taiga.db
+data/taiga.db-wal
+data/taiga.db-shm
