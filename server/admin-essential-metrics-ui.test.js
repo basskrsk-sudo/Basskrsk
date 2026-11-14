@@ -27,6 +27,14 @@ test('retired BSC is absent from admin interface, navigation, and registered API
   assert.match(read('server/routes-business-founders.js'),/getCachedWeeklyBsc/);
   assert.match(read('server/db.js'),/bsc_initiatives/);
 });
+test('heavy operations check is opt-in on the admin dashboard',()=>{
+  const dashboardLoader=nav.split("if (id === 'dashboard')")[1].split('\n')[0];
+  assert.doesNotMatch(dashboardLoader,/loadOperationsCenter/);
+  assert.match(dashboardLoader,/loadOrders\(\), loadPointsInfo\(\)/);
+  assert.match(html,/id="ops-check-now" onclick="loadOperationsCenter\(\)"/);
+  assert.match(html,/Проверка проблем запускается только по запросу/);
+});
+
 test('main dashboard has four and only four metrics and a revenue trend',()=>{
   const dashboard=html.split('<div id="sec-dashboard">')[1]
     .split('<div id="sec-tasks"')[0];

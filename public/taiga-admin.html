@@ -852,12 +852,15 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="ops-head">
           <div>
             <h2 id="ops-center-title">⚡ Требует внимания</h2>
-            <div class="ops-subtitle">Только актуальные ситуации, по которым нужно принять решение или выполнить действие.</div>
+            <div class="ops-subtitle">Проверка проблем запускается только по запросу, чтобы не нагружать сайт при каждом входе.</div>
           </div>
-          <div class="ops-summary" id="ops-summary"><span class="ops-summary-pill info">Загрузка…</span></div>
+          <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+            <button type="button" class="row-btn" id="ops-check-now" onclick="loadOperationsCenter()">🔎 Проверить сейчас</button>
+            <div class="ops-summary" id="ops-summary" aria-live="polite"><span class="ops-summary-pill info">По запросу</span></div>
+          </div>
         </div>
         <div class="ops-grid" id="ops-grid">
-          <div class="ops-ok" style="color:var(--muted);">Проверяем заказы, остатки, точки и поручения…</div>
+          <div class="ops-ok" style="color:var(--muted);">Нажмите «Проверить сейчас», чтобы получить свежие сигналы по заказам, остаткам и точкам.</div>
         </div>
       </section>
 
@@ -4464,7 +4467,11 @@ async function renderSystemHealth() {
 async function loadOperationsCenter() {
   const grid = document.getElementById('ops-grid');
   const summaryEl = document.getElementById('ops-summary');
-  if (!grid || !summaryEl) return;
+  const button = document.getElementById('ops-check-now');
+  if (!grid || !summaryEl || (button && button.disabled)) return;
+  if (button) { button.disabled = true; button.textContent = 'Проверяем…'; }
+  summaryEl.innerHTML = '<span class="ops-summary-pill info">Проверка…</span>';
+  grid.innerHTML = '<div class="ops-ok" style="color:var(--muted);">Обновляем список проблем…</div>';
   try {
     const res = await authFetch('/api/operations-center');
     const data = await res.json();
@@ -4474,6 +4481,8 @@ async function loadOperationsCenter() {
     summaryEl.innerHTML = '<span class="ops-summary-pill critical">Ошибка загрузки</span>';
     grid.innerHTML = '<div class="ops-error">' + opsEscapeHtml(e.message) +
       ' <button class="ops-card-action" onclick="loadOperationsCenter()">Повторить</button></div>';
+  } finally {
+    if (button) { button.disabled = false; button.textContent = '↻ Проверить снова'; }
   }
 }
 

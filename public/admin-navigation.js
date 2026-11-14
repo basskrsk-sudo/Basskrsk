@@ -122,7 +122,7 @@ async function showSection(id) {
 
   if (id === 'launch')      await showLaunchTab(launchActiveTab);
   if (id === 'system-health') await renderSystemHealth();
-  if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo(), loadOperationsCenter()]); renderDashboard(); }
+  if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo()]); renderDashboard(); }
   if (id === 'tasks')       await loadTaskLinks();
   if (id === 'economics')   await renderEconomics();
   if (id === 'business-expenses') await renderBusinessExpenses();

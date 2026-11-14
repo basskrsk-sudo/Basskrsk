@@ -691,7 +691,13 @@ test('admin metrics are sourced from live admin endpoints (not demo numbers)', a
   }, { taiga_admin_token: 'admin-token' });
   await h.window.HvostMiniAppWork.chooseRole('admin');
   assert.match(h.root.innerHTML, /250 ₽/);
-  assert.match(h.root.innerHTML, /Нужно пополнение/);
+  assert.doesNotMatch(h.root.innerHTML, /Нужно пополнение/);
+  assert.match(h.root.innerHTML, /data-work-action="admin-ops-check"/);
+  assert.equal(h.calls.some(c => c.url === '/api/operations-center'), false);
+  await h.click('admin-ops-check', 'admin');
+  assert.match(h.elements.workAdminOpsResults.innerHTML, /Нужно пополнение/);
+  assert.equal(h.elements.workAdminOpsCount.textContent, '1');
+  assert.equal(h.calls.filter(c => c.url === '/api/operations-center').length, 1);
   assert.match(h.root.innerHTML, /среди 100 последних/);
   assert.ok(h.calls.every((c) => c.opts.headers.Authorization === 'Bearer admin-token'));
   h.click('full', 'admin');
