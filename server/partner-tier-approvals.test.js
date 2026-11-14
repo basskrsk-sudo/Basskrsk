@@ -213,6 +213,74 @@ test('bot menu, command and callback only expose the super-admin approval path',
   assert.match(groomerHtml,/Без одобрения процент не изменится/);
 });
 
+test('tier approval scheduler backs off when idle, preserves pending retries and wakes immediately',async()=>{
+  const {DatabaseSync}=require('node:sqlite');
+  const isolated=new DatabaseSync(':memory:');
+  isolated.exec("CREATE TABLE partner_tier_approval_requests (id INTEGER PRIMARY KEY,status TEXT NOT NULL);");
+  const tasks=new Map();
+  let nowMs=0,nextId=0,sends=0,delayObserved=[];
+  const scheduler=approvals.createTierApprovalScheduler({
+    database:isolated,now:()=>nowMs,
+    setTimer:(fn,delay)=>{
+      const task={id:++nextId,fn,delay,unref(){}};
+      tasks.set(task.id,task);
+      return task;
+    },
+    clearTimer:task=>tasks.delete(task.id),
+    notify:async()=>{sends++;return {delivered:0,failed:0};},
+  });
+  const nextDelay=()=>[...tasks.values()][0]?.delay;
+  async function fire(){
+    const task=[...tasks.values()][0];
+    assert.ok(task,'scheduled worker expected');
+    tasks.delete(task.id);
+    nowMs+=task.delay;
+    task.fn();
+    await new Promise(resolve=>setImmediate(resolve));
+    await new Promise(resolve=>setImmediate(resolve));
+  }
+  try{
+    scheduler.start();
+    scheduler.start();
+    assert.equal(tasks.size,1,'repeated start must not add pollers');
+    assert.equal(nextDelay(),0,'recovery check on startup');
+    await fire();
+    assert.equal(sends,1);
+    assert.equal(nextDelay(),approvals.TIER_APPROVAL_IDLE_MS);
+
+    isolated.exec("INSERT INTO partner_tier_approval_requests(status) VALUES ('pending')");
+    scheduler.wake();
+    assert.equal(nextDelay(),0,'new proposal must preempt idle timer');
+    assert.equal(tasks.size,1);
+    await fire();
+    assert.equal(sends,2);
+    assert.equal(nextDelay(),approvals.TIER_APPROVAL_RETRY_MS,
+      'pending proposals retain ten-minute retry interval');
+
+    isolated.exec("UPDATE partner_tier_approval_requests SET status='approved'");
+    scheduler.wake();
+    await fire();
+    assert.equal(nextDelay(),approvals.TIER_APPROVAL_IDLE_MS);
+    assert.equal(sends,3);
+    scheduler.stop();
+    assert.equal(tasks.size,0,'stop must cancel next probe');
+  }finally{
+    scheduler.stop();isolated.close();
+  }
+});
+
+test('a new downgrade request wakes notification only after the SQLite commit',()=>{
+  const source=fs.readFileSync(path.join(__dirname,'partner-tier-approvals.js'),'utf8');
+  assert.match(source,/db\.exec\('COMMIT'\);\s*\/\/ Only wake[\s\S]*?wakeTierApprovalNotifications\(\)/);
+  const tiersSource=fs.readFileSync(path.join(__dirname,'partner-tiers.js'),'utf8');
+  assert.doesNotMatch(tiersSource,/approvals\.notifyPendingTierApprovals\(\)/,
+    'no parallel sends before the scheduler processes the new request');
+  const bot=fs.readFileSync(path.join(__dirname,'telegram-login-poller.js'),'utf8');
+  assert.match(bot,/tierApprovals\.startTierApprovalNotifications\(\)/);
+  assert.match(bot,/tierApprovals\.stopTierApprovalNotifications\(\)/);
+  assert.doesNotMatch(source,/setInterval\(/,'worker must not poll idle DB on a fixed interval');
+});
+
 test.after(()=>{
   try{db.close();}catch(_){}
   fs.rmSync(tmp,{recursive:true,force:true});
