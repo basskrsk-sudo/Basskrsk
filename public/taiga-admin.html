@@ -17,7 +17,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="payout-schedule.css">
 <link rel="stylesheet" href="telegram-connect.css?v=38">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 html { font-size: 16px; }
 /* На широких экранах (частый случай Retina-ноутбуков с масштабом "Больше
@@ -548,8 +547,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   .launch-checklist-items { grid-template-columns:1fr; }
   .card { padding: .9rem; overflow-x: auto; }
   .tbl { font-size: .74rem; min-width: 480px; }
-  .bsc-hero { grid-template-columns:1fr !important; }
-  .bsc-form-two { grid-template-columns:1fr !important; }
   .unit-econ-layout { grid-template-columns:1fr !important; }
 }
 
@@ -884,7 +881,11 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
 
-      <!-- KPI -->
+      <!-- Четыре ключевые метрики. -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin:1rem 0 .65rem;">
+        <h2 style="font-size:1.12rem;font-weight:700;margin:0;">Ключевые показатели</h2>
+        <button type="button" class="row-btn" onclick="showSection('economics')">Прибыль и расходы</button>
+      </div>
       <div class="kpi-grid">
         <div class="kpi-card">
           <div class="kpi-label">Выручка</div>
@@ -902,47 +903,19 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <div class="kpi-delta" id="kpi-avg-d">— —</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">Товаров выдано</div>
-          <div class="kpi-value" id="kpi-items">—</div>
-          <div class="kpi-delta delta-up" id="kpi-items-d">↑ —</div>
-        </div>
-        <div class="kpi-card">
           <div class="kpi-label">Действующих точек</div>
           <div class="kpi-value" id="kpi-active-points">—</div>
           <div class="kpi-delta" style="font-size:.77rem;color:var(--muted);">в сети ХвостМаркет</div>
         </div>
       </div>
 
-      <!-- Chart: выручка по дням + пирог по точкам -->
-      <div class="grid-2">
-        <div class="card">
-          <div class="card-title">Выручка по дням <span id="rev-chart-label"></span></div>
-          <div style="position:relative;height:200px;">
-            <canvas id="chartRev" role="img" aria-label="Выручка по дням"></canvas>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-title">Доля продаж по точкам</div>
-          <div style="display:flex;align-items:center;gap:1rem;">
-            <div style="position:relative;height:180px;width:180px;flex-shrink:0;">
-              <canvas id="chartPie" role="img" aria-label="Доля продаж по точкам"></canvas>
-            </div>
-            <div id="pie-legend" style="font-size:.78rem;"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Chart: топ товаров -->
+      <!-- Минимальный обзор: только тренд выручки. -->
       <div class="card" style="margin-bottom:1rem;">
-        <div class="card-title">Топ товаров по выручке <span>за период</span></div>
-        <div class="legend" id="bar-legend"></div>
-        <div style="position:relative;height:220px;">
-          <canvas id="chartBar" role="img" aria-label="Топ товаров по выручке"></canvas>
+        <div class="card-title">Выручка по дням <span id="rev-chart-label"></span></div>
+        <div style="position:relative;height:210px;">
+          <canvas id="chartRev" role="img" aria-label="Выручка по дням"></canvas>
         </div>
       </div>
-
-      <!-- Точки-карточки -->
-      <div class="grid-3" id="point-cards-dash"></div>
 
     </div>
 
@@ -966,66 +939,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="card-title">Как использовать ссылки</div>
         <p style="font-size:.85rem;line-height:1.65;">Первый раз отправьте сотруднику ссылку активации (с секретным кодом). После этого он сможет открывать короткий именной адрес без кода на том же устройстве. При открытии сразу включится фильтр по исполнителю, а кнопка «Все поручения» покажет общие задачи. Административный код даёт полный контроль над задачами. Если код попал посторонним — нажмите «Перевыпустить», чтобы отозвать старый.</p>
         <p style="font-size:.78rem;color:var(--muted);margin-top:.5rem;">Короткие именные адреса можно показывать открыто — сами по себе они не дают доступа. Ссылки активации содержат персональный код: передавайте их только адресату. После перевыпуска потребуется повторная активация на его устройстве.</p>
-      </div>
-    </div>
-
-    <!-- ══ СТРАТЕГИЯ · BSC КАПЛАНА–НОРТОНА ══ -->
-    <div id="sec-bsc" style="display:none;">
-      <div class="card" style="background:linear-gradient(135deg,var(--forest),var(--deep));border:none;color:#fff;margin-bottom:1rem;">
-        <div class="bsc-hero" style="display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:1.5rem;align-items:center;">
-          <div style="text-align:center;padding:1rem;border:1px solid rgba(255,255,255,.18);border-radius:18px;background:rgba(255,255,255,.08);">
-            <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.68);">Индекс бизнеса</div>
-            <div id="bsc-overall-score" style="font-size:3rem;font-weight:800;line-height:1.1;margin:.45rem 0;">—</div>
-            <div id="bsc-overall-label" style="font-size:.78rem;color:rgba(255,255,255,.72);">из 100</div>
-          </div>
-          <div>
-            <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);margin-bottom:.45rem;">Сбалансированная система показателей</div>
-            <h2 id="bsc-readiness-title" style="font-size:1.45rem;margin-bottom:.45rem;">Загружаем стратегию…</h2>
-            <p id="bsc-readiness-description" style="font-size:.86rem;line-height:1.6;color:rgba(255,255,255,.78);max-width:760px;"></p>
-            <div id="bsc-period" style="font-size:.78rem;margin-top:.7rem;color:rgba(255,255,255,.62);"></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="bsc-perspectives" class="grid-2" style="align-items:start;"></div>
-
-      <div class="card" style="margin-top:1rem;">
-        <div class="card-title">Ответственность команды</div>
-        <p style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:1rem;">Владелец KPI принимает управленческое решение и отвечает за результат. Исполнитель ведёт ежедневную работу и данные по показателю. Методолог системы — Кучкин Николай.</p>
-        <div id="bsc-responsibility" class="grid-2" style="align-items:stretch;"></div>
-      </div>
-
-      <div class="card" style="margin-top:1rem;">
-        <div class="card-title"><span>Планы улучшения <span id="bsc-initiatives-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span><button class="row-btn" style="background:var(--forest);color:#fff;" onclick="toggleBscInitiativeForm()">+ Добавить план</button></div>
-        <div id="bsc-initiative-form" style="display:none;margin:1rem 0;padding:1rem;background:var(--cream,#F7F5EF);border-radius:12px;">
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.7rem;">
-            <div class="admin-field" style="margin:0;"><label>Направление</label><select id="bsc-plan-perspective" onchange="renderBscKpiOptions()"></select></div>
-            <div class="admin-field" style="margin:0;"><label>Связанный показатель</label><select id="bsc-plan-kpi" onchange="syncBscPlanResponsible()"><option value="">Общий план направления</option></select></div>
-            <div class="admin-field" style="margin:0;"><label>Ответственный исполнитель</label><select id="bsc-plan-responsible"></select></div>
-            <div class="admin-field" style="margin:0;"><label>Срок</label><input type="date" id="bsc-plan-due"></div>
-          </div>
-          <div class="admin-field" style="margin-top:.7rem;"><label>Название плана</label><input id="bsc-plan-title" placeholder="Кратко: что нужно исправить"></div>
-          <div class="bsc-form-two" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;">
-            <div class="admin-field" style="margin:0;"><label>Проблема</label><textarea id="bsc-plan-problem" rows="3" placeholder="Какое отклонение обнаружено"></textarea></div>
-            <div class="admin-field" style="margin:0;"><label>Действие</label><textarea id="bsc-plan-action" rows="3" placeholder="Что именно необходимо сделать"></textarea></div>
-          </div>
-          <div class="admin-field" style="margin-top:.7rem;"><label>Ожидаемый результат</label><input id="bsc-plan-result" placeholder="Какой показатель должен измениться"></div>
-          <div style="display:flex;gap:.5rem;justify-content:flex-end;"><button class="row-btn" onclick="toggleBscInitiativeForm(false)">Отмена</button><button class="row-btn" style="background:var(--forest);color:#fff;" onclick="createBscInitiative()">Сохранить план</button></div>
-        </div>
-        <div style="overflow-x:auto;">
-          <table class="tbl" style="min-width:920px;"><thead><tr><th>План</th><th>Направление</th><th>Ответственный</th><th>Срок</th><th>Статус</th><th>Результат</th><th class="r">Действие</th></tr></thead><tbody id="bsc-initiatives-tbody"></tbody></table>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:1rem;">
-        <div class="card-title">Состояние точек</div>
-        <div style="overflow-x:auto;"><table class="tbl" style="min-width:720px;"><thead><tr><th>Точка</th><th>Город</th><th class="r">Выручка</th><th class="r">Заказов</th><th class="r">Динамика</th><th class="r">Проблемы с остатками</th><th>Статус</th></tr></thead><tbody id="bsc-points-tbody"></tbody></table></div>
-      </div>
-
-      <div class="card" id="bsc-settings-card" style="display:none;margin-top:1rem;">
-        <div class="card-title"><span>Цели и веса <span style="font-size:.72rem;font-weight:400;color:var(--muted);">только для супер-администратора</span></span><button class="row-btn" onclick="saveBscSettings()">Сохранить настройки</button></div>
-        <p style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:1rem;">Веса четырёх направлений должны составлять 100%. Изменения сохраняются в истории.</p>
-        <div id="bsc-settings"></div>
       </div>
     </div>
 
@@ -1295,7 +1208,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div class="kpi-card"><div class="kpi-label">Оплачено заказов</div><div class="kpi-value" id="wr-kpi-orders">—</div></div>
         <div class="kpi-card"><div class="kpi-label">Чистая прибыль</div><div class="kpi-value" id="wr-kpi-profit">—</div><div class="kpi-delta" id="wr-kpi-margin"></div></div>
         <div class="kpi-card"><div class="kpi-label">Конверсия в оплату</div><div class="kpi-value" id="wr-kpi-conversion">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">Индекс BSC</div><div class="kpi-value" id="wr-kpi-bsc">—</div><div class="kpi-delta" id="wr-kpi-bsc-status"></div></div>
       </div>
 
       <div class="card">
@@ -2038,13 +1950,12 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="account_profile_change">Исправление анкет партнёров</option>
               <option value="point_creation_date_backfill">Уточнение дат создания точек</option>
               <option value="expense_date_change">Исправление даты траты</option>
-              <option value="bsc_settings_change">Изменение целей BSC</option>
             </select>
             <button class="row-btn" onclick="renderAuditLog()">↻ Обновить</button>
           </div>
         </div>
         <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">
-          История удаления клиентов и складских позиций, уменьшений складских остатков, исправлений грумера в оплаченных заказах, исправлений анкет, дат создания точек и дат трат, изменений целей BSC, а также действий менеджеров. Доступна только супер-администраторам.
+          История удаления клиентов и складских позиций, уменьшений складских остатков, исправлений грумера в оплаченных заказах, исправлений анкет, дат создания точек и дат трат, а также действий менеджеров. Исторические изменения стратегии остаются в общем журнале. Доступна только супер-администраторам.
         </p>
         <table class="tbl">
           <thead>
@@ -2897,7 +2808,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="max-connect.js?v=2"></script>
 <script src="max-admin.js?v=3"></script>
 <script src="partner-network-map.js?v=10"></script>
-<script src="admin-navigation.js?v=2"></script>
+<script src="admin-navigation.js?v=3"></script>
 <script src="admin-point.js?v=1"></script>
 <script src="admin-report-center.js?v=1"></script>
     <script src="/week-over-week.js"></script>
@@ -3516,45 +3427,6 @@ function drawBarChart(canvasId, labels, values, color) {
     const text = String(l);
     ctx.fillText(text.length > 12 ? text.slice(0, 11) + '…' : text, x, h - padB + 14);
   });
-}
-
-function drawPieChart(canvasId, legendId, labels, values, colors) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  const size = Math.min(canvas.clientWidth || 180, canvas.clientHeight || 180);
-  canvas.width = size * dpr; canvas.height = size * dpr;
-  canvas.style.width = size + 'px'; canvas.style.height = size + 'px';
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, size, size);
-  const total = values.reduce(function(a, b) { return a + b; }, 0);
-  const cx = size / 2, cy = size / 2, r = size / 2 - 4;
-  let start = -Math.PI / 2;
-  if (total <= 0) {
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = '#EDF5EE'; ctx.fill();
-  } else {
-    values.forEach(function(v, i) {
-      const angle = (v / total) * Math.PI * 2;
-      ctx.beginPath(); ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, r, start, start + angle);
-      ctx.closePath();
-      ctx.fillStyle = (colors && colors[i]) || '#2D5A3F';
-      ctx.fill();
-      start += angle;
-    });
-  }
-  if (legendId) {
-    const legendEl = document.getElementById(legendId);
-    if (legendEl) {
-      legendEl.innerHTML = labels.map(function(l, i) {
-        const pct = total > 0 ? Math.round(values[i] / total * 100) : 0;
-        return '<div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.3rem;">' +
-          '<span style="width:10px;height:10px;border-radius:2px;background:' + ((colors && colors[i]) || '#2D5A3F') + ';display:inline-block;"></span>' +
-          '<span>' + l + ': <strong>' + pct + '%</strong></span></div>';
-      }).join('');
-    }
-  }
 }
 
 // Navigation and contextual menus are in admin-navigation.js.
@@ -4417,259 +4289,6 @@ async function rotateTaskLink(index) {
   }
 }
 
-// ── СТРАТЕГИЯ · BSC КАПЛАНА–НОРТОНА ───────────────────────────────
-let bscDashboardData = null;
-
-function bscEscape(value) {
-  return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function bscStatusLabel(status) {
-  if (status === 'green') return '<span class="stock-pill stock-ok">Цель достигнута</span>';
-  if (status === 'yellow') return '<span class="stock-pill stock-low">Требует внимания</span>';
-  if (status === 'red') return '<span class="stock-pill" style="background:#FDECEA;color:#9B2335;">Отклонение</span>';
-  return '<span class="stock-pill">Нет базы</span>';
-}
-
-function bscStatusColor(status) {
-  return status === 'green' ? '#2D7D46' : (status === 'yellow' ? '#D4872A' : (status === 'red' ? '#9B2335' : '#9A9186'));
-}
-
-function bscValue(kpi, value) {
-  if (value === null || value === undefined) return 'нет базы';
-  if (kpi.format === 'money') return Number(value).toLocaleString('ru-RU') + ' ₽';
-  if (kpi.format === 'percent') return Number(value).toLocaleString('ru-RU') + '%';
-  return Number(value).toLocaleString('ru-RU') + (kpi.unit ? ' ' + kpi.unit : '');
-}
-
-function renderBscPerspectives(data) {
-  document.getElementById('bsc-perspectives').innerHTML = data.perspectives.map(function(perspective) {
-    const color = bscStatusColor(perspective.status);
-    const rows = perspective.kpis.map(function(kpi) {
-      const score = kpi.score === null ? 0 : Math.max(0, Math.min(100, Number(kpi.score)));
-      return '<div style="padding:.75rem 0;border-top:1px solid var(--border);">' +
-        '<div style="display:flex;justify-content:space-between;gap:.8rem;align-items:flex-start;">' +
-          '<div style="min-width:0;"><div style="font-size:.84rem;font-weight:650;">' + bscEscape(kpi.name) + '</div><div style="font-size:.7rem;color:var(--muted);margin-top:.18rem;line-height:1.35;">' + bscEscape(kpi.description) + '</div><div style="font-size:.7rem;margin-top:.35rem;line-height:1.4;"><span style="color:var(--muted);">Владелец KPI:</span> <strong>' + bscEscape(kpi.accountable) + '</strong> <span style="color:var(--muted);">· Исполнитель:</span> <strong>' + bscEscape(kpi.executor) + '</strong></div></div>' +
-          '<button class="row-btn" style="font-size:.68rem;white-space:nowrap;" onclick="openBscPlanFor(\'' + bscEscape(perspective.key) + '\',\'' + bscEscape(kpi.key) + '\')">План</button>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.55rem;align-items:end;margin-top:.55rem;font-size:.76rem;">' +
-          '<div><span style="color:var(--muted);">Факт</span><br><strong>' + bscEscape(bscValue(kpi, kpi.actual)) + '</strong></div>' +
-          '<div><span style="color:var(--muted);">Цель</span><br><strong>' + bscEscape(bscValue(kpi, kpi.target)) + '</strong></div>' +
-          '<div>' + bscStatusLabel(kpi.status) + '</div>' +
-        '</div>' +
-        '<div style="height:5px;background:var(--border);border-radius:20px;overflow:hidden;margin-top:.55rem;"><div style="height:100%;width:' + score + '%;background:' + bscStatusColor(kpi.status) + ';border-radius:20px;"></div></div>' +
-      '</div>';
-    }).join('');
-    return '<div class="card" style="border-top:4px solid ' + color + ';">' +
-      '<div class="card-title" style="align-items:flex-start;"><span>' + bscEscape(perspective.name) + '<small style="display:block;font-size:.68rem;font-weight:400;color:var(--muted);margin-top:.2rem;">Вес: ' + perspective.weight + '% · куратор: ' + bscEscape(perspective.accountable) + '</small></span><span style="font-size:1.55rem;color:' + color + ';">' + perspective.score + '</span></div>' + rows + '</div>';
-  }).join('');
-}
-
-function renderBscResponsibility(data) {
-  const members = data.responsibility_matrix || [];
-  document.getElementById('bsc-responsibility').innerHTML = members.map(function(member) {
-    const owned = member.owned_kpis || [];
-    const executed = member.executed_kpis || [];
-    return '<div style="border:1px solid var(--border);border-radius:12px;padding:1rem;background:var(--white);">' +
-      '<div style="font-size:.95rem;font-weight:700;color:var(--deep);">' + bscEscape(member.name) + '</div>' +
-      '<div style="font-size:.72rem;color:var(--muted);margin:.2rem 0 .65rem;">' + bscEscape(member.role) + '</div>' +
-      '<div style="font-size:.78rem;line-height:1.45;margin-bottom:.65rem;">' + bscEscape(member.responsibility) + '</div>' +
-      '<div style="font-size:.72rem;line-height:1.45;"><strong>Владелец:</strong> ' + (owned.length ? owned.map(bscEscape).join(', ') : '—') + '</div>' +
-      '<div style="font-size:.72rem;line-height:1.45;margin-top:.3rem;"><strong>Исполняет:</strong> ' + (executed.length ? executed.map(bscEscape).join(', ') : '—') + '</div>' +
-    '</div>';
-  }).join('');
-}
-
-function bscPerspectiveName(key) {
-  const perspective = bscDashboardData && bscDashboardData.perspectives.find(function(item) { return item.key === key; });
-  return perspective ? perspective.name : key;
-}
-
-function bscInitiativeStatus(status) {
-  return status === 'planned' ? 'Запланирован' : (status === 'in_progress' ? 'В работе' : (status === 'done' ? 'Выполнен' : 'Отменён'));
-}
-
-function renderBscInitiatives(initiatives) {
-  const tbody = document.getElementById('bsc-initiatives-tbody');
-  const openCount = initiatives.filter(function(item) { return item.status === 'planned' || item.status === 'in_progress'; }).length;
-  const overdueCount = initiatives.filter(function(item) { return item.overdue; }).length;
-  document.getElementById('bsc-initiatives-count').textContent = '· открыто ' + openCount + (overdueCount ? ' · просрочено ' + overdueCount : '');
-  tbody.innerHTML = initiatives.length ? initiatives.map(function(item) {
-    const deleteButton = currentAdminRole === 'super' ? '<button class="row-btn danger" onclick="deleteBscInitiative(' + item.id + ')">Удалить</button>' : '';
-    return '<tr>' +
-      '<td><strong>' + bscEscape(item.title) + '</strong><div style="font-size:.7rem;color:var(--muted);margin-top:.2rem;max-width:320px;">' + bscEscape(item.action) + '</div></td>' +
-      '<td>' + bscEscape(bscPerspectiveName(item.perspective_key)) + '</td>' +
-      '<td>' + bscEscape(item.responsible) + '</td>' +
-      '<td style="white-space:nowrap;color:' + (item.overdue ? '#9B2335' : 'inherit') + ';font-weight:' + (item.overdue ? '700' : '400') + ';">' + bscEscape(item.due_date) + (item.overdue ? '<br><small>Просрочен</small>' : '') + '</td>' +
-      '<td><select class="pm-select" style="min-width:130px;" onchange="updateBscInitiativeStatus(' + item.id + ',this.value)">' +
-        ['planned','in_progress','done','cancelled'].map(function(status) { return '<option value="' + status + '" ' + (item.status === status ? 'selected' : '') + '>' + bscInitiativeStatus(status) + '</option>'; }).join('') +
-      '</select></td>' +
-      '<td style="font-size:.75rem;max-width:220px;">' + bscEscape(item.result_comment || '—') + '</td>' +
-      '<td class="r" style="white-space:nowrap;"><button class="row-btn" onclick="editBscInitiative(' + item.id + ')">Изменить</button> ' + deleteButton + '</td>' +
-    '</tr>';
-  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Планов улучшения пока нет. Создайте план для показателя с отклонением.</td></tr>';
-}
-
-function renderBscPoints(points) {
-  document.getElementById('bsc-points-tbody').innerHTML = points.length ? points.map(function(point) {
-    const change = point.change_percent === null ? 'нет базы' : (Number(point.change_percent) > 0 ? '+' : '') + Number(point.change_percent).toLocaleString('ru-RU') + '%';
-    return '<tr><td><strong>' + bscEscape(point.name) + '</strong></td><td>' + bscEscape(point.city) + '</td><td class="r">' + Number(point.revenue || 0).toLocaleString('ru-RU') + ' ₽</td><td class="r">' + Number(point.orders_count || 0) + '</td><td class="r">' + change + '</td><td class="r">' + Number(point.stock_alerts || 0) + '</td><td>' + bscStatusLabel(point.status) + '</td></tr>';
-  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Активных точек пока нет.</td></tr>';
-}
-
-function renderBscSettings(data) {
-  const card = document.getElementById('bsc-settings-card');
-  card.style.display = currentAdminRole === 'super' ? 'block' : 'none';
-  if (currentAdminRole !== 'super') return;
-  document.getElementById('bsc-settings').innerHTML = data.perspectives.map(function(perspective) {
-    const targets = perspective.kpis.map(function(kpi) {
-      return '<label style="display:grid;grid-template-columns:1fr 110px;gap:.7rem;align-items:center;padding:.45rem 0;border-top:1px solid var(--border);font-size:.78rem;"><span>' + bscEscape(kpi.name) + '<small style="color:var(--muted);"> · ' + bscEscape(kpi.unit) + '</small></span><input type="number" step="0.1" min="0" id="bsc-target-' + bscEscape(kpi.key) + '" value="' + Number(kpi.target) + '"></label>';
-    }).join('');
-    return '<div style="margin-bottom:1rem;padding:1rem;border:1px solid var(--border);border-radius:10px;"><div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.5rem;"><strong>' + bscEscape(perspective.name) + '</strong><label style="font-size:.75rem;color:var(--muted);">Вес, % <input type="number" min="0" max="100" step="1" id="bsc-weight-' + bscEscape(perspective.key) + '" value="' + Number(perspective.weight) + '" style="width:72px;margin-left:.35rem;"></label></div>' + targets + '</div>';
-  }).join('');
-}
-
-async function renderBscDashboard() {
-  document.getElementById('bsc-readiness-title').textContent = 'Загружаем стратегию…';
-  const res = await authFetch('/api/bsc/dashboard');
-  const data = await res.json();
-  if (!res.ok) {
-    document.getElementById('bsc-readiness-title').textContent = data.error || 'Не удалось загрузить показатели';
-    return;
-  }
-  bscDashboardData = data;
-  document.getElementById('bsc-overall-score').textContent = Number(data.overall_score).toLocaleString('ru-RU');
-  document.getElementById('bsc-overall-score').style.color = data.status === 'green' ? '#A9E7C0' : (data.status === 'yellow' ? '#FFD28A' : '#FFB2B2');
-  document.getElementById('bsc-readiness-title').textContent = data.readiness.title;
-  document.getElementById('bsc-readiness-description').textContent = data.readiness.description;
-  document.getElementById('bsc-period').textContent = 'Период оценки: ' + data.period.start_local + ' — ' + data.period.end_local + ' · предыдущая завершённая неделя';
-  renderBscPerspectives(data);
-  renderBscResponsibility(data);
-  renderBscInitiatives(data.initiatives || []);
-  renderBscPoints(data.points || []);
-  renderBscSettings(data);
-  renderBscPlanOptions();
-}
-
-function renderBscPlanOptions() {
-  if (!bscDashboardData) return;
-  const select = document.getElementById('bsc-plan-perspective');
-  const selected = select.value;
-  select.innerHTML = bscDashboardData.perspectives.map(function(item) { return '<option value="' + bscEscape(item.key) + '">' + bscEscape(item.name) + '</option>'; }).join('');
-  if (selected) select.value = selected;
-  const responsible = document.getElementById('bsc-plan-responsible');
-  const previousResponsible = responsible.value;
-  responsible.innerHTML = (bscDashboardData.responsibility_matrix || []).map(function(member) {
-    return '<option value="' + bscEscape(member.name) + '">' + bscEscape(member.name) + '</option>';
-  }).join('');
-  if (previousResponsible) responsible.value = previousResponsible;
-  renderBscKpiOptions();
-}
-
-function renderBscKpiOptions() {
-  if (!bscDashboardData) return;
-  const perspectiveKey = document.getElementById('bsc-plan-perspective').value;
-  const perspective = bscDashboardData.perspectives.find(function(item) { return item.key === perspectiveKey; });
-  document.getElementById('bsc-plan-kpi').innerHTML = '<option value="">Общий план направления</option>' + (perspective ? perspective.kpis.map(function(kpi) { return '<option value="' + bscEscape(kpi.key) + '">' + bscEscape(kpi.name) + '</option>'; }).join('') : '');
-  syncBscPlanResponsible();
-}
-
-function syncBscPlanResponsible() {
-  if (!bscDashboardData) return;
-  const perspectiveKey = document.getElementById('bsc-plan-perspective').value;
-  const kpiKey = document.getElementById('bsc-plan-kpi').value;
-  const perspective = bscDashboardData.perspectives.find(function(item) { return item.key === perspectiveKey; });
-  const kpi = perspective && perspective.kpis.find(function(item) { return item.key === kpiKey; });
-  const responsible = kpi ? kpi.executor : (perspective ? perspective.accountable : '');
-  if (responsible) document.getElementById('bsc-plan-responsible').value = responsible;
-}
-
-function toggleBscInitiativeForm(force) {
-  const form = document.getElementById('bsc-initiative-form');
-  const show = force === undefined ? form.style.display === 'none' : !!force;
-  form.style.display = show ? 'block' : 'none';
-  if (show && !document.getElementById('bsc-plan-due').value) {
-    const due = new Date(); due.setDate(due.getDate() + 7);
-    document.getElementById('bsc-plan-due').value = due.toISOString().slice(0, 10);
-  }
-}
-
-function openBscPlanFor(perspective, kpi) {
-  toggleBscInitiativeForm(true);
-  document.getElementById('bsc-plan-perspective').value = perspective;
-  renderBscKpiOptions();
-  document.getElementById('bsc-plan-kpi').value = kpi;
-  syncBscPlanResponsible();
-  document.getElementById('bsc-plan-title').focus();
-  document.getElementById('bsc-initiative-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-async function createBscInitiative() {
-  const body = {
-    perspective_key: document.getElementById('bsc-plan-perspective').value,
-    kpi_key: document.getElementById('bsc-plan-kpi').value,
-    title: document.getElementById('bsc-plan-title').value,
-    problem: document.getElementById('bsc-plan-problem').value,
-    action: document.getElementById('bsc-plan-action').value,
-    responsible: document.getElementById('bsc-plan-responsible').value,
-    due_date: document.getElementById('bsc-plan-due').value,
-    expected_result: document.getElementById('bsc-plan-result').value,
-  };
-  const res = await authFetch('/api/bsc/initiatives', { method: 'POST', body: body });
-  const data = await res.json();
-  if (!res.ok) return alert(data.error || 'Не удалось сохранить план.');
-  ['bsc-plan-title','bsc-plan-problem','bsc-plan-action','bsc-plan-result'].forEach(function(id) { document.getElementById(id).value = ''; });
-  toggleBscInitiativeForm(false);
-  await renderBscDashboard();
-}
-
-async function updateBscInitiativeStatus(id, status) {
-  const res = await authFetch('/api/bsc/initiatives/' + id, { method: 'PUT', body: { status: status } });
-  const data = await res.json();
-  if (!res.ok) alert(data.error || 'Не удалось изменить статус.');
-  await renderBscDashboard();
-}
-
-async function editBscInitiative(id) {
-  const item = bscDashboardData && bscDashboardData.initiatives.find(function(row) { return Number(row.id) === Number(id); });
-  if (!item) return;
-  const responsible = prompt('Ответственный:', item.responsible);
-  if (responsible === null) return;
-  const dueDate = prompt('Срок в формате ГГГГ-ММ-ДД:', item.due_date);
-  if (dueDate === null) return;
-  const comment = prompt('Результат или комментарий:', item.result_comment || '');
-  if (comment === null) return;
-  const res = await authFetch('/api/bsc/initiatives/' + id, { method: 'PUT', body: { responsible: responsible, due_date: dueDate, result_comment: comment } });
-  const data = await res.json();
-  if (!res.ok) return alert(data.error || 'Не удалось изменить план.');
-  await renderBscDashboard();
-}
-
-async function deleteBscInitiative(id) {
-  if (!confirm('Удалить этот план улучшения?')) return;
-  const res = await authFetch('/api/bsc/initiatives/' + id, { method: 'DELETE' });
-  const data = await res.json();
-  if (!res.ok) return alert(data.error || 'Не удалось удалить план.');
-  await renderBscDashboard();
-}
-
-async function saveBscSettings() {
-  if (!bscDashboardData || currentAdminRole !== 'super') return;
-  const targets = {};
-  const perspectiveWeights = {};
-  bscDashboardData.perspectives.forEach(function(perspective) {
-    perspectiveWeights[perspective.key] = Number(document.getElementById('bsc-weight-' + perspective.key).value);
-    perspective.kpis.forEach(function(kpi) { targets[kpi.key] = Number(document.getElementById('bsc-target-' + kpi.key).value); });
-  });
-  const total = Object.values(perspectiveWeights).reduce(function(sum, value) { return sum + value; }, 0);
-  if (Math.abs(total - 100) > .01) return alert('Сумма весов направлений должна быть равна 100%. Сейчас: ' + total + '%.');
-  const res = await authFetch('/api/bsc/settings', { method: 'PUT', body: { targets: targets, perspective_weights: perspectiveWeights } });
-  const data = await res.json();
-  if (!res.ok) return alert(data.error || 'Не удалось сохранить настройки.');
-  await renderBscDashboard();
-  alert('Цели и веса сохранены. Общий индекс пересчитан.');
-}
-
 // Read-only two-week comparison UI (functions defined in /week-over-week.js).
 // ── ОТЧЁТ ДЛЯ ПЛАНЁРКИ ГД ─────────────────────────────────────────
 function weeklyReportEscape(value) {
@@ -4694,8 +4313,6 @@ function renderLatestWeeklyReport(report) {
   document.getElementById('wr-kpi-orders').textContent = summary ? Number(summary.orders_count || 0).toLocaleString('ru-RU') : '—';
   document.getElementById('wr-kpi-profit').textContent = summary ? Number(summary.net_profit || 0).toLocaleString('ru-RU') + ' ₽' : '—';
   document.getElementById('wr-kpi-conversion').textContent = summary ? Number(summary.payment_conversion || 0).toLocaleString('ru-RU') + '%' : '—';
-  document.getElementById('wr-kpi-bsc').textContent = summary && summary.bsc_score !== undefined ? Number(summary.bsc_score).toLocaleString('ru-RU') + ' / 100' : '—';
-  document.getElementById('wr-kpi-bsc-status').textContent = summary ? (summary.bsc_readiness || '') : '';
   document.getElementById('wr-kpi-revenue-change').textContent = summary ? weeklyReportChange(summary.revenue_change_percent) : '';
   document.getElementById('wr-kpi-revenue-change').className = 'kpi-delta ' + (summary && Number(summary.revenue_change_percent) >= 0 ? 'delta-up' : 'delta-down');
   document.getElementById('wr-kpi-margin').textContent = summary ? 'маржа ' + Number(summary.margin_percent || 0).toLocaleString('ru-RU') + '%' : '';
@@ -4902,54 +4519,34 @@ async function openOpsTarget(section, filter) {
 function renderDashboard() {
   const days = periodDays();
   const orders = ordersInPeriod(days);
-  const revenue = orders.reduce(function(s, o) { return s + o.total; }, 0);
   const orderCount = orders.length;
+  let revenue = 0;
+  const revenueByDay = new Map();
+  // One pass supplies both business KPIs and the revenue chart.
+  for (const order of orders) {
+    revenue += order.total;
+    const day = parseOrderDate(order.created_at).toISOString().slice(0, 10);
+    revenueByDay.set(day, (revenueByDay.get(day) || 0) + order.total);
+  }
   const avgCheck = orderCount ? Math.round(revenue / orderCount) : 0;
-  const itemsGiven = orders.reduce(function(s, o) { return s + o.items.reduce(function(si, i) { return si + i.qty; }, 0); }, 0);
-
   document.getElementById('kpi-rev').textContent = revenue.toLocaleString('ru-RU') + ' ₽';
   document.getElementById('kpi-rev-d').textContent = 'за ' + days + ' дн.';
   document.getElementById('kpi-ord').textContent = orderCount;
   document.getElementById('kpi-ord-d').textContent = 'за ' + days + ' дн.';
   document.getElementById('kpi-avg').textContent = avgCheck.toLocaleString('ru-RU') + ' ₽';
   document.getElementById('kpi-avg-d').textContent = '';
-  document.getElementById('kpi-items').textContent = itemsGiven;
-  document.getElementById('kpi-items-d').textContent = 'за ' + days + ' дн.';
-
   const dayLabels = [], dayValues = [];
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000);
-    const key = d.toISOString().slice(0, 10);
-    dayLabels.push(d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }));
-    dayValues.push(orders.filter(function(o) { return parseOrderDate(o.created_at).toISOString().slice(0, 10) === key; })
-                         .reduce(function(s, o) { return s + o.total; }, 0));
+    const date = new Date(Date.now() - i * 86400000);
+    const day = date.toISOString().slice(0, 10);
+    dayLabels.push(date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }));
+    dayValues.push(revenueByDay.get(day) || 0);
   }
   const step = days > 14 ? Math.ceil(days / 10) : 1;
   drawLineChart('chartRev', dayLabels.filter(function(_, i) { return i % step === 0; }),
                             dayValues.filter(function(_, i) { return i % step === 0; }), '#2D5A3F');
   document.getElementById('rev-chart-label').textContent = 'за ' + days + ' дн.';
-
-  const pieValues = POINTS_INFO.map(function(p) { return orders.filter(function(o) { return o.point_id === p.id; }).reduce(function(s, o) { return s + o.total; }, 0); });
-  drawPieChart('chartPie', 'pie-legend', POINTS_INFO.map(function(p) { return p.name; }), pieValues, POINTS_INFO.map(function(p) { return p.color; }));
-
-  const productRevenue = {};
-  orders.forEach(function(o) { o.items.forEach(function(i) { productRevenue[i.name] = (productRevenue[i.name] || 0) + i.price * i.qty; }); });
-  const topProducts = Object.entries(productRevenue).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 6);
-  document.getElementById('bar-legend').textContent = '';
-  drawBarChart('chartBar', topProducts.map(function(p) { return p[0]; }), topProducts.map(function(p) { return p[1]; }), '#D4872A');
-
-  document.getElementById('point-cards-dash').innerHTML = POINTS_INFO.map(function(p, idx) {
-    const pOrders = orders.filter(function(o) { return o.point_id === p.id; });
-    const rev = pOrders.reduce(function(s, o) { return s + o.total; }, 0);
-    return '<div class="card" style="cursor:pointer;" onclick="showPoint(' + idx + ')">' +
-      '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;">' +
-      '<span style="width:10px;height:10px;border-radius:50%;background:' + p.color + ';display:inline-block;"></span>' +
-      '<strong>' + p.name + '</strong></div>' +
-      '<div style="font-size:1.3rem;font-weight:700;color:var(--text);">' + rev.toLocaleString('ru-RU') + ' ₽</div>' +
-      '<div style="font-size:.8rem;color:var(--muted);">' + pOrders.length + ' заказ(ов) за ' + days + ' дн.</div></div>';
-  }).join('');
 }
-
 // ── ЗАКАЗЫ ─────────────────────────────────────────────────────────
 function escapeOrderCell(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
