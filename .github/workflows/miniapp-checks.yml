@@ -108,6 +108,8 @@ on:
       - server/warehouse-list-query.test.js
       - server/routes-warehouse.js
       - server/routes-economics.js
+      - server/economics-dashboard.js
+      - server/economics-dashboard-performance.test.js
       - public/miniapp-founder-admin.js
       - public/miniapp-identity.js
       - public/miniapp-customer.js
@@ -311,6 +313,8 @@ jobs:
           node --check server/payment-return-ui.test.js
           node --check server/db-indexes.test.js
           node --check server/routes-economics.js
+          node --check server/economics-dashboard.js
+          node --check server/economics-dashboard-performance.test.js
           node --check server/routes-audit.js
           node --check server/expense-bot-create.js
           node --check server/expense-bot-create.test.js
@@ -494,6 +498,8 @@ jobs:
         run: node --test server/telegram-login-polling.test.js
       - name: Verify batched warehouse lists
         run: node --test server/warehouse-list-query.test.js
+      - name: Verify exact economics totals after streaming paid orders
+        run: node --test server/economics-dashboard-performance.test.js
       - name: Verify indexed operations-center queries
         run: node --test server/operations-center-query.test.js
       - name: Verify no games remain on storefront or API
