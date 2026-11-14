@@ -190,17 +190,6 @@ function reserveAdminDelivery(orderId, alertType, chatId) {
   ).run(orderId,alertType,chatId);
   return !!retried.changes;
 }
-function adminDeliveryDue(orderId, alertType, chatId) {
-  const row = db.prepare(
-    'SELECT status,created_at FROM unpaid_order_admin_alert_log ' +
-    'WHERE order_id=? AND alert_type=? AND target_chat_id=?'
-  ).get(orderId,alertType,chatId);
-  if (!row) return true;
-  return row.status === 'failed' && !!db.prepare(
-    "SELECT 1 AS due WHERE ? <= datetime('now','-30 seconds')"
-  ).get(row.created_at);
-}
-
 async function sendAdminUnpaidAlert(order, items, alertType, reason, chatId, options = {}) {
   if (!reserveAdminDelivery(order.id,alertType,chatId)) return {ok:false,skipped:true};
   const latest = currentUnpaidOrder(order.id,alertType);
@@ -263,28 +252,64 @@ async function sendUnpaidOrderAlert(orderId, alertType = 'pending', reason = nul
 }
 
 function pendingOrderIds(options = {}) {
-  // Keep the 30-minute recovery window from the previous implementation.
-  // An admin may still need the notice after a manager's notification was
-  // already logged, and an admin retry must not resend successful chats.
-  // The 15-second scheduler needs only the ID and the point to decide whom
-  // to alert. Full order details (including private contacts) are read only
-  // when a notification is actually due.
+  // One indexed join reads only 30-minute pending reservation IDs and their
+  // delivery ledgers. Avoid the previous N * (admins + manager) SQL lookups.
+  // Full customer contacts and item descriptions remain outside this scan.
   const rows = trackSync('unpaid_order_sql', () => db.prepare(
-    "SELECT id, point_id FROM orders WHERE status='pending' AND reservation_status='active' " +
-    "AND created_at<=datetime('now','-1 minute') " +
-    "AND created_at>=datetime('now','-30 minutes') ORDER BY id"
+    "SELECT o.id, o.point_id, ml.order_id AS manager_logged, " +
+    "al.target_chat_id AS admin_chat_id, al.status AS admin_status, " +
+    "al.created_at<=datetime('now','-30 seconds') AS admin_retry_due " +
+    "FROM orders o " +
+    "LEFT JOIN unpaid_order_alert_log ml " +
+    "ON ml.order_id=o.id AND ml.alert_type='pending' " +
+    "LEFT JOIN unpaid_order_admin_alert_log al " +
+    "ON al.order_id=o.id AND al.alert_type='pending' " +
+    "WHERE o.status='pending' AND o.reservation_status='active' " +
+    "AND o.created_at<=datetime('now','-1 minute') " +
+    "AND o.created_at>=datetime('now','-30 minutes') ORDER BY o.id"
   ).all());
-  const adminChats = adminRecipientChats(options);
-  const hasManagerLog = db.prepare(
-    "SELECT 1 AS logged FROM unpaid_order_alert_log WHERE order_id=? AND alert_type='pending'"
-  );
-  return rows.filter(order => {
-    const managerChat = responsibleManagerChat(order);
-    const managerDue = managerChat && !adminChats.includes(managerChat) &&
-      !hasManagerLog.get(order.id);
-    const adminDue = adminChats.some(chatId => adminDeliveryDue(order.id,'pending',chatId));
+  // An idle five-minute check should not even fetch admin recipients.
+  if (!rows.length) return [];
+
+  const orders = new Map();
+  for (const row of rows) {
+    let record = orders.get(row.id);
+    if (!record) {
+      record = {
+        id: row.id, point_id: row.point_id,
+        managerLogged: row.manager_logged != null,
+        adminLog: new Map(),
+      };
+      orders.set(row.id, record);
+    }
+    if (row.admin_chat_id != null) {
+      record.adminLog.set(String(row.admin_chat_id), {
+        status: row.admin_status, retryDue: !!row.admin_retry_due,
+      });
+    }
+  }
+
+  const adminChats = new Set(adminRecipientChats(options));
+  // Different pending orders at the same point share one responsible manager.
+  // Only cache within this synchronous scan: reassignment after the scan
+  // still gets checked again before any customer details are sent.
+  const managersByPoint = new Map();
+  return [...orders.values()].filter(order => {
+    const pointId = order.point_id;
+    let managerChat = null;
+    if (pointId) {
+      if (!managersByPoint.has(pointId)) {
+        managersByPoint.set(pointId, responsibleManagerChat(order));
+      }
+      managerChat = managersByPoint.get(pointId);
+    }
+    const managerDue = managerChat && !adminChats.has(managerChat) && !order.managerLogged;
+    const adminDue = [...adminChats].some(chatId => {
+      const delivery = order.adminLog.get(chatId);
+      return !delivery || (delivery.status === 'failed' && delivery.retryDue);
+    });
     return !!(managerDue || adminDue);
-  }).map(row => row.id);
+  }).map(order => order.id);
 }
 
 async function runUnpaidOrderAlertCheck(options = {}) {
