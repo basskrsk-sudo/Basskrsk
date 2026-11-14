@@ -13,6 +13,8 @@ const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { logManagerAction } = require('./audit-log');
+const { trackSync } = require('./runtime-diagnostics');
+const { hydrateRestockRequests, hydrateStockMovements } = require('./warehouse-list-query');
 
 function slugify(str) {
   const map = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
@@ -356,16 +358,11 @@ function registerWarehouseRoutes(router) {
       if (!cityId) return sendJson(res, 400, { error: 'Не удалось определить город — укажите ?city=' });
       requests = db.prepare('SELECT * FROM restock_requests WHERE city_id = ? ORDER BY id DESC').all(cityId);
     }
-    const getItems = db.prepare(`
-      SELECT rri.*, v.weight, p.name AS product_name
-      FROM restock_request_items rri
-      JOIN product_variants v ON v.id = rri.variant_id
-      JOIN products p ON p.id = v.product_id
-      WHERE rri.request_id = ?
-    `);
-    const getDeliveries = db.prepare('SELECT * FROM restock_deliveries WHERE request_id = ?');
+    // The older implementation executed two additional SELECTs per request.
+    // Related data is now read in bounded batches without changing permissions.
     sendJson(res, 200, {
-      requests: requests.map((r) => ({ ...r, items: getItems.all(r.id), deliveries: getDeliveries.all(r.id) })),
+      requests: trackSync('warehouse_restock_list',
+        () => hydrateRestockRequests(db, requests)),
     });
   });
 
@@ -504,14 +501,10 @@ function registerWarehouseRoutes(router) {
     sql += ' ORDER BY sm.id DESC';
     const rows = db.prepare(sql).all(...params);
 
-    const getItems = db.prepare(`
-      SELECT smi.*, v.weight, p.name AS product_name
-      FROM stock_movement_items smi
-      JOIN product_variants v ON v.id = smi.variant_id
-      JOIN products p ON p.id = v.product_id
-      WHERE smi.movement_id = ?
-    `);
-    sendJson(res, 200, { movements: rows.map((r) => ({ ...r, items: getItems.all(r.id) })) });
+    // Batch the items for all authorized movements: one read per 400 reports
+    // instead of a separate synchronous SQLite read for every movement.
+    sendJson(res, 200, { movements: trackSync('warehouse_movement_list',
+      () => hydrateStockMovements(db, rows)) });
   });
 
   // PUT /api/stock-movements/:id/approve — администратор согласовывает отчёт:
