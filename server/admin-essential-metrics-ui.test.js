@@ -50,8 +50,8 @@ test('saving a salon page does not trigger heavy operations checks',()=>{
 test('heavy operations check is opt-in on the admin dashboard',()=>{
   const dashboardLoader=nav.split("if (id === 'dashboard')")[1].split('\n')[0];
   assert.doesNotMatch(dashboardLoader,/loadOperationsCenter/);
-  assert.match(dashboardLoader,/loadAdminSalesSummary\(\), loadPointsInfo\(\)/);
-  assert.doesNotMatch(dashboardLoader,/loadOrders/);
+  assert.match(dashboardLoader,/await loadAdminSalesSummary\(\)/);
+  assert.doesNotMatch(dashboardLoader,/loadOrders|loadPointsInfo/);
   const pointsLoader=nav.split("if (id === 'points')")[1].split('\n')[0];
   assert.match(pointsLoader,/loadAdminSalesSummary\(\), loadPointsInfo\(\)/);
   assert.doesNotMatch(pointsLoader,/loadOrders/);

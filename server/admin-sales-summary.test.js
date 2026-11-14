@@ -34,7 +34,7 @@ function add(id,status,total,age,point) {
 test('empty sales dashboard contains no customer records',()=>{
   const res=call({days:'7'});
   assert.equal(res.statusCode,200);
-  assert.deepEqual(res.body,{days:7,revenue:0,orders_count:0,daily:[],points:[]});
+  assert.deepEqual(res.body,{days:7,revenue:0,orders_count:0,active_points_count:0,daily:[],points:[]});
 });
 
 test('exact sales totals cover 520 orders, never truncated to 500',()=>{
@@ -63,6 +63,13 @@ test('exact sales totals cover 520 orders, never truncated to 500',()=>{
   assert.equal(quarter.body.orders_count,522);
   assert.equal(quarter.body.revenue,520*250+100+360);
   assert.equal(quarter.body.points.find(x=>x.point_id==='salon-a').orders_count,261);
+  db.prepare('INSERT INTO points(id,name,addr,icon,active) VALUES(?,?,?,?,?)')
+    .run('salon-a','БаркЛай','Красноярск','🐾',1);
+  db.prepare('INSERT INTO points(id,name,addr,icon,active) VALUES(?,?,?,?,?)')
+    .run('salon-b','Салон','Красноярск','🐾',1);
+  db.prepare('INSERT INTO points(id,name,addr,icon,active) VALUES(?,?,?,?,?)')
+    .run('salon-closed','Закрытая точка','Красноярск','🐾',0);
+  assert.equal(call({days:'7'}).body.active_points_count,2);
   assert.equal(call({days:'14'}).statusCode,400);
 });
 
