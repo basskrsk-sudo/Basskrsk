@@ -3,6 +3,10 @@ name: Telegram Mini App checks
 on:
   pull_request:
     paths:
+      - Dockerfile
+      - .dockerignore
+      - scripts/restore-doc-aliases.js
+      - scripts/restore-doc-aliases.test.js
       - public/miniapp.html
       - public/index.html
       - public/p.html
@@ -305,6 +309,8 @@ jobs:
           node --check server/site-health.js
           node --check server/runtime-diagnostics.js
           node --check server/runtime-diagnostics.test.js
+          node --check scripts/restore-doc-aliases.js
+          node --check scripts/restore-doc-aliases.test.js
           node --check server/pet-news-digest.js
           node --check server/pet-news-worker.js
           node --check server/pet-news-worker-runner.js
@@ -466,6 +472,8 @@ jobs:
           node --check server/payout-reminders.js
           node --check server/winback.js
           node --check public/miniapp-return.js
+      - name: Validate Docker PDF link compatibility
+        run: node --test scripts/restore-doc-aliases.test.js
       - name: Check Mini App inline JavaScript syntax
         run: |
           node -e "const fs=require('node:fs');const s=fs.readFileSync('public/miniapp.html','utf8');const m=s.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);if(!m)throw new Error('missing Mini App script');new Function(m[1]);console.log('Mini App JavaScript syntax OK');"
