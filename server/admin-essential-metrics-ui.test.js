@@ -8,6 +8,17 @@ const html=read('public/taiga-admin.html');
 const nav=read('public/admin-navigation.js');
 const server=read('server/server.js');
 
+test('disconnected BSC and growth-plan API route modules are removed',()=>{
+  for(const route of ['server/routes-bsc.js','server/routes-growth-plan.js']) {
+    assert.equal(fs.existsSync(path.join(root,route)),false,route);
+  }
+  // The shared calculations remain in use by founders and archived reports.
+  for(const module of ['server/bsc.js','server/growth-plan.js']) {
+    assert.equal(fs.existsSync(path.join(root,module)),true,module);
+  }
+  assert.match(read('server/routes-business-founders.js'),/buildGrowthPlanDashboard/);
+});
+
 test('retired BSC is absent from admin interface, navigation, and registered API',()=>{
   const forbidden=[
     /id="sec-bsc"/, /id="bsc-perspectives"/, /id="bsc-settings"/,

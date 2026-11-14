@@ -92,7 +92,6 @@ on:
       - server/analytics-cache.js
       - server/analytics-cache.test.js
       - server/report-phone-key.js
-      - server/routes-bsc.js
       - server/routes-business-founders.js
       - server/weekly-report-pdf.js
       - server/weekly-report-pdf-worker.js
@@ -296,7 +295,6 @@ jobs:
           node --check server/analytics-cache.js
           node --check server/analytics-cache.test.js
           node --check server/report-phone-key.js
-          node --check server/routes-bsc.js
           node --check server/report-query-efficiency.test.js
           node --check server/weekly-report-pdf.js
           node --check server/weekly-report-pdf-worker.js

@@ -35,7 +35,7 @@ test('checkout and business model no longer include a per-sale charity expense',
     const source = fs.readFileSync(path.join(publicDir, name), 'utf8');
     assert.doesNotMatch(source, /благотвор|пожертвов|с\s*каждой\s*покупки\s*[-—]\s*в\s*фонд/i, name);
   }
-  for (const name of ['unit-economics.js','routes-economics.js','growth-plan.js','routes-growth-plan.js']) {
+  for (const name of ['unit-economics.js','routes-economics.js','growth-plan.js']) {
     const source = fs.readFileSync(path.join(serverDir, name), 'utf8');
     assert.doesNotMatch(source, /charity|donation|пожертвов|благотвор|хвост[ -]?помо/i, name);
   }
