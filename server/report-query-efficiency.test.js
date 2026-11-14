@@ -86,6 +86,38 @@ test('full management report and lightweight BSC preserve exactly the same score
   assert.equal(lean.daily,undefined,'BSC must not compute daily charts');
 });
 
+test('full report order rows do not join point/city tables unnecessarily',()=>{
+  const source=fs.readFileSync(path.join(__dirname,'weekly-report.js'),'utf8');
+  const getOrders=source.split('function getOrders(start, end) {')[1].split('function effectiveRevenue(order) {')[0];
+  assert.match(getOrders,/SELECT o\.\*/);
+  assert.doesNotMatch(getOrders,/LEFT JOIN points|LEFT JOIN cities/);
+  const report=collectWeeklyReport(now);
+  assert.ok(report.current.orders.length>0);
+  assert.ok(report.points.every(point => typeof point.city==='string' && point.city.length>0));
+});
+
+test('daily series groups paid orders once and keeps refunds, gaps, previous days', () => {
+  const source=fs.readFileSync(path.join(__dirname,'weekly-report.js'),'utf8');
+  const body=source.split('function buildDaily(current, previous, period) {')[1].split('function buildOperations(period) {')[0];
+  assert.match(body,/const groupDays = \(orders\) =>/);
+  assert.doesNotMatch(body,/paidOrders\.filter\(/);
+  assert.equal(body.match(/groupDays\((?:current|previous)\.paidOrders\)/g)?.length,2);
+  const report=collectWeeklyReport(now);
+  assert.equal(report.daily.length,7);
+  assert.deepEqual(report.daily.find(d=>d.date==='2026-11-03'),{
+    date:'2026-11-03',revenue:300,orders_count:1,
+    previous_revenue:0,previous_orders_count:0,
+  });
+  assert.deepEqual(report.daily.find(d=>d.date==='2026-11-05'),{
+    date:'2026-11-05',revenue:0,orders_count:1,
+    previous_revenue:200,previous_orders_count:1,
+  });
+  assert.deepEqual(report.daily.find(d=>d.date==='2026-11-07'),{
+    date:'2026-11-07',revenue:0,orders_count:0,
+    previous_revenue:150,previous_orders_count:1,
+  });
+});
+
 test('point summary remains batch-based when the number of points grows', () => {
   const source=fs.readFileSync(path.join(__dirname,'weekly-report.js'),'utf8');
   const section=source.split('function buildPoints(current, previous) {')[1]

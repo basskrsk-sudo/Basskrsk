@@ -135,37 +135,6 @@ function recentEvents(limit = MAX_RECENT_EVENTS) {
     'ORDER BY id DESC LIMIT ?'
   ).all(Math.min(100,Math.max(1,Number(limit)||MAX_RECENT_EVENTS)));
 }
-// Production-only aggregate metrics; never expose feeds, article URLs,
-// Telegram chat IDs, customer records or provider credentials.
-function newsCollectorSnapshot() {
-  try {
-    const rows=db.prepare(
-      "SELECT key,value FROM pet_news_meta WHERE key IN ("+
-      "'last_completed','last_duration_ms','last_worker_ms','last_db_ms',"+
-      "'last_candidates','last_added','last_healthy','last_error')"
-    ).all();
-    const data=Object.fromEntries(rows.map(x=>[x.key,x.value]));
-    const number=key=>{
-      if (data[key]===undefined || data[key]==='') return null;
-      const value=Number(data[key]);return Number.isFinite(value)?value:null;
-    };
-    return {
-      last_completed_at: number('last_completed') ?
-        new Date(number('last_completed')).toISOString() : null,
-      duration_ms:number('last_duration_ms'),
-      worker_ms:number('last_worker_ms'),
-      sqlite_ms:number('last_db_ms'),
-      candidates:number('last_candidates'),
-      added:number('last_added'),
-      healthy_sources:number('last_healthy'),
-      error: data.last_error || null,
-    };
-  } catch (_) {
-    // The table might not exist before the Telegram module starts.
-    return null;
-  }
-}
-
 async function metrics() {
   const mem = process.memoryUsage();
   const [health, free] = await Promise.all([healthProbe(), storageFreeBytes()]);
@@ -187,7 +156,6 @@ async function metrics() {
     api_performance:snapshotApiPerformance(),
     cpu_throttle:lastSample ? lastSample.cpu_throttle : null,
     slow_operations:snapshotOperations(),
-    news_collector:newsCollectorSnapshot(),
   };
 }
 async function alert(type, severity, detail) {
@@ -361,4 +329,4 @@ function registerSiteHealthRoutes(router) {
   });
 }
 module.exports={registerSiteHealthRoutes,healthProbe,metrics,recentEvents,
-  sample,startHealthWatcher,limitMemory,storageFreeBytes,appendEvent,nextLoopState,describeIoSpike,newsCollectorSnapshot};
+  sample,startHealthWatcher,limitMemory,storageFreeBytes,appendEvent,nextLoopState,describeIoSpike};

@@ -54,7 +54,6 @@ const newProductBroadcast = require('./new-product-broadcast');
 const tierApprovals = require('./partner-tier-approvals');
 const reportApprovals = require('./report-approvals');
 const messageEdits = require('./telegram-message-edit');
-const { createPetNewsService } = require('./pet-news-digest');
 let lastUpdateId = 0;
 let polling = false;
 
@@ -97,11 +96,6 @@ const TELEGRAM_BOT_COMMANDS = Object.freeze([
       { command: 'edit', description: '✏️ Изменить публикацию бота в группе' },
       { command: 'newproduct', description: '📷 Рассылка о новом товаре' },
       { command: 'cancel', description: 'Отменить текущее действие' },
-      { command: 'news', description: '📰 Новости зоовендинга (админам)' },
-      { command: 'news_refresh', description: '🔎 Обновить новости (админам)' },
-      { command: 'news_status', description: '🗞 Состояние источников (админам)' },
-      { command: 'news_on', description: '🔔 Ежедневный дайджест (админам)' },
-      { command: 'news_off', description: '🔕 Отключить дайджест' },
       { command: 'help', description: 'Как пользоваться ботом' },
       { command: 'chatid', description: 'Показать ID текущей группы' },
 ]);
@@ -210,20 +204,6 @@ async function replyToChat(chatId, text, replyMarkup, parseMode) {
   }
 }
 
-const petNewsService = createPetNewsService({
-  db,
-  send: async (chatId, text) => {
-    try {
-      await callBotApi('sendMessage', { chat_id: chatId, text });
-      return { ok: true };
-    } catch (error) {
-      console.warn('[pet-news] Telegram send failed:', error.message);
-      return { ok: false };
-    }
-  },
-  isAuthorized: chatId => adminCanReadSales(chatId),
-});
-
 function buildWelcomeMessage() {
   return [
     '🐾 ХвостМаркет',
@@ -239,7 +219,6 @@ function buildWelcomeMessage() {
     'Администраторам: ответьте /edit на сообщение бота в Клубе партнёров, затем пришлите новый текст боту лично.',
     '',
     'Для быстрого входа в Mini App подтвердите свой номер Telegram — увидите зарегистрированные кабинеты без ввода пароля. Для админки нужна предварительная привязка Telegram из аккаунта сайта.',
-    'Администраторам: /news — новости зоовендинга; /news_refresh — обновить источники; /news_on — ежедневный дайджест после 09:00 по Красноярску; /news_off — отключить.',
   ].join('\n');
 }
 
@@ -1232,19 +1211,14 @@ async function processUpdate(update) {
   }
   if (!msg.text) return;
   const text = msg.text.trim();
-  // News commands use this existing Bot API long-polling loop, never a second poller.
-  // A private chat must be owned by its actual Telegram sender.
+  // Retired pilot: acknowledge old Telegram commands cached by the client,
+  // but do not fetch sources, schedule jobs, or access news subscriber tables.
   if (msg.chat.type === 'private' &&
       /^\/news(?:_(?:refresh|sources|status|on|off|topics|topic))?(?:@\w+)?(?:\s|$)/i.test(text)) {
     if (String(msg.from?.id) !== String(msg.chat.id)) {
-      await replyToChat(msg.chat.id, '🔒 Команды новостей доступны только владельцу личного чата.');
-      return;
-    }
-    try {
-      await petNewsService.processCommand(msg.chat.id, text);
-    } catch (error) {
-      console.warn('[pet-news] failed to process command:', error.message);
-      await replyToChat(msg.chat.id, '⚠️ Новости временно недоступны. Проверьте /news_status позже.');
+      await replyToChat(msg.chat.id, '🔒 Команда доступна только владельцу личного чата.');
+    } else {
+      await replyToChat(msg.chat.id, '📰 Сборщик новостей зоовендинга временно отключён. Обычные объявления ХвостМаркета продолжают работать.');
     }
     return;
   }
@@ -1559,7 +1533,6 @@ async function startPolling() {
   if (polling) return;
   polling = true;
   newProductBroadcast.startBroadcastWorker();
-  petNewsService.start();
   tierApprovals.startTierApprovalNotifications();
   require('./telegram-connection-alerts').startBotConnectionAlertWorker();
   await configureBotProfile();
@@ -1577,7 +1550,6 @@ async function startPolling() {
 
 function stopPolling() {
   polling = false;
-  petNewsService.stop();
   if (commandMenuRetryTimer) clearTimeout(commandMenuRetryTimer);
   commandMenuRetryTimer = null;
   commandMenuRetryCount = 0;
