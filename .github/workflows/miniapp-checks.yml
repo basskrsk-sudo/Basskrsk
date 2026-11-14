@@ -248,6 +248,7 @@ on:
       - server/backup.js
       - server/email.js
       - server/backup-streaming.test.js
+      - server/backup-schedule.test.js
       - server/site-health.js
       - server/runtime-diagnostics.js
       - server/runtime-diagnostics.test.js
@@ -298,6 +299,7 @@ jobs:
           node --check server/backup.js
           node --check server/email.js
           node --check server/backup-streaming.test.js
+          node --check server/backup-schedule.test.js
           node --check server/weekly-report.js
           node --check server/analytics-cache.js
           node --check server/analytics-cache.test.js
@@ -518,6 +520,8 @@ jobs:
         run: node --test server/economics-dashboard-performance.test.js
       - name: Verify simplified admin business metrics
         run: node --test server/admin-essential-metrics-ui.test.js
+      - name: Verify restart-safe daily SQLite backup scheduling
+        run: node --test server/backup-schedule.test.js
       - name: Verify indexed operations-center queries
         run: node --test server/operations-center-query.test.js
       - name: Verify admin orders load items in one indexed batch
