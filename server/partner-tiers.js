@@ -124,11 +124,8 @@ async function checkAndUpgradePartnerTier(partnerId) {
   // remains unchanged and is used by all subsequent orders and payouts.
   const request = approvals.requestTierDowngrade(stats, earnedTier);
   if (request?.status === 'pending') {
-    if (request.created) {
-      // Do not delay paid-order completion while Telegram is unavailable.
-      approvals.notifyPendingTierApprovals().catch(error =>
-        console.warn('[tiers] Could not send approval proposal:', error.message));
-    }
+    // requestTierDowngrade wakes a single-flight notification worker after
+    // its SQLite commit; no parallel Telegram send runs inside the sale path.
     return { tierName: earnedTier.name, oldRate: partner.commission_rate,
       newRate: earnedTier.rate, direction: 'pending_down', requestId: request.request_id };
   }

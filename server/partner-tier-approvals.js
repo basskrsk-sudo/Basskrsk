@@ -96,6 +96,9 @@ function requestTierDowngrade(stats, tier) {
       revenue, referralsCount).lastInsertRowid);
     proposal = { status:'pending', request_id:id, created:true };
     db.exec('COMMIT');
+    // Only wake the notification worker after the request is durably stored.
+    // It must not delay the payment or daily tier recalculation.
+    wakeTierApprovalNotifications();
     return proposal;
   } catch(error) {
     db.exec('ROLLBACK');
@@ -249,18 +252,86 @@ async function decideTierDowngrade(chatId,action,requestId) {
       ' остаётся '+asPercent(payload.old_rate)+
       '. Повторная заявка за этот месяц не создаётся. Заявка №'+id+'.'};
 }
-let timer=null;
-function startTierApprovalNotifications(){
-  if(timer)return;
-  // Unsent requests remain in SQLite and are retried on the next cycle.
-  notifyPendingTierApprovals().catch(e=>console.warn('[tier-approval] notify:',e.message));
-  timer=setInterval(()=>notifyPendingTierApprovals().catch(e=>
-    console.warn('[tier-approval] notify:',e.message)),10*60*1000);
-  timer.unref?.();
+// Pending proposals keep the original ten-minute delivery retry interval.
+// With no pending proposals the worker scans its indexed SQLite queue only
+// once every 30 minutes. New requests trigger an immediate wake-up instead.
+const TIER_APPROVAL_RETRY_MS=10*60*1000;
+const TIER_APPROVAL_IDLE_MS=30*60*1000;
+function createTierApprovalScheduler({
+  database=db,
+  notify=()=>notifyPendingTierApprovals(),
+  setTimer=setTimeout,
+  clearTimer=clearTimeout,
+  now=Date.now,
+}={}){
+  const hasPending=database.prepare(
+    "SELECT 1 FROM partner_tier_approval_requests WHERE status='pending' LIMIT 1"
+  );
+  let started=false, running=false, timer=null, dueAt=Infinity, wakeRequested=false;
+  function schedule(delayMs){
+    if(!started)return;
+    const wait=Math.max(0,delayMs);
+    const due=now()+wait;
+    // A new request can shorten an idle timeout; a later call must never
+    // postpone an already-scheduled retry.
+    if(timer&&dueAt<=due)return;
+    if(timer)clearTimer(timer);
+    dueAt=due;
+    timer=setTimer(()=>{
+      timer=null;dueAt=Infinity;
+      void tick();
+    },wait);
+    timer?.unref?.();
+  }
+  async function tick(){
+    if(!started)return;
+    if(running){wakeRequested=true;return;}
+    running=true;
+    let delay=TIER_APPROVAL_RETRY_MS;
+    try{
+      const outcome=await notify();
+      // If a notification is already being delivered by another caller,
+      // retry soon rather than enter a long idle period.
+      if(outcome?.skipped==='busy')delay=1000;
+      else delay=hasPending.get()?TIER_APPROVAL_RETRY_MS:TIER_APPROVAL_IDLE_MS;
+    }catch(error){
+      console.warn('[tier-approval] notify:',error.message);
+    }finally{
+      running=false;
+    }
+    if(!started)return;
+    const wake=wakeRequested;
+    wakeRequested=false;
+    schedule(wake?0:delay);
+  }
+  return {
+    start(){
+      if(started)return;
+      started=true;
+      // Recover undelivered requests immediately after any deployment.
+      schedule(0);
+    },
+    wake(){
+      if(!started)return;
+      if(running)wakeRequested=true;
+      else schedule(0);
+    },
+    stop(){
+      started=false;wakeRequested=false;
+      if(timer)clearTimer(timer);
+      timer=null;dueAt=Infinity;
+    },
+  };
 }
+const tierApprovalScheduler=createTierApprovalScheduler();
+function startTierApprovalNotifications(){tierApprovalScheduler.start();}
+function wakeTierApprovalNotifications(){tierApprovalScheduler.wake();}
+function stopTierApprovalNotifications(){tierApprovalScheduler.stop();}
 
 module.exports={
   sameRate,activeSuperAdmin,markPendingStale,requestTierDowngrade,
   reviewMessage,reviewButtons,pendingApprovals,notifyPendingTierApprovals,
   requestCardList,decideTierDowngrade,startTierApprovalNotifications,
+  stopTierApprovalNotifications,wakeTierApprovalNotifications,
+  createTierApprovalScheduler,TIER_APPROVAL_RETRY_MS,TIER_APPROVAL_IDLE_MS,
 };
