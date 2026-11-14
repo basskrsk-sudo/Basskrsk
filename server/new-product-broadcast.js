@@ -600,20 +600,20 @@ async function processBroadcastQueue(send = sendProductPhoto, notify = async (ch
 // Adaptive scheduling keeps the SQLite queue idle when no photos are due.
 // New confirmed campaigns signal the worker immediately (no 60s wait).
 const BROADCAST_ACTIVE_MS = 1700;
-const BROADCAST_IDLE_MS = 60 * 1000;
+const BROADCAST_IDLE_MS = 5 * 60 * 1000;
 let workerStarted = false;
 let workerTimer = null;
 let workerRunning = false;
 let wakeRequested = false;
-function nextBroadcastPollDelay() {
-  const row = db.prepare(
+function nextBroadcastPollDelay(database = db, nowMs = Date.now()) {
+  const row = database.prepare(
     "SELECT MIN(d.next_attempt_at) AS next_due FROM new_product_deliveries d " +
     "JOIN new_product_campaigns c ON c.id=d.campaign_id " +
     "WHERE d.status='pending' AND c.state IN ('queued','running')"
   ).get();
   if (row.next_due == null) return BROADCAST_IDLE_MS;
   return Math.max(BROADCAST_ACTIVE_MS,
-    Math.min(BROADCAST_IDLE_MS, Number(row.next_due) * 1000 - Date.now()));
+    Math.min(BROADCAST_IDLE_MS, Number(row.next_due) * 1000 - nowMs));
 }
 function scheduleBroadcastTick(delayMs) {
   if (!workerStarted) return;
@@ -665,5 +665,5 @@ module.exports = {
   AUDIENCES, isBroadcaster, productById, recipientSnapshot,
   productCaption, validPhotoRef, startBroadcast, handleCallback,
   messageInput, cancelDraft, sendProductPhoto, processBroadcastQueue,
-  startBroadcastWorker, campaignStatus,
+  startBroadcastWorker, campaignStatus, nextBroadcastPollDelay,
 };
