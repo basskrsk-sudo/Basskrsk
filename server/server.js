@@ -67,7 +67,7 @@ const { registerSiteHealthRoutes, startHealthWatcher } = require('./site-health'
 const { registerPointLaunchRoutes } = require('./routes-point-launch');
 const { registerPartnerClubRoutes } = require('./routes-partner-club');
 
-require('./seed')(); // безопасно вызывать при каждом старте — использует INSERT OR IGNORE
+require('./seed-bootstrap').runVersionedSeed(); // повторно применяем только после изменения seed.js
 // Historical meeting imports are only loaded when their migration versions are missing.
 require('./task-seed-bootstrap').runPendingTaskSeeds();
 ensureTaskAccountBindings();

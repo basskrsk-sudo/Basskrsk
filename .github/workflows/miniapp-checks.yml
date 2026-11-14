@@ -272,6 +272,8 @@ on:
       - scripts/site-uptime-monitor.js
       - scripts/site-uptime-monitor.test.js
       - .github/workflows/site-uptime.yml
+      - server/seed-bootstrap.js
+      - server/seed-bootstrap.test.js
       - server/task-seed-bootstrap.js
       - server/task-seed-bootstrap.test.js
       - server/repository-database-exclusion.test.js
@@ -360,6 +362,8 @@ jobs:
           node --check server/miniapp-resilience.test.js
           node --check public/miniapp-reliability.js
           node --check public/sw.js
+          node --check server/seed-bootstrap.js
+          node --check server/seed-bootstrap.test.js
           node --check server/task-seed-bootstrap.js
           node --check server/task-seed-bootstrap.test.js
           node --check server/repository-database-exclusion.test.js
@@ -530,6 +534,8 @@ jobs:
         run: node --test server/admin-sales-summary.test.js
       - name: Verify only persistent Amvera storage holds live SQLite data
         run: node --test server/repository-database-exclusion.test.js
+      - name: Verify startup catalog import is versioned and atomic
+        run: node --test server/seed-bootstrap.test.js
       - name: Verify legacy task imports are skipped after migration
         run: node --test server/task-seed-bootstrap.test.js
       - name: Verify no games remain on storefront or API
