@@ -233,6 +233,7 @@ on:
       - server/telegram-bot-identity.test.js
       - server/miniapp-phone-identity.js
       - server/routes-customers.js
+      - server/partner-phone-lookup.test.js
       - server/routes-partners.js
       - server/routes-owners.js
       - server/miniapp-role-data-audit.test.js
@@ -469,6 +470,7 @@ jobs:
           node --check public/miniapp-founder.js
           node --check public/miniapp-founder-admin.js
           node --check server/routes-customers.js
+          node --check server/partner-phone-lookup.test.js
           node --check server/routes-partners.js
           node --check server/routes-owners.js
           node --check server/miniapp-role-data-audit.test.js
@@ -528,6 +530,8 @@ jobs:
         run: node --test server/admin-essential-metrics-ui.test.js
       - name: Verify restart-safe daily SQLite backup scheduling
         run: node --test server/backup-schedule.test.js
+      - name: Verify indexed groomer phone checks for Gold loyalty
+        run: node --test server/partner-phone-lookup.test.js
       - name: Verify indexed, unambiguous customer phone lookup
         run: node --test server/customer-phone-lookup.test.js
       - name: Verify indexed operations-center queries
