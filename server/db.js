@@ -392,6 +392,17 @@ CREATE TABLE IF NOT EXISTS restock_deliveries (
   delivered_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Existing historic warehouse rows remain untouched; indexes support the
+-- active movement list and older restock/delivery history at any scale.
+CREATE INDEX IF NOT EXISTS idx_stock_movement_items_movement
+  ON stock_movement_items(movement_id, id);
+CREATE INDEX IF NOT EXISTS idx_restock_request_items_request
+  ON restock_request_items(request_id, id);
+CREATE INDEX IF NOT EXISTS idx_restock_deliveries_request
+  ON restock_deliveries(request_id, id);
+CREATE INDEX IF NOT EXISTS idx_restock_requests_manager
+  ON restock_requests(manager_id, id DESC);
+
 -- ── КЛИЕНТЫ ────────────────────────────────────────────────────────
 -- Фиксация клиентов по телефону — заменяет старую систему промокодов
 -- "-20% на первый заказ" (та проверялась через localStorage в браузере
