@@ -719,7 +719,7 @@
       manager: ['/api/managers/me/orders?days=30&limit=200', '/api/managers/me/stock', '/api/managers/me/compensation?days=30'],
       owner: ['/api/owner/dashboard'],
       founder: ['/api/business-founder/dashboard?period=' + (window.HvostBusinessFounder ? window.HvostBusinessFounder.getPeriod() : '30d')],
-      admin: ['/api/points', '/api/orders?limit=100', '/api/operations-center'].concat(currentUser && currentUser.role === 'super' ? ['/api/business-founders'] : []),
+      admin: ['/api/points', '/api/orders?limit=100'].concat(currentUser && currentUser.role === 'super' ? ['/api/business-founders'] : []),
     };
     try {
       var normalCalls=endpoints[role].map(function(url) { return fetchJSON(url, token); });
@@ -1537,14 +1537,13 @@
     var paidOrders = allOrders.filter(function(o) {
       return netPaidAmount(o) > 0;
     });
-    var ops = data[2] || {};
-    var issues = ops.issues || [];
     var revenue = paidOrders.reduce(function(s, o) { return s + netPaidAmount(o); }, 0);
     var html = '<div class="work-stats">' +
       stat('Активных точек', data[0] ? number(points.length) : '—', 'По всей сети') +
       stat('Последние покупки', data[1] ? number(paidOrders.length) : '—', 'Оплаченных среди 100 последних заказов') +
       stat('Выручка последних заказов', data[1] ? rub(revenue) : '—', 'Оплаченные среди 100 последних') +
-      stat('Сигналы контроля', data[2] ? number((ops.summary || {}).total || issues.length) : '—', 'Операционные вопросы') +
+      '<div class="work-stat"><small>Сигналы контроля</small><strong id="workAdminOpsCount">—</strong>' +
+      '<span>По запросу</span></div>' +
       '</div>';
     // Read-only 7-day aggregate metrics. No names, phones, IDs or tokens.
     var diag=diagnostics && diagnostics.summary || null;
@@ -1615,14 +1614,52 @@
           o.status === 'paid' ? 'Оплачен' : 'Статус: ' + o.status),
         rub(netPaidAmount(o) || (o.status === 'paid' ? 0 : Number(o.total || 0))));
     })));
-    html += surface('Операционный контроль', rows(issues.slice(0, 7).map(function(issue) {
-      return line((issue.icon || '⚠️') + ' ' + (issue.title || 'Задача'), issue.summary || '', number(issue.count || 0));
-    })));
+    html += surface('Операционный контроль',
+      '<button type="button" class="work-secondary" data-work-action="admin-ops-check">🔎 Проверить сейчас</button>' +
+      '<div id="workAdminOpsResults" aria-live="polite"><p class="work-note">' +
+      'Проверка проблем выполняется только по запросу.</p></div>');
     if (currentUser && currentUser.role === 'super' && window.HvostBusinessFounderAdmin) {
-      html += window.HvostBusinessFounderAdmin.render(data[3]);
+      html += window.HvostBusinessFounderAdmin.render(data[2]);
     }
     return html;
   }
+  async function checkAdminOperations(button) {
+    if (activeRole !== 'admin' || !currentUser || !getToken('admin') || button.disabled) return;
+    var currentSerial = serial;
+    if (!root.innerHTML.includes('id="workAdminOpsResults"')) return;
+    var results = document.getElementById('workAdminOpsResults');
+    if (!results) return;
+    button.disabled = true;
+    button.textContent = 'Проверяем…';
+    results.innerHTML = '<p class="work-note">Получаем свежие сигналы…</p>';
+    try {
+      var data = await fetchJSON('/api/operations-center', getToken('admin'));
+      if (currentSerial !== serial || activeRole !== 'admin' ||
+          !root.innerHTML.includes('id="workAdminOpsResults"')) return;
+      var issues = data.issues || [];
+      results.innerHTML = issues.length ? rows(issues.slice(0, 7).map(function(issue) {
+        return line((issue.icon || '⚠️') + ' ' + (issue.title || 'Задача'),
+          issue.summary || '', number(issue.count || 0));
+      })) : '<p class="work-note">Актуальных проблем не найдено.</p>';
+      var count = document.getElementById('workAdminOpsCount');
+      if (count) count.textContent = number(data.summary && data.summary.total != null
+        ? data.summary.total : issues.length);
+    } catch (error) {
+      if (currentSerial !== serial || activeRole !== 'admin' ||
+          !root.innerHTML.includes('id="workAdminOpsResults"')) return;
+      if (error.status === 401 || error.status === 403) {
+        clearToken('admin'); currentUser = null; serial++;
+        return renderLogin('Сессия истекла. Войдите ещё раз.');
+      }
+      results.innerHTML = problem(error.message || 'Не удалось проверить состояние сети.');
+    } finally {
+      if (currentSerial === serial && activeRole === 'admin') {
+        button.disabled = false;
+        button.textContent = '↻ Проверить снова';
+      }
+    }
+  }
+
   async function sendRestock() {
     if ((activeRole !== 'partner' && activeRole !== 'salon') || !currentUser) return;
     var select = document.getElementById('workRestockItem');
@@ -1707,6 +1744,7 @@
           token:getToken('admin'),isValid:adminRegisterAuthorized,
           onBack:function(){return chooseRole('admin');},
         });
+    if (action === 'admin-ops-check' && activeRole === 'admin') return checkAdminOperations(button);
     if (action === 'admin-reg-point' && activeRole === 'admin') return openAdminRegistration('point');
     if (action === 'admin-reg-owner' && activeRole === 'admin') return openAdminRegistration('owner');
     if (action === 'admin-reg-manager' && activeRole === 'admin') return openAdminRegistration('manager');
