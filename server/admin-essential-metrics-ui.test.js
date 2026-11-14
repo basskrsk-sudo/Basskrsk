@@ -50,7 +50,11 @@ test('saving a salon page does not trigger heavy operations checks',()=>{
 test('heavy operations check is opt-in on the admin dashboard',()=>{
   const dashboardLoader=nav.split("if (id === 'dashboard')")[1].split('\n')[0];
   assert.doesNotMatch(dashboardLoader,/loadOperationsCenter/);
-  assert.match(dashboardLoader,/loadOrders\(\), loadPointsInfo\(\)/);
+  assert.match(dashboardLoader,/loadAdminSalesSummary\(\), loadPointsInfo\(\)/);
+  assert.doesNotMatch(dashboardLoader,/loadOrders/);
+  const pointsLoader=nav.split("if (id === 'points')")[1].split('\n')[0];
+  assert.match(pointsLoader,/loadAdminSalesSummary\(\), loadPointsInfo\(\)/);
+  assert.doesNotMatch(pointsLoader,/loadOrders/);
   assert.match(html,/id="ops-check-now" onclick="loadOperationsCenter\(\)"/);
   assert.match(html,/Проверка проблем запускается только по запросу/);
 });
@@ -82,17 +86,15 @@ test('simple KPIs show correct revenue, orders, average and daily series',()=>{
   const labels=new Map();
   const chart=[];
   const date=new Date();
-  const iso=new Date(date.getTime()-120000).toISOString().slice(0,19).replace('T',' ');
-  const earlier=new Date(date.getTime()-3600000).toISOString().slice(0,19).replace('T',' ');
-  const sample=[
-    {total:250,created_at:iso},
-    {total:140,created_at:earlier}
-  ];
+  const day1=new Date(date.getTime()-120000).toISOString().slice(0,10);
+  const day2=new Date(date.getTime()-3600000).toISOString().slice(0,10);
+  const daily=day1===day2
+    ? [{day:day1,revenue:390}]
+    : [{day:day1,revenue:250},{day:day2,revenue:140}];
   const sandbox={
     Date, Map, Math, Number, Intl,
     periodDays:()=>7,
-    ordersInPeriod:()=>sample,
-    parseOrderDate:value=>new Date(String(value).replace(' ','T')+'Z'),
+    adminSalesSummary:{revenue:390,orders_count:2,daily},
     drawLineChart:(id,x,y)=>{chart.push({id,x,y});},
     document:{getElementById:id=>{
       if(!labels.has(id))labels.set(id,{textContent:''});

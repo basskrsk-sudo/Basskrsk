@@ -122,7 +122,7 @@ async function showSection(id) {
 
   if (id === 'launch')      await showLaunchTab(launchActiveTab);
   if (id === 'system-health') await renderSystemHealth();
-  if (id === 'dashboard')   { await Promise.all([loadOrders(), loadPointsInfo()]); renderDashboard(); }
+  if (id === 'dashboard')   { await Promise.all([loadAdminSalesSummary(), loadPointsInfo()]); renderDashboard(); }
   if (id === 'tasks')       await loadTaskLinks();
   if (id === 'economics')   await renderEconomics();
   if (id === 'business-expenses') await renderBusinessExpenses();
@@ -138,7 +138,7 @@ async function showSection(id) {
   if (id === 'winback')     await loadWinbackCandidates();
   if (id === 'partners')    await renderPartners();
   if (id === 'managers') await renderManagers();
-  if (id === 'points')      { await Promise.all([loadOrders(), loadPointsInfo()]); renderPointsOverview(); await renderPointsManagement(); }
+  if (id === 'points')      { await Promise.all([loadAdminSalesSummary(), loadPointsInfo()]); renderPointsOverview(); await renderPointsManagement(); }
   if (id === 'owners')      await renderOwners();
   if (id === 'qr')          await qrInitSection();
   if (id === 'qr-analytics') await loadQrAnalytics();

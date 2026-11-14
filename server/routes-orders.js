@@ -38,6 +38,50 @@ function registerOrderRoutes(router) {
       sendJson(res, 201, { ok: true, order: await recoverOrder(db, yookassa, ctx.body || {}, admin) });
     } catch (e) { sendJson(res, e.statusCode || 500, { error: e.message }); }
   });
+  // Minimal SQL aggregation for the admin overview. Never transfers 500 full
+  // customer/order records just to show revenue, orders and points.
+  router.get('/api/admin/sales-summary', (req, res, ctx) => {
+    if (!requireAuth(['admin'])(req, res, ctx)) return;
+    const days = Number(ctx.query.days || 7);
+    if (![7, 30, 90].includes(days)) {
+      return sendJson(res, 400, { error: 'Период 7, 30 или 90 дней' });
+    }
+    const cutoff = new Date(Date.now() - days * 86400000)
+      .toISOString().slice(0, 19).replace('T', ' ');
+    const grouped = db.prepare(`
+      SELECT substr(created_at, 1, 10) AS day, point_id,
+        COUNT(*) AS orders_count, COALESCE(SUM(total), 0) AS revenue
+      FROM orders
+      WHERE status = 'paid' AND created_at >= ?
+      GROUP BY substr(created_at, 1, 10), point_id
+      ORDER BY day, point_id
+    `).all(cutoff);
+    let revenue = 0, ordersCount = 0;
+    const byDay = new Map();
+    const byPoint = new Map();
+    for (const row of grouped) {
+      const count = Number(row.orders_count);
+      const amount = Number(row.revenue);
+      revenue += amount;
+      ordersCount += count;
+      const d = byDay.get(row.day) || { day: row.day, revenue: 0, orders_count: 0 };
+      d.revenue += amount;
+      d.orders_count += count;
+      byDay.set(row.day, d);
+      if (row.point_id != null) {
+        const p = byPoint.get(row.point_id) ||
+          { point_id: row.point_id, revenue: 0, orders_count: 0 };
+        p.revenue += amount;
+        p.orders_count += count;
+        byPoint.set(row.point_id, p);
+      }
+    }
+    sendJson(res, 200, {
+      days, revenue, orders_count: ordersCount,
+      daily: [...byDay.values()], points: [...byPoint.values()],
+    });
+  });
+
   // GET /api/orders — список заказов для админки (последние сверху)
   router.get('/api/orders', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);

@@ -3318,7 +3318,14 @@ async function loadPointsInfo() {
 }
 
 let allOrders = [];
+let adminSalesSummary = null;
 let currentPeriod = 7;
+
+async function loadAdminSalesSummary() {
+  const res = await authFetch('/api/admin/sales-summary?days=' + periodDays());
+  if (!res.ok) throw new Error('Не удалось загрузить ключевые показатели');
+  adminSalesSummary = await res.json();
+}
 
 async function loadOrders() {
   const res = await authFetch('/api/orders?limit=500');
@@ -3334,9 +3341,12 @@ async function setPeriod(code, btn) {
   if (btn) btn.classList.add('active');
   const partnersSection = document.getElementById('sec-partners');
   if (partnersSection && partnersSection.style.display !== 'none') await renderPartners();
-  else if (document.getElementById('sec-points').style.display !== 'none') renderPointsOverview();
+  else if (document.getElementById('sec-points').style.display !== 'none') {
+    await loadAdminSalesSummary();
+    renderPointsOverview();
+  }
   else if (document.getElementById('sec-point').style.display !== 'none') await showPoint(currentPointIdx);
-  else renderDashboard();
+  else { await loadAdminSalesSummary(); renderDashboard(); }
 }
 
 async function refreshData() {
@@ -3350,11 +3360,6 @@ async function refreshData() {
 
 function parseOrderDate(s) {
   return new Date(String(s).replace(' ', 'T') + 'Z');
-}
-
-function ordersInPeriod(days) {
-  const cutoff = Date.now() - days * 86400000;
-  return allOrders.filter(function(o) { return o.status === 'paid' && parseOrderDate(o.created_at).getTime() >= cutoff; });
 }
 
 // ── ПРОСТЫЕ ГРАФИКИ НА CANVAS (без внешних библиотек — надёжнее для деплоя) ──
@@ -4527,16 +4532,12 @@ async function openOpsTarget(section, filter) {
 
 function renderDashboard() {
   const days = periodDays();
-  const orders = ordersInPeriod(days);
-  const orderCount = orders.length;
-  let revenue = 0;
-  const revenueByDay = new Map();
-  // One pass supplies both business KPIs and the revenue chart.
-  for (const order of orders) {
-    revenue += order.total;
-    const day = parseOrderDate(order.created_at).toISOString().slice(0, 10);
-    revenueByDay.set(day, (revenueByDay.get(day) || 0) + order.total);
-  }
+  const summary = adminSalesSummary || { orders_count: 0, revenue: 0, daily: [] };
+  const orderCount = Number(summary.orders_count || 0);
+  const revenue = Number(summary.revenue || 0);
+  const revenueByDay = new Map((summary.daily || []).map(function(day) {
+    return [day.day, Number(day.revenue || 0)];
+  }));
   const avgCheck = orderCount ? Math.round(revenue / orderCount) : 0;
   document.getElementById('kpi-rev').textContent = revenue.toLocaleString('ru-RU') + ' ₽';
   document.getElementById('kpi-rev-d').textContent = 'за ' + days + ' дн.';
@@ -5511,20 +5512,23 @@ async function deleteSalonOwner(id, name) {
 
 function renderPointsOverview() {
   const days = periodDays();
-  const orders = ordersInPeriod(days);
+  const byPoint = new Map(((adminSalesSummary && adminSalesSummary.points) || [])
+    .map(function(p) { return [String(p.point_id), p]; }));
   document.getElementById('point-cards-full').innerHTML = POINTS_INFO.map(function(p, idx) {
-    const pOrders = orders.filter(function(o) { return o.point_id === p.id; });
-    const rev = pOrders.reduce(function(s, o) { return s + o.total; }, 0);
+    const stats = byPoint.get(String(p.id)) || { revenue: 0, orders_count: 0 };
+    const rev = Number(stats.revenue || 0);
     return '<div class="card" style="cursor:pointer;" onclick="showPoint(' + idx + ')">' +
       '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;">' +
       '<span style="width:10px;height:10px;border-radius:50%;background:' + p.color + ';display:inline-block;"></span>' +
       '<strong>' + p.name + '</strong></div>' +
       '<div style="font-size:1.3rem;font-weight:700;">' + rev.toLocaleString('ru-RU') + ' ₽</div>' +
-      '<div style="font-size:.8rem;color:var(--muted);">' + pOrders.length + ' заказ(ов)</div></div>';
+      '<div style="font-size:.8rem;color:var(--muted);">' + Number(stats.orders_count || 0) + ' заказ(ов)</div></div>';
   }).join('');
 
   const labels = POINTS_INFO.map(function(p) { return p.name; });
-  const values = POINTS_INFO.map(function(p) { return orders.filter(function(o) { return o.point_id === p.id; }).reduce(function(s, o) { return s + o.total; }, 0); });
+  const values = POINTS_INFO.map(function(p) {
+    return Number((byPoint.get(String(p.id)) || {}).revenue || 0);
+  });
   drawBarChart('chartPoints', labels, values, '#2D5A3F');
   document.getElementById('points-chart-legend').textContent = 'Выручка по точкам за ' + days + ' дн.';
 }
