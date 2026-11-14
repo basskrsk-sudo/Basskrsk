@@ -1,6 +1,7 @@
 // Partner Club: persistent configuration, paid-sale drafts, analytics and previews.
 // Deliberately NO Telegram integration or outbound network activity.
 'use strict';
+const { trackSync, trackAsync } = require('./runtime-diagnostics');
 const db = require('./db');
 const dailyRecords = require('./partner-club-daily-records').createDailySalesRecords(db);
 const { sendJson } = require('./http-utils');
@@ -660,7 +661,7 @@ async function sendClubUpdates(){
  const reviewer=reviewerForClub();if(!reviewer)return;
  workerBusy=true;
  try{
-  dailyRecords.checkYesterday(new Date(),cfg,queue);
+  trackSync('club_daily_record', () => dailyRecords.checkYesterday(new Date(),cfg,queue));
   const events=db.prepare("SELECT e.* FROM partner_club_events e LEFT JOIN partner_club_reviews r ON r.event_id=e.id WHERE r.event_id IS NULL AND e.created_at>=? AND e.status='draft' ORDER BY e.id LIMIT 5").all(cfg.club_started_at);
   for(const ev of events){
    if(!settings().enabled)break;
@@ -672,7 +673,7 @@ async function sendClubUpdates(){
   }
  }catch(e){console.warn('Partner club moderation:',e.message)}finally{workerBusy=false}
 }
-function startPartnerClubWorker(){const timer=setInterval(()=>sendClubUpdates().catch(e=>console.warn('Partner club:',e.message)),30000);timer.unref?.()}
+function startPartnerClubWorker(){const timer=setInterval(()=>trackAsync('club_moderation',sendClubUpdates).catch(e=>console.warn('Partner club:',e.message)),30000);timer.unref?.()}
 function generateApprovedClubReport(type,{approved=false}={}){
   if(!approved)return {ok:false,error:'Сначала подтвердите формирование в Telegram'};
   const types={clubdaily:'daily',clubweekly:'weekly',clubtopweek:'top_products_week',clubtopall:'top_products_all'};

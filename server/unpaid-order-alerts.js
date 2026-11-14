@@ -6,6 +6,7 @@
 const db = require('./db');
 const {visibleOrderNumber} = require('./order-display-number');
 const { createSingleFlightJob } = require('./single-flight-job');
+const { trackSync, trackAsync } = require('./runtime-diagnostics');
 const { sendToChat } = require('./telegram');
 const { connectedChatId, findManagerAndPoint } = require('./order-notifications');
 
@@ -265,11 +266,11 @@ function pendingOrderIds(options = {}) {
   // Keep the 30-minute recovery window from the previous implementation.
   // An admin may still need the notice after a manager's notification was
   // already logged, and an admin retry must not resend successful chats.
-  const rows = db.prepare(
+  const rows = trackSync('unpaid_order_sql', () => db.prepare(
     "SELECT * FROM orders WHERE status='pending' AND reservation_status='active' " +
     "AND created_at<=datetime('now','-1 minute') " +
     "AND created_at>=datetime('now','-30 minutes') ORDER BY id"
-  ).all();
+  ).all());
   const adminChats = adminRecipientChats(options);
   const hasManagerLog = db.prepare(
     "SELECT 1 AS logged FROM unpaid_order_alert_log WHERE order_id=? AND alert_type='pending'"
@@ -297,7 +298,7 @@ function scheduleUnpaidOrderAlerts() {
   if (schedulerStarted) return;
   schedulerStarted = true;
   const run = createSingleFlightJob(
-    () => runUnpaidOrderAlertCheck(),
+    () => trackAsync('unpaid_order_scan', () => runUnpaidOrderAlertCheck()),
     (error) => console.warn('Неоплаченные заказы: ошибка проверки:', error.message)
   );
   const first = setTimeout(run, 3000);

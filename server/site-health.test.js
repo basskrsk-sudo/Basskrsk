@@ -91,6 +91,8 @@ test('only active admin can inspect process metrics and persistent restart log',
   assert.equal(r.data.events.some(x=>String(x.detail).includes(dir)),false);
   assert.ok((await metrics()).timestamp);
   assert.ok(r.data.api_performance);
+  assert.ok(Array.isArray(r.data.slow_operations));
+  assert.ok(r.data.cpu_throttle===null || typeof r.data.cpu_throttle.available==='boolean');
   assert.ok(Array.isArray(r.data.api_performance.slow_routes));
   assert.ok(r.data.io_probe === null || Number.isFinite(r.data.io_probe.storage_write_ms));
 });
@@ -123,6 +125,7 @@ test('diagnostics expose both timer drift and measured event-loop latency',async
   assert.ok(Number.isFinite(sample.event_loop_p99_ms));
   assert.ok(Number.isFinite(sample.sample_schedule_drift_ms));
   assert.ok(sample.io_probe === null || Number.isFinite(sample.io_probe.sqlite_ms));
+  assert.ok(sample.cpu_throttle===null || typeof sample.cpu_throttle.available==='boolean');
   assert.equal(sample.event_loop_delay_ms,sample.event_loop_max_ms,'legacy field tracks actual maximum');
 });
 
