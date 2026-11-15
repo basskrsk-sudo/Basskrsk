@@ -12,6 +12,8 @@ const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
+const { hydrateStockMovements } = require('./stock-movement-batch');
+const { trackSync } = require('./runtime-diagnostics');
 
 function registerStockMovementRoutes(router) {
   // POST /api/stock-movements — менеджер отчитывается о том, что уже физически
@@ -81,24 +83,10 @@ function registerStockMovementRoutes(router) {
       rows = db.prepare(sql).all(...params);
     }
 
-    const getItems = db.prepare(`
-      SELECT smi.*, p.name AS product_name, v.weight
-      FROM stock_movement_items smi
-      JOIN product_variants v ON v.id = smi.variant_id
-      JOIN products p ON p.id = v.product_id
-      WHERE smi.movement_id = ?
-    `);
-    const getPoint = db.prepare('SELECT name, addr, icon FROM points WHERE id = ?');
-    const getManager = db.prepare('SELECT full_name, phone FROM managers WHERE id = ?');
-
-    sendJson(res, 200, {
-      movements: rows.map((m) => ({
-        ...m,
-        items: getItems.all(m.id),
-        point: getPoint.get(m.point_id),
-        manager: getManager.get(m.manager_id),
-      })),
-    });
+    // Batch related rows without changing the existing response or access rules.
+    const movements = trackSync('stock_movements_hydrate',
+      () => hydrateStockMovements(db, rows));
+    sendJson(res, 200, { movements });
   });
 
   // PUT /api/stock-movements/:id/approve — администратор подтверждает: ровно
