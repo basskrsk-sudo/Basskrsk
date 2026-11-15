@@ -7,6 +7,7 @@ const { performance } = require('node:perf_hooks');
 const operations = new Map();
 const MAX_OPERATIONS = 32;
 const SLOW_LOG_MS = 1500;
+const SAMPLE_WINDOW = 32;
 let previousCpu = null;
 const lastWarnings = new Map();
 
@@ -73,13 +74,15 @@ function recordOperation(name, elapsedMs) {
   let record = operations.get(key);
   if (!record) {
     if (operations.size >= MAX_OPERATIONS) return;
-    record = { name: key, calls: 0, slow_calls: 0, total_ms: 0, max_ms: 0, last_ms: 0 };
+    record = { name: key, calls: 0, slow_calls: 0, total_ms: 0, max_ms: 0, last_ms: 0, samples: [] };
     operations.set(key, record);
   }
   record.calls++;
   record.total_ms += elapsedMs;
   record.last_ms = Math.round(elapsedMs);
   record.max_ms = Math.max(record.max_ms, record.last_ms);
+  record.samples.push(record.last_ms);
+  if (record.samples.length > SAMPLE_WINDOW) record.samples.shift();
   if (elapsedMs >= SLOW_LOG_MS) {
     record.slow_calls++;
     const now = Date.now();
@@ -101,11 +104,16 @@ async function trackAsync(name, fn) {
   try { return await fn(); } finally { recordOperation(name, performance.now() - started); }
 }
 function snapshotOperations() {
-  return [...operations.values()].map(item => ({
-    name: item.name, calls: item.calls, slow_calls: item.slow_calls,
-    max_ms: item.max_ms, last_ms: item.last_ms,
-    avg_ms: Math.round(item.total_ms / item.calls),
-  })).sort((a, b) => b.max_ms - a.max_ms).slice(0, 12);
+  return [...operations.values()].map(item => {
+    const sorted = [...item.samples].sort((a, b) => a - b);
+    return {
+      name: item.name, calls: item.calls, slow_calls: item.slow_calls,
+      max_ms: item.max_ms, last_ms: item.last_ms,
+      avg_ms: Math.round(item.total_ms / item.calls),
+      p95_ms: sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)],
+      sample_window: sorted.length,
+    };
+  }).sort((a, b) => b.p95_ms - a.p95_ms || b.max_ms - a.max_ms).slice(0, 12);
 }
 module.exports = {
   parseCpuStat, cpuThrottleDelta, sampleCpuThrottling,

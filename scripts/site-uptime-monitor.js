@@ -16,6 +16,8 @@ const PROBES = [
     verify:(body)=>{try{return Array.isArray(JSON.parse(body).points);}catch(_){return false;}}},
   {name:'Telegram Mini App',path:'/miniapp.html',
     verify:(body)=>/<html/i.test(body) && body.includes('miniapp-work.js')},
+  {name:'QR-карточка товара',path:'/p.html',
+    verify:(body)=>/<html/i.test(body) && body.includes('Купить за 1 минуту') && body.includes('ХвостМаркет')},
 ];
 
 function classify(error) {
@@ -44,15 +46,21 @@ async function probe(entry,{fetchImpl=fetch,origin=BASE_URL,now=Date.now}={}) {
 async function scan(options={}) {
   return Promise.all(PROBES.map(x=>probe(x,options)));
 }
-function confirmedFailures(first,second) {
-  const bad=new Set(first.filter(x=>!x.ok).map(x=>x.path));
-  return second.filter(x=>!x.ok && bad.has(x.path));
+function confirmedFailures(first,second,third=null) {
+  // Confirm only adjacent failed scans, never an isolated transient response.
+  const firstBad=new Set(first.filter(x=>!x.ok).map(x=>x.path));
+  const secondBad=new Set(second.filter(x=>!x.ok).map(x=>x.path));
+  const fromFirst=second.filter(x=>!x.ok&&firstBad.has(x.path));
+  if(!third)return fromFirst;
+  const seen=new Set(fromFirst.map(x=>x.path));
+  const fromLast=third.filter(x=>!x.ok&&secondBad.has(x.path)&&!seen.has(x.path));
+  return [...fromFirst,...fromLast];
 }
 function renderIssueBody(failures,checkedAt) {
   return [
     '## Внешняя проверка сайта ХвостМаркет',
     '',
-    '**Сбой подтверждён двумя проверками из GitHub Actions с интервалом 20 секунд.**',
+    '**Сбой подтверждён двумя последовательными проверками из GitHub Actions с интервалом 7 секунд (три попытки).**',
     '',
     '**Обнаружен:** '+checkedAt,
     '',
@@ -61,7 +69,7 @@ function renderIssueBody(failures,checkedAt) {
     ...failures.map(r=>'| '+r.name+' ('+r.path+') | '+r.code+' |'),
     '',
     'Проверьте Amvera → Логи приложения / Мониторинг / последние деплои.',
-    'Этот инцидент будет закрыт автоматически после двух успешных проверок.',
+    'Этот инцидент будет закрыт автоматически после трёх успешных проверок.',
     'Это внешний контроль из GitHub, а не диагностика непосредственно внутри Amvera.',
     '', PENDING_TELEGRAM,
   ].join('\n');
@@ -78,7 +86,7 @@ function incidentMessage(failures,issueUrl) {
 function recoveredMessage(issueUrl,minutes) {
   return [
     '🟢 ХвостМаркет: сайт восстановлен',
-    'Сайт, база, API и Mini App проходят две последовательные проверки.',
+    'Сайт, база, каталог, QR-карточка и Mini App проходят три последовательные проверки.',
     Number.isFinite(minutes)?'Оценка длительности: '+minutes+' мин.':'',
     issueUrl?'История инцидента: '+issueUrl:'',
   ].filter(Boolean).join('\n');
@@ -121,9 +129,11 @@ async function run({fetchImpl=fetch,api,notify,wait=ms=>new Promise(r=>setTimeou
   if(typeof api!=='function')throw Error('GitHub Issues API is required');
   if(typeof notify!=='function')throw Error('Telegram notifier is required');
   const first=await scan({fetchImpl,origin});
-  await wait(20000);
+  await wait(7000);
   const second=await scan({fetchImpl,origin});
-  const failures=confirmedFailures(first,second);
+  await wait(7000);
+  const third=await scan({fetchImpl,origin});
+  const failures=confirmedFailures(first,second,third);
   const existing=await findOpenIncident(api);
   const checkedAt=now().toISOString();
 
@@ -155,10 +165,10 @@ async function run({fetchImpl=fetch,api,notify,wait=ms=>new Promise(r=>setTimeou
   // A single successful scan cannot override an open incident; both need
   // to be fully healthy. On transient errors, keep the incident open but do
   // not create another alert.
-  const fullyHealthy=first.every(x=>x.ok)&&second.every(x=>x.ok);
+  const fullyHealthy=[first,second,third].every(attempt=>attempt.every(x=>x.ok));
   if(existing && fullyHealthy) {
     await api('POST','/issues/'+existing.number+'/comments',{
-      body:'✅ Сайт восстановлен: главная, SQLite, API и Mini App успешно проверены дважды. '+checkedAt,
+      body:'✅ Сайт восстановлен: главная, SQLite, каталог, QR и Mini App проверены трижды. '+checkedAt,
     });
     await api('PATCH','/issues/'+existing.number,{state:'closed',state_reason:'completed'});
     const age=Date.parse(existing.created_at);
@@ -177,7 +187,7 @@ async function run({fetchImpl=fetch,api,notify,wait=ms=>new Promise(r=>setTimeou
     logger.warn('Transient probe errors. No incident: failure not confirmed twice.');
     return {status:'transient'};
   }
-  logger.log('All four public endpoints healthy');
+  logger.log('All five public endpoints healthy (three consecutive sweeps)');
   return {status:'healthy'};
 }
 async function main() {

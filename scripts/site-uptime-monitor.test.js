@@ -13,7 +13,8 @@ function fakeFetch(state) {
     const text=route==='/'?'<html><title>ХвостМаркет — магазин</title></html>':
       route==='/api/health'?JSON.stringify({status:'ok',checks:{database:'ok',storage:'ok'}}):
       route==='/api/points'?JSON.stringify({points:[]}):
-      route==='/miniapp.html'?'<html><script src="/miniapp-work.js"></script></html>':'';
+      route==='/miniapp.html'?'<html><script src="/miniapp-work.js"></script></html>':
+      route==='/p.html'?'<html><title>Купить за 1 минуту — ХвостМаркет</title></html>':'';
     const status=state.statuses?.[route]||200;
     return {ok:status>=200&&status<300,status,
       text:async()=>state.invalid===route?'{"status":"bad"}':text};
@@ -46,10 +47,10 @@ function issuesApi(){
 }
 const immediate=async()=>{};
 const log={log(){},warn(){}};
-test('four external endpoints validate actual HTML, SQLite, API and Mini App content',async()=>{
+test('five external endpoints validate HTML, SQLite, API, Mini App and QR page content',async()=>{
   const s={};
   const results=await scan({fetchImpl:fakeFetch(s)});
-  assert.equal(results.length,4);
+  assert.equal(results.length,5);
   assert.ok(results.every(x=>x.ok));
   assert.ok(results.every(x=>!x.path.includes('token')));
   const broken=await scan({fetchImpl:fakeFetch({invalid:'/api/health'})});
@@ -175,4 +176,26 @@ test('Telegram delivery can resume after the secrets are added without duplicati
   assert.equal(recovered.status,'recovered');
   assert.equal(messages.length,2);
   assert.match(messages[1],/восстановлен/);
+});
+
+test('two adjacent failures in three sweeps are confirmed, isolated scans are not',()=>{
+  const pass=path=>({path,ok:true,code:'ok'});
+  const fail=path=>({path,ok:false,code:'timeout'});
+  const health='/api/health',qr='/p.html';
+  const rows=confirmedFailures([fail(health),pass(qr)],[fail(health),fail(qr)],[pass(health),fail(qr)]);
+  assert.deepEqual(rows.map(row=>row.path).sort(),[health,qr].sort());
+  assert.equal(confirmedFailures([fail(health)],[pass(health)],[fail(health)]).length,0);
+});
+test('short QR downtime in adjacent scans creates one confirmed incident',async()=>{
+  let hits=0;
+  const fetchImpl=async(url,options)=>{
+    if(new URL(url).pathname==='/p.html'&&++hits<=2)
+      return {ok:false,status:503,text:async()=>''};
+    return fakeFetch({})(url,options);
+  };
+  const gh=issuesApi();
+  const result=await run({fetchImpl,api:gh.api,notify:async()=>({sent:false}),
+    wait:immediate,logger:log});
+  assert.equal(result.status,'down');
+  assert.deepEqual(result.failures.map(row=>row.path),['/p.html']);
 });

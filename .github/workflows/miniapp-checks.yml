@@ -263,6 +263,9 @@ on:
       - server/runtime-diagnostics.js
       - server/runtime-diagnostics.test.js
       - server/api-performance.js
+      - server/stock-movement-batch.js
+      - server/stock-movement-batch.test.js
+      - server/routes-stock-movements.js
       - server/site-health.test.js
       - server/single-flight-job.js
       - server/single-flight-job.test.js
@@ -352,6 +355,9 @@ jobs:
           node --check scripts/restore-doc-aliases.js
           node --check scripts/restore-doc-aliases.test.js
           node --check server/api-performance.js
+          node --check server/stock-movement-batch.js
+          node --check server/stock-movement-batch.test.js
+          node --check server/routes-stock-movements.js
           node --check server/site-health.test.js
           node --check server/single-flight-job.js
           node --check server/single-flight-job.test.js
@@ -540,6 +546,8 @@ jobs:
         run: node --test server/bot-config-sync.test.js server/graceful-shutdown.test.js
       - name: Verify Telegram login polling limits
         run: node --test server/telegram-login-polling.test.js
+      - name: Verify batched stock movement lists and preserved response shape
+        run: node --test server/stock-movement-batch.test.js
       - name: Verify batched warehouse lists
         run: node --test server/warehouse-list-query.test.js
       - name: Verify exact economics totals after streaming paid orders

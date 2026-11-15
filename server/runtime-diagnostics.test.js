@@ -34,5 +34,16 @@ test('job observations preserve return and throw behavior and never store payloa
   assert.ok(rows.some(r=>r.name==='backup_job'&&r.calls===2));
   assert.ok(!JSON.stringify(rows).includes(customer));
   assert.ok(rows.every(row=>row.max_ms>=0&&row.avg_ms>=0));
+  assert.ok(rows.every(row=>row.p95_ms>=0&&row.sample_window>=1&&row.sample_window<=32));
   assert.throws(()=>trackSync('private:123',()=>null),/Invalid operation name/);
+});
+
+test('p95 uses recent bounded samples without dropping lifetime maximum',()=>{
+  const { recordOperation } = require('./runtime-diagnostics');
+  recordOperation('bounded_latency_window',8000);
+  for(let i=0;i<40;i++)recordOperation('bounded_latency_window',10);
+  const row=snapshotOperations().find(r=>r.name==='bounded_latency_window');
+  assert.equal(row.sample_window,32);
+  assert.equal(row.p95_ms,10);
+  assert.equal(row.max_ms,8000);
 });
