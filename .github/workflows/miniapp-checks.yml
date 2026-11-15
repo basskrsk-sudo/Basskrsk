@@ -166,6 +166,10 @@ on:
       - server/manager-miniapp-registration.test.js
       - server/routes-miniapp.test.js
       - server/telegram-login-poller.js
+      - server/bot-config-sync.js
+      - server/bot-config-sync.test.js
+      - server/graceful-shutdown.js
+      - server/graceful-shutdown.test.js
       - server/telegram-message-edit.js
       - server/telegram-message-edit.test.js
       - server/telegram-command-menu.test.js
@@ -402,6 +406,10 @@ jobs:
           node --check server/miniapp-manager-messages.test.js
           node --check public/miniapp-tasks.js
           node --check server/telegram-login-poller.js
+          node --check server/bot-config-sync.js
+          node --check server/bot-config-sync.test.js
+          node --check server/graceful-shutdown.js
+          node --check server/graceful-shutdown.test.js
           node --check public/telegram-login-polling.js
           node --check server/telegram-login-polling.test.js
           node --check server/telegram-message-edit.js
@@ -528,6 +536,8 @@ jobs:
         run: node --test server/retired-pet-news.test.js
       - name: Verify Win-back sends messages only after an admin action
         run: node --test server/winback-manual-only.test.js
+      - name: Verify restart-safe bot profile sync and graceful shutdown
+        run: node --test server/bot-config-sync.test.js server/graceful-shutdown.test.js
       - name: Verify Telegram login polling limits
         run: node --test server/telegram-login-polling.test.js
       - name: Verify batched warehouse lists

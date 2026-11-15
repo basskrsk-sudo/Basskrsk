@@ -35,6 +35,7 @@ const {
 const { handleExpenseAttachmentMessage,processPendingExpenseAttachments } = require('./expense-bot-files');
 
 const TG_TOKEN = process.env.TG_TOKEN || '';
+const { createBotConfigSync } = require('./bot-config-sync');
 const { recordVerifiedTelegramContact } = require('./miniapp-phone-identity');
 const { bindTelegramAccount } = require('./telegram-connection-alerts');
 const { commandsMenuButton, miniAppInlineKeyboard, miniAppDirectLinkMarkup } = require('./miniapp-bot-links');
@@ -104,6 +105,11 @@ const TELEGRAM_COMMAND_SCOPES = Object.freeze([
   { name: 'private', options: { scope: { type: 'all_private_chats' } } },
   { name: 'private_ru', options: { scope: { type: 'all_private_chats' }, language_code: 'ru' } },
 ]);
+const botProfileSync = createBotConfigSync('telegram-profile', {
+  token: TG_TOKEN, name: BOT_NAME, description: BOT_DESCRIPTION,
+  short_description: BOT_SHORT_DESCRIPTION, menu_button: commandsMenuButton(),
+  commands: TELEGRAM_BOT_COMMANDS, scopes: TELEGRAM_COMMAND_SCOPES,
+});
 let commandSyncInFlight = null;
 let commandMenuRetryTimer = null;
 let commandMenuRetryCount = 0;
@@ -113,6 +119,7 @@ async function syncTelegramBotCommands() {
   if (commandSyncInFlight) return commandSyncInFlight;
   commandSyncInFlight = (async () => {
     const failed = [];
+    const errors = [];
     for (const item of TELEGRAM_COMMAND_SCOPES) {
       try {
         await callBotApi('setMyCommands', { commands: TELEGRAM_BOT_COMMANDS, ...item.options });
@@ -124,6 +131,7 @@ async function syncTelegramBotCommands() {
         }
       } catch (error) {
         failed.push(item.name);
+        errors.push(error);
         console.warn('Telegram: меню команд не синхронизировано ('+item.name+'):',
           error.message);
       }
@@ -131,7 +139,7 @@ async function syncTelegramBotCommands() {
     if (failed.length === 0) {
       console.log('Telegram: меню команд проверено (default, private, private_ru), /contact доступна');
     }
-    return { ok: failed.length === 0, failed };
+    return { ok: failed.length === 0, failed, errors };
   })();
   try { return await commandSyncInFlight; }
   finally { commandSyncInFlight = null; }
@@ -140,15 +148,16 @@ async function syncTelegramBotCommands() {
 function scheduleBotMenuRetry() {
   if (!polling || commandMenuRetryTimer || commandMenuRetryCount >= 4) return;
   const delays = [60000, 300000, 900000, 1800000];
-  const delay = delays[commandMenuRetryCount++];
+  // A Telegram 429 can demand a 20+ hour pause. Persist and honour it,
+  // including across Amvera redeploys, instead of retrying every minute.
+  const delay = Math.max(delays[commandMenuRetryCount++],
+    botProfileSync.check().waitMs || 0);
   commandMenuRetryTimer = setTimeout(async () => {
     commandMenuRetryTimer = null;
     if (!polling) return;
-    const result = await syncTelegramBotCommands();
+    const result = await configureBotProfile();
     if (result.ok) commandMenuRetryCount = 0;
-    else scheduleBotMenuRetry();
   }, delay);
-  // A bot-menu retry must never keep an otherwise stopped Node process alive.
   commandMenuRetryTimer.unref?.();
 }
 
@@ -157,6 +166,11 @@ function scheduleBotMenuRetry() {
 // из этих косметических операций не должна останавливать вход и уведомления.
 async function configureBotProfile() {
   if (!TG_TOKEN) return { ok: false, skipped: true };
+  const plan = botProfileSync.check();
+  if (!plan.sync) {
+    if (plan.reason === 'cooldown') scheduleBotMenuRetry();
+    return { ok: plan.reason === 'unchanged', skipped: true, reason: plan.reason };
+  }
   const operations = [
     ['setMyName', { name: BOT_NAME }],
     ['setMyDescription', { description: BOT_DESCRIPTION }],
@@ -174,12 +188,18 @@ async function configureBotProfile() {
   for (const { result, method } of failed) {
     console.warn(`Telegram: не удалось обновить ${method}:`, result.reason.message);
   }
-  if (!commands.ok) {
-    // Previously a single transient failure left command menus stale forever.
-    scheduleBotMenuRetry();
-  }
   const failures = failed.map(({ method }) => method);
   if (!commands.ok) failures.push(...commands.failed.map(name => 'commands:' + name));
+  if (failures.length) {
+    botProfileSync.failed([
+      ...failed.map(({ result }) => result.reason),
+      ...(commands.errors || []),
+    ]);
+    scheduleBotMenuRetry();
+  } else {
+    botProfileSync.succeeded();
+    console.log('Telegram: конфигурация сохранена; повторная настройка при обычном деплое не требуется');
+  }
   return { ok: failures.length === 0, failed: failures, commands };
 }
 
