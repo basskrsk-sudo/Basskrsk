@@ -28,7 +28,7 @@ const MAX_BOT_COMMANDS = Object.freeze([
   { name: 'stock', description: 'Остатки на точках (для сотрудников)' },
   { name: '2gis', description: 'Добавить организацию из 2ГИС в обзвон' },
   { name: 'contact', description: 'Контакт из Яндекс Карт или 2ГИС' },
-  { name: 'app', description: 'Тестовое мини-приложение ХвостМаркета' },
+  { name: 'app', description: 'Каталог и рабочие кабинеты ХвостМаркета' },
 ]);
 
 function isConfigured() {
@@ -241,9 +241,9 @@ function maxMiniAppKeyboard() {
   return [{
     type: 'inline_keyboard',
     payload: { buttons: [[{
-      type: 'open_app', text: '🐾 Открыть тестовое приложение',
+      type: 'open_app', text: '🐾 Открыть ХвостМаркет',
       web_app: username,
-      payload: 'pilot_catalog',
+      payload: 'staff_and_catalog',
     }]] },
   }];
 }
@@ -251,9 +251,9 @@ async function sendMaxMiniApp(chatId) {
   if (!chatId) return;
   const keyboard = maxMiniAppKeyboard();
   await sendMaxMessage(chatId,
-    '🐾 ХвостМаркет в MAX — тестовое мини-приложение.\n\n' +
-    'В нём можно выбрать минимаркет и проверить ассортимент и остатки. ' +
-    'Покупки и рабочие кабинеты пока отключены.\n\n' +
+    '🐾 ХвостМаркет в MAX — каталог и рабочие кабинеты.\n\n' +
+    'Грумеры, владельцы, менеджеры и администраторы подтверждают номер прямо в MAX. ' +
+    'Затем открывается их кабинет с данными ХвостМаркета. Покупки в MAX пока отключены.\n\n' +
     (keyboard
       ? 'Нажмите кнопку, чтобы открыть мини-приложение.'
       : 'Чтобы включить запуск, настройте бота MAX и зарегистрируйте URL мини-приложения.'),
@@ -276,7 +276,7 @@ function buildMaxHelp(chatId) {
     '',
     'Для /tasks и /stock нужен привязанный MAX-аккаунт сотрудника.',
     '/contact ссылка — карточка Яндекс Карт или 2ГИС для согласования (менеджер/администратор).',
-    '/app — тестовое мини-приложение для всех пользователей.',
+    '/app — каталог и рабочие кабинеты для зарегистрированных сотрудников.',
     'Подтверждение отчёта об остатках — кнопкой в боте.',
   ];
   const buttons = [];

@@ -4,13 +4,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#124D38">
-<meta name="description" content="ХвостМаркет в MAX: тестовое мини-приложение, точки и актуальный ассортимент.">
+<meta name="description" content="ХвостМаркет в MAX: каталог, остатки и рабочие кабинеты грумеров, владельцев, менеджеров и администраторов.">
 <meta name="robots" content="noindex,nofollow">
-<title>ХвостМаркет · MAX тест</title>
+<title>ХвостМаркет · MAX</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/max-miniapp.css?v=1">
+<link rel="stylesheet" href="/max-miniapp.css?v=2">
+<link rel="stylesheet" href="/miniapp-work.css?v=2">
+<link rel="stylesheet" href="/manager-leads.css?v=1">
+<link rel="stylesheet" href="/partner-network-map.css?v=10">
+<link rel="stylesheet" href="/notification-settings.css">
+<script>window.HvostMiniAppPlatform='max';</script>
 <script defer src="https://st.max.ru/js/max-web-app.js"></script>
-<script defer src="/max-miniapp.js?v=1"></script>
+<script defer src="/max-miniapp-identity.js?v=1"></script>
+<script defer src="/miniapp-tasks.js?v=1"></script>
+<script defer src="/miniapp-promos.js?v=1"></script>
+<script defer src="/expense-evidence.js"></script>
+<script defer src="/notification-settings.js"></script>
+<script defer src="/miniapp-admin-warehouse.js"></script>
+<script defer src="/miniapp-admin-product-create.js"></script>
+<script defer src="/manager-leads.js?v=2"></script>
+<script defer src="/config.js"></script>
+<script defer src="/partner-network-map.js?v=10"></script>
+<script defer src="/miniapp-work.js?v=2"></script>
+<script defer src="/max-miniapp.js?v=2"></script>
 </head>
 <body>
 <div class="app">
@@ -18,12 +34,16 @@
     <div class="brand">
       <img src="/images/hvostmarket-logo-v3-transparent.png" alt="Логотип ХвостМаркета">
       <div><strong>ХвостМаркет</strong><span>Мини-приложение MAX</span></div>
-      <small class="pilot">ТЕСТ</small>
+      <small class="pilot">MAX</small>
     </div>
     <h1>Лакомства рядом с вами 🐾</h1>
     <p>Выберите минимаркет и посмотрите, что сейчас есть на полках.</p>
   </header>
   <main>
+    <nav class="max-sections" aria-label="Разделы MAX">
+      <button id="max-tab-work" type="button" class="max-section active" aria-pressed="true">👤 Мои кабинеты</button>
+      <button id="max-tab-shop" type="button" class="max-section" aria-pressed="false">🐾 Каталог и остатки</button>
+    </nav>
     <section class="card identity" aria-label="Статус MAX">
       <div class="identity-icon" aria-hidden="true">✦</div>
       <div>
@@ -32,8 +52,12 @@
       </div>
     </section>
     <section class="notice" aria-label="Тестовый режим">
-      Это тестовая версия. Покупки и вход в рабочие кабинеты пока отключены. Данные каталога и остатков получаем из ХвостМаркета.
+      🐾 Рабочие кабинеты доступны зарегистрированным сотрудникам после подтверждения номера MAX. Покупки через MAX пока отключены.
     </section>
+    <section id="max-work-content" aria-label="Рабочие кабинеты">
+      <div id="workPage" aria-live="polite"><div class="card">Проверяем доступ к кабинетам…</div></div>
+    </section>
+    <div id="max-shop-content" hidden>
     <section aria-labelledby="point-heading">
       <div class="heading"><h2 id="point-heading">Где забрать</h2><span id="point-count"></span></div>
       <label class="field" for="point-select">Выберите минимаркет</label>
@@ -50,13 +74,14 @@
       </div>
     </section>
     <section class="card about">
-      <h2>Что дальше?</h2>
-      <p>Это первый этап запуска ХвостМаркета в MAX. Следующим этапом подключим авторизованные кабинеты и покупку через СБП после отдельной проверки безопасности.</p>
+      <h2>Ассортимент и наличие</h2>
+      <p>Данные каталога и остатков общие с сайтом ХвостМаркета и обновляются по запросу. Оплата в MAX пока не подключена.</p>
       <button type="button" id="refresh" class="refresh">↻ Обновить остатки</button>
       <p id="updated-at" class="updated" aria-live="polite"></p>
     </section>
+    </div>
   </main>
-  <footer>ХвостМаркет · Красноярск · Тестовое мини-приложение MAX</footer>
+  <footer>ХвостМаркет · Красноярск · кабинеты и каталог в MAX</footer>
 </div>
 </body>
 </html>

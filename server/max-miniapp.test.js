@@ -2,6 +2,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'hm-max-miniapp-legacy-'));
 const { Router } = require('./http-utils');
 const { verifyMaxInitData, registerMaxMiniAppRoutes, MAX_AGE_SECONDS } = require('./max-miniapp');
 
@@ -36,15 +40,15 @@ async function invoke(body, opts = {}) {
   return res;
 }
 
-test('official MAX WebAppData HMAC grants a read-only pilot identity', async () => {
+test('official MAX WebAppData HMAC authenticates platform identity only', async () => {
   const signed = signedData();
   assert.deepEqual(verifyMaxInitData(signed, BOT_TOKEN, NOW), {
-    id: '1288', first_name: 'Светлана', last_name: 'Тест',
+    id: '1288', first_name: 'Светлана', last_name: 'Тест', chat_id: null,
   });
   const result = await invoke({ init_data: signedData({ auth_date: String(Math.floor(Date.now() / 1000)) }) });
   assert.equal(result.code, 200);
   assert.equal(result.result.verified, true);
-  assert.equal(result.result.mode, 'pilot');
+  assert.equal(result.result.mode, 'staff_and_catalog');
   assert.equal(result.result.checkout_enabled, false);
   assert.deepEqual(Object.keys(result.result).sort(), ['checkout_enabled', 'mode', 'user', 'verified']);
   assert.equal(result.headers['Cache-Control'], 'no-store');
@@ -80,7 +84,7 @@ test('bad identity and missing data never unlock anything', async () => {
   assert.equal(noToken.code, 503);
 });
 
-test('isolated pilot route does not register payment or privileged endpoints', () => {
+test('MAX Mini App route does not register payment or unguarded admin endpoints', () => {
   const router = new Router();
   registerMaxMiniAppRoutes(router, { token: () => BOT_TOKEN });
   assert.equal(router.match('GET', '/api/max/miniapp/verify'), null);

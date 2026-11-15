@@ -61,11 +61,11 @@ test('help command lists actual commands with buttons only for permitted roles',
   assert.match(allowed.text,/\/tasks/);
   assert.match(allowed.text,/\/stock/);
   assert.deepEqual(allowed.attachments[0].payload.buttons.map(row=>row[0].payload),
-    ['menu:tasks','menu:stock','pilot_catalog']);
+    ['menu:tasks','menu:stock','staff_and_catalog']);
   const appButton=allowed.attachments[0].payload.buttons[2][0];
   assert.equal(appButton.type,'open_app');
   assert.equal(appButton.web_app,'mock-max-help-bot');
-  assert.equal(appButton.payload,'pilot_catalog');
+  assert.equal(appButton.payload,'staff_and_catalog');
   const guest=bot.buildMaxHelp('88002');
   assert.match(guest.text,/привязанный MAX-аккаунт/);
   assert.equal(guest.attachments[0].payload.buttons.length,1);
@@ -82,8 +82,8 @@ test('/app sends an open_app button to any private MAX user, no staff role requi
     const btn=call.body.attachments?.[0]?.payload?.buttons?.[0]?.[0];
     assert.equal(btn?.type,'open_app');
     assert.equal(btn?.web_app,'mock-max-help-bot');
-    assert.equal(btn?.payload,'pilot_catalog');
-    assert.match(call.body.text,/тестовое мини-приложение/i);
+    assert.equal(btn?.payload,'staff_and_catalog');
+    assert.match(call.body.text,/каталог и рабочие кабинеты/i);
   }
 });
 test('start without token, /help, /commands and /menu return usable help',async()=>{
