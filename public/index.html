@@ -847,6 +847,25 @@
   .contact-card p { font-size: .9rem; color: var(--muted); line-height: 1.6; }
   .contact-card a { color: var(--amber); font-weight: 500; }
 
+  /* Support is available from Telegram and MAX for both partners and buyers. */
+  .support-channels { max-width: 1180px; margin: 0 auto; padding: 22px 5vw 52px; }
+  .support-channels-panel { background: var(--white); border: 1px solid var(--border);
+    border-radius: 18px; padding: clamp(1.1rem, 3vw, 1.8rem); box-shadow: var(--shadow); }
+  .support-channels-panel h2 { color: var(--deep); font-size: 1.35rem; margin-bottom: .55rem; }
+  .support-channels-panel p { color: var(--muted); line-height: 1.65; font-size: .88rem; }
+  .support-channel-links { display: flex; flex-wrap: wrap; gap: .7rem; margin: 1.1rem 0 .65rem; }
+  .support-channel-link { display: inline-flex; align-items: center; justify-content: center;
+    gap: .45rem; min-height: 44px; padding: .7rem 1rem; border-radius: 10px;
+    border: 1px solid var(--border); color: var(--deep); font-size: .88rem;
+    text-decoration: none; font-weight: 700; background: var(--cream); }
+  .support-channel-link.telegram { background: #EDF6FC; color: #125A82; border-color: #B6D8EE; }
+  .support-channel-link.max { background: #F3EDFF; color: #5B30A6; border-color: #D9C9F6; }
+  .support-channel-link:hover, .support-channel-link:focus-visible { filter: brightness(.97); outline-offset: 3px; }
+  @media (max-width:480px) {
+    .support-channel-links { flex-direction: column; }
+    .support-channel-link { width: 100%; }
+  }
+
   /* ─── ХВОСТМАРКЕТ MASCOT ─── */
   .mascot-catalog, .mascot-product, .mascot-empty, .cart-summary-mascot,
   .mascot-checkout, .mascot-success, .map-mascot, .mascot-bones {
@@ -1910,6 +1929,17 @@
     <article class="partner-benefit-mini"><span>📊</span><strong>Прозрачный доход</strong><p>Продажи и начисления видны в личном кабинете.</p></article>
   </div>
 
+  <section class="support-channels" aria-labelledby="partner-support-title">
+    <div class="support-channels-panel">
+      <h2 id="partner-support-title">🆘 Поддержка партнёров — в Telegram и MAX</h2>
+      <p>Вопросы по продажам, начислениям, заказам или личному кабинету? Напишите прямо в бот ХвостМаркета. Обращение получит номер и будет передано администраторам. Ответ придёт в тот же мессенджер.</p>
+      <div class="support-channel-links">
+        <a class="support-channel-link telegram" href="https://t.me/HvostMarketRusBot" target="_blank" rel="noopener noreferrer">✈️ Написать в Telegram</a>
+        <a class="support-channel-link max" href="https://max.ru/se14353857_bot" target="_blank" rel="noopener noreferrer">💬 Написать в MAX</a>
+      </div>
+      <p>В личном чате с ботом выберите «Написать в поддержку» или отправьте команду <strong>/support</strong>, затем опишите вопрос. Если не получается войти в кабинет, также можно обратиться к менеджеру.</p>
+    </div>
+  </section>
 
   <!-- Компактные форматы размещения: реальные варианты под площадь салона -->
   <section class="partner-formats" id="partner-formats" aria-labelledby="partner-formats-title">
@@ -2282,9 +2312,15 @@
       </div>
       <div class="contact-card">
         <div class="ic">✈️</div>
-        <h3>Telegram</h3>
-        <p><a href="https://t.me/HvostMarketRusBot">Telegram-бот ХвостМаркета</a></p>
-        <p style="margin-top:.4rem;font-size:.82rem;">Ответим в течение часа в рабочее время</p>
+        <h3>Telegram — поддержка</h3>
+        <p><a href="https://t.me/HvostMarketRusBot" target="_blank" rel="noopener noreferrer">Написать боту ХвостМаркета</a></p>
+        <p style="margin-top:.4rem;font-size:.82rem;">Отправьте /support и опишите вопрос — ответ придёт в Telegram.</p>
+      </div>
+      <div class="contact-card">
+        <div class="ic">💬</div>
+        <h3>MAX — поддержка</h3>
+        <p><a href="https://max.ru/se14353857_bot" target="_blank" rel="noopener noreferrer">Написать боту ХвостМаркета в MAX</a></p>
+        <p style="margin-top:.4rem;font-size:.82rem;">Отправьте /support и опишите вопрос — ответ придёт в MAX.</p>
       </div>
     </div>
     <!-- Пояснение куда приходят вопросы -->
@@ -2299,10 +2335,11 @@
     </div>
     <div style="margin-top: 3rem; background: var(--white); border-radius: 12px; padding: 2rem; box-shadow: var(--shadow);">
       <h3 style="font-size: 1.2rem; color: var(--deep); margin-bottom: .5rem;">Напишите нам</h3>
-      <p style="color: var(--muted); font-size: .9rem; margin-bottom: .75rem;">Ответим в течение часа в рабочее время</p>
+      <p style="color: var(--muted); font-size: .9rem; margin-bottom: .75rem;">Для обращения к администраторам откройте Telegram или MAX, отправьте <strong>/support</strong> и опишите проблему. Бот выдаст номер обращения, а ответ придёт в тот же чат. Ниже также можно написать через форму сайта.</p>
       <div style="display:flex;gap:.75rem;margin-bottom:1.5rem;flex-wrap:wrap;">
         <a href="mailto:XBOCTMAPKET@ya.ru" style="display:inline-flex;align-items:center;gap:.4rem;background:var(--cream);border:1.5px solid var(--border);border-radius:var(--r);padding:.5rem 1rem;font-size:.85rem;color:var(--deep);font-weight:500;text-decoration:none;">✉️ XBOCTMAPKET@ya.ru</a>
-        <a href="https://t.me/HvostMarketRusBot" target="_blank" style="display:inline-flex;align-items:center;gap:.4rem;background:#EEF6FF;border:1.5px solid #B8D8F8;border-radius:var(--r);padding:.5rem 1rem;font-size:.85rem;color:#1A73C8;font-weight:500;text-decoration:none;">✈️ Написать в Telegram</a>
+        <a href="https://t.me/HvostMarketRusBot" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:.4rem;background:#EEF6FF;border:1.5px solid #B8D8F8;border-radius:var(--r);padding:.5rem 1rem;font-size:.85rem;color:#1A73C8;font-weight:500;text-decoration:none;">✈️ Написать в Telegram</a>
+        <a href="https://max.ru/se14353857_bot" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:.4rem;background:#F3EDFF;border:1.5px solid #D9C9F6;border-radius:var(--r);padding:.5rem 1rem;font-size:.85rem;color:#5B30A6;font-weight:500;text-decoration:none;">💬 Написать в MAX</a>
       </div>
       <div class="form-row">
         <div class="form-group"><label>Имя</label><input type="text" id="cf-name" placeholder="Ваше имя"></div>
@@ -2655,6 +2692,8 @@
         <li><a onclick="showPage('about')">О бренде</a></li>
         <li><a onclick="showPage('salons')">Наши партнёры</a></li>
         <li><a onclick="showPage('contacts')">Контакты</a></li>
+        <li><a href="https://t.me/HvostMarketRusBot" target="_blank" rel="noopener noreferrer">🆘 Поддержка в Telegram</a></li>
+        <li><a href="https://max.ru/se14353857_bot" target="_blank" rel="noopener noreferrer">🆘 Поддержка в MAX</a></li>
         <li><a href="privacy-policy.html">Конфиденциальность</a></li>
       </ul>
     </div>
