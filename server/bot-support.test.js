@@ -96,7 +96,7 @@ test('admins can list support tickets and respond to original client across plat
   await telegram.processUpdate(tg('9188101','/support_inbox',{first_name:'Администратор'}));
   const list=tgSends(after(before)).find(x=>String(x.body.chat_id)==='9188101');
   assert.ok(list);
-  assert.match(list.body.text,/Неотвеченные обращения/);
+  assert.match(list.body.text,/неотвеченные обращения/i);
   assert.match(list.body.text,new RegExp('№'+ids[1].id));
   await maxBot.processUpdate(max('88001','/support_reply '+ids[0].id+' Вход восстановлен',
     {name:'Администратор'}));
