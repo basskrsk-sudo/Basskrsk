@@ -292,6 +292,7 @@ on:
       - server/task-reminders.js
       - server/winback.js
       - server/site-health-ui.test.js
+      - server/site-support-links.test.js
       - scripts/site-uptime-monitor.js
       - scripts/site-uptime-monitor.test.js
       - .github/workflows/site-uptime.yml
@@ -381,6 +382,7 @@ jobs:
           node --check server/payout-brief.js
           node --check server/payout-brief-on-demand.test.js
           node --check server/site-health-ui.test.js
+          node --check server/site-support-links.test.js
           node --check scripts/site-uptime-monitor.js
           node --check scripts/site-uptime-monitor.test.js
           node --check server/miniapp-diagnostics.js
@@ -613,6 +615,8 @@ jobs:
       - name: Check gift page inline scripts
         run: |
           node -e "const fs=require('node:fs');for(const f of ['public/gift.html','public/gift-admin.html']){const s=fs.readFileSync(f,'utf8');const m=s.match(/<script>([\\s\\S]*?)<\\/script>\\s*<\\/body>/);if(!m)throw new Error('Missing gift UI script in '+f);new Function(m[1]);console.log('Valid JS: '+f)}"
+      - name: Verify site links to Telegram and MAX customer support
+        run: node --test server/site-support-links.test.js
       - name: Verify shared Telegram and MAX bot customer support
         run: node --test --test-concurrency=1 server/bot-support.test.js
       - name: Verify MAX phone identity and all four staff roles
