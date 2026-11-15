@@ -101,4 +101,19 @@ test('unknown account and spoofed sender cannot resync Telegram menu',async()=>{
   }
 });
 
+test('public /start app link opens Telegram Mini App, not website login token processing', async () => {
+  const before = requests.length;
+  await poller.processUpdate({ message: {
+    chat: { type: 'private', id: 9188833 },
+    from: { id: 9188833 },
+    text: '/start app',
+  }});
+  const replies = requests.slice(before).filter(x => x.method === 'sendMessage');
+  assert.equal(replies.length, 1);
+  const action = replies[0].body.reply_markup.inline_keyboard[0][0];
+  assert.equal(action.text, '🐾 Открыть ХвостМаркет');
+  assert.match(action.web_app.url, /^https:\/\/хвостмаркет\.рф\/miniapp\.html(?:\?|$)/);
+  assert.match(replies[0].body.text, /кабинет грумера/);
+});
+
 test.after(()=>{global.fetch=originalFetch});

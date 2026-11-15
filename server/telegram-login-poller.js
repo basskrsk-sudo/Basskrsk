@@ -1491,6 +1491,14 @@ async function processUpdate(update) {
   }
 
   const token = match[1];
+  // Safe public mini-app invitation. /start app is an explicit app entry,
+  // never a one-time website authorization token.
+  if (msg.chat.type === 'private' && token === 'app') {
+    await replyToChat(msg.chat.id,
+      '🐾 Откройте мини-приложение ХвостМаркет кнопкой ниже. Подтвердите свой номер в Telegram и выберите кабинет грумера.',
+      miniAppDirectLinkMarkup('app', { fresh: true }));
+    return;
+  }
   const record = db.prepare(
     "SELECT * FROM telegram_login_tokens WHERE token = ? AND verified = 0 AND expires_at > datetime('now')"
   ).get(token);
