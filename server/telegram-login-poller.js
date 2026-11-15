@@ -55,6 +55,7 @@ const newProductBroadcast = require('./new-product-broadcast');
 const tierApprovals = require('./partner-tier-approvals');
 const reportApprovals = require('./report-approvals');
 const messageEdits = require('./telegram-message-edit');
+const support = require('./bot-support');
 let lastUpdateId = 0;
 let polling = false;
 
@@ -82,6 +83,7 @@ const TELEGRAM_BOT_COMMANDS = Object.freeze([
       { command: 'start', description: 'Открыть помощника ХвостМаркета' },
       { command: 'app', description: '🐾 Открыть ХвостМаркет — все возможности' },
       { command: 'phone', description: '🔐 Подтвердить свой номер для кабинета' },
+      { command: 'support', description: '🆘 Написать в поддержку ХвостМаркета' },
       { command: 'tasks', description: 'Мои активные поручения' },
       { command: 'taskpdf', description: 'Свежий PDF моих поручений' },
       { command: 'reports', description: '📊 Отчёты: сформировать после подтверждения' },
@@ -231,6 +233,7 @@ function buildWelcomeMessage() {
     'Одна кнопка открывает магазин и все ваши кабинеты прямо в Telegram. Я также помогу войти на сайт и буду присылать уведомления о продажах, заказах и вознаграждениях.',
     '',
     'Нажмите «🐾 Открыть ХвостМаркет» или отправьте /app. После подтверждения телефона увидите только доступные вам разделы.',
+    'Нужна помощь? Отправьте /support и напишите сообщение — администратор ответит в этом чате.',
     '',
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Менеджерам и администраторам: /contact ссылка — контакт из Яндекс Карт или 2ГИС с согласованием. /2gis также работает.',
@@ -244,6 +247,8 @@ function buildWelcomeMessage() {
 
 function botActionButtons(chatId) {
   const keyboard = [...miniAppInlineKeyboard({ fresh: true }), [
+    { text: '🆘 Написать в поддержку', callback_data: 'support:start' },
+  ], [
     { text: '➕ Новая задача', callback_data: 'newtsk:start' },
     { text: '💳 Добавить трату', callback_data: 'expense:start' },
   ]];
@@ -784,6 +789,23 @@ async function executeApprovedReport({chatId,type,params}) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (callback.data === 'support:start') {
+      const chat = callback.message && callback.message.chat;
+      const ownPrivate = chat && chat.type === 'private' &&
+        String(chat.id) === String(callback.from && callback.from.id);
+      const prompt = ownPrivate
+        ? support.startDraft('telegram',chat.id,callback.from.id)
+        : {ok:false,message:'Обратитесь в поддержку в личном чате с ботом.'};
+      try {
+        await callBotApi('answerCallbackQuery',{
+          callback_query_id:callback.id,
+          text:prompt.ok?'✅ Напишите ваш вопрос следующим сообщением.':'⚠️ Личный чат обязателен.',
+          show_alert:!prompt.ok,
+        });
+      }catch(error){console.warn('[support] telegram callback:',error.message)}
+      if(chat && chat.id)await replyToChat(chat.id,prompt.message);
+      return;
+    }
 
     // Only the original owner of a private chat can approve the 2GIS draft.
     if (/^dgis:(?:yes|edit|no):[0-9a-f]{18}$/.test(callback.data||'')) {
@@ -1177,6 +1199,28 @@ async function processUpdate(update) {
 
   const msg = update.message;
   if (!msg) return;
+  // Customer /support has priority over any pending administrator editing flow.
+  if (msg.chat?.type === 'private' && typeof msg.text === 'string' &&
+      /^\/support(?:@\w+)?(?:\s|$)/i.test(msg.text.trim())) {
+    const ownChat=String(msg.chat.id)===String(msg.from && msg.from.id);
+    if (!ownChat) {
+      await replyToChat(msg.chat.id,'🔒 Напишите в поддержку из собственного личного чата.');
+      return;
+    }
+    const command=msg.text.trim().match(/^\/support(?:@\w+)?(?:\s+([\s\S]+))?$/i);
+    if (command && command[1]) {
+      const result=support.submitTicket('telegram',msg.chat.id,msg.from.id,
+        [msg.from.first_name,msg.from.last_name].filter(Boolean).join(' ')||msg.from.username||'Клиент',command[1]);
+      if (result.ok) {
+        const sent=await support.notifyAdmins(result.ticket);
+        await replyToChat(msg.chat.id,support.confirmation(result.ticket,sent));
+      } else await replyToChat(msg.chat.id,result.message);
+    } else {
+      const started=support.startDraft('telegram',msg.chat.id,msg.from.id);
+      await replyToChat(msg.chat.id,started.message);
+    }
+    return;
+  }
   if (msg.chat?.type === 'private' && typeof msg.text === 'string') {
     const edited = await messageEdits.handlePrivateMessage(msg, callBotApi);
     if (edited) {
@@ -1231,6 +1275,32 @@ async function processUpdate(update) {
   }
   if (!msg.text) return;
   const text = msg.text.trim();
+  if (msg.chat?.type === 'private' && /^\/support_inbox(?:@\w+)?$/i.test(text)) {
+    const same=String(msg.chat.id)===String(msg.from && msg.from.id);
+    const r=same?support.inbox('telegram',msg.chat.id):{message:'🔒 Только для привязанных администраторов.'};
+    await replyToChat(msg.chat.id,r.message);
+    return;
+  }
+  if (msg.chat?.type === 'private' && /^\/support_reply(?:@\w+)?(?:\s|$)/i.test(text)) {
+    const matched=text.match(/^\/support_reply(?:@\w+)?\s+(\d{1,12})\s+([\s\S]+)$/i);
+    const same=String(msg.chat.id)===String(msg.from && msg.from.id);
+    const result=!same?{message:'🔒 Только для привязанных администраторов.'}:
+      !matched?{message:'Формат: /support_reply 123 текст ответа'}:
+      await support.replyToTicket('telegram',msg.chat.id,msg.from.id,matched[1],matched[2]);
+    await replyToChat(msg.chat.id,result.message);
+    return;
+  }
+  if (msg.chat?.type === 'private') {
+    const r=support.consumeDraft('telegram',msg.chat.id,msg.from && msg.from.id,
+      [msg.from?.first_name,msg.from?.last_name].filter(Boolean).join(' ')||msg.from?.username||'Клиент',text);
+    if(r) {
+      if(r.ok) {
+        const sent=await support.notifyAdmins(r.ticket);
+        await replyToChat(msg.chat.id,support.confirmation(r.ticket,sent));
+      } else await replyToChat(msg.chat.id,r.message);
+      return;
+    }
+  }
   // Retired pilot: acknowledge old Telegram commands cached by the client,
   // but do not fetch sources, schedule jobs, or access news subscriber tables.
   if (msg.chat.type === 'private' &&
@@ -1441,9 +1511,10 @@ async function processUpdate(update) {
     const clubPhotoCancelled = require('./routes-partner-club').cancelClubInput(msg.chat.id);
     const reportCancelled = reportApprovals.cancelPendingReports(msg.chat.id);
     const editCancelled = messageEdits.cancelEdit(msg.chat.id);
+    const supportCancelled = support.cancelDraft('telegram',msg.chat.id);
     await replyToChat(
       msg.chat.id,
-      createCancelled || expenseCancelled || statusCancelled || dateCancelled || newProductCancelled || clubPhotoCancelled || reportCancelled || editCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
+      createCancelled || expenseCancelled || statusCancelled || dateCancelled || newProductCancelled || clubPhotoCancelled || reportCancelled || editCancelled || supportCancelled ? 'Текущее действие отменено.' : 'Нет незавершённых действий.',
       botActionButtons(msg.chat.id)
     );
     return;
