@@ -8,6 +8,7 @@
 const db = require('./db');
 const pointStock = require('./max-point-stock');
 const import2gisLead = require('./2gis-lead-bot');
+const support = require('./bot-support');
 const {
   getTaskInbox,
   handleTaskCallback,
@@ -24,6 +25,7 @@ const { createBotConfigSync } = require('./bot-config-sync');
 const MAX_BOT_COMMANDS = Object.freeze([
   { name: 'start', description: 'Начать работу с ХвостМаркетом' },
   { name: 'help', description: 'Все команды и быстрые действия' },
+  { name: 'support', description: '🆘 Написать в поддержку ХвостМаркета' },
   { name: 'tasks', description: 'Мои поручения (для сотрудников)' },
   { name: 'stock', description: 'Остатки на точках (для сотрудников)' },
   { name: '2gis', description: 'Добавить организацию из 2ГИС в обзвон' },
@@ -277,9 +279,11 @@ function buildMaxHelp(chatId) {
     'Для /tasks и /stock нужен привязанный MAX-аккаунт сотрудника.',
     '/contact ссылка — карточка Яндекс Карт или 2ГИС для согласования (менеджер/администратор).',
     '/app — каталог и рабочие кабинеты для зарегистрированных сотрудников.',
+    '/support — написать вопрос администраторам, ответ придёт сюда.',
     'Подтверждение отчёта об остатках — кнопкой в боте.',
   ];
   const buttons = [];
+  buttons.push([{ type: 'callback', text: '🆘 Написать в поддержку', payload: 'support:start' }]);
   if (hasTasks) buttons.push([{ type: 'callback', text: '📋 Мои поручения', payload: 'menu:tasks' }]);
   if (hasStock) buttons.push([{ type: 'callback', text: '📦 Остатки по точкам', payload: 'menu:stock' }]);
   const appButton = maxMiniAppKeyboard()?.[0]?.payload?.buttons?.[0]?.[0];
@@ -437,6 +441,14 @@ async function processUpdate(update) {
     const chatId = update.chat_id || callback.chat_id || (message.recipient && message.recipient.chat_id);
 
     const callbackId = callback.callback_id || update.callback_id;
+    if (payload === 'support:start') {
+      const senderId = callback.user && (callback.user.user_id || callback.user.id) ||
+        callback.sender && callback.sender.user_id || update.user_id;
+      const result=support.startDraft('max',chatId,senderId);
+      await answerMaxCallback(callbackId,result.ok?'✅ Напишите вопрос следующим сообщением.':'⚠️ Откройте личный чат с ботом.');
+      if(chatId)await sendMaxMessage(chatId,result.message);
+      return;
+    }
     if (/^dgis:(?:yes|edit|no):[0-9a-f]{18}$/.test(String(payload||''))) {
       const result=chatId
         ? import2gisLead.handle2gisCallback('max',chatId,payload)
@@ -506,6 +518,60 @@ async function processUpdate(update) {
   const text = update.message.body && update.message.body.text;
   const chatId = update.message.recipient && update.message.recipient.chat_id;
   const cleaned = String(text || '').trim();
+  const senderId=update.message.sender && update.message.sender.user_id;
+  // MAX webhook is already authenticated. Reject groups and notifications
+  // without an actual sender (never treat a chat identifier as sender proof).
+  const contactType=update.message.recipient && update.message.recipient.chat_type;
+  const ownPrivate=!!chatId && !!senderId && (!contactType ||
+    contactType==='dialog' || contactType==='private');
+  if (/^\/support(?:\s|$)/i.test(cleaned)) {
+    if (!ownPrivate) {
+      await sendMaxMessage(chatId,'Обратитесь в поддержку в личном чате с ботом MAX.');
+      return;
+    }
+    const matched=cleaned.match(/^\/support(?:\s+([\s\S]+))?$/i);
+    if(matched && matched[1]){
+      const result=support.submitTicket('max',chatId,senderId,
+        [update.message.sender.first_name,update.message.sender.last_name].filter(Boolean).join(' ')||
+          update.message.sender.name||'Клиент',matched[1]);
+      if(result.ok){
+        const sent=await support.notifyAdmins(result.ticket);
+        await sendMaxMessage(chatId,support.confirmation(result.ticket,sent));
+      }else await sendMaxMessage(chatId,result.message);
+    } else {
+      await sendMaxMessage(chatId,support.startDraft('max',chatId,senderId).message);
+    }
+    return;
+  }
+  if(/^\/support_inbox$/i.test(cleaned)) {
+    await sendMaxMessage(chatId,ownPrivate?support.inbox('max',chatId).message:
+      '🔒 Список обращений доступен только подключённым администраторам.');
+    return;
+  }
+  if(/^\/support_reply(?:\s|$)/i.test(cleaned)) {
+    const match=cleaned.match(/^\/support_reply\s+(\d{1,12})\s+([\s\S]+)$/i);
+    const result=!ownPrivate?{message:'🔒 Только для подключённых администраторов.'}:
+      !match?{message:'Формат: /support_reply 123 текст ответа'}:
+      await support.replyToTicket('max',chatId,senderId,match[1],match[2]);
+    await sendMaxMessage(chatId,result.message);
+    return;
+  }
+  if(/^\/cancel$/i.test(cleaned)&&ownPrivate&&support.cancelDraft('max',chatId)) {
+    await sendMaxMessage(chatId,'Ввод обращения отменён.');
+    return;
+  }
+  if(ownPrivate) {
+    const result=support.consumeDraft('max',chatId,senderId,
+      [update.message.sender.first_name,update.message.sender.last_name].filter(Boolean).join(' ')||
+        update.message.sender.name||'Клиент',cleaned);
+    if(result){
+      if(result.ok){
+        const sent=await support.notifyAdmins(result.ticket);
+        await sendMaxMessage(chatId,support.confirmation(result.ticket,sent));
+      }else await sendMaxMessage(chatId,result.message);
+      return;
+    }
+  }
   if (/^\/(?:start|help|commands|menu)$/i.test(cleaned) || /^команды$/i.test(cleaned)) {
     await sendMaxHelp(chatId);
     return;
