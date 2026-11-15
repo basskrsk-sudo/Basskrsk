@@ -13,6 +13,12 @@
     admin: { title: 'Администратор', icon: '📊', description: 'Сеть, продажи и контроль работы', tokenKey: 'taiga_admin_token', me: '/api/admin/me', field: 'admin', full: '/taiga-admin.html' },
   };
   var order = ['salon', 'partner', 'manager', 'owner', 'founder', 'admin'];
+  var isMaxMiniApp = window.HvostMiniAppPlatform === 'max';
+  var platformLabel = isMaxMiniApp ? 'MAX' : 'Telegram';
+  function platformTokenKey(role) {
+    return (isMaxMiniApp ? 'hm_max_' : '') + (CONFIG[role] && CONFIG[role].tokenKey || '');
+  }
+  var chosenRoleKey = isMaxMiniApp ? 'hm_max_miniapp_work_role' : 'hm_miniapp_work_role';
   var activeRole = '';
   var currentUser = null;
   var serial = 0;
@@ -57,22 +63,24 @@
   function phoneBanner() {
     if (!identity) return '';
     var s = phoneStatus();
-    if (!s.loaded) return note('Проверяем аккаунты, подключённые к Telegram…');
+    if (!s.loaded) return note('Проверяем аккаунты, подключённые к ' + platformLabel + '…');
     if (!s.verified) {
       return '<div class="work-surface"><h2>🔐 Вход без пароля</h2>' +
-        '<p class="work-note">Подтвердите номер телефона вашего Telegram. Мы найдём ваши зарегистрированные кабинеты ХвостМаркета. Вводить телефон вручную не нужно.</p>' +
+        '<p class="work-note">Подтвердите номер телефона через ' + platformLabel + '. Мы найдём зарегистрированные кабинеты ХвостМаркета без SMS.</p>' +
         '<button type="button" class="work-primary" data-work-action="share-phone" ' + (s.busy ? 'disabled' : '') + '>' +
-        (s.busy ? 'Проверяем номер…' : '📱 Подтвердить мой номер Telegram') + '</button>' +
+        (s.busy ? 'Проверяем номер…' : '📱 Подтвердить номер ' + platformLabel) + '</button>' +
         '<button type="button" class="work-secondary" data-work-action="check-phone" style="margin-top:9px">↻ Проверить номер</button>' +
         (s.error ? problem(s.error) : '') +
-        '<p class="work-quiet">Если Telegram не поддерживает запрос номера, отправьте боту /phone.</p></div>';
+        '<p class="work-quiet">' + (isMaxMiniApp ?
+          'Если подтверждение недоступно, обновите MAX и запустите мини-приложение из личного чата с ботом.' :
+          'Если Telegram не поддерживает запрос номера, отправьте боту /phone.') + '</p></div>';
     }
     var roleNames = { customer: 'покупатель', partner: 'грумер', manager: 'менеджер', owner: 'владелец салона', founder: 'собственник бизнеса', admin: 'администратор' };
     var namedRoles = s.combinedSalon ? ['грумер — владелец салона'].concat(
       s.accounts.filter(function(a) { return a.role !== 'partner' && a.role !== 'owner'; })
         .map(function(a) { return roleNames[a.role] || a.role; })
     ) : s.accounts.map(function(a) { return roleNames[a.role] || a.role; });
-    return note('✅ Номер подтверждён: ' + s.phoneMasked + '. ' +
+    return note('✅ Номер ' + platformLabel + ' подтверждён: ' + s.phoneMasked + '. ' +
       (s.accounts.length
         ? 'Доступны кабинеты: ' + namedRoles.join(', ') + '.'
         : 'Зарегистрированные кабинеты на этот номер пока не найдены.')) +
@@ -101,21 +109,21 @@
   }
   function getToken(role) {
     if (transientTokens[role]) return transientTokens[role];
-    try { return localStorage.getItem(CONFIG[role].tokenKey) || ''; } catch (_) { return ''; }
+    try { return localStorage.getItem(platformTokenKey(role)) || ''; } catch (_) { return ''; }
   }
   function setToken(role, value) {
     transientTokens[role] = value;
-    try { localStorage.setItem(CONFIG[role].tokenKey, value); } catch (_) {}
+    try { localStorage.setItem(platformTokenKey(role), value); } catch (_) {}
   }
   function clearToken(role) {
     delete transientTokens[role];
     try {
-      localStorage.removeItem(CONFIG[role].tokenKey);
-      if (role === 'admin') localStorage.removeItem('taiga_admin_role');
+      localStorage.removeItem(platformTokenKey(role));
+      if (role === 'admin') localStorage.removeItem(isMaxMiniApp ? 'hm_max_admin_role' : 'taiga_admin_role');
     } catch (_) {}
   }
   function saveRole(role) {
-    try { localStorage.setItem('hm_miniapp_work_role', role); } catch (_) {}
+    try { localStorage.setItem(chosenRoleKey, role); } catch (_) {}
     // A home-screen shortcut can have separate localStorage from the chat.
     // Persist only this authorized role on the server, not any access token.
     if (identity && typeof identity.rememberRole === 'function') {
@@ -123,7 +131,7 @@
     }
   }
   function savedRole() {
-    try { return localStorage.getItem('hm_miniapp_work_role') || ''; } catch (_) { return ''; }
+    try { return localStorage.getItem(chosenRoleKey) || ''; } catch (_) { return ''; }
   }
   function shortcutAction() {
     var shortcut = window.HvostMiniAppHomeScreen;
@@ -194,8 +202,8 @@
       root.innerHTML = heading('Рабочие кабинеты 🐾', 'Сначала подтвердите свой номер в кабинете покупателя.') +
         '<div class="work-surface"><h2>🔐 Доступ после проверки номера</h2>' +
         '<p class="work-note">Грумер, менеджер, владелец салона, собственник бизнеса и администратор ' +
-        'увидят только свои кабинеты после подтверждения номера через Telegram.</p>' +
-        '<button class="work-primary" type="button" data-work-action="go-profile">Ввести телефон →</button></div>' +
+        'увидят только свои кабинеты после подтверждения номера через ' + platformLabel + '.</p>' +
+        '<button class="work-primary" type="button" data-work-action="' + (isMaxMiniApp ? 'share-phone' : 'go-profile') + '">' + (isMaxMiniApp ? 'Подтвердить номер →' : 'Ввести телефон →') + '</button></div>' +
         shortcutAction();
       return;
     }
@@ -205,7 +213,7 @@
       if (phoneRoleAvailable('salon') && (role === 'partner' || role === 'owner')) return false;
       return phoneRoleAvailable(role);
     });
-    root.innerHTML = heading('Ваши кабинеты 🐾', 'Доступны только роли, связанные с подтверждённым номером Telegram.') +
+    root.innerHTML = heading('Ваши кабинеты 🐾', 'Доступны только роли, связанные с подтверждённым номером ' + platformLabel + '.') +
       phoneBanner() + (available.length ? '<div class="work-roles">' + available.map(function(role) {
         var config = CONFIG[role];
         return '<button class="work-role" type="button" data-work-action="role" data-work-role="' + role + '">' +
@@ -213,7 +221,7 @@
           '<span>' + esc(config.description) + '</span>' +
           (role === 'salon' ? '<small>✓ Две роли в одном кабинете</small>' :
             getToken(role) ? '<small>● Есть сохранённая сессия</small>' :
-            phoneRoleAvailable(role) ? '<small>✓ Вход через Telegram доступен</small>' : '<small>Войти в кабинет →</small>') +
+            phoneRoleAvailable(role) ? '<small>✓ Вход через ' + platformLabel + ' доступен</small>' : '<small>Войти в кабинет →</small>') +
           '</button>';
       }).join('') + '</div>' : '<div class="work-surface"><h2>Других кабинетов пока нет</h2>' +
         '<p class="work-note">По вашему номеру не найдены дополнительные активные роли. ' +
@@ -225,17 +233,17 @@
     if (!phoneStatus().verified) return renderAll();
     if (!activeRole) return renderAll();
     var c = CONFIG[activeRole];
-    root.innerHTML = back() + heading(c.icon + ' Кабинет: ' + c.title, 'Вход по подтверждённому Telegram или по логину и паролю сайта.') +
+    root.innerHTML = back() + heading(c.icon + ' Кабинет: ' + c.title, 'Вход по подтверждённому ' + platformLabel + ' или по логину и паролю сайта.') +
       (identity ? phoneBanner() : '') +
       (activeRole === 'founder' && phoneStatus().verified && !phoneRoleAvailable('founder') ? '<div class="work-surface"><h2>👑 Доступ собственника ещё не подключён</h2><p class="work-note">Номер Telegram подтверждён, но учётная запись собственника пока не активирована. Активировать её может только супер-администратор.</p><button type="button" class="work-secondary" data-work-action="owner-setup">Перейти к настройкам через администратора →</button></div>' : '') +
-      (phoneRoleAvailable(activeRole) ? '<button type="button" class="work-primary" data-work-action="phone-login" style="margin-bottom:12px">Войти через Telegram без пароля →</button>' : '') +
+      (phoneRoleAvailable(activeRole) ? '<button type="button" class="work-primary" data-work-action="phone-login" style="margin-bottom:12px">Войти через ' + platformLabel + ' без пароля →</button>' : '') +
       '<form id="workLoginForm" class="work-auth-card" autocomplete="on">' +
         '<h2>Вход для сотрудника</h2><p class="work-sub">Только для зарегистрированных пользователей этой роли.</p>' +
         '<label class="work-label" for="workLogin">Логин</label><input class="work-input" id="workLogin" name="username" type="text" autocomplete="username" maxlength="150" required>' +
         '<label class="work-label" for="workPassword">Пароль</label><input class="work-input" id="workPassword" name="password" type="password" autocomplete="current-password" maxlength="300" required>' +
         (error ? problem(error) : '') +
         '<button class="work-primary" type="submit" id="workLoginButton" style="margin-top:18px">Войти в кабинет →</button>' +
-      '</form>' + note('Номер подтверждается непосредственно Telegram. Администратору также требуется предварительная привязка Telegram в действующем кабинете сайта.');
+      '</form>' + note('Номер подтверждается непосредственно через ' + platformLabel + '. Доступ к административным кабинетам дополнительно проверяет сервер.');
   }
   function renderLoading(text) {
     root.innerHTML = back() + heading(CONFIG[activeRole].icon + ' ' + CONFIG[activeRole].title, text || 'Загружаем данные…') +
@@ -462,7 +470,7 @@
     var token = getToken(role);
     if (!token) {
       if (identity && phoneRoleAvailable(role)) {
-        renderLoading('Подтверждаем кабинет по номеру Telegram…');
+        renderLoading('Подтверждаем кабинет по номеру ' + platformLabel + '…');
         try {
           var loginResult = await identity.session(role);
           if (mySerial !== serial || activeRole !== role) return;
@@ -472,7 +480,7 @@
           }
         } catch (err) {
           if (mySerial !== serial || activeRole !== role) return;
-          renderLogin('Вход по Telegram не удался: ' + err.message);
+          renderLogin('Вход через ' + platformLabel + ' не удался: ' + err.message);
           return;
         }
       }
@@ -521,7 +529,7 @@
       // Reuse exact keys of legacy role cabinets; same origin, same security checks.
       setToken(role, data.token);
       if (role === 'admin') {
-        try { localStorage.setItem('taiga_admin_role', data.user.role === 'super' ? 'super' : 'admin'); } catch (_) {}
+        try { localStorage.setItem(isMaxMiniApp ? 'hm_max_admin_role' : 'taiga_admin_role', data.user.role === 'super' ? 'super' : 'admin'); } catch (_) {}
       }
       await chooseRole(role);
     } catch (e) {
@@ -540,8 +548,8 @@
   function dashboardFooter(role) {
     if (role === 'salon') return '<div class="work-action-bar">' +
       '<button class="work-primary" type="button" data-work-action="chat">💬 Написать менеджеру</button>' +
-      '<button class="work-secondary" type="button" data-work-action="full-partner">✂️ Полный кабинет грумера</button>' +
-      '<button class="work-secondary" type="button" data-work-action="full-owner">🏠 Полный кабинет владельца</button>' +
+      (isMaxMiniApp ? '' : '<button class="work-secondary" type="button" data-work-action="full-partner">✂️ Полный кабинет грумера</button>' +
+      '<button class="work-secondary" type="button" data-work-action="full-owner">🏠 Полный кабинет владельца</button>') +
       '<button class="work-secondary" type="button" data-work-action="notifications">🔔 Настройки уведомлений</button>' +
       shortcutAction() +
       '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
@@ -551,11 +559,11 @@
         ? '<button class="work-primary" type="button" data-work-action="chat">' +
           (role === 'manager' ? '💬 Сообщения от салонов' : '💬 Написать менеджеру') +
           '</button>' : '') +
-      (role === 'founder' ? '' : '<button class="work-primary" type="button" data-work-action="full" data-work-role="' + esc(role) + '">Открыть полный кабинет →</button>') +
+      (isMaxMiniApp || role === 'founder' ? '' : '<button class="work-primary" type="button" data-work-action="full" data-work-role="' + esc(role) + '">Открыть полный кабинет →</button>') +
       '<button class="work-secondary" type="button" data-work-action="notifications">🔔 Настройки уведомлений</button>' +
       shortcutAction() +
       '<button class="work-secondary" type="button" data-work-action="reload">↻ Обновить показатели</button>' +
-      '</div><p class="work-quiet">' + (role === 'founder' ? 'Кабинет собственника работает отдельно от административного доступа и не позволяет изменять заказы или выплаты.' : 'Полный кабинет открывается в том же окне Telegram и использует действующие права учётной записи.') + '</p>';
+      '</div><p class="work-quiet">' + (isMaxMiniApp ? 'Данные отображаются из общей системы ХвостМаркет и защищены правами вашей учётной записи.' : role === 'founder' ? 'Кабинет собственника работает отдельно от административного доступа и не позволяет изменять заказы или выплаты.' : 'Полный кабинет открывается в том же окне Telegram и использует действующие права учётной записи.') + '</p>';
   }
 
   function canChat(role) {
@@ -1733,6 +1741,7 @@
     } finally { button.disabled = false; }
   }
   function openFullCabinet(role) {
+    if (isMaxMiniApp) return; // MAX uses its own scoped token; never export it to a website login.
     if (!CONFIG[role] || !getToken(role)) return renderLogin('Для перехода сначала войдите в кабинет.');
     try { sessionStorage.setItem('hm_miniapp_return_to_work', '1'); } catch (_) {}
     window.location.assign(CONFIG[role].full + '?from=miniapp');

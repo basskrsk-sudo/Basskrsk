@@ -19,11 +19,22 @@
   function userName(user){
     return [user.first_name,user.last_name].filter(Boolean).join(' ').slice(0,120)||'покупатель';
   }
+  function setTab(tab) {
+    var work=tab==='work';
+    $('max-work-content').hidden=!work;
+    $('max-shop-content').hidden=work;
+    $('max-tab-work').classList.toggle('active',work);
+    $('max-tab-shop').classList.toggle('active',!work);
+    $('max-tab-work').setAttribute('aria-pressed',String(work));
+    $('max-tab-shop').setAttribute('aria-pressed',String(!work));
+    if(work&&window.HvostMiniAppWork)window.HvostMiniAppWork.render();
+  }
   async function verifyMax(){
     var initData=getMaxInitData();
     if(!initData){
       text('identity-title','Режим просмотра');
-      text('identity-info','Откройте мини-приложение из MAX, чтобы подтвердить аккаунт.');
+      text('identity-info','Откройте мини-приложение из бота MAX, чтобы получить доступ к кабинетам.');
+      if(window.HvostMiniAppWork)window.HvostMiniAppWork.render();
       return;
     }
     try{
@@ -33,10 +44,16 @@
       var data=await res.json();
       if(!res.ok||data.verified!==true)throw new Error(data.error||'Сессия MAX не подтверждена.');
       text('identity-title','Здравствуйте, '+userName(data.user)+'!');
-      text('identity-info','✅ Ваш запуск подтверждён MAX. Сейчас доступен тестовый каталог.');
+      text('identity-info','✅ Аккаунт MAX подтверждён. Рабочие кабинеты — после подтверждения номера.');
+      if(window.HvostMiniAppIdentity) {
+        var status=await window.HvostMiniAppIdentity.init(data.user,initData);
+        if(status.verified)text('identity-info','✅ Аккаунт MAX и номер подтверждены. Открывайте рабочий кабинет.');
+      }
+      if(window.HvostMiniAppWork)window.HvostMiniAppWork.render();
     }catch(_){
       text('identity-title','Подтверждение MAX не прошло');
       text('identity-info','Откройте мини-приложение из бота MAX повторно. Каталог доступен для просмотра.');
+      if(window.HvostMiniAppWork)window.HvostMiniAppWork.render();
     }
   }
   function selectedPoint(){
@@ -155,6 +172,9 @@
     state.search=this.value.toLocaleLowerCase('ru-RU').trim();render();
   });
   $('refresh').addEventListener('click',load);
+  $('max-tab-work').addEventListener('click',function(){setTab('work')});
+  $('max-tab-shop').addEventListener('click',function(){setTab('shop')});
+  setTab('work');
   try{if(window.WebApp&&typeof window.WebApp.ready==='function')window.WebApp.ready()}catch(_){}
   verifyMax();
   load();

@@ -1,10 +1,31 @@
 'use strict';
 
-// MAX Mini App pilot: verified identity + READ-ONLY storefront.
-// No customer account is created, no phone is inferred and no staff token
-// is issued. Future role integration must independently verify own contact.
+// MAX Mini App: read-only storefront + independently authorized staff cabinets.
+// A signed MAX launch identifies only the platform user. Staff sessions require
+// a separately signed OWN phone from MAX Bridge or the official bot contact.
+// No guessed phone, no account creation and no SMS.
 const crypto = require('node:crypto');
 const { sendJson } = require('./http-utils');
+const db = require('./db');
+const { signToken } = require('./auth');
+const { normalizeRussianPhone, hasLinkedGroomerOwner } = require('./miniapp-phone-identity');
+
+const PHONE_TTL_SECONDS = 30 * 24 * 60 * 60;
+const CONTACT_TTL_SECONDS = 10 * 60;
+const STAFF_ROLES = Object.freeze(['partner','owner','manager','admin']);
+
+// Keep MAX proof separate from Telegram identity, and do not store MAX secrets.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS max_miniapp_verified_phones (
+    max_user_id TEXT PRIMARY KEY,
+    phone TEXT NOT NULL,
+    verified_at INTEGER NOT NULL,
+    chat_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_max_miniapp_verified_phones_time
+    ON max_miniapp_verified_phones(verified_at);
+`);
+
 
 const MAX_AGE_SECONDS = 60 * 60;
 const FUTURE_SKEW_SECONDS = 60;
@@ -61,14 +82,147 @@ function verifyMaxInitData(initData, botToken, nowSeconds = Math.floor(Date.now(
     if (!id) return null;
     const safeName = input => typeof input === 'string' ?
       input.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 80) : '';
+    const signedChat = JSON.parse(values.get('chat') || 'null');
+    const chatId = signedChat && signedChat.type === 'DIALOG'
+      ? normalizeMaxId(signedChat.id) : null;
     return {
       id,
       first_name: safeName(user.first_name),
       last_name: safeName(user.last_name),
+      chat_id: chatId,
     };
   } catch (_) {
     return null;
   }
+}
+
+
+function normalizeVerifiedMaxPhone(raw) {
+  const phone = normalizeRussianPhone(raw);
+  return phone && /^79\d{9}$/.test(phone) ? phone : null;
+}
+
+function verifyMaxBridgeContact(contact, user, botToken, nowSeconds = Math.floor(Date.now() / 1000)) {
+  if (!user || !normalizeMaxId(user.id) || !botToken || !contact ||
+      typeof contact !== 'object' || Array.isArray(contact)) return null;
+  const { phone, authDate, hash } = contact;
+  if (typeof phone !== 'string' || phone.length < 10 || phone.length > 40 ||
+      typeof authDate !== 'string' || !/^\d{10}(?:\d{3})?$/.test(authDate) ||
+      typeof hash !== 'string' || !/^[a-f0-9]{64}$/i.test(hash)) return null;
+  const verifiedPhone = normalizeVerifiedMaxPhone(phone);
+  if (!verifiedPhone) return null;
+  const authValue = Number(authDate);
+  const authSeconds = authDate.length === 13 ? Math.floor(authValue / 1000) : authValue;
+  if (!Number.isSafeInteger(authSeconds) ||
+      authSeconds > nowSeconds + FUTURE_SKEW_SECONDS ||
+      nowSeconds - authSeconds > CONTACT_TTL_SECONDS) return null;
+  // MAX Bridge requestContact: HMAC over alphabetically sorted key=value
+  // pairs, with phone WITHOUT a leading "+". NOT the initData HMAC.
+  const signedPhone = phone.startsWith('+') ? phone.slice(1) : phone;
+  const message = ['authDate=' + authDate,'phone=' + signedPhone,
+    'userId=' + String(user.id)].join('\n');
+  const expected = crypto.createHmac('sha256',botToken)
+    .update(message).digest();
+  const actual = Buffer.from(hash,'hex');
+  if (actual.length !== expected.length || !crypto.timingSafeEqual(actual,expected)) return null;
+  return verifiedPhone;
+}
+
+function recordVerifiedMaxBridgePhone(userId, phone, chatId = null, now = Math.floor(Date.now() / 1000)) {
+  const id = normalizeMaxId(userId), normalized = normalizeVerifiedMaxPhone(phone);
+  const verifiedChat = normalizeMaxId(chatId);
+  if (!id || !normalized) return false;
+  // Keep previous bot chat binding only for the same verified phone.
+  db.prepare(
+    'INSERT INTO max_miniapp_verified_phones(max_user_id,phone,verified_at,chat_id) VALUES(?,?,?,?) '+
+    'ON CONFLICT(max_user_id) DO UPDATE SET phone=excluded.phone,verified_at=excluded.verified_at,'+
+    'chat_id=CASE WHEN excluded.chat_id IS NOT NULL THEN excluded.chat_id '+
+    'WHEN phone=excluded.phone THEN chat_id ELSE NULL END'
+  ).run(id,normalized,now,verifiedChat);
+  return true;
+}
+
+function recordVerifiedMaxBotContact(userId, chatId, phone, now = Math.floor(Date.now() / 1000)) {
+  const id = normalizeMaxId(userId), chat = normalizeMaxId(chatId);
+  const normalized = normalizeVerifiedMaxPhone(phone);
+  if (!id || !chat || !normalized) return false;
+  db.prepare(
+    'INSERT INTO max_miniapp_verified_phones(max_user_id,phone,verified_at,chat_id) VALUES(?,?,?,?) '+
+    'ON CONFLICT(max_user_id) DO UPDATE SET phone=excluded.phone,verified_at=excluded.verified_at,chat_id=excluded.chat_id'
+  ).run(id,normalized,now,chat);
+  return true;
+}
+
+function verifiedMaxPhone(userId, now = Math.floor(Date.now() / 1000)) {
+  const id = normalizeMaxId(userId);
+  if (!id) return null;
+  const row = db.prepare(
+    'SELECT phone,chat_id,verified_at FROM max_miniapp_verified_phones WHERE max_user_id=?'
+  ).get(id);
+  if (!row || row.verified_at > now + FUTURE_SKEW_SECONDS ||
+      row.verified_at + PHONE_TTL_SECONDS < now) return null;
+  const phone = normalizeVerifiedMaxPhone(row.phone);
+  return phone ? {phone,chatId:row.chat_id ? String(row.chat_id) : null} : null;
+}
+
+function maxRoleMatches(role, verified) {
+  const phone = verified.phone, chatId = verified.chatId;
+  let rows;
+  if (role === 'partner') {
+    rows = db.prepare('SELECT id,login,full_name,phone,active,max_chat_id,point_id FROM partners WHERE active=1 AND phone_last10=? LIMIT 16').all(phone.slice(-10));
+  } else if (role === 'owner') {
+    rows = db.prepare('SELECT id,login,full_name,phone,active,max_chat_id,point_id,groomer_partner_id FROM salon_owners WHERE active=1').all();
+  } else if (role === 'manager') {
+    rows = db.prepare('SELECT id,login,full_name,phone,active,max_chat_id FROM managers WHERE active=1').all();
+  } else if (role === 'admin') {
+    rows = db.prepare('SELECT id,login,full_name,phone,active,max_chat_id,role,miniapp_auth_version FROM admins WHERE active=1 AND phone IS NOT NULL').all();
+  } else return {allowed:[],ambiguous:false};
+  const samePhone = rows.filter(row => normalizeVerifiedMaxPhone(row.phone) === phone);
+  if (samePhone.length > 1) return {allowed:[],ambiguous:true};
+  const allowed = samePhone.filter(row =>
+    !row.max_chat_id || (chatId && String(row.max_chat_id) === chatId)
+  ).map(row => ({
+    role,id:row.id,login:row.login,name:row.full_name||row.login,
+    ...(role === 'admin' ? {adminRole:row.role,miniappAuthVersion:Number(row.miniapp_auth_version || 0)} : {}),
+  }));
+  return {allowed,ambiguous:false};
+}
+
+function availableMaxStaffAccounts(userId, now = Math.floor(Date.now() / 1000)) {
+  const verified = verifiedMaxPhone(userId, now);
+  if (!verified) return {verified:false,phoneMasked:'',accounts:[],ambiguousRoles:[],combinedSalon:false};
+  const accounts=[],ambiguousRoles=[];
+  for (const role of STAFF_ROLES) {
+    const result = maxRoleMatches(role,verified);
+    if (result.ambiguous) ambiguousRoles.push(role);
+    else accounts.push(...result.allowed);
+  }
+  return {
+    verified:true,
+    phoneMasked:'+7 (***) ***-**-'+verified.phone.slice(-2),
+    accounts,ambiguousRoles,combinedSalon:hasLinkedGroomerOwner(accounts),
+    preferredRole:accounts.length===1 ? accounts[0].role : null,
+  };
+}
+
+function issueMaxStaffSession(userId, role, now = Math.floor(Date.now() / 1000)) {
+  if (!STAFF_ROLES.includes(role)) return null;
+  const state=availableMaxStaffAccounts(userId,now);
+  if (!state.verified || state.ambiguousRoles.includes(role)) return null;
+  const account=state.accounts.find(x=>x.role===role);
+  if (!account)return null;
+  // Re-evaluate on every request. Admin JWT also carries its revocation version.
+  const token=signToken({
+    role,id:account.id,login:account.login,
+    ...(role==='admin'?{
+      adminRole:account.adminRole,
+      miniappAuthVersion:account.miniappAuthVersion,
+    }:{}),
+  });
+  return {
+    token,role,
+    account:{name:account.name,login:account.login,adminRole:account.adminRole||null},
+  };
 }
 
 function registerMaxMiniAppRoutes(router, { token = () => process.env.MAX_BOT_TOKEN } = {}) {
@@ -82,14 +236,80 @@ function registerMaxMiniAppRoutes(router, { token = () => process.env.MAX_BOT_TO
     }
     const user = verifyMaxInitData(input, botToken);
     if (!user) return sendJson(res, 401, { error: 'Подтверждение MAX не прошло. Откройте приложение из бота повторно.' });
-    // Deliberately no auth token / staff role: the pilot does not grant
-    // access to employee dashboards or modify production user records.
+    // The signed MAX identity alone never reveals staff accounts.
     sendJson(res, 200, {
-      verified: true, user, mode: 'pilot', checkout_enabled: false,
+      verified: true, user, mode: 'staff_and_catalog', checkout_enabled: false,
     });
+  });
+
+  function signedMaxUser(ctx,res) {
+    res.setHeader?.('Cache-Control','no-store');
+    const botToken=token();
+    if (!botToken) {
+      sendJson(res,503,{error:'MAX временно не настроен'});
+      return null;
+    }
+    const user=verifyMaxInitData(ctx.body&&ctx.body.init_data,botToken);
+    if(!user) {
+      sendJson(res,401,{error:'Откройте мини-приложение заново через MAX'});
+      return null;
+    }
+    return user;
+  }
+
+  router.post('/api/max/miniapp/accounts',(req,res,ctx)=>{
+    const user=signedMaxUser(ctx,res);
+    if(!user)return;
+    const state=availableMaxStaffAccounts(user.id);
+    sendJson(res,200,{
+      verified:state.verified,
+      phone_masked:state.phoneMasked,
+      accounts:state.accounts.map(a=>({role:a.role,name:a.name})),
+      ambiguous_roles:state.ambiguousRoles,
+      combined_salon:state.combinedSalon,
+      preferred_role:state.preferredRole,
+    });
+  });
+
+  router.post('/api/max/miniapp/verify-phone',(req,res,ctx)=>{
+    const user=signedMaxUser(ctx,res);
+    if(!user)return;
+    const phone=verifyMaxBridgeContact(
+      ctx.body && ctx.body.contact,user,token()
+    );
+    if(!phone)return sendJson(res,403,{
+      error:'Не удалось подтвердить ваш номер через MAX. Откройте мини-приложение в MAX и повторите запрос.',
+    });
+    recordVerifiedMaxBridgePhone(user.id,phone,user.chat_id);
+    const state=availableMaxStaffAccounts(user.id);
+    return sendJson(res,200,{
+      verified:true,
+      phone_masked:state.phoneMasked,
+      accounts:state.accounts.map(a=>({role:a.role,name:a.name})),
+      ambiguous_roles:state.ambiguousRoles,
+      combined_salon:state.combinedSalon,
+      preferred_role:state.preferredRole,
+    });
+  });
+
+  router.post('/api/max/miniapp/session',(req,res,ctx)=>{
+    const user=signedMaxUser(ctx,res);
+    if(!user)return;
+    const role=ctx.body && ctx.body.role;
+    if(!STAFF_ROLES.includes(role)){
+      return sendJson(res,400,{error:'Некорректная роль'});
+    }
+    const result=issueMaxStaffSession(user.id,role);
+    if(!result)return sendJson(res,403,{
+      error:'Нет подтверждённого доступа к этому кабинету. Проверьте номер MAX и привязку аккаунта.',
+    });
+    sendJson(res,200,result);
   });
 }
 
 module.exports = {
-  verifyMaxInitData, registerMaxMiniAppRoutes, MAX_AGE_SECONDS,
+  verifyMaxInitData, verifyMaxBridgeContact,
+  recordVerifiedMaxBotContact, verifiedMaxPhone,
+  availableMaxStaffAccounts, issueMaxStaffSession,
+  registerMaxMiniAppRoutes, MAX_AGE_SECONDS,
 };
