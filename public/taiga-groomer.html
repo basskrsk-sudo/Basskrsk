@@ -69,7 +69,12 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 .login-method-heading{font-size:.96rem;line-height:1.45;font-weight:700;color:var(--forest);margin-bottom:.35rem;}
 .login-method-description{font-size:.8rem;line-height:1.5;color:var(--muted);}
 .login-btn-telegram{display:block;text-align:center;text-decoration:none;background:#2A8FB9;color:#fff;}
-.login-btn-telegram:hover{background:#17779F;}
+ .login-btn-telegram:hover{background:#17779F;}
+.login-btn-max{background:#7454D5;color:#fff;}
+.login-btn-max:hover{background:#603FBF;}
+#max-login-block{display:none;background:var(--bg,#F7F3EC);border-radius:10px;padding:1rem;margin-top:.6rem;}
+.login-max-error{display:none;color:#9B2335;font-size:.78rem;margin-bottom:.5rem;line-height:1.45;}
+
 .login-alt-action{border:0;background:transparent;color:var(--deep);text-decoration:underline;font:inherit;font-size:.82rem;line-height:1.45;cursor:pointer;width:100%;padding:.75rem .15rem .2rem;text-align:center;}
 .login-divider{text-align:center;color:var(--muted);font-size:.85rem;margin:1rem 0 .25rem;display:flex;align-items:center;gap:.75rem;}
 .login-divider:before,.login-divider:after{content:"";height:1px;flex:1;background:var(--border);}
@@ -294,6 +299,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <script src="payout-schedule.js"></script>
 <script src="telegram-connect.js?v=38"></script>
 <script src="/telegram-login-polling.js?v=1"></script>
+<script src="/groomer-max-login.js?v=1"></script>
 <script src="max-connect.js?v=41"></script>
 <script src="cabinet-navigation.js?v=46"></script>
 <link rel="stylesheet" href="/notification-settings.css">
@@ -332,6 +338,27 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           </div>
         </div>
       </div>
+      </div>
+    </section>
+
+    <section class="login-method" aria-labelledby="max-entry-heading">
+      <div class="login-method-heading" id="max-entry-heading">💬 Вход через MAX</div>
+      <p class="login-method-description">Откройте существующий кабинет грумера на этом сайте: номер телефона и подтверждение своего контакта через бота MAX. Без SMS.</p>
+      <button type="button" class="login-alt-action" id="max-login-toggle" aria-controls="max-login-block" aria-expanded="false" onclick="HvostGroomerMaxLogin.toggle()">Подтвердить вход через MAX</button>
+      <div id="max-login-block">
+        <div class="login-max-error" id="max-login-error" role="alert"></div>
+        <div id="max-login-step-phone">
+          <label class="login-method-description" for="max-login-phone">Номер, указанный при регистрации грумера</label>
+          <div class="field" style="margin-top:.4rem;">
+            <input id="max-login-phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+7 (900) 000-00-00">
+          </div>
+          <button type="button" class="login-btn login-btn-max" id="max-login-start" onclick="HvostGroomerMaxLogin.start({onSuccess:onPartnerLoginSuccess})">Получить ссылку для MAX</button>
+        </div>
+        <div id="max-login-step-waiting" style="display:none;">
+          <p class="login-method-description">Откройте бота MAX, подтвердите свой номер кнопкой «Поделиться номером» и вернитесь сюда. Кабинет откроется автоматически.</p>
+          <a id="max-login-link" class="login-btn login-btn-max" style="display:block;text-align:center;text-decoration:none;" href="#" target="_blank" rel="noopener noreferrer">Открыть бота MAX →</a>
+          <button type="button" class="login-alt-action" onclick="HvostGroomerMaxLogin.reset()">Запросить новую ссылку</button>
+        </div>
       </div>
     </section>
 
@@ -1360,6 +1387,8 @@ function showLoginError(msg){
 }
 
 function doLogout(){
+  window.HvostGroomerMaxLogin?.stop();
+  if (partnerTgPollTimer) { partnerTgPollTimer.stop(); partnerTgPollTimer = null; }
   clearPartnerToken();
   document.getElementById('app').style.display='none';
   document.getElementById('login-screen').style.display='flex';

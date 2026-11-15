@@ -630,6 +630,91 @@ function registerAuthRoutes(router) {
     sendJson(res, 200, { verified: true, token: authToken, user: safeMgrUser });
   });
 
+  // MAX passwordless groomer login on the WEBSITE, not the read-only MAX Mini App.
+  // A separate internal role prevents /api/max/connect and customer tokens from
+  // being exchanged for partner credentials.
+  router.post('/api/partners/max/start', (req, res, ctx) => {
+    res.setHeader?.('Cache-Control', 'no-store');
+    const digits = normalizePhoneDigits(ctx.body && ctx.body.phone);
+    if (!/^79\d{9}$/.test(digits)) {
+      return sendJson(res, 400, { error: 'Укажите мобильный номер +7 (9XX) XXX-XX-XX' });
+    }
+    const { isConfigured } = require('./max-bot');
+    const botUsername = String(process.env.MAX_BOT_USERNAME || '').replace(/^@/, '');
+    if (!isConfigured() || !/^[A-Za-z0-9_-]{1,80}$/.test(botUsername)) {
+      return sendJson(res, 503, { error: 'Вход через MAX временно недоступен. Воспользуйтесь Telegram или логином и паролем.' });
+    }
+    // Phone normalization and index are maintained by the existing DB triggers.
+    // Reject ambiguous phones rather than silently opening a different groomer's account.
+    const partners = db.prepare(
+      'SELECT id, phone FROM partners WHERE phone_last10 = ? AND active = 1 LIMIT 2'
+    ).all(digits.slice(-10));
+    if (partners.length !== 1 || !phonesMatch(partners[0].phone, digits)) {
+      return sendJson(res, 404, { error: 'Для этого номера не найден один активный кабинет грумера. Обратитесь к менеджеру ХвостМаркета.' });
+    }
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    db.prepare(
+      "INSERT INTO max_login_tokens (token,phone,role,account_id,expires_at) VALUES (?,?,'partner_login',?,?)"
+    ).run(token, digits, partners[0].id, expiresAt);
+    sendJson(res, 200, {
+      token, deep_link: 'https://max.ru/' + botUsername + '?start=' + token,
+    });
+  });
+
+  router.post('/api/partners/max/check', (req, res, ctx) => {
+    res.setHeader?.('Cache-Control', 'no-store');
+    const token = String((ctx.body && ctx.body.token) || '');
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      return sendJson(res, 400, { error: 'Некорректная ссылка MAX' });
+    }
+    const record = db.prepare(
+      "SELECT id,phone,account_id,chat_id,verified,expires_at FROM max_login_tokens WHERE token=? AND role='partner_login'"
+    ).get(token);
+    if (!record) return sendJson(res, 404, { error: 'Ссылка MAX не найдена или уже использована' });
+    if (!Number.isFinite(Date.parse(record.expires_at)) || Date.parse(record.expires_at) <= Date.now()) {
+      return sendJson(res, 410, { error: 'Срок подтверждения MAX истёк. Запросите новую ссылку.' });
+    }
+    if (record.verified !== 1 || !record.chat_id) return sendJson(res, 200, { verified: false });
+
+    const partner = db.prepare('SELECT * FROM partners WHERE id=? AND active=1').get(record.account_id);
+    if (!partner || !phonesMatch(partner.phone,record.phone)) {
+      return sendJson(res, 410, { error: 'Аккаунт изменён или отключён. Запросите новую ссылку.' });
+    }
+    const other = db.prepare(
+      'SELECT id FROM partners WHERE phone_last10=? AND active=1 AND id<>? LIMIT 1'
+    ).get(record.phone.slice(-10),partner.id);
+    if (other) return sendJson(res, 409, { error: 'Несколько кабинетов с этим номером. Обратитесь к менеджеру.' });
+
+    // Never silently replace an already bound MAX identity with another chat.
+    const boundChat = String(partner.max_chat_id || '').trim();
+    if (boundChat && boundChat !== String(record.chat_id)) {
+      return sendJson(res, 403, { error: 'Номер уже привязан к другому MAX-аккаунту. Обратитесь к менеджеру.' });
+    }
+    // Atomic single use. If two polls race, exactly one receives the JWT.
+    const consumed = db.prepare(
+      "DELETE FROM max_login_tokens WHERE id=? AND token=? AND role='partner_login' AND verified=1"
+    ).run(record.id,token);
+    if (consumed.changes !== 1) {
+      return sendJson(res, 409, { error: 'Ссылка MAX уже использована. Запросите новую.' });
+    }
+
+    if (!boundChat) {
+      const changed = db.prepare(
+        "UPDATE partners SET max_chat_id=? WHERE id=? AND active=1 " +
+        "AND phone_last10=? AND (max_chat_id IS NULL OR TRIM(max_chat_id)='')"
+      ).run(String(record.chat_id),partner.id,record.phone.slice(-10));
+      if (changed.changes !== 1) {
+        return sendJson(res, 409, { error: 'Привязка MAX изменилась. Повторите вход.' });
+      }
+    }
+    const authToken = signToken({ role: 'partner', id: partner.id, login: partner.login });
+    const { password_hash, telegram_chat_id, max_chat_id, ...safeUser } = partner;
+    safeUser.telegram_connected = !!telegram_chat_id;
+    safeUser.max_connected = true;
+    sendJson(res, 200, { verified: true, token: authToken, user: safeUser });
+  });
+
   // POST /api/customer/max/start { phone } — создаёт токен и ссылку-приглашение в бота MAX
   router.post('/api/customer/max/start', (req, res, ctx) => {
     const { phone } = ctx.body || {};
