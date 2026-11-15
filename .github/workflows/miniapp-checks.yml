@@ -173,6 +173,7 @@ on:
       - server/telegram-message-edit.js
       - server/telegram-message-edit.test.js
       - server/telegram-command-menu.test.js
+      - server/groomer-login-options.test.js
       - server/retired-pet-news.test.js
       - server/max-bot.js
       - server/2gis-lead-bot.js
@@ -412,6 +413,7 @@ jobs:
           node --check server/miniapp-manager-messages.test.js
           node --check public/miniapp-tasks.js
           node --check server/telegram-login-poller.js
+          node --check server/groomer-login-options.test.js
           node --check server/bot-config-sync.js
           node --check server/bot-config-sync.test.js
           node --check server/graceful-shutdown.js
@@ -544,6 +546,8 @@ jobs:
         run: node --test server/winback-manual-only.test.js
       - name: Verify restart-safe bot profile sync and graceful shutdown
         run: node --test server/bot-config-sync.test.js server/graceful-shutdown.test.js
+      - name: Verify two groomer sign-in paths, without SMS
+        run: node --test server/groomer-login-options.test.js
       - name: Verify Telegram login polling limits
         run: node --test server/telegram-login-polling.test.js
       - name: Verify batched stock movement lists and preserved response shape

@@ -65,6 +65,16 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 }
 .login-btn:hover{background:var(--deep);}
 .login-hint{font-size:.75rem;color:var(--muted);text-align:center;margin-top:1rem;}
+.login-method{border:1px solid var(--border);border-radius:12px;padding:1rem;margin-top:.75rem;}
+.login-method-heading{font-size:.96rem;line-height:1.45;font-weight:700;color:var(--forest);margin-bottom:.35rem;}
+.login-method-description{font-size:.8rem;line-height:1.5;color:var(--muted);}
+.login-btn-telegram{display:block;text-align:center;text-decoration:none;background:#2A8FB9;color:#fff;}
+.login-btn-telegram:hover{background:#17779F;}
+.login-alt-action{border:0;background:transparent;color:var(--deep);text-decoration:underline;font:inherit;font-size:.82rem;line-height:1.45;cursor:pointer;width:100%;padding:.75rem .15rem .2rem;text-align:center;}
+.login-divider{text-align:center;color:var(--muted);font-size:.85rem;margin:1rem 0 .25rem;display:flex;align-items:center;gap:.75rem;}
+.login-divider:before,.login-divider:after{content:"";height:1px;flex:1;background:var(--border);}
+#tg-login-block{display:none;background:var(--bg,#F7F3EC);border-radius:10px;padding:1rem;margin-top:.6rem;}
+@media (max-width:480px){.login-card{padding:1.35rem 1rem;}}
 .login-error{
   display:none;background:var(--red-bg);color:var(--red-text);
   border-radius:6px;padding:.55rem .8rem;font-size:.8rem;margin-bottom:1rem;
@@ -294,27 +304,17 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <div id="login-screen">
   <div class="login-card">
     <div class="login-logo"><img src="images/hvostmarket-logo-v3-transparent.png" alt="ХвостМаркет" style="height:132px;width:auto;display:block;margin:0 auto;"></div>
-    <div class="login-sub">Личный кабинет партнёра</div>
-    <div class="field">
-      <label>Логин</label>
-      <input type="text" id="l-login" placeholder="groomer01" autocomplete="username">
-    </div>
-    <div class="field">
-      <label>Пароль</label>
-      <div style="position:relative;">
-        <input type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password" style="padding-right:2.6rem;">
-        <button type="button" onclick="togglePasswordVisibility('l-pass', this)" style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.05rem;padding:.2rem;line-height:1;">👁️</button>
-      </div>
-    </div>
-    <div id="login-error-msg" style="display:none;color:#9B2335;font-size:.8rem;margin-bottom:.5rem;text-align:center;"></div>
-    <button class="login-btn" onclick="doLogin()">Войти</button>
+    <div class="login-sub" style="margin-bottom:1.2rem;">Личный кабинет грумера · продажи и начисления</div>
 
-    <div style="text-align:center;margin:.9rem 0;">
-      <a onclick="toggleTgLogin()" style="font-size:.8rem;color:var(--muted);cursor:pointer;text-decoration:underline;">Подключить Telegram и получать уведомления о продажах</a>
-    </div>
-    <div id="tg-login-block" style="display:none;background:var(--bg,#F7F3EC);border-radius:10px;padding:1rem;margin-bottom:.8rem;">
+    <section class="login-method" aria-labelledby="telegram-entry-heading">
+      <div class="login-method-heading" id="telegram-entry-heading">✈️ Вход через Telegram</div>
+      <p class="login-method-description">Без пароля и платных SMS. Выберите, где открыть кабинет.</p>
+      <a class="login-btn login-btn-telegram" href="https://t.me/HvostMarketRusBot?start=app" target="_blank" rel="noopener noreferrer">📱 Открыть мини-приложение</a>
+      <button type="button" class="login-alt-action" id="tg-login-toggle" aria-controls="tg-login-block" aria-expanded="false" onclick="toggleTgLogin()">Войти на этом сайте через Telegram</button>
+      <div id="tg-login-block">
       <div id="tg-login-error" style="display:none;color:#9B2335;font-size:.78rem;margin-bottom:.5rem;"></div>
       <div id="tg-login-step-phone">
+        <p class="login-method-description" style="margin-bottom:.7rem;">Введите номер, указанный при регистрации грумера. Подтвердите вход в Telegram-боте — SMS не требуется.</p>
         <div class="field" style="margin-bottom:.6rem;">
           <input type="tel" id="tg-login-phone" placeholder="+7 (900) 000-00-00" oninput="fmtPhoneLogin(this)" style="width:100%;padding:.6rem;border:1.5px solid var(--border,#DDD5C8);border-radius:8px;">
         </div>
@@ -332,9 +332,27 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </section>
 
-    <div class="login-hint" style="margin-top:1rem;">Логин и пароль выдаёт менеджер «Тайги»</div>
+    <div class="login-divider">или</div>
+    <section class="login-method" aria-labelledby="password-entry-heading">
+      <div class="login-method-heading" id="password-entry-heading">🔐 Вход на сайте по логину и паролю</div>
+      <div class="field">
+        <label for="l-login">Логин</label>
+        <input type="text" id="l-login" placeholder="groomer01" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="l-pass">Пароль</label>
+        <div style="position:relative;">
+          <input type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password" style="padding-right:2.6rem;">
+          <button type="button" onclick="togglePasswordVisibility('l-pass', this)" aria-label="Показать или скрыть пароль" style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.05rem;padding:.2rem;line-height:1;">👁️</button>
+        </div>
+      </div>
+      <div id="login-error-msg" class="login-error" role="alert"></div>
+      <button class="login-btn" type="button" onclick="doLogin()">Войти в кабинет</button>
+      <div class="login-hint">Логин и пароль выдаёт менеджер ХвостМаркета.</div>
+    </section>
     <div style="margin-top:.75rem;text-align:center;">
       <a href="taiga-register.html" style="font-size:.82rem;color:var(--amber);font-weight:600;">Ещё не партнёр? Зарегистрироваться →</a>
     </div>
@@ -1245,7 +1263,10 @@ function fmtPhoneLogin(el) {
 
 function toggleTgLogin() {
   const block = document.getElementById('tg-login-block');
-  block.style.display = block.style.display === 'none' ? 'block' : 'none';
+  const button = document.getElementById('tg-login-toggle');
+  const open = getComputedStyle(block).display === 'none';
+  block.style.display = open ? 'block' : 'none';
+  if (button) button.setAttribute('aria-expanded', String(open));
 }
 
 let partnerTgPollTimer = null;
