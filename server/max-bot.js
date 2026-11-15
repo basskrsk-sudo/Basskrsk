@@ -18,6 +18,7 @@ const {
 
 const MAX_BOT_TOKEN = process.env.MAX_BOT_TOKEN || '';
 const MAX_API_BASE = 'https://platform-api2.max.ru';
+const { createBotConfigSync } = require('./bot-config-sync');
 
 // Official MAX slash menu and /help use the same working command definitions.
 const MAX_BOT_COMMANDS = Object.freeze([
@@ -157,18 +158,26 @@ async function ensureMaxWebhookUpdates() {
   return webhookSyncInFlight;
 }
 
-// Update the native slash-command menu once when the MAX webhook bot starts.
+const maxCommandSync = createBotConfigSync('max-commands', {
+  token: MAX_BOT_TOKEN, commands: MAX_BOT_COMMANDS,
+});
+
+// Update the native slash-command menu only when the command list changes.
 // Do not block HTTP startup if MAX is temporarily unavailable.
 async function configureMaxCommands() {
   if (!MAX_BOT_TOKEN) return { ok: false, skipped: true };
+  const plan = maxCommandSync.check();
+  if (!plan.sync) return { ok: plan.reason === 'unchanged', skipped: true, reason: plan.reason };
   try {
     await maxApi('/me/commands', {
       method: 'PATCH',
       body: JSON.stringify({ commands: MAX_BOT_COMMANDS }),
     });
+    maxCommandSync.succeeded();
     console.log('MAX: меню действующих команд обновлено');
     return { ok: true };
   } catch (error) {
+    maxCommandSync.failed([error]);
     console.warn('MAX: не удалось обновить меню команд:', error.message);
     return { ok: false, error: error.message };
   }

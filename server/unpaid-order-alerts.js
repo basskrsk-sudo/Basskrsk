@@ -406,6 +406,9 @@ function scheduleUnpaidOrderAlerts() {
 function wakeUnpaidOrderAlertScheduler() {
   unpaidAlertScheduler.wake();
 }
+function stopUnpaidOrderAlerts() {
+  unpaidAlertScheduler.stop();
+}
 
 module.exports = {
   ALERT_DELAY_MINUTES,
@@ -419,5 +422,6 @@ module.exports = {
   pendingOrderIds,
   runUnpaidOrderAlertCheck,
   scheduleUnpaidOrderAlerts,
+  stopUnpaidOrderAlerts,
   sendUnpaidOrderAlert,
 };

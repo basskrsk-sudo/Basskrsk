@@ -732,6 +732,12 @@ function startPartnerClubWorker(){
  // A restart must recover queued drafts without waiting for five minutes.
  scheduleClubWorker(0);
 }
+function stopPartnerClubWorker(){
+ workerStarted=false;
+ if(workerTimer)clearTimeout(workerTimer);
+ workerTimer=null;
+ workerWakeRequested=false;
+}
 function generateApprovedClubReport(type,{approved=false}={}){
   if(!approved)return {ok:false,error:'Сначала подтвердите формирование в Telegram'};
   const types={clubdaily:'daily',clubweekly:'weekly',clubtopweek:'top_products_week',clubtopall:'top_products_all'};
@@ -743,4 +749,4 @@ function generateApprovedClubReport(type,{approved=false}={}){
   return {ok:true,created:queue(key,selected,result.message),message:result.message};
 }
 
-module.exports={generateApprovedClubReport,registerPartnerClubRoutes,settings,preview,analytics,dailySalesRecords:dailyRecords.metrics,checkDailySalesRecord:(now)=>dailyRecords.checkYesterday(now,settings(),queue),report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,handleClubCallback,handleClubEdit,isClubModerator,startClubPost,handleClubPostInput,cancelClubInput,handleClubPhotoMessage,handleClubPhotoCallback,sendClubReviewPreview};
+module.exports={generateApprovedClubReport,registerPartnerClubRoutes,settings,preview,analytics,dailySalesRecords:dailyRecords.metrics,checkDailySalesRecord:(now)=>dailyRecords.checkYesterday(now,settings(),queue),report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,stopPartnerClubWorker,handleClubCallback,handleClubEdit,isClubModerator,startClubPost,handleClubPostInput,cancelClubInput,handleClubPhotoMessage,handleClubPhotoCallback,sendClubReviewPreview};

@@ -14,6 +14,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { URL } = require('node:url');
 const { createStaticCache } = require('./static-cache');
+const { installGracefulShutdown } = require('./graceful-shutdown');
 
 const { Router, readBinaryBody, parseJsonBody, sendJson } = require('./http-utils');
 const { registerAuthRoutes, requireSuperAdmin } = require('./routes-auth');
@@ -325,6 +326,17 @@ const server = http.createServer(async (req, res) => {
   }
 
   serveStatic(req, res, pathname);
+});
+
+// Let in-flight checkout, payment webhooks and receipts finish when Amvera
+// replaces a container; stop background workers before closing HTTP.
+installGracefulShutdown(server, {
+  onStop() {
+    require('./telegram-login-poller').stopPolling();
+    require('./routes-partner-club').stopPartnerClubWorker();
+    require('./unpaid-order-alerts').stopUnpaidOrderAlerts();
+    require('./new-product-broadcast').stopBroadcastWorker();
+  },
 });
 
 server.listen(PORT, () => {

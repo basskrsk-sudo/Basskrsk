@@ -661,9 +661,15 @@ function startBroadcastWorker() {
   workerStarted = true;
   wakeBroadcastWorker();
 }
+function stopBroadcastWorker() {
+  workerStarted = false;
+  wakeRequested = false;
+  if (workerTimer) clearTimeout(workerTimer);
+  workerTimer = null;
+}
 module.exports = {
   AUDIENCES, isBroadcaster, productById, recipientSnapshot,
   productCaption, validPhotoRef, startBroadcast, handleCallback,
   messageInput, cancelDraft, sendProductPhoto, processBroadcastQueue,
-  startBroadcastWorker, campaignStatus, nextBroadcastPollDelay,
+  startBroadcastWorker, stopBroadcastWorker, campaignStatus, nextBroadcastPollDelay,
 };
