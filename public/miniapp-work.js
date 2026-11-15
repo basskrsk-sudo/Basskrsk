@@ -203,7 +203,7 @@
         '<div class="work-surface"><h2>🔐 Доступ после проверки номера</h2>' +
         '<p class="work-note">Грумер, менеджер, владелец салона, собственник бизнеса и администратор ' +
         'увидят только свои кабинеты после подтверждения номера через ' + platformLabel + '.</p>' +
-        '<button class="work-primary" type="button" data-work-action="' + (isMaxMiniApp ? 'share-phone' : 'go-profile') + '">Подтвердить номер →</button></div>' +
+        '<button class="work-primary" type="button" data-work-action="' + (isMaxMiniApp ? 'share-phone' : 'go-profile') + '">' + (isMaxMiniApp ? 'Подтвердить номер →' : 'Ввести телефон →') + '</button></div>' +
         shortcutAction();
       return;
     }
