@@ -251,7 +251,7 @@ function buildOwnerReportPages(font){
   return pages.map(p=>p.concat(['pop graphic-context']).join('\n'));
 }
 async function buildOwnerSnapshotPdf(){
-  const {findFont,writePdfFromJpegs}=require('./weekly-report-pdf');
+  const {findFont,writePdfFromJpegsAsync}=require('./weekly-report-pdf');
   let dir;
   try{
     dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'hm-owner-20261116-'));
@@ -271,7 +271,7 @@ async function buildOwnerSnapshotPdf(){
       images.push(output);
     }
     const pdfPath=path.join(dir,'owner-report.pdf');
-    writePdfFromJpegs(images,pdfPath);
+    await writePdfFromJpegsAsync(images,pdfPath);
     return await fs.promises.readFile(pdfPath);
   }finally{
     if(dir)await fs.promises.rm(dir,{recursive:true,force:true});

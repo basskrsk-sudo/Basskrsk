@@ -360,6 +360,94 @@ function writePdfFromJpegs(jpegPaths, outputPath) {
   fs.writeFileSync(outputPath, Buffer.concat(chunks));
 }
 
+
+/**
+ * Assemble JPEG-backed PDFs without blocking the HTTP event loop on disk I/O
+ * or buffering every page in the Node.js heap. Same binary layout as the
+ * legacy synchronous builder, which still runs in the weekly-report worker.
+ */
+async function writePdfFromJpegsAsync(jpegPaths, outputPath) {
+  if (!Array.isArray(jpegPaths)) throw new TypeError('JPEG pages must be an array');
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const pageRefs = jpegPaths.map((_, index) => 3 + index * 3);
+  const objectCount = 2 + jpegPaths.length * 3;
+  const offsets = [0];
+  const writer = await fs.promises.open(outputPath, 'w', 0o600);
+  let position = 0, completed = false;
+
+  async function emit(data) {
+    const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data, 'ascii');
+    let offset = 0;
+    while (offset < buffer.length) {
+      const { bytesWritten } = await writer.write(buffer, offset, buffer.length - offset, null);
+      if (bytesWritten <= 0) throw new Error('PDF write did not make progress');
+      offset += bytesWritten;
+      position += bytesWritten;
+    }
+  }
+  async function pdfObject(id, contents) {
+    offsets[id] = position;
+    await emit(id + ' 0 obj\n');
+    await contents();
+    await emit('\nendobj\n');
+  }
+
+  try {
+    await emit(Buffer.from('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n', 'binary'));
+    await pdfObject(1, () => emit('<< /Type /Catalog /Pages 2 0 R >>'));
+    await pdfObject(2, () => emit(
+      '<< /Type /Pages /Kids [' + pageRefs.map((id) => id + ' 0 R').join(' ') +
+      '] /Count ' + jpegPaths.length + ' >>'
+    ));
+
+    for (let index = 0; index < jpegPaths.length; index++) {
+      const pageId = 3 + index * 3;
+      const contentId = pageId + 1;
+      const imageId = pageId + 2;
+      const imageName = 'Im' + (index + 1);
+      const paint = Buffer.from(
+        'q\n' + pageWidth + ' 0 0 ' + pageHeight + ' 0 0 cm\n/' + imageName + ' Do\nQ\n', 'ascii'
+      );
+      await pdfObject(pageId, () => emit(
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageWidth + ' ' + pageHeight + '] ' +
+        '/Resources << /XObject << /' + imageName + ' ' + imageId + ' 0 R >> >> /Contents ' + contentId + ' 0 R >>'
+      ));
+      await pdfObject(contentId, async () => {
+        await emit('<< /Length ' + paint.length + ' >>\nstream\n');
+        await emit(paint);
+        await emit('endstream');
+      });
+      await pdfObject(imageId, async () => {
+        const stat = await fs.promises.stat(jpegPaths[index]);
+        await emit(
+          '<< /Type /XObject /Subtype /Image /Width 1240 /Height 1754 /ColorSpace /DeviceRGB ' +
+          '/BitsPerComponent 8 /Filter /DCTDecode /Length ' + stat.size + ' >>\nstream\n'
+        );
+        // Fixed-size chunks: a multi-page report must not buffer all JPEGs
+        // and the final PDF in RAM at once.
+        const input = fs.createReadStream(jpegPaths[index], { highWaterMark: 64 * 1024 });
+        for await (const chunk of input) await emit(chunk);
+        await emit('\nendstream');
+      });
+    }
+
+    const xrefOffset = position;
+    const xref = ['xref', '0 ' + (objectCount + 1), '0000000000 65535 f '];
+    for (let id = 1; id <= objectCount; id++) {
+      xref.push(String(offsets[id]).padStart(10, '0') + ' 00000 n ');
+    }
+    await emit(
+      xref.join('\n') + '\ntrailer\n<< /Size ' + (objectCount + 1) + ' /Root 1 0 R >>\n' +
+      'startxref\n' + xrefOffset + '\n%%EOF\n'
+    );
+    completed = true;
+  } finally {
+    await writer.close();
+    if (!completed) await fs.promises.unlink(outputPath).catch(() => {});
+  }
+}
+
 function buildPdf(report, outputPath) {
   const font = findFont();
   const command = imageMagickCommand();
@@ -389,4 +477,4 @@ function buildPdf(report, outputPath) {
 }
 
 
-module.exports = { findFont, writePdfFromJpegs, buildPdf };
+module.exports = { findFont, writePdfFromJpegs, writePdfFromJpegsAsync, buildPdf };
