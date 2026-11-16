@@ -1410,6 +1410,10 @@ ensureColumn('orders', 'reservation_expires_at', 'TEXT');
 ensureColumn('orders', 'inventory_source_type', 'TEXT');
 ensureColumn('orders', 'inventory_source_id', 'TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS idx_orders_active_reservations ON orders(reservation_status, reservation_expires_at)');
+// The minute-long expired-payment sweeper scans at most one small ID-ordered
+// batch. This partial index avoids sorting historical paid orders.
+db.exec("CREATE INDEX IF NOT EXISTS idx_orders_pending_reservation_cleanup " +
+  "ON orders(id) WHERE status='pending' AND reservation_status='active'");
 // Polled every 15 seconds: index only relevant pending reservations, not
 // historical paid orders. Keeps the scan small as network sales grow.
 db.exec("CREATE INDEX IF NOT EXISTS idx_orders_pending_notification_scan " +

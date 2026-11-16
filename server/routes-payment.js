@@ -5,6 +5,8 @@
 'use strict';
 
 const db = require('./db');
+const { trackSync, trackAsync } = require('./runtime-diagnostics');
+const { createSingleFlightJob } = require('./single-flight-job');
 const { assignDisplayNumber } = require('./order-display-number');
 const { resolveCheckoutGroomer } = require('./auto-groomer');
 const yookassa = require('./yookassa');
@@ -32,7 +34,7 @@ const {
   reserveForOrder,
   releaseOrderReservation,
   consumeOrderReservation,
-  listExpiredActiveReservations,
+  listExpiredActiveReservationsBatch,
 } = require('./reservations');
 
 function releaseFailedOrderAndAlert(orderId, reason) {
@@ -287,9 +289,20 @@ async function finalizePaidOrder(orderId, demo = false) {
   return true;
 }
 
+const RESERVATION_CLEANUP_BATCH_SIZE = 8;
 let reservationCleanupStarted = false;
+let reservationCleanupCursor = 0;
 async function reconcileExpiredReservations() {
-  const expired = listExpiredActiveReservations();
+  // Rotate through all overdue reservations without repeatedly hammering the
+  // same unresolved payment. A batch caps both sync SQLite work and API calls.
+  const fetchBatch = (cursor) => trackSync('reservation_cleanup_sql',
+    () => listExpiredActiveReservationsBatch(cursor, RESERVATION_CLEANUP_BATCH_SIZE));
+  let expired = fetchBatch(reservationCleanupCursor);
+  if (!expired.length && reservationCleanupCursor > 0) {
+    reservationCleanupCursor = 0;
+    expired = fetchBatch(0);
+  }
+  if (expired.length) reservationCleanupCursor = expired[expired.length - 1].id;
   for (const order of expired) {
     try {
       if (!order.yookassa_payment_id) {
@@ -318,12 +331,17 @@ async function reconcileExpiredReservations() {
     }
   }
 }
+// A slow YuKassa response must not cause overlapping reconciliation sweeps.
+const runReservationCleanup = createSingleFlightJob(
+  () => trackAsync('reservation_cleanup', reconcileExpiredReservations),
+  (error) => console.warn('[reservations] Фоновая сверка не удалась:', error.message)
+);
 
 function startReservationCleanup() {
   if (reservationCleanupStarted) return;
   reservationCleanupStarted = true;
-  const firstRun = setTimeout(() => { reconcileExpiredReservations().catch(() => {}); }, 5000);
-  const interval = setInterval(() => { reconcileExpiredReservations().catch(() => {}); }, 60 * 1000);
+  const firstRun = setTimeout(() => { void runReservationCleanup(); }, 5000);
+  const interval = setInterval(() => { void runReservationCleanup(); }, 60 * 1000);
   if (typeof firstRun.unref === 'function') firstRun.unref();
   if (typeof interval.unref === 'function') interval.unref();
 }
