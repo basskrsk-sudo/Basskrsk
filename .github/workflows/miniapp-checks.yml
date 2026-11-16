@@ -166,6 +166,8 @@ on:
       - server/manager-miniapp-registration.test.js
       - server/routes-miniapp.test.js
       - server/telegram-login-poller.js
+      - server/owner-report-20261116.js
+      - server/owner-report-20261116.test.js
       - server/bot-config-sync.js
       - server/bot-config-sync.test.js
       - server/graceful-shutdown.js
@@ -424,6 +426,8 @@ jobs:
           node --check server/miniapp-manager-messages.test.js
           node --check public/miniapp-tasks.js
           node --check server/telegram-login-poller.js
+          node --check server/owner-report-20261116.js
+          node --check server/owner-report-20261116.test.js
           node --check server/groomer-login-options.test.js
           node --check server/groomer-max-login.test.js
           node --check server/groomer-max-login-ui.test.js
@@ -617,6 +621,8 @@ jobs:
           node -e "const fs=require('node:fs');for(const f of ['public/gift.html','public/gift-admin.html']){const s=fs.readFileSync(f,'utf8');const m=s.match(/<script>([\\s\\S]*?)<\\/script>\\s*<\\/body>/);if(!m)throw new Error('Missing gift UI script in '+f);new Function(m[1]);console.log('Valid JS: '+f)}"
       - name: Verify site links to Telegram and MAX customer support
         run: node --test server/site-support-links.test.js
+      - name: Verify private owner PDF delivery in Telegram
+        run: node --test --test-concurrency=1 server/owner-report-20261116.test.js
       - name: Verify shared Telegram and MAX bot customer support
         run: node --test --test-concurrency=1 server/bot-support.test.js
       - name: Verify MAX phone identity and all four staff roles

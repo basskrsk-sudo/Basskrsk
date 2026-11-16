@@ -1519,6 +1519,14 @@ async function processUpdate(update) {
     );
     return;
   }
+  // Historic owner PDF: manual request only, in the original private
+  // Telegram account of a currently linked super-admin. No scheduled render.
+  if (msg.chat.type === 'private' && /^\/ownerpdf(?:@\w+)?$/i.test(text)) {
+    const result=await require('./owner-report-20261116').sendOwnerReport(
+      msg.chat.id,msg.from && msg.from.id);
+    await replyToChat(msg.chat.id,result.message);
+    return;
+  }
   if (/^\/taskpdf(?:@\w+)?$/i.test(text)) {
     await requestBotReport(msg.chat.id,'taskpdf');
     return;
