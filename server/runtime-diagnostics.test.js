@@ -47,3 +47,15 @@ test('p95 uses recent bounded samples without dropping lifetime maximum',()=>{
   assert.equal(row.p95_ms,10);
   assert.equal(row.max_ms,8000);
 });
+
+test('slow synchronous operations are time-stamped, bounded and contain no payloads',()=>{
+  const {noteSlowSync,snapshotSlowSyncOperations}=require('./runtime-diagnostics');
+  noteSlowSync('report_query',320,'2026-11-16T16:02:00Z'); // ignored
+  for(let i=0;i<11;i++) noteSlowSync('report_query',1500+i,Date.parse('2026-11-16T16:02:00Z')+i);
+  const recent=snapshotSlowSyncOperations();
+  assert.equal(recent.length,8);
+  assert.equal(recent[0].duration_ms,1510);
+  assert.equal(recent[0].at,'2026-11-16T16:02:00.010Z');
+  assert.deepEqual(Object.keys(recent[0]).sort(),['at','duration_ms','name']);
+  assert.throws(()=>noteSlowSync('secret:order-123',1900),/Invalid operation name/);
+});

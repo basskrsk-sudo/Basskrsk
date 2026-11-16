@@ -12,7 +12,8 @@ const { sendJson } = require('./http-utils');
 const { requireActiveAdmin } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { snapshotApiPerformance } = require('./api-performance');
-const { sampleCpuThrottling, snapshotOperations } = require('./runtime-diagnostics');
+const { sampleCpuThrottling, snapshotOperations, snapshotSlowSyncOperations } = require('./runtime-diagnostics');
+const { eventLoopStallProfiler } = require('./event-loop-stall-profiler');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const BOOTED_AT = Date.now();
@@ -156,6 +157,8 @@ async function metrics() {
     api_performance:snapshotApiPerformance(),
     cpu_throttle:lastSample ? lastSample.cpu_throttle : null,
     slow_operations:snapshotOperations(),
+    recent_slow_sync_operations:snapshotSlowSyncOperations(),
+    event_loop_stalls:eventLoopStallProfiler.snapshot(),
   };
 }
 async function alert(type, severity, detail) {
@@ -255,6 +258,18 @@ async function sample() {
       storage_stat_ms: statMs,
     };
     const cap = limitMemory();
+    // A one-minute histogram maximum is not enough to identify a culprit.
+    // Include CPU consumed during the actual pause, and any known synchronous
+    // job completed near it. A low CPU value does not distinguish host
+    // descheduling from blocked synchronous I/O.
+    const latestStall = eventLoopStallProfiler.snapshot()[0];
+    const recentStall = latestStall &&
+      now - Date.parse(latestStall.at) >= 0 &&
+      now - Date.parse(latestStall.at) <= SAMPLE_INTERVAL_MS + 10000
+      ? latestStall : null;
+    const recentSync = snapshotSlowSyncOperations().find(entry =>
+      now - Date.parse(entry.at) >= 0 &&
+      now - Date.parse(entry.at) <= SAMPLE_INTERVAL_MS + 10000);
     transition('database',health.checks.database!=='ok','critical','SQLite не отвечает на проверку');
     transition('storage',health.checks.storage!=='ok','critical','Постоянное хранилище недоступно для записи');
     transition('memory',!!(cap && memory.rss/cap>=WARNING_RSS_RATIO),'warning',
@@ -271,7 +286,17 @@ async function sample() {
           cpuThrottle.throttled_ms+' мс. ' : '')+
       'Проверки: SQLite '+health.probe_sqlite_ms+' мс, /data '+
       health.probe_storage_ms+' мс, /tmp '+temporary.durationMs+' мс, statfs '+statMs+
-      ' мс. '+describeIoSpike(lastSample.io_probe));
+      ' мс. '+
+      (recentStall
+        ? 'Снимок паузы: '+recentStall.at+', лаг '+recentStall.late_by_ms+
+          ' мс, CPU процесса '+recentStall.process_cpu_ms+' мс ('+
+          recentStall.process_cpu_pct+'% от окна). '
+        : 'Снимок паузы: недоступен. ')+
+      (recentSync
+        ? 'Медленная отслеживаемая синхронная операция: '+
+          recentSync.name+' '+recentSync.duration_ms+' мс. '
+        : '')+
+      describeIoSpike(lastSample.io_probe));
     try {
       db.prepare('INSERT INTO site_health_heartbeat(id,last_seen_at,boot_id) VALUES(1,?,?) '+
         'ON CONFLICT(id) DO UPDATE SET last_seen_at=excluded.last_seen_at,boot_id=excluded.boot_id')
@@ -301,6 +326,7 @@ function startHealthWatcher() {
   } catch (_) {}
   appendEvent('startup','info','Процесс Node.js запущен');
   loopHistogram.enable();
+  eventLoopStallProfiler.start();
   previousSampleAt=Date.now()-SAMPLE_INTERVAL_MS;
   void sample().catch(e => console.warn('[health] sample failed:', e.code || 'unknown'));
   previousSampleAt=Date.now();
