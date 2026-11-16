@@ -10,6 +10,8 @@ const SLOW_LOG_MS = 1500;
 const SAMPLE_WINDOW = 32;
 let previousCpu = null;
 const lastWarnings = new Map();
+const recentSlowSync = [];
+const MAX_RECENT_SYNC = 8;
 
 function parseCpuStat(content) {
   const fields = Object.create(null);
@@ -93,10 +95,27 @@ function recordOperation(name, elapsedMs) {
     }
   }
 }
+function noteSlowSync(name, elapsedMs, endedAt = Date.now()) {
+  const key = safeName(name);
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 500) return;
+  recentSlowSync.push({
+    name: key,
+    duration_ms: Math.round(elapsedMs),
+    at: new Date(endedAt).toISOString(),
+  });
+  if (recentSlowSync.length > MAX_RECENT_SYNC) recentSlowSync.shift();
+}
+function snapshotSlowSyncOperations() {
+  return [...recentSlowSync].reverse();
+}
 function trackSync(name, fn) {
   safeName(name);
   const started = performance.now();
-  try { return fn(); } finally { recordOperation(name, performance.now() - started); }
+  try { return fn(); } finally {
+    const elapsed = performance.now() - started;
+    recordOperation(name, elapsed);
+    noteSlowSync(name, elapsed);
+  }
 }
 async function trackAsync(name, fn) {
   safeName(name);
@@ -118,4 +137,5 @@ function snapshotOperations() {
 module.exports = {
   parseCpuStat, cpuThrottleDelta, sampleCpuThrottling,
   recordOperation, trackSync, trackAsync, snapshotOperations,
+  noteSlowSync, snapshotSlowSyncOperations,
 };

@@ -92,6 +92,9 @@ test('only active admin can inspect process metrics and persistent restart log',
   assert.ok((await metrics()).timestamp);
   assert.ok(r.data.api_performance);
   assert.ok(Array.isArray(r.data.slow_operations));
+  assert.ok(Array.isArray(r.data.recent_slow_sync_operations));
+  assert.ok(Array.isArray(r.data.event_loop_stalls));
+  assert.ok(r.data.event_loop_stalls.length<=8);
   assert.ok(r.data.cpu_throttle===null || typeof r.data.cpu_throttle.available==='boolean');
   assert.ok(Array.isArray(r.data.api_performance.slow_routes));
   assert.ok(r.data.io_probe === null || Number.isFinite(r.data.io_probe.storage_write_ms));
