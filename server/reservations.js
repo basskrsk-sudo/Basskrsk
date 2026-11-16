@@ -176,6 +176,20 @@ function listExpiredActiveReservations() {
   `).all();
 }
 
+// Paginate overdue reservations rather than rechecking the entire old backlog
+// every minute. Only fields required by the payment reconciliation are read.
+function listExpiredActiveReservationsBatch(afterId = 0, limit = 8) {
+  const cursor = Number.isSafeInteger(afterId) && afterId > 0 ? afterId : 0;
+  const size = Number.isSafeInteger(limit) ? Math.max(1, Math.min(20, limit)) : 8;
+  return db.prepare(`
+    SELECT id, order_code, yookassa_payment_id FROM orders
+    WHERE status = 'pending' AND reservation_status = 'active'
+      AND reservation_expires_at IS NOT NULL
+      AND reservation_expires_at <= datetime('now') AND id > ?
+    ORDER BY id ASC LIMIT ?
+  `).all(cursor, size);
+}
+
 // Возврат оплаченного товара на исходное место хранения. Для новых заказов
 // источник зафиксирован в заказе; старые заказы продолжают восстанавливаться
 // на точку по прежнему правилу.
@@ -196,5 +210,6 @@ module.exports = {
   releaseOrderReservationInTransaction,
   consumeOrderReservation,
   listExpiredActiveReservations,
+  listExpiredActiveReservationsBatch,
   restorePaidOrderInventory,
 };
