@@ -111,7 +111,7 @@ async function renderPayoutPdf(report) {
   pdfRunning = true;
   let dir;
   try {
-    const { findFont, writePdfFromJpegs } = require('./weekly-report');
+    const { findFont, writePdfFromJpegsAsync } = require('./weekly-report-pdf');
     const pages = payoutPdfPages(report, findFont());
     dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'hvost-payout-pdf-'));
     let command = 'convert';
@@ -124,7 +124,7 @@ async function renderPayoutPdf(report) {
       images.push(output);
     }
     const output = path.join(dir, 'report.pdf');
-    writePdfFromJpegs(images, output);
+    await writePdfFromJpegsAsync(images, output);
     return await fs.promises.readFile(output);
   } finally {
     try { if (dir) await fs.promises.rm(dir, { recursive:true, force:true }); }
