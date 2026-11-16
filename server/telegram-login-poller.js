@@ -86,6 +86,7 @@ const TELEGRAM_BOT_COMMANDS = Object.freeze([
       { command: 'support', description: '🆘 Написать в поддержку ХвостМаркета' },
       { command: 'tasks', description: 'Мои активные поручения' },
       { command: 'taskpdf', description: 'Свежий PDF моих поручений' },
+      { command: 'ownerpdf', description: '📄 Отчёт собственников за 16 ноября' },
       { command: 'reports', description: '📊 Отчёты: сформировать после подтверждения' },
       { command: 'newtask', description: 'Создать новую задачу' },
       { command: 'expense', description: 'Добавить трату бизнеса' },
@@ -238,7 +239,7 @@ function buildWelcomeMessage() {
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Менеджерам и администраторам: /contact ссылка — контакт из Яндекс Карт или 2ГИС с согласованием. /2gis также работает.',
     'Администраторам: /reports — единое меню из 7 разделов, отчёты создаются после подтверждения. Прежние команды /salesweek, /business, /businesspoints, /stock, /nogroomer и /payouts продолжают работать.',
-    'Супер-администратору: /newproduct — рассылка новинки с фотографией и предпросмотром; /tierapprovals — заявки на снижение процента грумеров.',
+    'Супер-администратору: /ownerpdf — PDF-отчёт собственникам на 16.11.2026; /newproduct — рассылка новинки; /tierapprovals — заявки на снижение процента грумеров.',
     'Администраторам: ответьте /edit на сообщение бота в Клубе партнёров, затем пришлите новый текст боту лично.',
     '',
     'Для быстрого входа в Mini App подтвердите свой номер Telegram — увидите зарегистрированные кабинеты без ввода пароля. Для админки нужна предварительная привязка Telegram из аккаунта сайта.',
@@ -265,6 +266,9 @@ function botActionButtons(chatId) {
     tierApprovals.activeSuperAdmin(chatId)
   )) {
     keyboard.push([{ text: '📊 Отчёты · 7 разделов', callback_data: 'report:menu' }]);
+  }
+  if (chatId && require('./owner-report-20261116').mayReadOwnerReport(chatId,chatId)) {
+    keyboard.push([{ text: '📄 PDF-отчёт собственникам', callback_data: 'ownerpdf:send' }]);
   }
   if (chatId && tierApprovals.activeSuperAdmin(chatId)) {
     keyboard.push([{ text: '📉 Согласования комиссий', callback_data: 'tier:list' }]);
@@ -789,6 +793,24 @@ async function executeApprovedReport({chatId,type,params}) {
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
+    if (callback.data === 'ownerpdf:send') {
+      const chat=callback.message && callback.message.chat;
+      const ownsChat=chat && chat.type === 'private' &&
+        String(chat.id) === String(callback.from && callback.from.id);
+      const allowed=ownsChat && require('./owner-report-20261116')
+        .mayReadOwnerReport(chat.id,callback.from.id);
+      try{
+        await callBotApi('answerCallbackQuery',{
+          callback_query_id:callback.id,
+          text:allowed?'📄 Подготавливаем PDF':'⛔ Доступ разрешён только супер-администратору',
+          show_alert:!allowed,
+        });
+      }catch(error){console.warn('[ownerpdf] callback acknowledgement:',error.message)}
+      if (!allowed) return;
+      const result=await require('./owner-report-20261116').sendOwnerReport(chat.id,callback.from.id);
+      await replyToChat(chat.id,result.message);
+      return;
+    }
     if (callback.data === 'support:start') {
       const chat = callback.message && callback.message.chat;
       const ownPrivate = chat && chat.type === 'private' &&
@@ -1329,7 +1351,7 @@ async function processUpdate(update) {
       commandMenuRetryTimer = null;
       commandMenuRetryCount = 0;
       await replyToChat(msg.chat.id,
-        '✅ Меню команд Telegram обновлено и проверено. Команда /contact опубликована для личных чатов и русского языка. Закройте и откройте меню бота повторно.');
+        '✅ Меню команд Telegram обновлено и проверено. Команды /contact и /ownerpdf опубликованы для личных чатов и русского языка. Закройте и откройте меню бота повторно.');
     } else {
       scheduleBotMenuRetry();
       await replyToChat(msg.chat.id,

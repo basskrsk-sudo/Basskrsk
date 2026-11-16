@@ -38,6 +38,8 @@ global.fetch = async (url, init = {}) => {
 test('command menu is published and verified for default, all private, and Russian private scopes',async()=>{
   assert.ok(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command==='contact'));
   assert.ok(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command==='support'));
+  assert.ok(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command==='ownerpdf'));
+  assert.ok(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command==='taskpdf'));
   assert.ok(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command==='edit'));
   assert.equal(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command.startsWith('news')),false);
   assert.ok(poller.TELEGRAM_BOT_COMMANDS.some(c=>c.command==='2gis'));
@@ -57,6 +59,8 @@ test('command menu is published and verified for default, all private, and Russi
     assert.ok(verified,'missing getMyCommands '+key);
     const names=posted.body.commands.map(c=>c.command);
     assert.ok(names.includes('contact'),key);
+    assert.ok(names.includes('ownerpdf'),key);
+    assert.equal(names.indexOf('ownerpdf'),names.indexOf('taskpdf')+1);
     assert.equal(names.indexOf('contact'),names.indexOf('2gis')+1);
     assert.deepEqual(stored.get(key),poller.TELEGRAM_BOT_COMMANDS);
   }
@@ -85,6 +89,7 @@ test('linked administrator can use hidden /syncmenu and receives verified result
   const reply=requests.findLast(x=>x.method==='sendMessage');
   assert.match(reply.body.text,/Меню команд Telegram обновлено/);
   assert.match(reply.body.text,/\/contact/);
+  assert.match(reply.body.text,/\/ownerpdf/);
 });
 
 test('unknown account and spoofed sender cannot resync Telegram menu',async()=>{

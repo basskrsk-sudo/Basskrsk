@@ -95,8 +95,8 @@ test('Telegram sendDocument uses a PDF attachment and a date-specific caption',a
   assert.match(form.get('caption'),/16\.11\.2026/);
 });
 
-test('hidden /ownerpdf command is routed only in private Telegram and never changes the public menu',async()=>{
-  assert.equal(poller.TELEGRAM_BOT_COMMANDS.some(x=>x.command==='ownerpdf'),false);
+test('visible /ownerpdf command is routed only in private Telegram',async()=>{
+  assert.equal(poller.TELEGRAM_BOT_COMMANDS.some(x=>x.command==='ownerpdf'),true);
   const calls=[];
   const origFetch=global.fetch;
   const originalSend=report.sendOwnerReport;
@@ -117,6 +117,27 @@ test('hidden /ownerpdf command is routed only in private Telegram and never chan
       chat:{type:'group',id:-100101},from:{id:9111101},text:'/ownerpdf'
     }});
     assert.equal(calls.length,1);
+    await poller.processUpdate({callback_query:{
+      id:'test-owner-callback-1',
+      from:{id:9111101},
+      message:{chat:{type:'private',id:9111101}},
+      data:'ownerpdf:send',
+    }});
+    assert.equal(calls.length,2,'super-admin button invokes real report sender');
+    await poller.processUpdate({callback_query:{
+      id:'test-owner-callback-2',
+      from:{id:9111102},
+      message:{chat:{type:'private',id:9111102}},
+      data:'ownerpdf:send',
+    }});
+    assert.equal(calls.length,2,'ordinary admin must not invoke report sender');
+    await poller.processUpdate({callback_query:{
+      id:'test-owner-callback-3',
+      from:{id:9111101},
+      message:{chat:{type:'group',id:-100101}},
+      data:'ownerpdf:send',
+    }});
+    assert.equal(calls.length,2,'group callbacks must not invoke report sender');
   }finally{
     report.sendOwnerReport=originalSend;
     global.fetch=origFetch;
