@@ -5,6 +5,7 @@
 'use strict';
 
 const db = require('./db');
+const { EXPIRED_RESERVATIONS_BATCH_SQL } = require('./reservation-cleanup-query');
 const { reserveBones, consumeReservedBones, releaseReservedBones } = require('./bones');
 
 const DEFAULT_TTL_MINUTES = 15;
@@ -181,13 +182,7 @@ function listExpiredActiveReservations() {
 function listExpiredActiveReservationsBatch(afterId = 0, limit = 8) {
   const cursor = Number.isSafeInteger(afterId) && afterId > 0 ? afterId : 0;
   const size = Number.isSafeInteger(limit) ? Math.max(1, Math.min(20, limit)) : 8;
-  return db.prepare(`
-    SELECT id, order_code, yookassa_payment_id FROM orders
-    WHERE status = 'pending' AND reservation_status = 'active'
-      AND reservation_expires_at IS NOT NULL
-      AND reservation_expires_at <= datetime('now') AND id > ?
-    ORDER BY id ASC LIMIT ?
-  `).all(cursor, size);
+  return db.prepare(EXPIRED_RESERVATIONS_BATCH_SQL).all(cursor, size);
 }
 
 // Возврат оплаченного товара на исходное место хранения. Для новых заказов

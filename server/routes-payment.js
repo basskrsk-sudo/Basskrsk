@@ -5,7 +5,8 @@
 'use strict';
 
 const db = require('./db');
-const { trackSync, trackAsync } = require('./runtime-diagnostics');
+const { trackAsync } = require('./runtime-diagnostics');
+const { readExpiredReservationsBatch } = require('./reservation-cleanup-reader');
 const { createSingleFlightJob } = require('./single-flight-job');
 const { assignDisplayNumber } = require('./order-display-number');
 const { resolveCheckoutGroomer } = require('./auto-groomer');
@@ -34,7 +35,6 @@ const {
   reserveForOrder,
   releaseOrderReservation,
   consumeOrderReservation,
-  listExpiredActiveReservationsBatch,
 } = require('./reservations');
 
 function releaseFailedOrderAndAlert(orderId, reason) {
@@ -295,12 +295,12 @@ let reservationCleanupCursor = 0;
 async function reconcileExpiredReservations() {
   // Rotate through all overdue reservations without repeatedly hammering the
   // same unresolved payment. A batch caps both sync SQLite work and API calls.
-  const fetchBatch = (cursor) => trackSync('reservation_cleanup_sql',
-    () => listExpiredActiveReservationsBatch(cursor, RESERVATION_CLEANUP_BATCH_SIZE));
-  let expired = fetchBatch(reservationCleanupCursor);
+  const fetchBatch = (cursor) => trackAsync('reservation_cleanup_read',
+    () => readExpiredReservationsBatch(db.DB_PATH, cursor, RESERVATION_CLEANUP_BATCH_SIZE));
+  let expired = await fetchBatch(reservationCleanupCursor);
   if (!expired.length && reservationCleanupCursor > 0) {
     reservationCleanupCursor = 0;
-    expired = fetchBatch(0);
+    expired = await fetchBatch(0);
   }
   if (expired.length) reservationCleanupCursor = expired[expired.length - 1].id;
   for (const order of expired) {
