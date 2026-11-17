@@ -56,4 +56,8 @@ test('backup scheduler shares one in-flight operation and no longer buffers DB i
   assert.match(code,/filePath: tempPath/);
   assert.doesNotMatch(code,/fs\.readFileSync\(tempPath\)/);
   assert.doesNotMatch(code,/fs\.writeFileSync\(tempPath/);
+  assert.match(code,/createTemporaryBackupWorkspace\(\)/,
+    'scheduled and downloadable snapshots must use ephemeral disk');
+  assert.doesNotMatch(code,/path\.join\(path\.dirname\(db\.DB_PATH\), 'backup-tmp-/,
+    'do not put temporary copies back onto the slow persistent volume');
 });
