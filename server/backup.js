@@ -9,6 +9,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
+const { createTemporaryBackupWorkspace } = require('./backup-temp-storage');
 const { createDatabaseSnapshot } = require('./database-snapshot');
 const { trackAsync } = require('./runtime-diagnostics');
 const db = require('./db');
@@ -56,8 +57,13 @@ async function performDatabaseBackup() {
     return { ok: false, skipped: true };
   }
 
-  const tempPath = path.join(path.dirname(db.DB_PATH), 'backup-tmp-' + randomUUID() + '.db');
+  let workspace;
+  let tempPath;
+  const startedAt = Date.now();
   try {
+    workspace = await createTemporaryBackupWorkspace();
+    tempPath = workspace.path;
+    console.log('[backup] Snapshot started at ' + new Date(startedAt).toISOString());
     try { markBackupAttempt(); }
     catch (error) { console.warn('[backup] Не удалось сохранить время попытки:', error.code || 'unknown'); }
     // VACUUM INTO — создаёт полноценный, консистентный снимок базы отдельным
@@ -89,7 +95,8 @@ async function performDatabaseBackup() {
     console.error('Ошибка создания резервной копии:', e.message);
     return { ok: false, error: e.message };
   } finally {
-    try { await fs.promises.unlink(tempPath); } catch (_) {}
+    if (workspace) await workspace.cleanup().catch(() => {});
+    console.log('[backup] Snapshot attempt finished in ' + (Date.now() - startedAt) + ' ms');
   }
 }
 
@@ -182,23 +189,25 @@ function registerBackupRoutes(router) {
     if (!payload) return;
 
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const tempPath = path.join(path.dirname(db.DB_PATH), 'backup-dl-' + randomUUID() + '.db');
+    let workspace;
     try {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      workspace = await createTemporaryBackupWorkspace();
+      const tempPath = workspace.path;
       await createDatabaseSnapshot(db.DB_PATH, tempPath);
-      const stat = fs.statSync(tempPath);
+      const stat = await fs.promises.stat(tempPath);
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
         'Content-Length': stat.size,
         'Content-Disposition': `attachment; filename="taiga-backup-${stamp}.db"`,
       });
       const stream = fs.createReadStream(tempPath);
+      stream.on('close', () => { void workspace.cleanup().catch(() => {}); });
+      stream.on('error', error => { if (!res.destroyed) res.destroy(error); });
+      res.on('close', () => { if (!stream.destroyed) stream.destroy(); });
       stream.pipe(res);
-      stream.on('close', () => fs.unlink(tempPath, () => {}));
-      stream.on('error', () => fs.unlink(tempPath, () => {}));
     } catch (e) {
       console.error('[backup] Не удалось создать бэкап для скачивания:', e.message);
-      try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch (_) {}
+      if (workspace) await workspace.cleanup().catch(() => {});
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: 'Не удалось создать бэкап: ' + e.message }));
