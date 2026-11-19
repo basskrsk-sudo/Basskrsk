@@ -66,7 +66,10 @@ test('display number is assigned within the existing checkout transaction before
   assert.match(app,/orderCode: orderId/,'YooKassa metadata must keep the technical code');
   assert.match(app,/paymentReturnUrl\(req, orderId, returnPath\)/,'bank return URLs must not change');
   assert.match(app,/display_number: order\.display_number \|\| null/);
-  assert.match(app,/display_number: db\.prepare\('SELECT display_number FROM orders WHERE id=\?'\)/);
+  assert.match(app,/SELECT display_number,reservation_expires_at FROM orders WHERE id=\?/,
+    'one read supplies public number and unchanged reservation expiry');
+  assert.match(app,/display_number: paymentSummary\?\.display_number/,
+    'YooKassa checkout still returns the assigned public number');
   const recovery=source('server/order-recovery.js');
   assert.match(recovery,/assignDisplayNumber\(db,id\)/,'recovered orders receive one new public number too');
   assert.match(recovery,/metadata\.order_code !== code/,'historical payment code remains verified');

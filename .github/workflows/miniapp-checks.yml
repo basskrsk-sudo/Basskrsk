@@ -308,6 +308,8 @@ on:
       - server/api-performance.js
       - server/stock-movement-batch.js
       - server/stock-movement-batch.test.js
+      - server/stock-inventory-transactions.js
+      - server/stock-inventory-transactions.test.js
       - server/routes-stock-movements.js
       - server/site-health.test.js
       - server/sqlite-idle-bootstrap.test.js
@@ -421,6 +423,8 @@ jobs:
           node --check server/api-performance.js
           node --check server/stock-movement-batch.js
           node --check server/stock-movement-batch.test.js
+          node --check server/stock-inventory-transactions.js
+          node --check server/stock-inventory-transactions.test.js
           node --check server/routes-stock-movements.js
           node --check server/site-health.test.js
           node --check server/sqlite-idle-bootstrap.test.js
@@ -647,6 +651,8 @@ jobs:
         run: node --test --test-concurrency=1 server/point-equipment.test.js
       - name: Verify batched stock movement lists and preserved response shape
         run: node --test server/stock-movement-batch.test.js
+      - name: Verify atomic receipt and stock movement operations
+        run: node --test server/stock-inventory-transactions.test.js
       - name: Verify batched warehouse lists
         run: node --test server/warehouse-list-query.test.js
       - name: Verify exact economics totals after streaming paid orders

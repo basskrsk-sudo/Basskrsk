@@ -540,6 +540,12 @@ function registerPaymentRoutes(router) {
       return sendJson(res, e.statusCode || 409, { error: e.message, code: e.code || 'RESERVATION_ERROR', details: e.details });
     }
 
+    // Display number and expiry are immutable once reserved. Fetch together
+    // rather than issuing two separate SQLite SELECTs per new payment.
+    const paymentSummary = db.prepare(
+      'SELECT display_number,reservation_expires_at FROM orders WHERE id=?'
+    ).get(orderRowId);
+
     // Schedule one-minute unpaid-order reminder and stock reservation expiry
     // separately, without continuous fast polling on an empty queue.
     wakeUnpaidOrderAlertScheduler();
@@ -550,7 +556,7 @@ function registerPaymentRoutes(router) {
       // после чего сразу превращает резерв в оплаченное списание.
       await finalizePaidOrder(orderRowId, true);
       return sendJson(res, 200, { demo: true, order_id: orderRowId,
-        display_number: db.prepare('SELECT display_number FROM orders WHERE id=?').get(orderRowId)?.display_number,
+        display_number: paymentSummary?.display_number,
         is_partner_self_order: isSelfOrder });
     }
 
@@ -571,11 +577,11 @@ function registerPaymentRoutes(router) {
       db.prepare('UPDATE orders SET yookassa_payment_id = ? WHERE id = ?').run(payment.id, orderRowId);
       sendJson(res, 201, {
         order_id: orderRowId,
-        display_number: db.prepare('SELECT display_number FROM orders WHERE id=?').get(orderRowId)?.display_number,
+        display_number: paymentSummary?.display_number,
         payment_id: payment.id,
         confirmation_token: payment.confirmation && payment.confirmation.confirmation_token,
         confirmation_url: payment.confirmation && payment.confirmation.confirmation_url,
-        reservation_expires_at: db.prepare('SELECT reservation_expires_at FROM orders WHERE id = ?').get(orderRowId).reservation_expires_at,
+        reservation_expires_at: paymentSummary.reservation_expires_at,
         reservation_minutes: RESERVATION_TTL_MINUTES,
         is_partner_self_order: isSelfOrder,
       });

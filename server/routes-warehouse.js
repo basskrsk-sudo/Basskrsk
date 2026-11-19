@@ -15,6 +15,7 @@ const { requireAuth } = require('./routes-auth');
 const { logManagerAction } = require('./audit-log');
 const { trackSync } = require('./runtime-diagnostics');
 const { hydrateRestockRequests, hydrateStockMovements } = require('./warehouse-list-query');
+const { approveStockMovement, receiveWarehouseStock } = require('./stock-inventory-transactions');
 
 function slugify(str) {
   const map = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
@@ -97,6 +98,13 @@ function registerWarehouseRoutes(router) {
           error: 'Для уменьшения остатка используйте кнопку «Уменьшить»: нужно указать причину и подтвердить изменение.',
           current_qty: previousQty,
         });
+      }
+      // A repeated unchanged update should not dirty SQLite/WAL pages.
+      // Preserve the initial zero row for a newly registered SKU.
+      if (row && qty === previousQty) {
+        db.exec('ROLLBACK');
+        opened = false;
+        return sendJson(res, 200, { ok: true, old_qty: previousQty, new_qty: qty });
       }
       db.prepare(
         'INSERT INTO warehouse_stock (city_id, variant_id, qty) VALUES (?, ?, ?) ' +
@@ -294,19 +302,19 @@ function registerWarehouseRoutes(router) {
     const payload = requireAuth(['admin', 'warehouse'])(req, res, ctx);
     if (!payload) return;
     const { variant_id, qty, supplier_note, city_id } = ctx.body || {};
-    if (!variant_id || typeof qty !== 'number' || qty <= 0) {
-      return sendJson(res, 400, { error: 'Укажите variant_id и qty больше нуля' });
-    }
+    if (!Number.isSafeInteger(Number(variant_id)) || Number(variant_id) <= 0 ||
+        !Number.isSafeInteger(qty) || qty <= 0)
+      return sendJson(res, 400, { error: 'Укажите variant_id и целое qty больше нуля' });
     const cityId = resolveCityId(payload, city_id);
     if (!cityId) return sendJson(res, 400, { error: 'Не удалось определить город — укажите city_id' });
-
     const keeperId = payload.role === 'warehouse' ? payload.id : null;
-    db.prepare('INSERT INTO warehouse_receipts (variant_id, qty, supplier_note, keeper_id, city_id) VALUES (?, ?, ?, ?, ?)')
-      .run(variant_id, qty, supplier_note || null, keeperId, cityId);
-    const row = db.prepare('SELECT qty FROM warehouse_stock WHERE city_id = ? AND variant_id = ?').get(cityId, variant_id);
-    const newQty = (row ? row.qty : 0) + qty;
-    db.prepare('INSERT OR REPLACE INTO warehouse_stock (city_id, variant_id, qty) VALUES (?, ?, ?)').run(cityId, variant_id, newQty);
-    sendJson(res, 201, { ok: true, new_qty: newQty });
+    // One atomic commit for the supplier receipt and inventory increase.
+    // The receipt cannot be saved on its own if the stock update fails.
+    const result = receiveWarehouseStock(db, {
+      variantId:Number(variant_id),quantity:qty,
+      supplierNote:supplier_note,keeperId,cityId,
+    });
+    sendJson(res, 201, { ok:true, new_qty:result.new_qty });
   });
 
   // GET /api/warehouse/receipts — история приходов своего города (админ может указать ?city=)
@@ -515,37 +523,22 @@ function registerWarehouseRoutes(router) {
   router.put('/api/stock-movements/:id/approve', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    const movement = db.prepare('SELECT * FROM stock_movements WHERE id = ?').get(ctx.params.id);
-    if (!movement) return sendJson(res, 404, { error: 'Отчёт не найден' });
-    if (movement.status !== 'pending') return sendJson(res, 400, { error: 'Отчёт уже обработан' });
-
-    const items = db.prepare('SELECT * FROM stock_movement_items WHERE movement_id = ?').all(movement.id);
-    for (const item of items) {
-      const warehouseRow = db.prepare('SELECT qty FROM warehouse_stock WHERE city_id = ? AND variant_id = ?').get(movement.city_id, item.variant_id);
-      const available = warehouseRow ? warehouseRow.qty : 0;
-      if (available < item.qty) {
-        const productRow = db.prepare(`
-          SELECT p.name, v.weight FROM product_variants v JOIN products p ON p.id = v.product_id WHERE v.id = ?
-        `).get(item.variant_id);
+    const result = trackSync('stock_movement_approval',
+      () => approveStockMovement(db,ctx.params.id,payload.login));
+    if (!result.ok) {
+      if (result.code === 'STOCK_UNAVAILABLE') {
+        const productRow = db.prepare(
+          'SELECT p.name,v.weight FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=?'
+        ).get(result.variantId);
         return sendJson(res, 400, {
-          error: 'На складе не хватает «' + (productRow ? productRow.name + ' (' + productRow.weight + ')' : 'товара') +
-            '» — нужно ' + item.qty + ', на складе ' + available,
+          error: 'На складе не хватает «' +
+            (productRow ? productRow.name + ' (' + productRow.weight + ')' : 'товара') +
+            '» — нужно ' + result.required + ', на складе ' + result.available,
         });
       }
+      return sendJson(res,result.status,{error:result.message});
     }
-
-    for (const item of items) {
-      const warehouseRow = db.prepare('SELECT qty FROM warehouse_stock WHERE city_id = ? AND variant_id = ?').get(movement.city_id, item.variant_id);
-      db.prepare('INSERT OR REPLACE INTO warehouse_stock (city_id, variant_id, qty) VALUES (?, ?, ?)')
-        .run(movement.city_id, item.variant_id, warehouseRow.qty - item.qty);
-      const stockRow = db.prepare('SELECT qty FROM stock WHERE variant_id = ? AND point_id = ?').get(item.variant_id, movement.point_id);
-      const newQty = (stockRow ? stockRow.qty : 0) + item.qty;
-      db.prepare('INSERT OR REPLACE INTO stock (variant_id, point_id, qty) VALUES (?, ?, ?)').run(item.variant_id, movement.point_id, newQty);
-    }
-
-    db.prepare("UPDATE stock_movements SET status = 'approved', reviewed_at = datetime('now'), reviewed_by = ? WHERE id = ?")
-      .run(payload.login || null, movement.id);
-    sendJson(res, 200, { ok: true });
+    sendJson(res,200,{ok:true});
   });
 
   // PUT /api/stock-movements/:id/reject — администратор отклоняет отчёт
