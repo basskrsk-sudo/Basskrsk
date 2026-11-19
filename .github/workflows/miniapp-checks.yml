@@ -138,6 +138,14 @@ on:
       - server/payout-methods.js
       - server/payout-methods.test.js
       - server/payout-methods-integration.test.js
+      - server/routes-admin-referrals.js
+      - server/admin-referral-control.test.js
+      - public/admin-referral-control.js
+      - server/bonus-logic.js
+      - server/report-bonuses.js
+      - server/referral-program.js
+      - public/payout-reports.js
+      - public/partner-invite.html
       - server/winback.js
       - server/winback-manual-only.test.js
       - public/taiga-warehouse.html
@@ -442,6 +450,9 @@ jobs:
           node --check server/payout-methods.js
           node --check server/payout-methods.test.js
           node --check server/payout-methods-integration.test.js
+          node --check server/routes-admin-referrals.js
+          node --check server/admin-referral-control.test.js
+          node --check public/admin-referral-control.js
           node --check server/manager-current-points.test.js
           node --check server/manager-miniapp-registration.test.js
           node --check server/routes-miniapp-tasks.js
@@ -592,6 +603,8 @@ jobs:
         run: node --test server/winback-manual-only.test.js
       - name: Verify restart-safe bot profile sync and graceful shutdown
         run: node --test server/bot-config-sync.test.js server/graceful-shutdown.test.js
+      - name: Verify invite-a-partner threshold, linkage, payouts and refund safeguards
+        run: node --test --test-concurrency=1 server/referral-flow.test.js server/admin-referral-control.test.js
       - name: Verify payout preference registration and role-limited updates
         run: node --test --test-concurrency=1 server/payout-methods.test.js server/payout-methods-integration.test.js
       - name: Verify two groomer sign-in paths, without SMS

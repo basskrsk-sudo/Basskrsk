@@ -1873,7 +1873,16 @@ db.exec("CREATE TABLE IF NOT EXISTS point_referrals (" +
   "source TEXT NOT NULL,lead_id INTEGER UNIQUE," +
   "recorded_at TEXT NOT NULL DEFAULT (datetime('now'))" +
   ")");
+ensureColumn('point_referrals','invited_partner_id','INTEGER REFERENCES partners(id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_point_referrals_recipient ON point_referrals(role,recipient_id)');
+db.exec(`CREATE TABLE IF NOT EXISTS point_referral_assignment_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  point_id TEXT NOT NULL,point_name TEXT NOT NULL,
+  inviter_partner_id INTEGER NOT NULL,inviter_name TEXT NOT NULL,
+  invited_partner_id INTEGER,invited_name TEXT,
+  admin_id INTEGER NOT NULL,admin_login TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_partner_leads_referrer ON partner_leads(referred_by_role,referred_by_id)');
 // Preserve previously accrued referral bonuses; never recreate a cash payout.
 db.exec("INSERT OR IGNORE INTO point_referrals(point_id,point_name,role,recipient_id,recipient_code,amount,source) " +

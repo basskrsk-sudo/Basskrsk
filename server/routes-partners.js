@@ -268,7 +268,7 @@ function registerPartnerRoutes(router) {
       legal_form ? '⚖️ Форма: ' + legal_form : '',
       inn ? '🧾 ИНН: ' + inn : '',
       manager_code ? '🌟 Менеджер: ' + manager_code : '',
-      referrerPartner ? '🤝 Приведён по промокоду грумера: ' + referral_code + ' (когда точка заработает компании 2 000 ₽ прибыли, по 1 000 ₽ достанется грумеру и менеджеру)' : '',
+      referrerPartner ? '🤝 Приведён по промокоду грумера: ' + referral_code + ' (бонус пригласившему 1 000 ₽ после 1 000 ₽ оплаченной выручки новой точки; менеджеру отдельная премия после 2 000 ₽ выручки)' : '',
       referrerOwner ? '🏠 Приведён по промокоду владельца салона: ' + referral_code + ' (когда точка заработает компании 2 000 ₽ прибыли, по 1 000 ₽ достанется владельцу и менеджеру)' : '',
       '📐 Формат: ' + [dStand && 'стойка', dPoster && 'картинка', dBasket && 'корзинка'].filter(Boolean).join(', '),
       '',
@@ -541,12 +541,18 @@ function registerPartnerRoutes(router) {
     const payload = requireAuth(['partner'])(req, res, ctx);
     if (!payload) return;
     const rows = db.prepare(`
-      SELECT ap.point_name, ap.referred_groomer_amount, ap.bonus_paid,
-             p.full_name AS referred_partner_name
+      SELECT ap.point_name, ap.referred_groomer_amount,
+        COALESCE(invited.full_name,
+          (SELECT p.full_name FROM partners p WHERE p.point_id=ap.point_id ORDER BY p.id LIMIT 1),
+          'новую точку') AS referred_partner_name,
+        (SELECT bp.id FROM referral_bonus_payouts bp
+          WHERE bp.manager_point_id=ap.id AND bp.role='partner'
+          AND bp.recipient_id=? LIMIT 1) AS payout_id
       FROM manager_points ap
-      JOIN partners p ON p.point_id = ap.point_id
-      WHERE ap.referred_groomer_id = ? AND ap.bonus_paid = 1
-    `).all(payload.id);
+      LEFT JOIN point_referrals pr ON pr.point_id=ap.point_id
+      LEFT JOIN partners invited ON invited.id=pr.invited_partner_id
+      WHERE ap.referred_groomer_id = ? AND ap.referred_groomer_amount > 0
+    `).all(payload.id,payload.id);
     const total = rows.reduce((s, r) => s + (r.referred_groomer_amount || 0), 0);
     sendJson(res, 200, { bonuses: rows, total });
   });
