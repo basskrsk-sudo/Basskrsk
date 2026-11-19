@@ -15,7 +15,7 @@ const sourceBetween=(file,a,b)=>{
 };
 
 test('public salon navigation jumps directly to top, rather than animating from the previous list',()=>{
-  const go=sourceBetween(site,'function showPage(id) {','function ');
+  const go=sourceBetween(site,'function showPage(id) {',"if (id === 'catalog') {");
   assert.match(go,/window\.scrollTo\(\{ top: 0, behavior: id === 'salon' \? 'instant' : 'smooth' \}\)/);
 });
 
