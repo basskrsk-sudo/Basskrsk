@@ -14,6 +14,7 @@ const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
 const { hydrateStockMovements } = require('./stock-movement-batch');
 const { trackSync } = require('./runtime-diagnostics');
+const { approveStockMovement } = require('./stock-inventory-transactions');
 
 function registerStockMovementRoutes(router) {
   // POST /api/stock-movements — менеджер отчитывается о том, что уже физически
@@ -97,41 +98,25 @@ function registerStockMovementRoutes(router) {
   router.put('/api/stock-movements/:id/approve', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    const movement = db.prepare('SELECT * FROM stock_movements WHERE id = ?').get(ctx.params.id);
-    if (!movement) return sendJson(res, 404, { error: 'Отчёт не найден' });
-    if (movement.status !== 'pending') return sendJson(res, 400, { error: 'Отчёт уже обработан' });
-
-    const items = db.prepare('SELECT * FROM stock_movement_items WHERE movement_id = ?').all(movement.id);
-
-    // Сначала проверяем ВСЕ позиции — согласование должно быть всё-или-ничего,
-    // не хотим наполовину списать склад, если на середине списка не хватит остатка.
-    for (const item of items) {
-      const whRow = db.prepare('SELECT qty FROM warehouse_stock WHERE city_id = ? AND variant_id = ?').get(movement.city_id, item.variant_id);
-      const available = whRow ? whRow.qty : 0;
-      if (available < item.qty) {
-        const v = db.prepare(`
-          SELECT p.name, v.weight FROM product_variants v JOIN products p ON p.id = v.product_id WHERE v.id = ?
-        `).get(item.variant_id);
-        return sendJson(res, 400, {
-          error: 'Не хватает на складе города: ' + (v ? v.name + ' (' + v.weight + ')' : 'товар #' + item.variant_id) +
-            ' — на складе ' + available + ', в отчёте ' + item.qty + '. Пополните склад или скорректируйте отчёт.',
+    // Keep the compatibility registration in sync with the primary
+    // warehouse router. No duplicate approval algorithm remains.
+    const result = trackSync('stock_movement_approval',
+      () => approveStockMovement(db,ctx.params.id,payload.login));
+    if (!result.ok) {
+      if (result.code === 'STOCK_UNAVAILABLE') {
+        const item = db.prepare(
+          'SELECT p.name,v.weight FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=?'
+        ).get(result.variantId);
+        return sendJson(res,400,{
+          error:'Не хватает на складе города: '+
+            (item ? item.name+' ('+item.weight+')':'товар #'+result.variantId)+
+            ' — на складе '+result.available+', в отчёте '+result.required+
+            '. Пополните склад или скорректируйте отчёт.',
         });
       }
+      return sendJson(res,result.status,{error:result.message});
     }
-
-    for (const item of items) {
-      const whRow = db.prepare('SELECT qty FROM warehouse_stock WHERE city_id = ? AND variant_id = ?').get(movement.city_id, item.variant_id);
-      db.prepare('INSERT OR REPLACE INTO warehouse_stock (city_id, variant_id, qty) VALUES (?, ?, ?)')
-        .run(movement.city_id, item.variant_id, whRow.qty - item.qty);
-
-      const stockRow = db.prepare('SELECT qty FROM stock WHERE variant_id = ? AND point_id = ?').get(item.variant_id, movement.point_id);
-      const newQty = (stockRow ? stockRow.qty : 0) + item.qty;
-      db.prepare('INSERT OR REPLACE INTO stock (variant_id, point_id, qty) VALUES (?, ?, ?)').run(item.variant_id, movement.point_id, newQty);
-    }
-
-    db.prepare("UPDATE stock_movements SET status = 'approved', reviewed_at = datetime('now'), reviewed_by = ? WHERE id = ?")
-      .run(payload.login || null, movement.id);
-    sendJson(res, 200, { ok: true });
+    sendJson(res,200,{ok:true});
   });
 
   // PUT /api/stock-movements/:id/reject — администратор отклоняет отчёт
