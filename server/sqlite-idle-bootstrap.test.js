@@ -14,15 +14,15 @@ function bootstrap(){
   const script=[
     "const {DatabaseSync}=require('node:sqlite');",
     "const actualPrepare=DatabaseSync.prototype.prepare;",
-    "let pragmaTableInfoCalls=0;",
-    "DatabaseSync.prototype.prepare=function(sql,...args){if(/^PRAGMA\\s+table_info\\(/i.test(String(sql)))pragmaTableInfoCalls++;return actualPrepare.call(this,sql,...args);};",
+    "let pragmaTableInfoCalls=0,legacyOrderScans=0;",
+    "DatabaseSync.prototype.prepare=function(sql,...args){if(/^PRAGMA\\s+table_info\\(/i.test(String(sql)))pragmaTableInfoCalls++;if(String(sql).includes(\"SELECT customer_phone, created_at FROM orders WHERE status != 'pending'\"))legacyOrderScans++;return actualPrepare.call(this,sql,...args);};",
     "const db=require('./server/db');",
     "const version=db.prepare('PRAGMA schema_version').get().schema_version;",
     "const changes=db.prepare('SELECT total_changes() AS changes').get().changes;",
     "const mode=db.prepare('PRAGMA journal_mode').get().journal_mode;",
     "const names=['trg_partner_first_purchase_promo_insert','trg_point_first_purchase_promo_insert'];",
     "const triggers=names.map(name=>db.prepare(\"SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?\").get(name)?.sql||null);",
-    "console.log('BOOT_RESULT:'+JSON.stringify({version,changes,mode,triggers,pragmaTableInfoCalls}));",
+    "console.log('BOOT_RESULT:'+JSON.stringify({version,changes,mode,triggers,pragmaTableInfoCalls,legacyOrderScans}));",
     "db.close();",
   ].join('\n');
   const result=spawnSync(process.execPath,['-e',script],{
@@ -42,11 +42,17 @@ test('a second SQLite startup preserves schema and performs zero data changes',(
   assert.ok(first.version>0);
   assert.equal(first.mode,'wal','keep production journal mode unchanged');
   assert.ok(first.triggers.every(Boolean));
+  // An account without purchases keeps NULL last_order_at indefinitely:
+  // it must not force a complete order-history scan on every restart.
+  const seeded=new DatabaseSync(databaseFile);
+  seeded.prepare('INSERT INTO customers(phone) VALUES(?)').run('79002000999');
+  seeded.close();
   const second=bootstrap();
   assert.equal(second.version,first.version,
     'no repeated DROP/CREATE trigger and schema metadata writes');
   assert.equal(second.changes,0,'fully migrated idle database has no data writes');
   assert.equal(second.mode,'wal');
+  assert.equal(second.legacyOrderScans,0,'one-time legacy customer scan must not repeat');
   assert.ok(second.pragmaTableInfoCalls<=70,
     'startup should read each table schema once (23 tables, not 151 PRAGMA queries): '+
     second.pragmaTableInfoCalls);
