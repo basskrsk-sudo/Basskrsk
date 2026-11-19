@@ -7,6 +7,10 @@ const { sendJson } = require('./http-utils');
 const { requireAuth } = require('./routes-auth');
 const { getAllPointLaunchSummaries } = require('./point-launch-checklist');
 const { trackSync } = require('./runtime-diagnostics');
+const { createSqliteAnalyticsCache } = require('./analytics-cache');
+// Operational warnings are strictly read-only. Any SQLite write invalidates
+// their 8-second snapshot; deadline-only changes may lag by at most 8 seconds.
+const operationsCache = createSqliteAnalyticsCache(db, { ttlMs: 8000, maxEntries: 1 });
 
 function addIssue(issues, issue) {
   if (Number(issue.count || 0) > 0) issues.push(issue);
@@ -290,12 +294,16 @@ function buildOperationsCenter() {
   return { generated_at: new Date().toISOString(), summary, issues };
 }
 
+function getCachedOperationsCenter() {
+  return operationsCache.get('operations-center', buildOperationsCenter);
+}
 function registerOperationsRoutes(router) {
   router.get('/api/operations-center', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    sendJson(res, 200, trackSync('operations_center_build', buildOperationsCenter));
+    sendJson(res, 200, trackSync('operations_center_build', getCachedOperationsCenter));
   });
 }
 
-module.exports = { buildOperationsCenter, registerOperationsRoutes, SILENT_POINTS_SQL, STOCK_ALERTS_SQL };
+module.exports = { buildOperationsCenter, getCachedOperationsCenter,
+  registerOperationsRoutes, SILENT_POINTS_SQL, STOCK_ALERTS_SQL };
