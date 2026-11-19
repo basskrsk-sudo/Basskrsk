@@ -6215,7 +6215,7 @@ async function launchYooKassaPayment() {
 
     const reservationNote = document.getElementById('payment-reservation-note');
     if (reservationNote) {
-      reservationNote.textContent = `🔒 Товары и косточки зарезервированы на ${data.reservation_minutes || 15} минут. Завершите оплату в этом окне.`;
+      reservationNote.textContent = `🔒 Товары и косточки зарезервированы на ${data.reservation_minutes || 1} минут. Завершите оплату в этом окне.`;
       reservationNote.style.display = 'block';
     }
 
@@ -6330,7 +6330,9 @@ async function launchYooKassaPayment() {
 
       // После срока резерва бессрочный опрос не нужен. Если платёж всё ещё в
       // обработке, пользователь сможет обновить страницу или проверить заказ.
-      const pollingLifetime = Math.max(15, Number(data.reservation_minutes) || 15) * 60 * 1000;
+      // Poll one minute beyond the stock hold to display a delayed YooKassa
+      // confirmation. This does NOT extend the actual inventory reservation.
+      const pollingLifetime = Math.max(1, Number(data.reservation_minutes) || 1) * 60 * 1000 + 60 * 1000;
       setTimeout(stopPaymentStatusPolling, pollingLifetime);
     }
   } catch (e) {

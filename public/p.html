@@ -608,7 +608,7 @@ async function startPayment() {
     var noteEl = document.createElement('div');
     noteEl.className = 'note'; noteEl.id = 'payNote';
     noteEl.style.display = 'block';
-    noteEl.textContent = '🔒 Товар зарезервирован на ' + (data.reservation_minutes || 15) + ' минут. Завершите оплату в этом окне.';
+    noteEl.textContent = '🔒 Товар зарезервирован на ' + (data.reservation_minutes || 1) + ' минут. Завершите оплату в этом окне.';
     btn.parentNode.insertBefore(noteEl, btn.nextSibling);
     var box = document.createElement('div');
     box.id = 'yk-box'; box.style.display = 'block';

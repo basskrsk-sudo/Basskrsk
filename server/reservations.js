@@ -8,11 +8,11 @@ const db = require('./db');
 const { EXPIRED_RESERVATIONS_BATCH_SQL } = require('./reservation-cleanup-query');
 const { reserveBones, consumeReservedBones, releaseReservedBones } = require('./bones');
 
-const DEFAULT_TTL_MINUTES = 15;
-const configuredTtl = Number(process.env.RESERVATION_TTL_MINUTES);
-const RESERVATION_TTL_MINUTES = Number.isFinite(configuredTtl)
-  ? Math.max(5, Math.min(30, Math.round(configuredTtl)))
-  : DEFAULT_TTL_MINUTES;
+// Explicit one-minute policy for QR checkout. Ignore old Amvera
+// RESERVATION_TTL_MINUTES=15 overrides so deploys cannot silently retain
+// the previous lock time. A payment must still be confirmed cancelled before
+// returning its stock to sale.
+const RESERVATION_TTL_MINUTES = 1;
 
 function reservationError(message, code, statusCode = 409, details) {
   const error = new Error(message);

@@ -1,12 +1,13 @@
 // routes-payment.js — создание платежа в ЮKassa, вебхук подтверждения,
 // проверка статуса. Заказ создаётся сразу (status='pending'), товар и
-// косточки резервируются на 15 минут, а уведомление уходит только после
+// косточки резервируются на 1 минуту, а уведомление уходит только после
 // подтверждения реальной оплаты вебхуком — не по клиентскому колбэку.
 'use strict';
 
 const db = require('./db');
 const { trackAsync } = require('./runtime-diagnostics');
 const { readExpiredReservationsBatch } = require('./reservation-cleanup-reader');
+const { createReservationCleanupScheduler } = require('./reservation-cleanup-scheduler');
 const { createSingleFlightJob } = require('./single-flight-job');
 const { assignDisplayNumber } = require('./order-display-number');
 const { resolveCheckoutGroomer } = require('./auto-groomer');
@@ -290,7 +291,6 @@ async function finalizePaidOrder(orderId, demo = false) {
 }
 
 const RESERVATION_CLEANUP_BATCH_SIZE = 8;
-let reservationCleanupStarted = false;
 let reservationCleanupCursor = 0;
 async function reconcileExpiredReservations() {
   // Rotate through all overdue reservations without repeatedly hammering the
@@ -337,13 +337,13 @@ const runReservationCleanup = createSingleFlightJob(
   (error) => console.warn('[reservations] Фоновая сверка не удалась:', error.message)
 );
 
+// Wake near the earliest stored reservation deadline. When the queue is
+// empty, avoid needless SQLite worker scans and payment API calls.
+const reservationCleanupScheduler = createReservationCleanupScheduler({
+  run: () => runReservationCleanup(),
+});
 function startReservationCleanup() {
-  if (reservationCleanupStarted) return;
-  reservationCleanupStarted = true;
-  const firstRun = setTimeout(() => { void runReservationCleanup(); }, 5000);
-  const interval = setInterval(() => { void runReservationCleanup(); }, 60 * 1000);
-  if (typeof firstRun.unref === 'function') firstRun.unref();
-  if (typeof interval.unref === 'function') interval.unref();
+  reservationCleanupScheduler.start();
 }
 
 function registerPaymentRoutes(router) {
@@ -540,9 +540,10 @@ function registerPaymentRoutes(router) {
       return sendJson(res, e.statusCode || 409, { error: e.message, code: e.code || 'RESERVATION_ERROR', details: e.details });
     }
 
-    // The order reservation has committed. Schedule its 1-minute alert
-    // without a 15-second empty-order poll (do not send anything yet).
+    // Schedule one-minute unpaid-order reminder and stock reservation expiry
+    // separately, without continuous fast polling on an empty queue.
     wakeUnpaidOrderAlertScheduler();
+    reservationCleanupScheduler.wake();
 
     if (!yookassa.isConfigured() && isDemoModeEnabled()) {
       // Явный тестовый режим проходит через ту же атомарную логику резерва,
