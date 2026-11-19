@@ -14,6 +14,7 @@ const { connectedChatId, findManagerAndPoint } = require('./order-notifications'
 const ALERT_DELAY_MINUTES = 1;
 const POLL_INTERVAL_MS = 15 * 1000;
 const IDLE_INTERVAL_MS = 5 * 60 * 1000;
+const UNROUTABLE_INTERVAL_MS = 60 * 1000; // Recheck newly linked recipients.
 
 // Admin recipients must be deduplicated independently from managers.
 db.exec('CREATE TABLE IF NOT EXISTS unpaid_order_admin_alert_log (' +
@@ -327,20 +328,68 @@ async function runUnpaidOrderAlertCheck(options = {}) {
 // Pending due orders: retain the old 15-second cadence (including retries).
 // The partial orders index prevents reading the paid sales history.
 function nextUnpaidAlertDelay(nowMs = Date.now(), database = db) {
+  // Read only active reservations in the 30-minute notification window. The
+  // earliest FRESH order determines the next one-minute alert deadline; an
+  // older already-notified order must not keep a 15-second hot polling loop.
   const row = database.prepare(
-    "SELECT MIN(created_at) AS oldest FROM orders " +
-    "WHERE status='pending' AND reservation_status='active' " +
+    "SELECT MIN(CASE WHEN created_at>datetime('now','-1 minute') THEN created_at END) AS fresh, " +
+    "MIN(CASE WHEN created_at<=datetime('now','-1 minute') THEN created_at END) AS overdue " +
+    "FROM orders WHERE status='pending' AND reservation_status='active' " +
     "AND created_at>=datetime('now','-30 minutes')"
   ).get();
-  if (!row || !row.oldest) return IDLE_INTERVAL_MS;
-  const createdMs = Date.parse(String(row.oldest).replace(' ', 'T') + 'Z');
-  if (!Number.isFinite(createdMs)) return POLL_INTERVAL_MS;
-  const dueMs = createdMs + ALERT_DELAY_MINUTES * 60 * 1000;
-  if (nowMs >= dueMs) return POLL_INTERVAL_MS;
-  // SQLite timestamps are second precision. A one-second cushion prevents
-  // checking before the exact due timestamp, not the alert SLA.
-  return Math.max(1000, Math.min(IDLE_INTERVAL_MS, dueMs - nowMs + 1000));
+  if (!row || (!row.fresh && !row.overdue)) return IDLE_INTERVAL_MS;
+
+  let delay = IDLE_INTERVAL_MS;
+  if (row.fresh) {
+    const createdMs = Date.parse(String(row.fresh).replace(' ', 'T') + 'Z');
+    if (!Number.isFinite(createdMs)) delay = POLL_INTERVAL_MS;
+    else {
+      const dueMs = createdMs + ALERT_DELAY_MINUTES * 60 * 1000;
+      delay = Math.min(delay, Math.max(1000, dueMs - nowMs + 1000));
+    }
+  }
+  if (!row.overdue) return delay;
+
+  // Tests can inject a database without the default notification ledgers.
+  if (database !== db) return Math.min(delay, POLL_INTERVAL_MS);
+
+  // A due unnotified order, changed manager, newly connected administrator,
+  // or due admin retry still needs a prompt scan. This selector uses the
+  // same per-recipient ledgers and batching as actual alert dispatch.
+  if (pendingOrderIds().length) return Math.min(delay, POLL_INTERVAL_MS);
+
+  // For failed admin deliveries, wake near the 30-second retry deadline,
+  // not every 15 seconds while waiting for it to become eligible.
+  const retry = database.prepare(
+    "SELECT MIN(al.created_at) AS failed_at FROM unpaid_order_admin_alert_log al " +
+    "JOIN orders o ON o.id=al.order_id " +
+    "WHERE al.alert_type='pending' AND al.status='failed' " +
+    "AND o.status='pending' AND o.reservation_status='active' " +
+    "AND o.created_at<=datetime('now','-1 minute') " +
+    "AND o.created_at>=datetime('now','-30 minutes')"
+  ).get();
+  if (retry?.failed_at) {
+    const failedMs = Date.parse(String(retry.failed_at).replace(' ', 'T') + 'Z');
+    if (!Number.isFinite(failedMs)) return Math.min(delay, POLL_INTERVAL_MS);
+    const retryDelay = failedMs + RETRY_SECONDS * 1000 - nowMs + 1000;
+    return Math.min(delay, Math.max(1000, retryDelay));
+  }
+
+  // No recipient has received an overdue order: a manager/admin may link a
+  // chat later. Check once per minute, not every 15 seconds for 30 minutes.
+  const notYetRouted = database.prepare(
+    "SELECT 1 FROM orders o WHERE o.status='pending' " +
+    "AND o.reservation_status='active' " +
+    "AND o.created_at<=datetime('now','-1 minute') " +
+    "AND o.created_at>=datetime('now','-30 minutes') " +
+    "AND NOT EXISTS (SELECT 1 FROM unpaid_order_alert_log ml " +
+      "WHERE ml.order_id=o.id AND ml.alert_type='pending') " +
+    "AND NOT EXISTS (SELECT 1 FROM unpaid_order_admin_alert_log al " +
+      "WHERE al.order_id=o.id AND al.alert_type='pending') LIMIT 1"
+  ).get();
+  return notYetRouted ? Math.min(delay, UNROUTABLE_INTERVAL_MS) : delay;
 }
+
 function createUnpaidAlertScheduler({
   database = db,
   scan = () => trackAsync('unpaid_order_scan', () => runUnpaidOrderAlertCheck()),
@@ -413,7 +462,7 @@ function stopUnpaidOrderAlerts() {
 module.exports = {
   ALERT_DELAY_MINUTES,
   POLL_INTERVAL_MS,
-  IDLE_INTERVAL_MS, nextUnpaidAlertDelay, createUnpaidAlertScheduler,
+  IDLE_INTERVAL_MS, UNROUTABLE_INTERVAL_MS, nextUnpaidAlertDelay, createUnpaidAlertScheduler,
   wakeUnpaidOrderAlertScheduler,
   buildUnpaidOrderMessage,
   responsibleManagerChat,
