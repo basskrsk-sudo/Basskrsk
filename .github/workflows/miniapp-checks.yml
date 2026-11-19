@@ -278,6 +278,11 @@ on:
       - server/reservation-cleanup-reader.js
       - server/reservation-cleanup-reader-worker.js
       - server/reservation-cleanup-reader.test.js
+      - server/reservation-cleanup-scheduler.js
+      - server/reservation-cleanup-scheduler.test.js
+      - server/reservation-predeploy-release.js
+      - server/reservation-predeploy-release.test.js
+      - server/reservation-one-minute.test.js
       - server/checkout-partner-index.test.js
       - server/server.js
       - server/database-snapshot.js
@@ -345,6 +350,11 @@ jobs:
           node --check server/reservation-cleanup-reader.js
           node --check server/reservation-cleanup-reader-worker.js
           node --check server/reservation-cleanup-reader.test.js
+          node --check server/reservation-cleanup-scheduler.js
+          node --check server/reservation-cleanup-scheduler.test.js
+          node --check server/reservation-predeploy-release.js
+          node --check server/reservation-predeploy-release.test.js
+          node --check server/reservation-one-minute.test.js
           node --check server/database-snapshot-worker.js
           node --check server/database-snapshot.js
           node --check server/database-snapshot.test.js
@@ -613,6 +623,8 @@ jobs:
         run: node --test --test-concurrency=1 server/groomer-max-login.test.js server/groomer-max-login-ui.test.js
       - name: Verify Telegram login polling limits
         run: node --test server/telegram-login-polling.test.js
+      - name: Verify one-minute reservation expiry, safe stock release and predeploy cleanup
+        run: node --test --test-concurrency=1 server/reservation-one-minute.test.js server/reservation-cleanup-scheduler.test.js server/reservation-predeploy-release.test.js
       - name: Verify batched stock movement lists and preserved response shape
         run: node --test server/stock-movement-batch.test.js
       - name: Verify batched warehouse lists
