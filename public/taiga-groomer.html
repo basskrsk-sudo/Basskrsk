@@ -821,15 +821,18 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
             </button>
           </div>
           <div class="card">
-            <div class="card-title">Карта для выплат</div>
-            <div style="background:var(--forest);border-radius:10px;padding:1.1rem;color:#fff;margin-bottom:.9rem;">
-              <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:.6rem;">ПРИВЯЗАННАЯ КАРТА</div>
-              <div style="font-size:.95rem;letter-spacing:.12em;margin-bottom:.5rem;">•••• •••• •••• 4521</div>
-              <div style="font-size:.75rem;color:rgba(255,255,255,.6);">Анна Н. · до 09/27</div>
-            </div>
-            <button style="width:100%;background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:var(--r);padding:.6rem;font-size:.82rem;cursor:pointer;font-family:'Inter',sans-serif;">
-              Сменить карту
-            </button>
+            <div class="card-title">💳 Получение вознаграждения</div>
+            <p style="font-size:.78rem;color:var(--muted);margin-bottom:.8rem;line-height:1.5;">Выберите способ получения выплат. Мы согласуем реквизиты отдельно — полные номера карт на сайте не запрашиваем.</p>
+            <label for="prof-payout-method" style="display:block;font-size:.78rem;margin-bottom:.3rem;">Способ выплаты</label>
+            <select id="prof-payout-method" style="width:100%;padding:.65rem;border:1.5px solid var(--border);border-radius:var(--r);background:white;margin-bottom:.75rem;font:inherit;">
+              <option value="">— Выберите способ —</option>
+        <option value="sbp">СБП на номер телефона</option>
+        <option value="card">Перевод на банковскую карту</option>
+        <option value="bank_account">На расчётный счёт</option>
+        <option value="cash">Наличными по согласованию</option>
+            </select>
+            <div id="profile-payout-status" role="status" aria-live="polite" style="font-size:.78rem;margin-bottom:.6rem;"></div>
+            <button type="button" onclick="savePayoutMethod()" style="width:100%;background:var(--forest);color:#fff;border:0;border-radius:var(--r);padding:.65rem;font:600 .84rem 'Inter',sans-serif;cursor:pointer;">Сохранить способ выплаты</button>
           </div>
           <div id="partner-telegram-connect"></div>
           <div id="partner-max-connect"></div>
@@ -1695,6 +1698,26 @@ function renderProfile() {
   document.getElementById('prof-display-basket').checked = !!currentPartnerUser.display_basket;
   document.getElementById('prof-display-poster').checked = !!currentPartnerUser.display_poster;
   document.getElementById('profile-format-error').style.display = 'none';
+  document.getElementById('prof-payout-method').value = currentPartnerUser.payout_method || '';
+  document.getElementById('profile-payout-status').textContent = '';
+}
+
+async function savePayoutMethod() {
+  const method = document.getElementById('prof-payout-method').value;
+  const status = document.getElementById('profile-payout-status');
+  if (!method) { status.textContent = 'Выберите способ получения вознаграждения.'; return; }
+  status.textContent = 'Сохраняем…';
+  try {
+    const res = await authFetch('/api/partners/me/payout-method', {
+      method: 'PUT', body: { payout_method: method },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось сохранить способ выплаты');
+    if (currentPartnerUser) currentPartnerUser.payout_method = data.payout_method;
+    status.textContent = '✅ Способ выплаты сохранён.';
+  } catch (error) {
+    status.textContent = error.message || 'Ошибка соединения. Повторите попытку.';
+  }
 }
 
 async function saveDisplayFormat() {

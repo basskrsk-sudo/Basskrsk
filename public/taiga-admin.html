@@ -2072,6 +2072,16 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </select>
         </div>
         <div class="admin-field"><label for="ape-inn">ИНН</label><input type="text" id="ape-inn" inputmode="numeric" autocomplete="off"></div>
+        <div class="admin-field"><label for="ape-payout-method">Способ получения вознаграждения</label>
+          <select id="ape-payout-method" class="pm-select">
+            <option value="">— Выберите способ —</option>
+        <option value="sbp">СБП на номер телефона</option>
+        <option value="card">Перевод на банковскую карту</option>
+        <option value="bank_account">На расчётный счёт</option>
+        <option value="cash">Наличными по согласованию</option>
+          </select>
+          <small style="font-size:.73rem;color:var(--muted);">Выбор получателя — реквизиты согласуются отдельно.</small>
+        </div>
         <div class="admin-field"><label for="ape-bank">Банковские реквизиты</label><textarea id="ape-bank" rows="3" maxlength="2000" style="width:100%;border:1px solid var(--border);border-radius:7px;padding:.6rem;font:inherit;box-sizing:border-box;resize:vertical;"></textarea></div>
         <p style="font-size:.76rem;line-height:1.5;color:var(--muted);">
           Изменения сохраняются в журнале администратора. Продажи, начисления, партнёрский код и история выплат не меняются.
@@ -6026,6 +6036,7 @@ async function openAccountProfileEditor(role, id) {
   for (const [id, value] of [
     ['ape-name', person.full_name], ['ape-phone', person.phone],
     ['ape-login', person.login], ['ape-legal', person.legal_form],
+    ['ape-payout-method', person.payout_method],
     ['ape-inn', person.inn], ['ape-bank', person.bank_details],
   ]) document.getElementById(id).value = value || '';
   document.getElementById('ape-owner-groomer-row').style.display =
@@ -6123,6 +6134,7 @@ async function saveAccountProfileEditor() {
     legal_form: read('ape-legal'),
     inn: read('ape-inn'),
     bank_details: read('ape-bank'),
+    payout_method: read('ape-payout-method'),
   };
   const selectedPoint = document.getElementById('ape-point').value;
   if (String(selectedPoint) !== String(state.person.point_id || '')) patch.point_id = selectedPoint || null;
@@ -6262,7 +6274,8 @@ function renderPayoutApprovalPreview(preview, changed) {
   payoutApprovalState.preview = preview;
   document.getElementById('payout-approval-meta').textContent =
     preview.recipient_name + ' · ' + Number(preview.amount || 0).toLocaleString('ru-RU') + ' ₽ · ' +
-    (preview.meta_label || (Number(preview.orders_count || 0) + ' заказов'));
+    (preview.meta_label || (Number(preview.orders_count || 0) + ' заказов')) +
+    (preview.payout_method_label ? ' · Способ выплаты: ' + preview.payout_method_label : '');
   document.getElementById('payout-approval-message').value = preview.message || '';
   document.getElementById('payout-approval-channels').innerHTML =
     payoutChannelBadge('Telegram', !!preview.channels.telegram) +

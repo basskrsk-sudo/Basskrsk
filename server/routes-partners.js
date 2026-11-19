@@ -6,6 +6,7 @@ const referralProgram = require('./referral-program');
 const { findDefaultGroomer } = require('./auto-groomer');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
+const { parsePayoutMethod } = require('./payout-methods');
 const { sendJson } = require('./http-utils');
 const { requireAuth, requireActiveAdmin, tryAuth } = require('./routes-auth');
 const { reverseAndDeleteOrdersBy } = require('./order-reversal');
@@ -81,7 +82,7 @@ function registerPartnerRoutes(router) {
     }
     const {
       full_name, phone, point_id,
-      legal_form, inn, bank_details, manager_code, referral_code,
+      legal_form, inn, bank_details, payout_method, manager_code, referral_code,
       login, password,
       display_stand, display_poster, display_basket,
     } = ctx.body || {};
@@ -92,6 +93,9 @@ function registerPartnerRoutes(router) {
     if (String(password).length < 6) {
       return sendJson(res, 400, { error: 'Пароль должен быть не короче 6 символов' });
     }
+    let payoutMethod;
+    try { payoutMethod = parsePayoutMethod(payout_method); }
+    catch (error) { return sendJson(res, 400, { error: error.message }); }
     const existingLogin = db.prepare('SELECT id FROM partners WHERE login = ?').get(login);
     if (existingLogin) return sendJson(res, 409, { error: 'Такой логин уже занят' });
 
@@ -179,12 +183,12 @@ function registerPartnerRoutes(router) {
     const info = db.prepare(`
       INSERT INTO partners
         (partner_code, login, password_hash, full_name, phone, point_id, point_name, point_address,
-         legal_form, inn, bank_details, commission_rate, manager_code, referred_by_partner_id, referred_by_owner_id, active,
+         legal_form, inn, bank_details, payout_method, commission_rate, manager_code, referred_by_partner_id, referred_by_owner_id, active,
          display_stand, display_poster, display_basket)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.15, ?, ?, ?, 1, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.15, ?, ?, ?, 1, ?, ?, ?)
     `).run(
       partnerCode, login, hashPassword(password), full_name, phone, pointId, point.name, point.addr,
-      legal_form || null, inn || null, bank_details || null, managerRow ? managerRow.mgr_code : null,
+      legal_form || null, inn || null, bank_details || null, payoutMethod, managerRow ? managerRow.mgr_code : null,
       referrerPartner ? referrerPartner.id : null, referrerOwner ? referrerOwner.id : null,
       dStand ? 1 : 0, dPoster ? 1 : 0, dBasket ? 1 : 0
     );
@@ -385,6 +389,21 @@ function registerPartnerRoutes(router) {
     }
   });
 
+  // PUT /api/partners/me/payout-method — only the authenticated groomer can edit
+  // their own payout channel. Does not alter balances, commissions or pay-outs.
+  router.put('/api/partners/me/payout-method', (req, res, ctx) => {
+    const payload = requireAuth(['partner'])(req, res, ctx);
+    if (!payload) return;
+    if (!db.prepare('SELECT id FROM partners WHERE id = ? AND active = 1').get(payload.id)) {
+      return sendJson(res, 404, { error: 'Грумер не найден' });
+    }
+    let method;
+    try { method = parsePayoutMethod(ctx.body?.payout_method, { required: true }); }
+    catch (error) { return sendJson(res, 400, { error: error.message }); }
+    db.prepare('UPDATE partners SET payout_method = ? WHERE id = ?').run(method, payload.id);
+    sendJson(res, 200, { ok: true, payout_method: method });
+  });
+
   // PUT /api/partners/me — партнёр сам меняет формат размещения на своей точке
   // (стойка/картинка/корзинка, можно сочетать). Больше ничего через этот
   // эндпоинт менять нельзя — остальные поля (тариф, статус и т.п.) правит
@@ -477,14 +496,14 @@ function registerPartnerRoutes(router) {
       transactionOpen = true;
       db.prepare(
         'UPDATE partners SET active=?, commission_rate=?, full_name=?, phone=?, login=?, ' +
-        'legal_form=?, inn=?, bank_details=?, point_id=?, point_name=?, point_address=?, ' +
+        'legal_form=?, inn=?, bank_details=?, payout_method=?, point_id=?, point_name=?, point_address=?, ' +
         'display_stand=?, display_poster=?, display_basket=?, ' +
         'telegram_chat_id=?, max_chat_id=? WHERE id=?'
       ).run(
         active !== undefined ? (active ? 1 : 0) : existing.active,
         commission_rate ?? existing.commission_rate,
         profile.values.full_name, profile.values.phone, profile.values.login,
-        profile.values.legal_form, profile.values.inn, profile.values.bank_details,
+        profile.values.legal_form, profile.values.inn, profile.values.bank_details, profile.values.payout_method,
         targetPointId, nextName, nextAddress,
         nextStand ? 1 : 0, nextPoster ? 1 : 0, nextBasket ? 1 : 0,
         profile.phoneChanged ? null : existing.telegram_chat_id,
