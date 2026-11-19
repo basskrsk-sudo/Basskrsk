@@ -109,7 +109,7 @@ test('receipt and inventory increase are one transaction with non-destructive UP
     const first=receiveWarehouseStock(db,{variantId:1,quantity:3,supplierNote:'new batch',keeperId:5,cityId:'krsk'});
     assert.equal(first.new_qty,15);
     assert.equal(wh(db,1),15);
-    assert.deepEqual(db.prepare('SELECT variant_id,qty,supplier_note,keeper_id,city_id FROM warehouse_receipts').all(),
+    assert.deepEqual(db.prepare('SELECT variant_id,qty,supplier_note,keeper_id,city_id FROM warehouse_receipts').all().map(row=>({...row})),
       [{variant_id:1,qty:3,supplier_note:'new batch',keeper_id:5,city_id:'krsk'}]);
     assert.equal(receiveWarehouseStock(db,{variantId:9,quantity:2,cityId:'krsk'}).new_qty,2);
     assert.equal(wh(db,9),2);
