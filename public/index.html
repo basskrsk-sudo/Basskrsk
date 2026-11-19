@@ -4043,7 +4043,9 @@ function showPage(id) {
   }
   pageUrl.searchParams.delete('open_orders');
   window.history.replaceState(null, '', pageUrl.pathname + pageUrl.search + pageUrl.hash);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  // A salon card is an in-page route: scroll immediately instead of keeping
+  // the previous list's deep scroll position during a smooth animation.
+  window.scrollTo({ top: 0, behavior: id === 'salon' ? 'instant' : 'smooth' });
   if (id === 'catalog') {
     updateCatalogPointGate();
     renderCatalog();
@@ -6928,8 +6930,12 @@ function escapeHtml(str) {
 }
 
 async function showSalonPage(code) {
-  currentSalonPointId = String(code || '');
+  const requestedPointId = String(code || '');
+  currentSalonPointId = requestedPointId;
   showPage('salon');
+  // Reset immediately, then again after asynchronous content replaces the
+  // loading placeholder (especially important with Safari scroll anchoring).
+  window.scrollTo({ top: 0, behavior: 'instant' });
   document.getElementById('salon-loading').style.display = 'block';
   document.getElementById('salon-notfound').style.display = 'none';
   document.getElementById('salon-body').style.display = 'none';
@@ -6941,8 +6947,19 @@ async function showSalonPage(code) {
       return;
     }
     const data = await res.json();
+    // Ignore responses from an older salon after the visitor navigates away.
+    if (requestedPointId !== currentSalonPointId ||
+        !document.getElementById('page-salon').classList.contains('active')) return;
     renderSalonPage(data.salon);
+    requestAnimationFrame(function() {
+      if (requestedPointId === currentSalonPointId &&
+          document.getElementById('page-salon').classList.contains('active')) {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      }
+    });
   } catch (e) {
+    if (requestedPointId !== currentSalonPointId ||
+        !document.getElementById('page-salon').classList.contains('active')) return;
     document.getElementById('salon-loading').style.display = 'none';
     document.getElementById('salon-notfound').style.display = 'block';
   }

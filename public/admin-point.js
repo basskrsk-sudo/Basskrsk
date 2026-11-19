@@ -42,6 +42,14 @@ async function savePointLocation() {
   loadOperationsCenter();
 }
 
+function resetPointCardScroll() {
+  // Desktop uses .main as an internal scroller; mobile uses the document.
+  // Both positions must reset when switching from the points list to a card.
+  const main = document.querySelector('#admin-app .main');
+  if (main) main.scrollTop = 0;
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
 async function showPoint(idx) {
   currentPointIdx = idx;
   pointWorkspaceCache=null;
@@ -55,6 +63,7 @@ async function showPoint(idx) {
   });
   renderContextTabs('point');
   document.querySelectorAll('.topbar-right > .period-btn').forEach(function(btn) { btn.style.display = ''; });
+  resetPointCardScroll();
 
   const p = POINTS_INFO[idx];
   if(!p){await showSection('points');return;}
