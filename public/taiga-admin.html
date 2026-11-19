@@ -766,6 +766,17 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div id="system-health-content" role="status" aria-live="polite">Загружаем состояние сервера…</div>
       </div>
     </div>
+
+    <!-- Notifications are opened from System, not from a floating
+         button that covers forms and modals on small screens. -->
+    <div id="sec-notifications" style="display:none;">
+      <div class="card" style="max-width:780px;">
+        <div id="admin-notification-settings" role="region" aria-label="Настройки уведомлений">
+          <p style="color:var(--muted);font-size:.85rem;">Откройте раздел для загрузки личных настроек уведомлений.</p>
+        </div>
+      </div>
+    </div>
+
     <div id="sec-launch" style="display:none;">
       <div role="tablist" aria-label="План запуска" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
         <button id="launch-tab-plan" class="section-context-tab active" role="tab" aria-selected="true" aria-controls="launch-panel-plan" onclick="showLaunchTab('plan')">План запуска</button>
@@ -2921,7 +2932,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="max-connect.js?v=2"></script>
 <script src="max-admin.js?v=3"></script>
 <script src="partner-network-map.js?v=10"></script>
-<script src="admin-navigation.js?v=3"></script>
+<script src="admin-navigation.js?v=4"></script>
 <script src="admin-point.js?v=1"></script>
 <script src="/admin-point-equipment.js?v=20261119"></script>
 <script src="admin-report-center.js?v=1"></script>
@@ -8381,7 +8392,6 @@ if ('serviceWorker' in navigator) {
 </script>
 <script src="/payout-reports.js"></script>
 <script src="/miniapp-return.js"></script>
-<script src="/notification-settings.js"></script>
-<script>window.HvostNotificationSettings.installFull("admin");</script>
+<script src="/notification-settings.js?v=20261119-system"></script>
 </body>
 </html>

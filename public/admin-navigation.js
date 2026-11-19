@@ -7,6 +7,7 @@ const sections=[...document.querySelectorAll('[id^="sec-"]')]
 
 const titles={
   launch:'План запуска', 'system-health':'Состояние системы',
+  notifications:'Настройки уведомлений',
   guides:'Инструкции',dashboard:'Операционный центр',
   tasks:'Контроль поручений',
   economics:'Экономика проекта','business-expenses':'Траты бизнеса',
@@ -35,7 +36,7 @@ const sectionGroups={
   'payout-reports':'finance','week-comparison':'finance','weekly-reports':'finance',
   'qr-analytics':'finance',
   tasks:'team',launch:'team',
-  'system-health':'system','telegram-connections':'system',
+  'system-health':'system',notifications:'system','telegram-connections':'system',
   max:'system',audit:'system',admins:'system',backup:'system',guides:'system'
 };
 
@@ -52,7 +53,7 @@ const contextTabs={
   finance:[['report-center','Центр отчётов'],['economics','Экономика'],
     ['business-expenses','Расходы']],
   team:[['tasks','Поручения'],['launch','План запуска']],
-  system:[['system-health','Мониторинг'],['telegram-connections','Telegram'],
+  system:[['system-health','Мониторинг'],['notifications','Уведомления'],['telegram-connections','Telegram'],
     ['max','MAX'],['backup','Резервные копии'],['admins','Администраторы',true],
     ['audit','Журнал',true],['guides','Инструкции']]
 };
@@ -122,6 +123,17 @@ async function showSection(id) {
 
   if (id === 'launch')      await showLaunchTab(launchActiveTab);
   if (id === 'system-health') await renderSystemHealth();
+  // Keep the same role-scoped API and save behavior. Fetch preferences only
+  // after an administrator opens the System -> Notifications tab.
+  if (id === 'notifications' && window.HvostNotificationSettings) {
+    const root = document.getElementById('admin-notification-settings');
+    if (root && adminToken) {
+      window.HvostNotificationSettings.open({
+        root, roles:['admin'],tokens:{admin:adminToken},
+        back:() => showSection('system-health'),
+      });
+    }
+  }
   if (id === 'dashboard')   { await loadAdminSalesSummary(); renderDashboard(); }
   if (id === 'tasks')       await loadTaskLinks();
   if (id === 'economics')   await renderEconomics();

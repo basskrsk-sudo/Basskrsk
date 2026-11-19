@@ -97,7 +97,6 @@ test('every existing full web cabinet installs settings with its own role and ex
     'taiga-groomer.html':'partner',
     'taiga-owner.html':'owner',
     'taiga-manager.html':'manager',
-    'taiga-admin.html':'admin',
     'taiga-warehouse.html':'warehouse',
   };
   for(const [file,role] of Object.entries(pages)){
@@ -106,6 +105,20 @@ test('every existing full web cabinet installs settings with its own role and ex
     assert.match(html,/notification-settings.js/);
     assert.ok(html.includes('installFull("'+role+'"'));
   }
+  // The admin's notification settings move into the System tab.
+  // All other role-specific web and mini-app entry points are preserved.
+  const admin=fs.readFileSync(path.join(publicDir,'taiga-admin.html'),'utf8');
+  const nav=fs.readFileSync(path.join(publicDir,'admin-navigation.js'),'utf8');
+  assert.match(admin,/notification-settings\.css/);
+  assert.match(admin,/notification-settings\.js/);
+  assert.match(admin,/id="sec-notifications"/);
+  assert.match(admin,/id="admin-notification-settings"/);
+  assert.doesNotMatch(admin,/HvostNotificationSettings\.installFull\(["']admin/);
+  assert.match(nav,/\['notifications','Уведомления'\]/);
+  assert.match(nav,/notifications:'system'/);
+  assert.match(nav,/id === 'notifications'/);
+  assert.match(nav,/roles:\['admin'\],tokens:\{admin:adminToken\}/);
+  assert.match(nav,/back:\(\) => showSection\('system-health'\)/);
   const mini=fs.readFileSync(path.join(publicDir,'miniapp.html'),'utf8');
   const work=fs.readFileSync(path.join(publicDir,'miniapp-work.js'),'utf8');
   const customer=fs.readFileSync(path.join(publicDir,'miniapp-customer.js'),'utf8');
