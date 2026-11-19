@@ -8,7 +8,11 @@ const { requireAuth, requireSuperAdmin } = require('./routes-auth');
 const { safeFounder, activeFounder, getFounder, configureFounder, FOUNDER_SLOTS } = require('./business-founders');
 const { listExpenseDocuments } = require('./expense-documents');
 const { buildGrowthPlanDashboard } = require('./growth-plan');
-const { buildOperationsCenter } = require('./routes-operations');
+const { getCachedOperationsCenter } = require('./routes-operations');
+const { createSqliteAnalyticsCache } = require('./analytics-cache');
+// Different founders never share personal capital or expense statements.
+// Permission checks happen BEFORE consulting this short-lived read-only cache.
+const founderDashboardCache = createSqliteAnalyticsCache(db, { ttlMs: 8000, maxEntries: 12 });
 const { getCachedWeeklyBsc } = require('./weekly-report');
 const { getUnitEconomicsSettings,calculateUnitEconomics } = require('./unit-economics');
 const { buildPointEquipmentEconomics } = require('./point-equipment');
@@ -59,6 +63,22 @@ function summarizeOrders(orders) {
   const revenue = Math.round(orders.reduce((s, o) => s + netOrderAmount(o), 0));
   const paidCount = orders.filter(o => netOrderAmount(o) > 0).length;
   return { revenue, orders: paidCount, avg_check: paidCount ? Math.round(revenue / paidCount) : 0 };
+}
+// Previous period is used ONLY for comparison totals: do not allocate all
+// historical order objects just to count them. Preserve JS rounding rules.
+function summarizePreviousPeriod(start,end){
+  let total=0,paidCount=0;
+  for(const order of db.prepare(
+    'SELECT total, refund_status, refunded_amount FROM orders ' +
+    'WHERE status=? AND created_at>=? AND created_at<?'
+  ).iterate('paid',start,end)){
+    const amount=netOrderAmount(order);
+    total+=amount;
+    if(amount>0)paidCount++;
+  }
+  const revenue=Math.round(total);
+  return {revenue,orders:paidCount,
+    avg_check:paidCount?Math.round(revenue/paidCount):0};
 }
 function mapOfRates() {
   const manager = new Map();
@@ -265,14 +285,16 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
   const date=nowDate(now);
   const bounds=periodBounds(period,date);
   const current=ordersInRange(bounds.from,bounds.to);
-  const previous=ordersInRange(bounds.previous_from,bounds.previous_to);
-  const cur=summarizeOrders(current), prev=summarizeOrders(previous);
+  const cur=summarizeOrders(current);
+  const prev=summarizePreviousPeriod(bounds.previous_from,bounds.previous_to);
   const pointRows=pointRanking(bounds.from);
-  const operations=buildOperationsCenter();
+  const operations=getCachedOperationsCenter();
   const pointSettings=getUnitEconomicsSettings();
   const pointContribution=calculateUnitEconomics(pointSettings.assumptions);
   const pointEconomics=buildPointEquipmentEconomics(db,pointSettings.assumptions,
     pointContribution,current,bounds);
+  const soldPointRows=pointRows.filter(p=>p.orders>0);
+  const silentPointRows=pointRows.filter(p=>p.orders===0);
   return {
     updated_at:date.toISOString(),
     founder:safeFounder(founder),
@@ -286,13 +308,11 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
     finance:estimatedEconomics(current,bounds.date_from,bounds.date_to),
     point_economics:pointEconomics,
     network:{
-      active_points:Number(db.prepare(
-        'SELECT COUNT(*) AS n FROM points WHERE active=1 AND COALESCE(is_hub,0)=0'
-      ).get().n||0),
-      sold_points_period:pointRows.filter(p=>p.orders>0).length,
-      top_points:pointRows.filter(p=>p.orders>0).slice(0,7),
-      silent_points_count:pointRows.filter(p=>p.orders===0).length,
-      silent_points:pointRows.filter(p=>p.orders===0).slice(0,7),
+      active_points:pointRows.length,
+      sold_points_period:soldPointRows.length,
+      top_points:soldPointRows.slice(0,7),
+      silent_points_count:silentPointRows.length,
+      silent_points:silentPointRows.slice(0,7),
     },
     strategy:strategicReadiness(date),
     bsc:founderScorecard(),
@@ -307,6 +327,11 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
   };
 }
 
+function getCachedFounderDashboard(founder,period='30d') {
+  // Not a role lookup: callers MUST first authorize an active founder.
+  return founderDashboardCache.get(String(founder.id)+':'+period,
+    () => collectFounderDashboard(founder,period));
+}
 function activeAdminSuper(req,res,ctx) {
   const token = requireSuperAdmin(req,res,ctx);
   if(!token) return null;
@@ -345,7 +370,7 @@ function registerBusinessFounderRoutes(router) {
     const period=String(ctx.query.period||'30d');
     if(!['month','30d','year'].includes(period))return sendJson(res,400,{error:'Недопустимый период'});
     try {
-      sendJson(res,200,collectFounderDashboard(founder,period));
+      sendJson(res,200,getCachedFounderDashboard(founder,period));
     } catch(error) {
       console.error('Business founder dashboard:',error);
       sendJson(res,500,{error:'Не удалось собрать сводку. Попробуйте обновить её позже.'});
@@ -354,6 +379,7 @@ function registerBusinessFounderRoutes(router) {
 }
 
 module.exports={
-  collectFounderDashboard,registerBusinessFounderRoutes,periodBounds,
+  collectFounderDashboard,getCachedFounderDashboard,summarizePreviousPeriod,
+  registerBusinessFounderRoutes,periodBounds,
   summarizeOrders, estimatedEconomics, founderTasks,
 };

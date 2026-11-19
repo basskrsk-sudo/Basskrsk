@@ -27,4 +27,16 @@ function createAnalyticsCache(readRevision, {
     get size() { return entries.size; },
   };
 }
-module.exports = { createAnalyticsCache };
+// A small SQLite read-only cache shared by dashboards. A local write changes
+// total_changes(), while another SQLite connection changes PRAGMA data_version.
+// Prepared revision statements avoid recompiling them on every cache lookup.
+// Never use this for payments, stock reservations or account authorization.
+function createSqliteAnalyticsCache(database, options) {
+  const changes = database.prepare('SELECT total_changes() AS n');
+  const external = database.prepare('PRAGMA data_version');
+  return createAnalyticsCache(
+    () => String(changes.get().n) + ':' + String(external.get().data_version),
+    options,
+  );
+}
+module.exports = { createAnalyticsCache, createSqliteAnalyticsCache };

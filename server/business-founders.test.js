@@ -12,7 +12,9 @@ const {verifyToken,verifyPassword,hashPassword,signToken}=require('./auth');
 const {
  FOUNDER_SLOTS,activeFounder,getFounder,configureFounder,
 }=require('./business-founders');
-const {registerBusinessFounderRoutes,collectFounderDashboard,periodBounds}=require('./routes-business-founders');
+const {registerBusinessFounderRoutes,collectFounderDashboard,getCachedFounderDashboard,
+  summarizeOrders,summarizePreviousPeriod,periodBounds}=require('./routes-business-founders');
+const {getCachedOperationsCenter}=require('./routes-operations');
 const {recordVerifiedTelegramContact,availableTelegramAccounts,issueTelegramAccountSession}=require('./miniapp-phone-identity');
 
 function admin(role='super', active=1){
@@ -133,6 +135,54 @@ test('founder revenue, capital and expenses derive from actual records, not fabr
  assert.equal(JSON.stringify(dashboard).includes('password_hash'),false);
 });
 
+test('read-only founder and admin analytics are revision-aware, identity-scoped, and skip duplicate SQL',()=>{
+ const first=getFounder(1);
+ const snapshot=getCachedFounderDashboard(first,'30d');
+ assert.strictEqual(getCachedFounderDashboard(first,'30d'),snapshot,
+   'same founder/period and unchanged SQLite revision reuse full dashboard');
+ const operations=getCachedOperationsCenter();
+ assert.strictEqual(getCachedOperationsCenter(),operations,
+   'admin operations share the same bounded read-only snapshot');
+ const second=getFounder(2);
+ const secondSnapshot=getCachedFounderDashboard(second,'30d');
+ assert.notStrictEqual(secondSnapshot,snapshot,'personal finance cannot cross founder accounts');
+ assert.equal(secondSnapshot.founder.id,2);
+ assert.equal(snapshot.founder.id,1);
+ assert.notEqual(secondSnapshot.capital.my_planned_share,snapshot.capital.my_planned_share);
+ const alternate=getCachedFounderDashboard(first,'month');
+ assert.notStrictEqual(alternate,snapshot,'periods have independent cache keys');
+ // Simulate real purchases/expenses: any DB write must invalidate at once.
+ db.prepare('INSERT INTO expenses(expense_date,category,amount,investor_name) VALUES(?,?,?,?)')
+   .run('2026-10-31','Тест ревизии',17,first.full_name);
+ const changed=getCachedFounderDashboard(first,'30d');
+ assert.notStrictEqual(changed,snapshot,'a SQLite write invalidates without waiting for TTL');
+ assert.notStrictEqual(getCachedOperationsCenter(),operations);
+ assert.ok(changed.capital.personal_expenses_recorded>=snapshot.capital.personal_expenses_recorded+17);
+});
+test('previous-period aggregation streams rows without allocating complete order arrays',()=>{
+ const from='2026-10-01 00:00:00',to='2026-11-01 00:00:00';
+ const expected=summarizeOrders(db.prepare(
+   'SELECT total,refund_status,refunded_amount FROM orders WHERE status=? AND created_at>=? AND created_at<?'
+ ).all('paid',from,to));
+ assert.deepEqual(summarizePreviousPeriod(from,to),expected);
+ // Verify partial and full refunds but roll test fixtures back so later
+ // six-month history assertions see only the intended original paid order.
+ db.exec('SAVEPOINT founder_previous_period_refunds');
+ try {
+ const insert=db.prepare(
+   'INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,subtotal,total,payment_method,status,refund_status,refunded_amount,created_at) '+
+   'VALUES(?,?,?,?,?,?,?,?,?,?,?,?)'
+ );
+ insert.run('FOUNDER-PREV-REFUNDED','Тест','79999990111','БаркЛай','test-bark',230,230,'sbp','paid','refunded',230,'2026-10-30 08:00:00');
+ insert.run('FOUNDER-PREV-PARTIAL','Тест','79999990111','БаркЛай','test-bark',360,360,'sbp','paid','partial',70,'2026-10-30 09:00:00');
+ const revised=summarizeOrders(db.prepare(
+   'SELECT total,refund_status,refunded_amount FROM orders WHERE status=? AND created_at>=? AND created_at<?'
+ ).all('paid',from,to));
+ assert.deepEqual(summarizePreviousPeriod(from,to),revised);
+ } finally {
+   db.exec('ROLLBACK TO founder_previous_period_refunds; RELEASE founder_previous_period_refunds');
+ }
+});
 test('founder counts ALL silent active salons, even past the previous 50-point ranking cutoff', () => {
  const founder=getFounder(1);
  for(let i=0;i<60;i++){
