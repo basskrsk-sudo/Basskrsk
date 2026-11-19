@@ -602,7 +602,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <div class="onboard-step"><div class="step-num">1</div><div><div class="step-title">Найдите груминг-салон, ветклинику или кинологический центр</div><div class="step-desc">Подходят заведения с постоянным потоком владельцев собак и кошек: груминг-салоны, ветклиники, кинологические центры, центры дрессировки и зоогостиницы. <a href="docs/Скрипт_звонка_грумер-салонам.pdf" target="_blank" style="color:var(--purple);font-weight:600;text-decoration:underline;">📞 Скрипт первого звонка</a> — как договориться о встрече.</div></div></div>
           <div class="onboard-step"><div class="step-num">2</div><div><div class="step-title">Проведите встречу, объясните условия</div><div class="step-desc">Стойка бесплатно, товар на консигнации, оплата онлайн по QR, никаких вложений с их стороны. Владельцу — 5% с выручки точки автоматически; тому, кто реально помогает стойке (сам владелец или сотрудник) — отдельно от 15%. <a href="docs/Путь_покупателя.pdf" target="_blank" style="color:var(--purple);font-weight:600;text-decoration:underline;">🛍️ Путь покупателя</a> — покажите на встрече, как это выглядит для клиента. <a href="docs/Встреча_с_владельцем_и_регистрация.pdf" target="_blank" style="color:var(--purple);font-weight:600;text-decoration:underline;">📋 Разговор и регистрация на месте</a> — пример диалога плюс скриншоты формы.</div></div></div>
           <div class="onboard-step"><div class="step-num">3</div><div><div class="step-title">Дайте код MGR-2025-001</div><div class="step-desc">Грумер регистрируется на хвостмаркет.рф/register и вводит ваш код — точка автоматически закрепляется за вами навсегда.</div></div></div>
-          <div class="onboard-step"><div class="step-num">4</div><div><div class="step-title">Помогите точке выйти на прибыль</div><div class="step-desc">Бонус 2 000 ₽ зачисляется, когда точка заработает «Тайге» 2 000 ₽ прибыли (выручка за вычетом себестоимости, эквайринга и комиссий). Помогите точке сделать первые продажи — расскажите как рекомендовать товар клиентам. <a href="docs/Хвостомат_как_купить_А4.pdf" target="_blank" style="color:var(--purple);font-weight:600;text-decoration:underline;">🖨️ Плакат «Как купить» (А4)</a> — распечатайте и повесьте прямо у стойки, чтобы покупателю не пришлось объяснять на словах.</div></div></div>
+          <div class="onboard-step"><div class="step-num">4</div><div><div class="step-title">Помогите точке выйти на первые продажи</div><div class="step-desc">После 2 000 ₽ оплаченной выручки новой точки менеджеру начисляется 2 000 ₽, если пригласившего партнёра нет, либо 1 000 ₽, если приглашение закреплено за партнёром. Ещё 1 000 ₽ предназначается пригласившему партнёру по условиям акции. Помогите точке сделать первые продажи — расскажите как рекомендовать товар клиентам. <a href="docs/Хвостомат_как_купить_А4.pdf" target="_blank" style="color:var(--purple);font-weight:600;text-decoration:underline;">🖨️ Плакат «Как купить» (А4)</a> — распечатайте и повесьте прямо у стойки, чтобы покупателю не пришлось объяснять на словах.</div></div></div>
           <div class="onboard-step"><div class="step-num">5</div><div><div class="step-title">Следите за активностью</div><div class="step-desc">Residual капает пока точка активна (≥1 продажа/мес): единая ставка 7% на все ваши точки, без градаций. Спящую точку реанимируйте — напомните грумеру или договоритесь о встрече.</div></div></div>
         </div>
       </div>
@@ -772,8 +772,12 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
         </div>
 
         <div class="field">
-          <label>Сколько новых точек могли бы привести (разово, по 2000₽, когда точка заработает «Тайге» 2 000 ₽ прибыли — делится с рефералом-партнёром, если он есть)</label>
-          <input type="number" id="calc-referrals" placeholder="0" value="0" oninput="renderCalculator()">
+          <label>Сколько новых точек планируете запустить (бонус менеджеру после 2 000 ₽ оплаченной выручки каждой)</label>
+          <input type="number" id="calc-referrals" placeholder="0" value="0" min="0" oninput="renderCalculator()">
+        </div>
+        <div class="field">
+          <label>Из них точек, которые пригласил другой партнёр (ваш бонус за такую точку — 1 000 ₽)</label>
+          <input type="number" id="calc-shared-referrals" placeholder="0" value="0" min="0" oninput="renderCalculator()">
         </div>
 
         <div id="calc-result" style="background:var(--cream,#F7F3EC);border-radius:10px;padding:1.2rem 1.4rem;margin-top:1rem;"></div>
@@ -2032,7 +2036,8 @@ function renderCalculator() {
   const isManager = document.getElementById('calc-is-manager').checked;
   const partnerRate = parseFloat(document.getElementById('calc-partner-tier').value);
   const mgrPoints = Math.max(1, parseInt(document.getElementById('calc-mgr-points').value) || 1);
-  const newPoints = parseInt(document.getElementById('calc-referrals').value) || 0;
+  const newPoints = Math.max(0,parseInt(document.getElementById('calc-referrals').value) || 0);
+  const sharedReferrals = Math.min(newPoints, Math.max(0,parseInt(document.getElementById('calc-shared-referrals').value) || 0));
   const mgrRate = 0.07; // единственный тариф менеджера
 
   document.getElementById('calc-partner-tier-wrap').style.display = isPartner ? 'block' : 'none';
@@ -2044,7 +2049,7 @@ function renderCalculator() {
   // число точек, которые он курирует — так честнее отражает реальный доход
   // менеджера с несколькими точками одновременно.
   const mgrIncome = isManager ? revenue * mgrRate * mgrPoints : 0;
-  const bonus = newPoints * 2000;
+  const bonus = (newPoints - sharedReferrals) * 2000 + sharedReferrals * 1000;
   const total = partnerIncome + mgrIncome;
   const totalWithBonus = total + bonus;
 
@@ -2059,7 +2064,7 @@ function renderCalculator() {
     </div>
     ${newPoints > 0 ? `
     <div style="display:flex;justify-content:space-between;margin-top:.6rem;color:var(--amber,#D4872A);">
-      <span>+ Разовый бонус за ${newPoints} привед${newPoints===1?'ённую точку':'ённых точек'} (когда точка «окупит» бонус компании — см. ниже)</span><strong>${fmt(bonus)} ₽</strong>
+      <span>+ Разовый бонус менеджеру за ${newPoints} нов${newPoints===1?'ую точку':'ых точек'}${sharedReferrals ? ' (из них '+sharedReferrals+' с пригласившим партнёром по 1 000 ₽)' : ''} после порога 2 000 ₽ оплаченной выручки каждой</span><strong>${fmt(bonus)} ₽</strong>
     </div>
     <div style="display:flex;justify-content:space-between;margin-top:.4rem;font-size:1.1rem;">
       <span>Итого с бонусом</span><strong style="color:var(--deep);">${fmt(totalWithBonus)} ₽</strong>

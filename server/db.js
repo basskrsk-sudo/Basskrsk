@@ -1894,6 +1894,17 @@ db.exec("INSERT OR IGNORE INTO point_referrals(point_id,point_name,role,recipien
   "COALESCE(mp.referred_owner_amount,1000),'legacy-bonus' FROM manager_points mp " +
   "JOIN salon_owners o ON o.id=mp.referred_owner_id WHERE mp.point_id IS NOT NULL AND mp.bonus_paid=1");
 
+// Bring already accrued but NOT transferred manager launch bonuses into the
+// 1 000 + 1 000 split for points with a recorded inviter. Historical payouts
+// and immutable report snapshots are never changed. Idempotent on restart.
+db.exec(`UPDATE manager_points SET bonus_manager_amount=1000
+  WHERE bonus_paid=1 AND COALESCE(bonus_manager_amount,2000)<>1000
+    AND (referred_groomer_id IS NOT NULL OR referred_owner_id IS NOT NULL
+      OR EXISTS (SELECT 1 FROM point_referrals pr WHERE pr.point_id=manager_points.point_id
+        AND pr.role IN ('partner','owner') AND pr.recipient_id IS NOT NULL))
+    AND NOT EXISTS (SELECT 1 FROM manager_launch_bonus_payouts bp
+      WHERE bp.manager_point_id=manager_points.id)`);
+
 // warehouse_stock раньше был один общий склад на всю систему (первичный
 // ключ — только variant_id). SQLite не даёт поменять первичный ключ через
 // ALTER TABLE, поэтому пересоздаём таблицу целиком: составной ключ

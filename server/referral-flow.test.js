@@ -161,7 +161,7 @@ test('first groomer automatically inherits locked inviter, but does not mint ext
   await checkAndPayManagerBonus(point);
   mp=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(point);
   assert.equal(mp.bonus_paid,1,'manager bonus is due at 2,000 RUB');
-  assert.equal(mp.bonus_manager_amount,2000,'manager gets full separate launch bonus');
+  assert.equal(mp.bonus_manager_amount,1000,'manager shares the 2000 RUB launch pool with inviter');
   await checkAndPayManagerBonus(point);
   assert.equal(getBonuses(db,'partner',groomerId).pending.length,1,'referral not accrued twice');
   const payout=createReferralBonusPayout(db,'partner',mp.id,groomerId,1000,
@@ -204,7 +204,7 @@ test('owner code also credits exactly one new point, never somebody else or agai
   await checkAndPayManagerBonus(point);
   assert.equal(referralSummary('owner',ownerId).awaiting,1000);
   const early=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(point);
-  assert.equal(early.bonus_manager_amount,2000);
+  assert.equal(early.bonus_manager_amount,1000,'owner invitation reserves 1000 RUB even before owner referral accrues');
   paidOrder('REF-OWNER-PAID-2',point,correct.body.id,3000);
   await checkAndPayManagerBonus(point);
   assert.equal(referralSummary('owner',ownerId).payable,1000);
@@ -212,6 +212,7 @@ test('owner code also credits exactly one new point, never somebody else or agai
   const mp=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(point);
   assert.equal(mp.referred_owner_id,ownerId);
   assert.equal(mp.referred_owner_amount,1000);
+  assert.equal(mp.bonus_manager_amount,1000,'late owner referral never doubles the manager launch bonus');
 });
 
 test('manager bonus is triggered by 2000 RUB NET paid revenue, never by pending/refunded sales',async()=>{
