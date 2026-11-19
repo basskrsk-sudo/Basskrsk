@@ -10,6 +10,8 @@ const { listExpenseDocuments } = require('./expense-documents');
 const { buildGrowthPlanDashboard } = require('./growth-plan');
 const { buildOperationsCenter } = require('./routes-operations');
 const { getCachedWeeklyBsc } = require('./weekly-report');
+const { getUnitEconomicsSettings,calculateUnitEconomics } = require('./unit-economics');
+const { buildPointEquipmentEconomics } = require('./point-equipment');
 
 const CAPITAL_PLAN_RUB = 1000000;
 const TAX_ESTIMATE_RATE = 0.06;
@@ -267,6 +269,10 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
   const cur=summarizeOrders(current), prev=summarizeOrders(previous);
   const pointRows=pointRanking(bounds.from);
   const operations=buildOperationsCenter();
+  const pointSettings=getUnitEconomicsSettings();
+  const pointContribution=calculateUnitEconomics(pointSettings.assumptions);
+  const pointEconomics=buildPointEquipmentEconomics(db,pointSettings.assumptions,
+    pointContribution,current,bounds);
   return {
     updated_at:date.toISOString(),
     founder:safeFounder(founder),
@@ -278,6 +284,7 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
       last_six_months:monthHistory(date),
     },
     finance:estimatedEconomics(current,bounds.date_from,bounds.date_to),
+    point_economics:pointEconomics,
     network:{
       active_points:Number(db.prepare(
         'SELECT COUNT(*) AS n FROM points WHERE active=1 AND COALESCE(is_hub,0)=0'

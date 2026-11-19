@@ -15,6 +15,7 @@ const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
 const { writeSalonPagesSnapshot } = require('./salon-page-storage');
 const { geocodeAddress } = require('./geocoding');
+const { normalizePointEquipment,savePointEquipmentInTransaction } = require('./point-equipment');
 
 const PRODUCT_CATEGORIES = new Set(['treats', 'toys', 'accessories', 'care']);
 
@@ -238,6 +239,13 @@ function registerProductRoutes(router) {
     // Так не получится случайно (или намеренно) завести точку на другого
     // менеджера через прямой вызов API в обход интерфейса.
     const manager_id = payload.role === 'manager' ? payload.id : (ctx.body || {}).manager_id;
+    // Mini Apps may omit this at creation. An omitted value is unknown,
+    // NEVER assume that no stand was supplied to an existing point.
+    let launchEquipment=null;
+    if(payload.role==='admin'&&ctx.body?.equipment!==undefined){
+      try{launchEquipment=normalizePointEquipment(ctx.body.equipment);}
+      catch(e){return sendJson(res,e.statusCode||400,{error:e.message,code:e.code});}
+    }
     if (!name || !addr) return sendJson(res, 400, { error: 'Укажите name и addr' });
     // Город больше не подставляется молча по умолчанию (раньше падал на
     // 'krsk', если фронтенд забывал его передать) — теперь обязателен явно.
@@ -358,6 +366,7 @@ function registerProductRoutes(router) {
         throw Object.assign(new Error('Реферальная заявка изменилась'),{statusCode:409});
       db.prepare('INSERT INTO points (id, name, addr, icon, lat, lng, city_id, manager_id, is_hub, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)')
         .run(candidate, name, addr, icon || '📍', pointLat, pointLng, city_id, manager_id || null);
+      if(launchEquipment)savePointEquipmentInTransaction(db,candidate,launchEquipment,payload);
   
       // Если сразу назначили менеджера — заводим и связь в manager_points,
       // иначе точка физически не появится в его кабинете («Мои точки»,

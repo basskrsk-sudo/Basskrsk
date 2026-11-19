@@ -1282,6 +1282,14 @@
       stat('Продажи за всё время', rub(totals.revenue), number(totals.orders) + ' покупок') +
       stat('К выплате владельцу', rub(earn.unpaid), 'Невыплаченное вознаграждение') +
       stat('Средний чек', rub(totals.avg_order), 'За всё время') + '</div>';
+    html += surface('💰 Экономика вашего салона',
+      '<div class="work-stats">'+
+        stat('Выручка за месяц',rub(totals.this_month_revenue),number(totals.this_month_orders)+' покупок')+
+        stat('За всё время',rub(totals.revenue),number(totals.orders)+' покупок')+
+        stat('Средний чек',rub(totals.avg_order),'Оплаченные продажи')+
+        stat('Ваше вознаграждение за месяц',rub(earn.this_month),number(earn.tier_percent)+'% от выручки')+
+        stat('К выплате',rub(earn.unpaid),'Не выплачено')+
+      '</div><p class="work-note">Внутренние затраты, закупочные цены и прибыль ХвостМаркета не отображаются.</p>');
     html += ownerReferralSection(currentUser,false);
     html += payoutPreferenceSurface('owner', currentUser);
     html += surface('Грумеры салона', rows((d.groomers || []).slice(0, 10).map(function(g) {
@@ -1385,7 +1393,16 @@
         '<p class="work-note">За пригласившим партнёром фиксируется ожидаемый бонус 1 000 ₽ после создания новой точки.</p>' +
         '<label class="work-register-label" for="workAdminPointIcon">Значок (необязательно)</label>' +
         '<input class="work-register-input" id="workAdminPointIcon" type="text" maxlength="8" placeholder="📍">' +
-        '<p class="work-note">Точка будет добавлена на карту после проверки адреса. Начальные остатки — 0. Менеджера можно выбрать сейчас.</p>';
+        '<label class="work-register-label" for="workAdminPointEquipment">Оборудование при запуске *</label>' +
+        '<select class="work-register-input" id="workAdminPointEquipment" required>' +
+          '<option value="">— Выберите оснащение —</option>' +
+          '<option value="none">Без стойки и полки — 0 ₽</option>' +
+          '<option value="large_stand">Большая стойка — 5 000 ₽</option>' +
+          '<option value="small_stand">Маленькая стойка — 2 500 ₽</option>' +
+          '<option value="shelf">Полка ХвостМаркета</option></select>' +
+        '<label class="work-register-label" for="workAdminShelfCost">Стоимость полки в рублях (если выбрана полка)</label>' +
+        '<input class="work-register-input" id="workAdminShelfCost" type="number" min="0" max="1000000" step="1" placeholder="0">' +
+        '<p class="work-note">Точка будет добавлена на карту после проверки адреса. Начальные остатки — 0. Оснащение влияет на расчётную экономику, не создавая фактический расход.</p>';
     } else {
       if (kind === 'manager') {
         form = '<label class="work-register-label" for="workAdminPersonCity">Город работы *</label>' +
@@ -1498,6 +1515,17 @@
         return adminRegistrationError('Выберите действующего менеджера из списка.');
       if (icon.length > 8) return adminRegistrationError('Слишком длинный значок.');
       body = { name:name, addr:addr, city_id:city, icon:icon || '📍' };
+      var equipmentType=String(get('workAdminPointEquipment').value||'');
+      if(!['none','large_stand','small_stand','shelf'].includes(equipmentType))
+        return adminRegistrationError('Выберите оснащение новой точки.');
+      body.equipment={type:equipmentType};
+      if(equipmentType==='shelf'){
+        var shelfCost=String(get('workAdminShelfCost').value||'').trim();
+        if(shelfCost===''||!Number.isSafeInteger(Number(shelfCost))||
+          Number(shelfCost)<0||Number(shelfCost)>1000000)
+          return adminRegistrationError('Укажите стоимость полки в целых рублях (можно 0).');
+        body.equipment.shelf_cost=Number(shelfCost);
+      }
       var selectedReferral=String((get('workAdminPointReferralLead')||{}).value||'');
       if (selectedReferral) body.referral_lead_id=Number(selectedReferral);
       if (managerId) body.manager_id = Number(managerId);

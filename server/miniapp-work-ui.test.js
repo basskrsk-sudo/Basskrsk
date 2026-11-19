@@ -507,13 +507,14 @@ test('admin Mini App offers all four network registration actions with active ad
  get('workAdminPointCity').value='krsk';
  get('workAdminPointManager').value='7';
  get('workAdminPointIcon').value='🐾';
+ get('workAdminPointEquipment').value='none';
  await h.submit('workAdminRegistrationForm');
  const created=h.calls.find(c=>c.url==='/api/points'&&c.opts.method==='POST');
  assert.ok(created,'uses original real points API');
  assert.equal(created.opts.headers.Authorization,'Bearer admin-token');
  assert.deepEqual(JSON.parse(created.opts.body),{
    name:'Новый минимаркет',addr:'ул. Ленина, 3',city_id:'krsk',
-   icon:'🐾',manager_id:7,
+   icon:'🐾',manager_id:7,equipment:{type:'none'},
  });
  assert.match(h.root.innerHTML,/Регистрация выполнена/);
  assert.match(h.root.innerHTML,/admin-reg-owner/);

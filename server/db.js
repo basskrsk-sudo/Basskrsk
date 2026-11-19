@@ -1847,6 +1847,28 @@ ensureColumn('manager_points', 'referred_owner_amount', 'INTEGER');
 // CRM list hydration and full contact history need indexed lead_id lookups.
 db.exec('CREATE INDEX IF NOT EXISTS idx_partner_lead_notes_lead_latest ON partner_lead_notes(lead_id,id DESC)');
 
+// Launch equipment is separate from in-salon display preferences and actual
+// expenses. Historic points have no row until an administrator confirms it.
+db.exec(`
+CREATE TABLE IF NOT EXISTS point_launch_equipment (
+  point_id TEXT PRIMARY KEY REFERENCES points(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK(type IN ('none','large_stand','small_stand','shelf')),
+  cost INTEGER NOT NULL CHECK(cost BETWEEN 0 AND 1000000),
+  updated_by TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS point_launch_equipment_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  point_id TEXT NOT NULL,
+  previous_type TEXT, previous_cost INTEGER,
+  new_type TEXT NOT NULL, new_cost INTEGER NOT NULL,
+  admin_id INTEGER, admin_login TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_point_launch_equipment_log_point
+  ON point_launch_equipment_log(point_id,id DESC);
+`);
+
 // Referral program: one immutable attribution per newly launched point.
 // Historical "bonus_paid" on manager_points means accrued, not transferred.
 // Reusable official 2GIS identity for CRM imports; nullable for other leads.
