@@ -10,16 +10,32 @@ const OVERDUE_RETRY_MS = 30 * 1000;
 const FIRST_RUN_MS = 3000;
 const EXPIRY_CUSHION_MS = 1000;
 
-function nextReservationCleanupDelay(nowMs = Date.now(), database = require('./db')) {
+function earliestActiveReservationExpiry(database) {
   // Existing idx_orders_active_reservations supports the MIN deadline lookup;
-  // never load order rows, customer information or the full order history.
-  const row = database.prepare(
+  // read only one value, never load customers, items or the order history.
+  return database.prepare(
     "SELECT MIN(reservation_expires_at) AS expiry FROM orders " +
     "WHERE reservation_status='active' AND status='pending' " +
     "AND reservation_expires_at IS NOT NULL"
-  ).get();
-  if (!row?.expiry) return IDLE_RECHECK_MS;
-  const expiresAt = Date.parse(String(row.expiry).replace(' ', 'T') + 'Z');
+  ).get()?.expiry || null;
+}
+
+function parseReservationExpiry(expiry) {
+  return Date.parse(String(expiry).replace(' ', 'T') + 'Z');
+}
+
+function hasOverdueReservation(nowMs = Date.now(), database = require('./db')) {
+  const expiry = earliestActiveReservationExpiry(database);
+  if (!expiry) return false;
+  const expiresAt = parseReservationExpiry(expiry);
+  // An unreadable legacy deadline is safer to reconcile than to ignore.
+  return !Number.isFinite(expiresAt) || expiresAt <= nowMs;
+}
+
+function nextReservationCleanupDelay(nowMs = Date.now(), database = require('./db')) {
+  const expiry = earliestActiveReservationExpiry(database);
+  if (!expiry) return IDLE_RECHECK_MS;
+  const expiresAt = parseReservationExpiry(expiry);
   if (!Number.isFinite(expiresAt)) return OVERDUE_RETRY_MS;
   // An overdue payment must be checked with YooKassa. If it cannot be safely
   // cancelled, retry later rather than burning API requests every second.
@@ -68,7 +84,10 @@ function createReservationCleanupScheduler({
     if (!started || running) return;
     running = true;
     try {
-      await run();
+      // A healthy empty store otherwise spawned a fresh SQLite reader worker
+      // at boot and every five minutes without a single expired reservation.
+      // Keep the worker for overdue or unparseable deadlines only.
+      if (hasOverdueReservation(now(), database)) await run();
     } catch (error) {
       onError(error);
     } finally {
@@ -102,5 +121,6 @@ module.exports = {
   FIRST_RUN_MS,
   EXPIRY_CUSHION_MS,
   nextReservationCleanupDelay,
+  hasOverdueReservation,
   createReservationCleanupScheduler,
 };
