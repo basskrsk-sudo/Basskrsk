@@ -11,7 +11,8 @@ const db=require('./db');
 const {signToken}=require('./auth');
 const {createApiPerformanceTracker}=require('./api-performance');
 const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,stopHealthWatcher,
-  appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,describeIoSpike}=require('./site-health');
+  appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,
+  TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike}=require('./site-health');
 const routes=new Map(),router={get:(name,handler)=>routes.set(name,handler)};
 registerSiteHealthRoutes(router);
 async function call(pathname,role,id){
@@ -96,6 +97,9 @@ test('only active admin can inspect process metrics and persistent restart log',
   assert.ok(Array.isArray(r.data.recent_slow_sync_operations));
   assert.ok(Array.isArray(r.data.event_loop_stalls));
   assert.ok(r.data.event_loop_stalls.length<=8);
+  assert.ok(Array.isArray(r.data.health_history));
+  assert.ok(r.data.health_history.length<=288);
+  assert.ok(r.data.backup===null||typeof r.data.backup.running==='boolean');
   assert.ok(r.data.cpu_throttle===null || typeof r.data.cpu_throttle.available==='boolean');
   assert.ok(Array.isArray(r.data.api_performance.slow_routes));
   assert.ok(r.data.io_probe === null || Number.isFinite(r.data.io_probe.storage_write_ms));
@@ -136,6 +140,17 @@ test('optional /tmp write tests back off while healthy and trigger immediately o
   assert.equal(shouldProbeTemporaryStorage(now,now-60000,healthy,1800,15,0),true);
   assert.equal(shouldProbeTemporaryStorage(now,now-60000,healthy,20,850,0),true);
   assert.equal(shouldProbeTemporaryStorage(now,now-60000,healthy,20,15,1700),true);
+});
+test('file comparisons never infer a zero /tmp delay from missing or stale probes',()=>{
+  const t=Date.parse('2026-11-19T12:00:00Z');
+  assert.equal(TEMP_COMPARISON_FRESH_MS,120000);
+  assert.equal(isTemporaryProbeFresh(t,t-60000),true);
+  assert.equal(isTemporaryProbeFresh(t,t-121000),false);
+  assert.equal(isTemporaryProbeFresh(t,0),false);
+  assert.match(describeIoSpike({storage_write_ms:2600,temp_write_ms:null,temp_status:'stale'}),/Нет свежего измерения/);
+  assert.match(describeIoSpike({storage_write_ms:2600,temp_write_ms:null,temp_status:'not_sampled'}),/Нет свежего измерения/);
+  assert.equal(shouldProbeTemporaryStorage(t,t-60000,
+    {checks:{storage:'ok'},probe_storage_ms:10,probe_sqlite_ms:1600},20,15,0),true);
 });
 test('diagnostics expose both timer drift and measured event-loop latency',async()=>{
   startHealthWatcher();

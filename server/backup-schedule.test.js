@@ -11,6 +11,7 @@ const db = require('./db');
 const {
   createBackupScheduler, nextBackupDelay, BACKUP_INTERVAL_MS,
   BACKUP_START_DELAY_MS, BACKUP_RETRY_MS,
+  getBackupRuntimeStatus, stopBackups,
 } = require('./backup');
 
 const MINUTE = 60 * 1000;
@@ -112,6 +113,19 @@ test('real backup schedule metadata survives restarts without customer data',()=
   assert.equal(nextBackupDelay(row,NOW),BACKUP_INTERVAL_MS-119*MINUTE);
 });
 
+test('backup diagnostics expose only timings and persisted schedule dates',()=>{
+  const status=getBackupRuntimeStatus();
+  assert.equal(typeof status.configured,'boolean');
+  assert.equal(status.phase,'idle');
+  assert.equal(status.running,false);
+  assert.equal(status.last_success_at,'2026-11-14T10:01:00.000Z');
+  assert.equal(status.last_attempt_at,'2026-11-14T10:00:00.000Z');
+  assert.ok(!JSON.stringify(status).includes('BACKUP_EMAIL'));
+  const lightweight=getBackupRuntimeStatus(false);
+  assert.equal(lightweight.last_success_at,null);
+  assert.equal(lightweight.next_due_at,null);
+  stopBackups();
+});
 test.after(()=>{
   try{db.close();}catch(_){}
   fs.rmSync(directory,{recursive:true,force:true});

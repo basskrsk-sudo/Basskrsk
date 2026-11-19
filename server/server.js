@@ -342,6 +342,7 @@ installGracefulShutdown(server, {
     require('./routes-partner-club').stopPartnerClubWorker();
     require('./unpaid-order-alerts').stopUnpaidOrderAlerts();
     require('./new-product-broadcast').stopBroadcastWorker();
+    require('./backup').stopBackups();
     stopHealthWatcher();
     if (partnerTierReviewTimer) clearInterval(partnerTierReviewTimer);
     partnerTierReviewTimer = null;
