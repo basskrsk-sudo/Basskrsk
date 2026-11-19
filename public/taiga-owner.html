@@ -151,6 +151,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
     <div id="dashboard-content" style="display:none;">
       <div class="owner-tabs" aria-label="Разделы кабинета владельца">
         <button class="owner-tab active" type="button" data-owner-tab="overview" onclick="showOwnerTab('overview')">Обзор</button>
+        <button class="owner-tab" type="button" data-owner-tab="economics" onclick="showOwnerTab('economics')">Экономика салона</button>
         <button class="owner-tab" type="button" data-owner-tab="team" onclick="showOwnerTab('team')">Команда</button>
         <button class="owner-tab" type="button" data-owner-tab="salon" onclick="showOwnerTab('salon')">Страница салона</button>
         <button class="owner-tab" type="button" data-owner-tab="orders" onclick="showOwnerTab('orders')">Заказы</button>
@@ -219,6 +220,21 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       </div>
       </div>
 
+      <div class="owner-panel" data-owner-panel="economics">
+        <div class="card">
+          <div class="card-title">Экономика вашего салона в ХвостМаркете</div>
+          <p style="font-size:.8rem;color:var(--muted);line-height:1.5;">Здесь показаны продажи и вознаграждение только вашей точки. Закупочные цены, внутренние затраты и маржинальность сети не раскрываются.</p>
+          <div class="stats-grid">
+            <div class="stat-card"><div class="stat-label">Оплаченная выручка за месяц</div><div class="stat-value" id="owner-econ-month">—</div></div>
+            <div class="stat-card"><div class="stat-label">Выручка за всё время</div><div class="stat-value" id="owner-econ-total">—</div></div>
+            <div class="stat-card"><div class="stat-label">Количество покупок</div><div class="stat-value" id="owner-econ-orders">—</div></div>
+            <div class="stat-card"><div class="stat-label">Средний чек</div><div class="stat-value" id="owner-econ-avg">—</div></div>
+            <div class="stat-card"><div class="stat-label">Вознаграждение владельца за месяц</div><div class="stat-value" id="owner-econ-commission-month">—</div></div>
+            <div class="stat-card"><div class="stat-label">Начислено к выплате</div><div class="stat-value" id="owner-econ-unpaid">—</div></div>
+          </div>
+          <p style="font-size:.76rem;color:var(--muted);margin-top:.8rem;">Показатели основаны на подтверждённых продажах с учётом возвратов. Вознаграждение к выплате учитывает уже зарегистрированные выплаты.</p>
+        </div>
+      </div>
       <div class="owner-panel" data-owner-panel="team">
       <div class="card">
         <div class="card-title">✂️ Грумеры на точке</div>
@@ -566,6 +582,12 @@ async function loadDashboard() {
     document.getElementById('stat-avg-order').textContent = fmtMoney(data.totals.avg_order);
     document.getElementById('stat-month-revenue').textContent = fmtMoney(data.totals.this_month_revenue);
     document.getElementById('stat-month-orders').textContent = data.totals.this_month_orders + ' заказ(ов) в этом месяце';
+    document.getElementById('owner-econ-month').textContent = fmtMoney(data.totals.this_month_revenue);
+    document.getElementById('owner-econ-total').textContent = fmtMoney(data.totals.revenue);
+    document.getElementById('owner-econ-orders').textContent = Number(data.totals.orders||0).toLocaleString('ru-RU');
+    document.getElementById('owner-econ-avg').textContent = fmtMoney(data.totals.avg_order);
+    document.getElementById('owner-econ-commission-month').textContent = fmtMoney(data.owner_earnings.this_month);
+    document.getElementById('owner-econ-unpaid').textContent = fmtMoney(data.owner_earnings.unpaid);
 
     document.getElementById('owner-tier-percent').textContent = data.owner_earnings.tier_percent;
     document.getElementById('owner-earnings-total').textContent = fmtMoney(data.owner_earnings.unpaid);

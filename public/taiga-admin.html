@@ -968,6 +968,21 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
 
+      <div class="card" id="point-economics-card" style="display:none;margin-bottom:1rem;">
+        <div class="card-title">🏪 Экономика запуска по каждой точке</div>
+        <p id="point-economics-summary" style="font-size:.85rem;margin:.6rem 0;"></p>
+        <p id="point-economics-note" style="font-size:.77rem;color:var(--muted);line-height:1.5;margin:.5rem 0;">
+          Это модельная оценка, а не бухгалтерская прибыль и не повторная запись расходов.
+        </p>
+        <div style="overflow-x:auto;max-height:650px;overflow-y:auto;">
+          <table class="tbl" style="min-width:770px;">
+            <thead><tr><th>Точка</th><th>Оборудование при запуске</th><th class="r">Инвестиция (модель)</th>
+              <th class="r">Оплаченная выручка</th><th class="r">Расчётный вклад</th>
+              <th class="r">Окупаемость при текущем темпе</th></tr></thead>
+            <tbody id="point-economics-body"></tbody>
+          </table>
+        </div>
+      </div>
       <div class="card" style="margin-bottom:1rem;">
         <div class="card-title" style="margin-bottom:.8rem;">Расходы (закуп товара, непредвиденные и любые другие) вносите вручную по факту — так точнее, чем расчёт от цены за штуку. Комиссии партнёру, менеджеру, владельцу точки, налог и эквайринг считаются автоматически из реальных заказов и уже настроенных в системе ставок.</div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
@@ -1430,7 +1445,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
         <table class="tbl">
           <thead>
-            <tr><th>Точка</th><th>Дата создания</th><th>Промокод −20%</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Открытие</th><th>Статус</th><th class="r">Действие</th></tr>
+            <tr><th>Точка</th><th>Дата создания</th><th>Промокод −20%</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Открытие</th><th>Оснащение</th><th>Статус</th><th class="r">Действие</th></tr>
           </thead>
           <tbody id="points-mgmt-tbody"></tbody>
         </table>
@@ -1468,9 +1483,50 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <select id="pt-new-manager" class="pm-select"><option value="">— Без менеджера (хаб) —</option></select>
             <div style="font-size:.75rem;color:var(--muted);margin-top:.3rem;">Без менеджера точка не появится ни в чьём кабинете менеджера — только в общем списке администратора.</div>
           </div>
+          <div class="admin-field">
+            <label for="pt-new-equipment">Оборудование при запуске *</label>
+            <select id="pt-new-equipment" class="pm-select" onchange="HvostPointEquipmentUI.toggleShelf('pt-new-equipment','pt-new-shelf-wrap')">
+              <option value="">— Выберите оснащение —</option>
+              <option value="none">Ни стойка, ни полка — 0 ₽</option>
+              <option value="large_stand">Большая стойка — 5 000 ₽</option>
+              <option value="small_stand">Маленькая стойка — 2 500 ₽</option>
+              <option value="shelf">Полка ХвостМаркета (указать стоимость)</option>
+            </select>
+            <p style="font-size:.72rem;color:var(--muted);margin:.3rem 0;">Только фактическое оснащение на момент запуска; это влияет на расчёт окупаемости.</p>
+          </div>
+          <div class="admin-field" id="pt-new-shelf-wrap" style="display:none;">
+            <label for="pt-new-shelf-cost">Стоимость полки, ₽</label>
+            <input type="number" id="pt-new-shelf-cost" min="0" max="1000000" step="1" placeholder="0">
+          </div>
           <div style="display:flex;gap:.6rem;margin-top:1rem;">
             <button class="row-btn" style="flex:1;" onclick="closePointModal()">Отмена</button>
             <button id="pt-new-submit" class="row-btn" style="flex:1;background:var(--forest);color:#fff;" onclick="savePointForm()">Создать</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Existing point: confirm real equipment without rewriting cash ledger -->
+      <div id="point-equip-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.55);z-index:150;align-items:center;justify-content:center;padding:1rem;">
+        <div role="dialog" aria-modal="true" aria-label="Оснащение точки" style="background:white;border-radius:12px;padding:1.4rem;width:100%;max-width:440px;">
+          <h3>Оборудование при запуске точки</h3>
+          <p id="point-equip-modal-name" style="font-size:.84rem;color:var(--muted);margin:.6rem 0;"></p>
+          <label for="point-equip-type">Что фактически использовалось?</label>
+          <select id="point-equip-type" class="pm-select" style="width:100%;margin:.5rem 0;" onchange="HvostPointEquipmentUI.toggleShelf('point-equip-type','point-equip-shelf-wrap')">
+            <option value="">— Ещё не указано —</option>
+            <option value="none">Без стойки и полки — 0 ₽</option>
+            <option value="large_stand">Большая стойка — 5 000 ₽</option>
+            <option value="small_stand">Маленькая стойка — 2 500 ₽</option>
+            <option value="shelf">Полка ХвостМаркета</option>
+          </select>
+          <div class="admin-field" id="point-equip-shelf-wrap" style="display:none;">
+            <label for="point-equip-shelf-cost">Стоимость полки, ₽</label>
+            <input type="number" id="point-equip-shelf-cost" min="0" max="1000000" step="1">
+          </div>
+          <p style="font-size:.76rem;color:var(--muted);line-height:1.45;">Для старых точек не предполагаем тип оснащения автоматически. Вносим только подтверждённые данные; история правок сохраняется.</p>
+          <p id="point-equip-error" role="alert" style="font-size:.8rem;color:#9B2335;"></p>
+          <div style="display:flex;gap:.5rem;justify-content:flex-end;">
+            <button type="button" class="row-btn" onclick="HvostPointEquipmentUI.close()">Отмена</button>
+            <button id="point-equip-save" type="button" class="row-btn" onclick="HvostPointEquipmentUI.save()" style="background:var(--forest);color:white;">Сохранить</button>
           </div>
         </div>
       </div>
@@ -2206,6 +2262,12 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div id="point-launch-checklist-body" style="font-size:.78rem;color:var(--muted);">Загрузка чек-листа…</div>
       </div>
 
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">🏪 Оборудование при запуске</div>
+        <p style="font-size:.78rem;color:var(--muted);">Большая стойка — 5 000 ₽, маленькая — 2 500 ₽, без стойки и полки — 0 ₽. Данные влияют на расчёт окупаемости.</p>
+        <button class="row-btn" type="button" onclick="HvostPointEquipmentUI.open(POINTS_INFO[currentPointIdx].id,POINTS_INFO[currentPointIdx].name)">Указать оснащение точки</button>
+      </div>
+
       <!-- Координаты для Яндекс.Карт -->
       <div class="card" style="margin-bottom:1rem;">
         <div class="card-title">Координаты (для карты на сайте)</div>
@@ -2860,6 +2922,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="partner-network-map.js?v=10"></script>
 <script src="admin-navigation.js?v=3"></script>
 <script src="admin-point.js?v=1"></script>
+<script src="/admin-point-equipment.js?v=20261119"></script>
 <script src="admin-report-center.js?v=1"></script>
 <script src="/admin-referral-control.js"></script>
     <script src="/week-over-week.js"></script>
@@ -3987,6 +4050,7 @@ function pnlRow(label, value, opts) {
 }
 async function renderEconomics() {
   await renderUnitEconomics();
+  if(window.HvostPointEquipmentUI)void window.HvostPointEquipmentUI.renderEconomics();
   const filterSel = document.getElementById('econ-city-filter');
   const currentFilterValue = filterSel ? filterSel.value : '';
   if (filterSel) {
@@ -5262,11 +5326,13 @@ async function renderPointsManagement() {
   const responses = await Promise.all([
     authFetch(url),
     authFetch('/api/point-launch-checklists?all=1'),
+    window.HvostPointEquipmentUI.load(),
   ]);
   const data = await responses[0].json();
   const checklistData = await responses[1].json();
   adminAllPoints = data.points || [];
   const launchByPoint = new Map((checklistData.points || []).map(function(row) { return [row.point_id, row]; }));
+  const equipByPoint = new Map((responses[2] || []).map(function(row){return [row.point_id,row];}));
   const cityName = (id) => (ADMIN_CITIES_CACHE || []).find((c) => c.id === id)?.name || id;
   const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
     timeZone:'Asia/Krasnoyarsk', day:'2-digit', month:'2-digit', year:'numeric',
@@ -5275,6 +5341,7 @@ async function renderPointsManagement() {
   document.getElementById('points-mgmt-tbody').innerHTML = adminAllPoints.map(function(p) {
     const type = p.is_hub ? 'Хаб' : (p.manager_id ? 'Через менеджера №' + p.manager_id : 'Добавлена вручную');
     const launch = launchByPoint.get(p.id);
+    const equipment = equipByPoint.get(p.id);
     const createdAt = p.created_at && !Number.isNaN(new Date(String(p.created_at).replace(' ', 'T') + 'Z').getTime())
       ? dateFormatter.format(new Date(String(p.created_at).replace(' ', 'T') + 'Z'))
       : null;
@@ -5300,6 +5367,10 @@ async function renderPointsManagement() {
       '<td style="font-size:.82rem;color:var(--muted);">' + p.addr + '</td>' +
       '<td style="font-size:.8rem;">' + type + '</td>' +
       '<td>' + launchCell + '</td>' +
+      '<td><button class="row-btn" type="button" data-equip-id="' + escapeOrderCell(p.id) +
+        '" data-equip-name="' + escapeOrderCell(p.name) +
+        '" onclick="HvostPointEquipmentUI.open(this.dataset.equipId,this.dataset.equipName)">' +
+        escapeOrderCell(window.HvostPointEquipmentUI.equipmentLabel(equipment)) + '</button></td>' +
       '<td><span class="toggle-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '🟢 Активна' : '⚪ Отключена') + '</span></td>' +
       '<td class="r">' +
         (p.active ? '<button class="row-btn" onclick="openPointChecklistById(\'' + p.id + '\')">✓ Чек-лист</button> ' : '') +
@@ -5393,6 +5464,7 @@ async function saveSalonPageModal() {
 }
 
 function openPointModal() {
+  if(window.HvostPointEquipmentUI)window.HvostPointEquipmentUI.resetCreate();
   document.getElementById('pt-new-name').value = '';
   document.getElementById('pt-new-addr').value = '';
   document.getElementById('pt-new-icon').value = '';
@@ -5429,6 +5501,9 @@ async function savePointForm() {
   const city_id = document.getElementById('pt-new-city').value;
   const manager_id = document.getElementById('pt-new-manager').value || null;
   const errEl = document.getElementById('point-modal-error');
+  let equipment;
+  try{ equipment=window.HvostPointEquipmentUI.readChoice('pt-new-equipment','pt-new-shelf-cost'); }
+  catch(error){errEl.textContent=error.message;errEl.style.display='block';return;}
   if (!name || !addr) {
     errEl.textContent = 'Укажите название и адрес.';
     errEl.style.display = 'block';
@@ -5444,7 +5519,7 @@ async function savePointForm() {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Определяем адрес…';
   try {
-    const res = await authFetch('/api/points', { method: 'POST', body: { name, addr, icon: icon || '📍', city_id, manager_id } });
+    const res = await authFetch('/api/points', { method: 'POST', body: { name, addr, icon: icon || '📍', city_id, manager_id, equipment } });
     const data = await res.json();
     if (!res.ok) {
       errEl.textContent = data.error || 'Не удалось создать точку.';

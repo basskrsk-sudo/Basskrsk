@@ -15,6 +15,7 @@ const { requireAuth, requireSuperAdmin } = require('./routes-auth');
 const { localDate } = require('./task-reminders');
 const { trackSync } = require('./runtime-diagnostics');
 const { buildEconomicsDashboard } = require('./economics-dashboard');
+const { buildPointEquipmentEconomics } = require('./point-equipment');
 const {
   calculateUnitEconomics,
   getUnitEconomicsSettings,
@@ -43,6 +44,23 @@ function registerEconomicsRoutes(router) {
       ...settings,
       results: calculateUnitEconomics(settings.assumptions),
     });
+  });
+
+  // Planning comparison of every point; no monetary ledger mutation.
+  // Only super-administrators may view internal launch costs.
+  router.get('/api/economics/point-launch', (req,res,ctx)=>{
+    if(!requireSuperAdmin(req,res,ctx))return;
+    const settings=getUnitEconomicsSettings();
+    const model=calculateUnitEconomics(settings.assumptions);
+    const orders=db.prepare(`
+      SELECT point_id,
+        COALESCE(SUM(CASE WHEN refund_status='refunded' AND refunded_amount IS NULL
+          THEN 0 ELSE MAX(0,total-COALESCE(refunded_amount,0)) END),0) AS net_revenue,
+        SUM(CASE WHEN refund_status='refunded' AND refunded_amount IS NULL THEN 0
+          WHEN MAX(0,total-COALESCE(refunded_amount,0))>0 THEN 1 ELSE 0 END) AS net_orders
+      FROM orders WHERE status='paid' GROUP BY point_id
+    `).all();
+    sendJson(res,200,buildPointEquipmentEconomics(db,settings.assumptions,model,orders));
   });
 
   router.put('/api/economics/unit-model', (req, res, ctx) => {

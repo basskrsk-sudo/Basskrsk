@@ -89,6 +89,42 @@
         ? '<h3 class="founder-subhead">Точки без продаж</h3>' +
           net.silent_points.slice(0,5).map(function(p){return row('⚠️ '+p.name,'0 ₽','Нет продаж за выбранный период');}).join('')
         : ''));
+    // Founder-only separate point economics. Public/groomer/salon owner
+    // dashboards never receive this internal investment and cost breakdown.
+    var pe=data.point_economics||{}, pointRows=pe.points||[], pointSummary=pe.summary||{};
+    var equipmentStats='<div class="work-stats">'+
+      card('Точек в модели',n(pointSummary.total_points),'Все точки, включая без продаж')+
+      card('Оснащение подтверждено',n(pointSummary.configured),'Без учёта старых неизвестных')+
+      card('Не указан тип',n(pointSummary.unknown),'Требуется уточнение в админке')+
+      card('Вложения в оборудование',rub(pointSummary.equipment_cost),'Сумма подтверждённых типов')+
+      card('Оплаченная выручка',rub(pointSummary.period_revenue),'За выбранный период')+
+      card('Модельный вклад',rub(pointSummary.estimated_period_contribution),'Не бухгалтерская прибыль')+
+      '</div>';
+    var equipmentTable='<label class="work-note" for="founderPointSearch">Поиск точки</label>'+
+      '<input type="search" id="founderPointSearch" placeholder="Название салона" '+
+      'style="width:100%;max-width:400px;padding:.65rem;border-radius:8px;border:1px solid #CFD9D3;margin:.45rem 0 .8rem;">'+
+      '<div style="overflow-x:auto;max-height:600px;overflow-y:auto;"><table style="width:100%;min-width:730px;border-collapse:collapse;font-size:.78rem;">'+
+      '<thead style="position:sticky;top:0;background:#fff;"><tr>'+
+      '<th style="text-align:left;padding:.55rem;">Точка</th><th style="text-align:left;padding:.55rem;">Оборудование</th>'+
+      '<th style="text-align:right;padding:.55rem;">Запуск с бонусом</th>'+
+      '<th style="text-align:right;padding:.55rem;">Выручка</th><th style="text-align:right;padding:.55rem;">Вклад, модель</th>'+
+      '<th style="text-align:right;padding:.55rem;">Окупаемость</th></tr></thead><tbody>'+
+      pointRows.map(function(item){
+        var cost=item.estimated_investment==null?'—':rub(item.estimated_investment);
+        var label=item.label||'Не указано';
+        var payback=item.payback_months_at_current_pace==null?'—':
+          Number(item.payback_months_at_current_pace).toLocaleString('ru-RU')+' мес.';
+        return '<tr data-founder-econ-row data-point-search="'+clean((item.point_name||'').toLowerCase())+'">'+
+          '<td style="padding:.55rem;border-top:1px solid #e1e9e4;"><b>'+clean(item.point_name)+'</b></td>'+
+          '<td style="padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(label)+(item.type==='shelf'?' · '+rub(item.cost):'')+'</td>'+
+          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(cost)+'</td>'+
+          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(rub(item.period_revenue))+'</td>'+
+          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(rub(item.estimated_period_contribution))+'</td>'+
+          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(payback)+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+    html += section('🏪 Экономика каждой точки',
+      equipmentStats+equipmentTable+callout(pe.assumption||'')+callout(pe.profit_disclaimer||''),
+      'Выручка за выбранный период, оборудование при запуске и модельная окупаемость. Доступно только собственникам ХвостМаркета.');
     var gates=(strategy.scale_gates||[]);
     var readiness=strategy.scale_decision;
     html += section('🎯 Стратегия: 1000 точек',
@@ -204,6 +240,13 @@
     return html;
   }
   if (root) {
+    root.addEventListener('input',function(event){
+      if(!event.target||event.target.id!=='founderPointSearch')return;
+      var key=String(event.target.value||'').trim().toLocaleLowerCase('ru-RU');
+      root.querySelectorAll('[data-founder-econ-row]').forEach(function(tr){
+        tr.style.display=(tr.dataset.pointSearch||'').toLocaleLowerCase('ru-RU').includes(key)?'':'none';
+      });
+    });
     root.addEventListener('change',async function(event){
       var input=event.target;
       if(!input||!input.hasAttribute||!input.hasAttribute('data-founder-expense-upload'))return;

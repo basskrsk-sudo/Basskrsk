@@ -67,6 +67,7 @@ const { registerMiniAppManagerMessageRoutes } = require('./miniapp-manager-messa
 const { registerOperationsRoutes } = require('./routes-operations');
 const { registerSiteHealthRoutes, startHealthWatcher } = require('./site-health');
 const { registerPointLaunchRoutes } = require('./routes-point-launch');
+const { registerPointEquipmentRoutes } = require('./routes-point-equipment');
 const { registerPartnerClubRoutes } = require('./routes-partner-club');
 
 require('./seed-bootstrap').runVersionedSeed(); // повторно применяем только после изменения seed.js
@@ -155,6 +156,7 @@ registerMiniAppManagerMessageRoutes(router);
 registerOperationsRoutes(router);
 registerSiteHealthRoutes(router);
 registerPointLaunchRoutes(router);
+registerPointEquipmentRoutes(router);
 registerPartnerClubRoutes(router);
 
 const staticCache = createStaticCache(PUBLIC_DIR);
