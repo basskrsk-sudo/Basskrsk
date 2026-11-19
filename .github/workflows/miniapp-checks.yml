@@ -310,6 +310,7 @@ on:
       - server/stock-movement-batch.test.js
       - server/routes-stock-movements.js
       - server/site-health.test.js
+      - server/sqlite-idle-bootstrap.test.js
       - server/single-flight-job.js
       - server/single-flight-job.test.js
       - server/static-cache.js
@@ -420,6 +421,7 @@ jobs:
           node --check server/stock-movement-batch.test.js
           node --check server/routes-stock-movements.js
           node --check server/site-health.test.js
+          node --check server/sqlite-idle-bootstrap.test.js
           node --check server/single-flight-job.js
           node --check server/single-flight-job.test.js
           node --check server/static-cache.js
@@ -667,6 +669,8 @@ jobs:
         run: node --test server/admin-sales-summary.test.js
       - name: Verify only persistent Amvera storage holds live SQLite data
         run: node --test server/repository-database-exclusion.test.js
+      - name: Verify no idle SQLite writes or redundant promo trigger rebuilding
+        run: node --test server/sqlite-idle-bootstrap.test.js
       - name: Verify startup catalog import is versioned and atomic
         run: node --test server/seed-bootstrap.test.js
       - name: Verify legacy task imports are skipped after migration
