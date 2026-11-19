@@ -239,7 +239,7 @@ test('persistent storage write probes back off for five minutes but detect failu
   const original=fs.promises.open;
   let probes=0;
   fs.promises.open=async function(file,...args){
-    if(String(file).includes('.hm-health-'))probes++;
+    if(String(file).startsWith(dir+path.sep) && String(file).includes('.hm-health-'))probes++;
     return original.call(this,file,...args);
   };
   try {
