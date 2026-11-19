@@ -12,13 +12,17 @@ const projectRoot=path.join(__dirname,'..');
 const databaseFile=path.join(directory,'taiga.db');
 function bootstrap(){
   const script=[
+    "const {DatabaseSync}=require('node:sqlite');",
+    "const actualPrepare=DatabaseSync.prototype.prepare;",
+    "let pragmaTableInfoCalls=0;",
+    "DatabaseSync.prototype.prepare=function(sql,...args){if(/^PRAGMA\\s+table_info\\(/i.test(String(sql)))pragmaTableInfoCalls++;return actualPrepare.call(this,sql,...args);};",
     "const db=require('./server/db');",
     "const version=db.prepare('PRAGMA schema_version').get().schema_version;",
     "const changes=db.prepare('SELECT total_changes() AS changes').get().changes;",
     "const mode=db.prepare('PRAGMA journal_mode').get().journal_mode;",
     "const names=['trg_partner_first_purchase_promo_insert','trg_point_first_purchase_promo_insert'];",
     "const triggers=names.map(name=>db.prepare(\"SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?\").get(name)?.sql||null);",
-    "console.log('BOOT_RESULT:'+JSON.stringify({version,changes,mode,triggers}));",
+    "console.log('BOOT_RESULT:'+JSON.stringify({version,changes,mode,triggers,pragmaTableInfoCalls}));",
     "db.close();",
   ].join('\n');
   const result=spawnSync(process.execPath,['-e',script],{
@@ -43,6 +47,11 @@ test('a second SQLite startup preserves schema and performs zero data changes',(
     'no repeated DROP/CREATE trigger and schema metadata writes');
   assert.equal(second.changes,0,'fully migrated idle database has no data writes');
   assert.equal(second.mode,'wal');
+  assert.ok(second.pragmaTableInfoCalls<=70,
+    'startup should read each table schema once (23 tables, not 151 PRAGMA queries): '+
+    second.pragmaTableInfoCalls);
+  assert.ok(first.pragmaTableInfoCalls<=70,
+    'new-database startup also uses bounded schema lookups');
 });
 
 test('a legacy promo trigger is repaired once; new referrers never get buyer promos',()=>{

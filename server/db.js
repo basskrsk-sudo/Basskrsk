@@ -854,11 +854,20 @@ CREATE TABLE IF NOT EXISTS bone_transactions (
 // CREATE TABLE IF NOT EXISTS не меняет уже существующую таблицу — если база
 // была создана раньше, чем добавили новую колонку, её нужно добавить отдельно
 // через ALTER TABLE, не теряя уже накопленные данные (реальные заказы и т.п.).
+// During a single startup, the same core tables are checked 151 times for
+// missing columns. Cache the initial PRAGMA once per table (23 tables). All
+// ensureColumn() calls below share the same connection and only ADD columns;
+// update this cache after each successful ALTER. Do not persist it across boots.
+const startupColumnCache = new Map();
 function ensureColumn(table, column, definition) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
-  const exists = cols.some((c) => c.name === column);
-  if (!exists) {
+  let columns = startupColumnCache.get(table);
+  if (!columns) {
+    columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+    startupColumnCache.set(table, columns);
+  }
+  if (!columns.has(column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    columns.add(column);
     console.log(`Миграция: добавлена колонка ${table}.${column}`);
   }
 }
