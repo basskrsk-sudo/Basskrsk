@@ -31,8 +31,9 @@ const SAMPLE_INTERVAL_MS = 60000;
 // Coalesce 5 one-minute samples into one SQLite write while the server is idle.
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 const RESTART_GAP_THRESHOLD_MS = HEARTBEAT_INTERVAL_MS + 3 * 60 * 1000;
-// /data readiness is critical and stays at 60 seconds; the /tmp comparison
-// is supplemental diagnostics, not a reason to write every minute.
+// SQLite is probed every minute; an idle healthy /data needs a real write
+// probe only once in five minutes. Errors and forced checks bypass the cache.
+const PERSISTENT_PROBE_INTERVAL_MS = 5 * 60 * 1000;
 const TEMP_PROBE_INTERVAL_MS = 15 * 60 * 1000;
 const TEMP_COMPARISON_FRESH_MS = 2 * 60 * 1000;
 // No new timers or persistent metric writes: a bounded 5-minute snapshot is
@@ -45,6 +46,8 @@ const WARNING_DISK_BYTES = 100 * 1024 * 1024;
 let currentHealth = null;
 let lastHealthAt = 0;
 let healthInFlight = null;
+let lastPersistentStorageProbe = null;
+let lastPersistentStorageProbeAt = 0;
 let sampleInFlight = false;
 let healthFileCounter = 0;
 let lastSample = null;
@@ -127,10 +130,13 @@ async function checkStorageWritable(directory = DATA_DIR) {
   }
   return { storage, durationMs: Math.round(performance.now() - started) };
 }
-async function healthProbe(force = false) {
+function shouldProbePersistentStorage(nowMs,lastAt,lastStatus) {
+  return !lastAt || nowMs < lastAt ||
+    nowMs - lastAt >= PERSISTENT_PROBE_INTERVAL_MS || lastStatus !== 'ok';
+}
+async function healthProbe(force = false, {reuseStorage = !force} = {}) {
   const now = Date.now();
   if (!force && currentHealth && now - lastHealthAt < HEALTH_CACHE_MS) return currentHealth;
-  // One shared probe for concurrent readiness requests and the watcher.
   if (healthInFlight) return healthInFlight;
   healthInFlight = (async () => {
     const started = performance.now();
@@ -139,13 +145,23 @@ async function healthProbe(force = false) {
     try { db.prepare('SELECT 1 AS ok').get(); }
     catch (_) { database = 'error'; }
     const sqliteMs = Math.round(performance.now() - sqliteStart);
-    const disk = await checkStorageWritable();
+    const cached = reuseStorage && !shouldProbePersistentStorage(
+      Date.now(),lastPersistentStorageProbeAt,lastPersistentStorageProbe?.storage) &&
+      database === 'ok' && lastPersistentStorageProbe.durationMs < 1500;
+    const disk = cached ? lastPersistentStorageProbe : await checkStorageWritable();
+    if (!cached) {
+      lastPersistentStorageProbe = disk;
+      lastPersistentStorageProbeAt = Date.now();
+    }
     const result = {
       status: database === 'ok' && disk.storage === 'ok' ? 'ok' : 'degraded',
       checks: { database, storage: disk.storage },
       probe_ms: Math.round(performance.now() - started),
       probe_sqlite_ms: sqliteMs,
-      probe_storage_ms: disk.durationMs,
+      // Cached timing is unknown: never represent a stale measurement as 0.
+      probe_storage_ms: cached ? null : disk.durationMs,
+      storage_probe_cached: cached,
+      storage_probe_age_ms: Math.max(0,Date.now() - lastPersistentStorageProbeAt),
     };
     currentHealth = result;
     lastHealthAt = Date.now();
@@ -154,6 +170,7 @@ async function healthProbe(force = false) {
   try { return await healthInFlight; }
   finally { healthInFlight = null; }
 }
+
 function recentEvents(limit = MAX_RECENT_EVENTS) {
   return db.prepare(
     'SELECT event_type,severity,detail,created_at FROM site_health_events ' +
@@ -214,6 +231,8 @@ function transition(type, bad, severity, detail) {
 // Two clean samples are required before declaring a recovery.
 function describeIoSpike(probe) {
   if (!probe) return 'Источник задержки ввода-вывода не установлен.';
+  if (probe.storage_write_ms == null)
+    return 'Нет свежей пробы записи в /data; используется предыдущий результат.';
   const data = Number(probe.storage_write_ms);
   // Missing or stale readings must NEVER become a fabricated 0ms /tmp probe.
   if(probe.temp_status==='stale' || probe.temp_status==='not_sampled' ||
@@ -283,7 +302,8 @@ async function sample() {
     // Sample /tmp only every 15 minutes when healthy, but immediately after
     // a delayed timer, stalled event-loop or slow/failing persistent disk.
     const [health, cpuThrottle] = await Promise.all([
-      healthProbe(true), sampleCpuThrottling(),
+      healthProbe(true, {reuseStorage: maxLoopDelayMs < 1500 &&
+        p99LoopDelayMs < 750 && delay < 1500}), sampleCpuThrottling(),
     ]);
     let temporary=lastTemporaryStorageProbe;
     if(shouldProbeTemporaryStorage(Date.now(),lastTemporaryStorageProbeAt,
@@ -300,6 +320,8 @@ async function sample() {
     lastSample.io_probe = {
       sqlite_ms: health.probe_sqlite_ms,
       storage_write_ms: health.probe_storage_ms,
+      storage_probe_cached: health.storage_probe_cached,
+      storage_probe_age_ms: health.storage_probe_age_ms,
       temp_write_ms: freshTemp ? temporary?.durationMs ?? null : null,
       temp_status: freshTemp ? (temporary?.storage || 'not_sampled') :
         (lastTemporaryStorageProbeAt ? 'stale' : 'not_sampled'),
@@ -350,7 +372,7 @@ async function sample() {
         ? 'CPU cgroup throttled '+cpuThrottle.throttled_periods_pct+'% периодов, '+
           cpuThrottle.throttled_ms+' мс. ' : '')+
       'Проверки: SQLite '+health.probe_sqlite_ms+' мс, /data '+
-      health.probe_storage_ms+' мс, /tmp '+
+      (health.probe_storage_ms==null?'нет свежей пробы':health.probe_storage_ms+' мс')+', /tmp '+
       (lastSample.io_probe.temp_write_ms==null?'нет свежих данных':
         lastSample.io_probe.temp_write_ms+' мс')+', statfs '+statMs+
       ' мс. '+
@@ -444,4 +466,5 @@ module.exports={registerSiteHealthRoutes,healthProbe,metrics,recentEvents,
   sample,startHealthWatcher,stopHealthWatcher,limitMemory,storageFreeBytes,
   appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,
   TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike,
-  shouldWriteHeartbeat,isRestartGap,HEARTBEAT_INTERVAL_MS,RESTART_GAP_THRESHOLD_MS};
+  shouldWriteHeartbeat,isRestartGap,HEARTBEAT_INTERVAL_MS,RESTART_GAP_THRESHOLD_MS,
+  shouldProbePersistentStorage,PERSISTENT_PROBE_INTERVAL_MS};

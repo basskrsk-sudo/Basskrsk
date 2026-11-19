@@ -858,6 +858,23 @@ CREATE TABLE IF NOT EXISTS bone_transactions (
 // missing columns. Cache the initial PRAGMA once per table (23 tables). All
 // ensureColumn() calls below share the same connection and only ADD columns;
 // update this cache after each successful ALTER. Do not persist it across boots.
+// A completed data repair is marked in the SAME SQLite transaction as its
+// changes. On crashes it rolls back and safely retries on the next startup.
+function runStartupBackfillOnce(key, repair) {
+  const exists = db.prepare('SELECT 1 FROM site_settings WHERE key=?');
+  if (exists.get(key)) return false;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (exists.get(key)) { db.exec('COMMIT'); return false; }
+    repair();
+    db.prepare("INSERT INTO site_settings(key,value) VALUES(?,'1')").run(key);
+    db.exec('COMMIT');
+    return true;
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch (_) {}
+    throw error;
+  }
+}
 const startupColumnCache = new Map();
 function ensureColumn(table, column, definition) {
   let columns = startupColumnCache.get(table);
@@ -954,7 +971,9 @@ ensureColumn('manager_points', 'point_id', 'TEXT REFERENCES points(id)');
 ensureColumn('manager_points', 'commission_rate', 'REAL NOT NULL DEFAULT 0.07');
 // Раньше было два тарифа (3% без сопровождения, 5% с полным сопровождением) —
 // оставляем только 5% с полным сопровождением, поднимаем старые точки на 3%.
-db.exec("UPDATE manager_points SET commission_rate = 0.05 WHERE commission_rate = 0.03");
+runStartupBackfillOnce('manager_legacy_3pct_to_5pct_v1', () => {
+  db.exec("UPDATE manager_points SET commission_rate = 0.05 WHERE commission_rate = 0.03");
+});
 
 // Переход на ступенчатое вознаграждение менеджеров: первые 5 привлечённых
 // точек каждого менеджера — 10% навсегда, точки начиная с 6-й — 7%.
@@ -1118,11 +1137,13 @@ ensureColumn('orders', 'partner_id', 'INTEGER');
 ensureColumn('orders', 'partner_name', 'TEXT');
 // Для уже существующих заказов сохраняем текущее имя связанного грумера.
 // В дальнейшем заказ использует снимок имени и не зависит от изменений профиля.
-db.exec(`
-  UPDATE orders
-  SET partner_name = (SELECT full_name FROM partners WHERE partners.id = orders.partner_id)
-  WHERE partner_name IS NULL AND partner_id IS NOT NULL
-`);
+runStartupBackfillOnce('orders_legacy_partner_name_v1', () => {
+  db.exec(`
+    UPDATE orders
+    SET partner_name = (SELECT full_name FROM partners WHERE partners.id = orders.partner_id)
+    WHERE partner_name IS NULL AND partner_id IS NOT NULL
+  `);
+});
 ensureColumn('orders', 'fulfillment_type', "TEXT NOT NULL DEFAULT 'pickup'");
 ensureColumn('order_items', 'variant_id', 'INTEGER REFERENCES product_variants(id)');
 ensureColumn('orders', 'delivery_address', 'TEXT');
@@ -1489,29 +1510,29 @@ db.exec('DROP TABLE IF EXISTS game_scores');
 // ВАЖНО: ALTER TABLE ADD COLUMN с DEFAULT (datetime('now')) падает в SQLite —
 // допустимы только константные дефолты, поэтому здесь NULL, а не функция.
 ensureColumn('orders', 'created_at', 'TEXT');
-db.exec("UPDATE orders SET created_at = datetime('now') WHERE created_at IS NULL");
-(function backfillLastOrderAt() {
-  const pendingCount = db.prepare('SELECT COUNT(*) AS c FROM customers WHERE last_order_at IS NULL').get().c;
-  if (pendingCount === 0) return;
-
+runStartupBackfillOnce('orders_customers_last_order_legacy_v1', () => {
+  // Only legacy rows can have missing created_at; new orders default to now.
+  db.exec("UPDATE orders SET created_at = datetime('now') WHERE created_at IS NULL");
+  const missing = db.prepare('SELECT 1 FROM customers WHERE last_order_at IS NULL LIMIT 1').get();
+  if (!missing) return;
   const orders = db.prepare("SELECT customer_phone, created_at FROM orders WHERE status != 'pending'").all();
   const lastByPhone = new Map();
-  for (const o of orders) {
-    const digits = String(o.customer_phone || '').replace(/\D/g, '');
+  for (const order of orders) {
+    const digits = String(order.customer_phone || '').replace(/\D/g, '');
     if (!digits) continue;
-    const prev = lastByPhone.get(digits);
-    if (!prev || o.created_at > prev) lastByPhone.set(digits, o.created_at);
+    const previous = lastByPhone.get(digits);
+    if (!previous || order.created_at > previous) lastByPhone.set(digits,order.created_at);
   }
-
-  const customers = db.prepare('SELECT id, phone FROM customers WHERE last_order_at IS NULL').all();
-  const updateStmt = db.prepare('UPDATE customers SET last_order_at = ? WHERE id = ?');
-  let updated = 0;
-  for (const c of customers) {
-    const last = lastByPhone.get(c.phone);
-    if (last) { updateStmt.run(last, c.id); updated++; }
+  const customers = db.prepare('SELECT id,phone FROM customers WHERE last_order_at IS NULL').all();
+  const update = db.prepare('UPDATE customers SET last_order_at=? WHERE id=?');
+  let updated=0;
+  for (const customer of customers) {
+    const digits=String(customer.phone||'').replace(/\D/g,'');
+    const last=lastByPhone.get(digits);
+    if(last) {update.run(last,customer.id);updated++;}
   }
-  if (updated > 0) console.log(`Миграция: восстановлена дата последнего заказа для ${updated} клиентов (для win-back)`);
-})();
+  if(updated) console.log('[startup] Legacy customer dates restored: '+updated);
+});
 
 // Владелец салона получает фиксированную комиссию 5% с выручки своей точки —
 // отдельная, дополнительная выплата поверх комиссий грумера и менеджера

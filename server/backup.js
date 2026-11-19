@@ -20,6 +20,9 @@ const BACKUP_EMAIL = process.env.BACKUP_EMAIL || process.env.BUSINESS_COPY_EMAIL
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // раз в сутки
 const BACKUP_START_DELAY_MS = 2 * 60 * 1000;
 const BACKUP_RETRY_MS = 60 * 60 * 1000;
+// After the initial safety snapshot, target 03:00 Krasnoyarsk (20:00 UTC).
+const BACKUP_NIGHT_UTC_HOUR = 20;
+const BACKUP_MIN_SUCCESS_GAP_MS = 20 * 60 * 60 * 1000;
 
 // The single successful-send timestamp lives in persistent SQLite /data.
 // A deploy or crash must not reset the daily SMTP/snapshot budget.
@@ -42,12 +45,28 @@ function markBackupSuccess() {
     VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET last_success_at=excluded.last_success_at`)
     .run(new Date().toISOString(), new Date().toISOString());
 }
+function nextNightBackupAt(earliestAt) {
+  const dayMs=24*60*60*1000;
+  const startOfDay=Math.floor(earliestAt/dayMs)*dayMs;
+  const candidate=startOfDay+BACKUP_NIGHT_UTC_HOUR*60*60*1000;
+  return candidate < earliestAt ? candidate+dayMs : candidate;
+}
 function nextBackupDelay(state = {}, nowMs = Date.now()) {
-  const sentAt = Date.parse(state.last_success_at || '');
-  const attemptedAt = Date.parse(state.last_attempt_at || '');
-  const successWait = Number.isFinite(sentAt) ? sentAt + BACKUP_INTERVAL_MS - nowMs : 0;
-  const retryWait = Number.isFinite(attemptedAt) ? attemptedAt + BACKUP_RETRY_MS - nowMs : 0;
-  return Math.max(BACKUP_START_DELAY_MS, successWait, retryWait);
+  const sentAt=Date.parse(state.last_success_at||'');
+  const attemptedAt=Date.parse(state.last_attempt_at||'');
+  // New installations still get their initial safety copy immediately.
+  // If a later copy fails, retry hourly rather than waiting another day.
+  if (!Number.isFinite(sentAt) ||
+      (Number.isFinite(attemptedAt) && attemptedAt > sentAt)) {
+    const retryWait=Number.isFinite(attemptedAt)
+      ?attemptedAt+BACKUP_RETRY_MS-nowMs : 0;
+    return Math.max(BACKUP_START_DELAY_MS,retryWait);
+  }
+  const allowedAt=Math.max(sentAt+BACKUP_MIN_SUCCESS_GAP_MS,
+    Number.isFinite(attemptedAt)?attemptedAt+BACKUP_RETRY_MS:0);
+  const nightlyAt=nextNightBackupAt(allowedAt);
+  // If an instance missed the night window during restart, catch up once.
+  return Math.max(BACKUP_START_DELAY_MS,nightlyAt-nowMs);
 }
 
 let backupInFlight = null;
@@ -301,4 +320,5 @@ module.exports = {
   registerBackupRoutes,
   createBackupScheduler, nextBackupDelay, BACKUP_INTERVAL_MS,
   BACKUP_START_DELAY_MS, BACKUP_RETRY_MS,
+  BACKUP_NIGHT_UTC_HOUR, BACKUP_MIN_SUCCESS_GAP_MS, nextNightBackupAt,
 };
