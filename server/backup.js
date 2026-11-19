@@ -51,6 +51,22 @@ function nextBackupDelay(state = {}, nowMs = Date.now()) {
 }
 
 let backupInFlight = null;
+// Timings only. Dates of attempts and successful backups stay in SQLite.
+let backupDiagnostics = {phase:'idle',started_at:null,finished_at:null,
+  result:null,duration_ms:null,snapshot_ms:null,email_ms:null,size_kb:null};
+function getBackupRuntimeStatus(includeSchedule=true) {
+  let schedule={};
+  if(includeSchedule) {
+    try{schedule=backupScheduleState();}catch(_){}
+  }
+  return {configured:Boolean(BACKUP_EMAIL),running:backupDiagnostics.phase!=='idle',
+    ...backupDiagnostics,
+    last_attempt_at:schedule.last_attempt_at||null,
+    last_success_at:schedule.last_success_at||null,
+    next_due_at:includeSchedule&&BACKUP_EMAIL
+      ?new Date(Date.now()+nextBackupDelay(schedule)).toISOString():null,
+  };
+}
 async function performDatabaseBackup() {
   if (!BACKUP_EMAIL) {
     console.warn('Резервное копирование пропущено: не задан BACKUP_EMAIL или BUSINESS_COPY_EMAIL');
@@ -60,6 +76,9 @@ async function performDatabaseBackup() {
   let workspace;
   let tempPath;
   const startedAt = Date.now();
+  let successful=false;
+  backupDiagnostics={phase:'preparing',started_at:new Date(startedAt).toISOString(),
+    finished_at:null,result:null,duration_ms:null,snapshot_ms:null,email_ms:null,size_kb:null};
   try {
     workspace = await createTemporaryBackupWorkspace();
     tempPath = workspace.path;
@@ -68,13 +87,19 @@ async function performDatabaseBackup() {
     catch (error) { console.warn('[backup] Не удалось сохранить время попытки:', error.code || 'unknown'); }
     // VACUUM INTO — создаёт полноценный, консистентный снимок базы отдельным
     // файлом прямо средствами SQLite, безопасно при параллельной работе сервера.
+    backupDiagnostics.phase='snapshot';
+    const snapshotStart=Date.now();
     await createDatabaseSnapshot(db.DB_PATH, tempPath);
+    backupDiagnostics.snapshot_ms=Date.now()-snapshotStart;
     // Keep the SQLite file on disk and stream Base64 chunks to SMTP. The
     // snapshot is not copied into the Node.js heap on a small Amvera plan.
     const stat = await fs.promises.stat(tempPath);
     const sizeKb = Math.round(stat.size / 1024);
+    backupDiagnostics.size_kb=sizeKb;
 
     const today = new Date().toLocaleDateString('ru-RU');
+    backupDiagnostics.phase='sending';
+    const emailStart=Date.now();
     const result = await sendEmail({
       to: BACKUP_EMAIL,
       subject: 'Резервная копия базы Тайга — ' + today,
@@ -82,6 +107,8 @@ async function performDatabaseBackup() {
             'Это автоматическое письмо, отвечать на него не нужно. Файл можно открыть любой программой для просмотра SQLite (например, DB Browser for SQLite).',
       attachments: [{ filename: 'taiga-backup-' + today.replace(/\./g, '-') + '.db', filePath: tempPath, contentType: 'application/x-sqlite3' }],
     });
+    backupDiagnostics.email_ms=Date.now()-emailStart;
+    successful=!!result.ok;
 
     if (result.ok) {
       try { markBackupSuccess(); }
@@ -96,6 +123,10 @@ async function performDatabaseBackup() {
     return { ok: false, error: e.message };
   } finally {
     if (workspace) await workspace.cleanup().catch(() => {});
+    backupDiagnostics.phase='idle';
+    backupDiagnostics.finished_at=new Date().toISOString();
+    backupDiagnostics.duration_ms=Date.now()-startedAt;
+    backupDiagnostics.result=successful?'success':'failed';
     console.log('[backup] Snapshot attempt finished in ' + (Date.now() - startedAt) + ' ms');
   }
 }
@@ -159,6 +190,7 @@ function createBackupScheduler({
   };
 }
 const scheduledBackup = createBackupScheduler();
+function stopBackups(){scheduledBackup.stop();}
 function scheduleBackups() {
   if (!BACKUP_EMAIL) {
     console.warn('Автоматическое резервное копирование выключено — не задан BACKUP_EMAIL/BUSINESS_COPY_EMAIL');
@@ -193,7 +225,8 @@ function registerBackupRoutes(router) {
     try {
       workspace = await createTemporaryBackupWorkspace();
       const tempPath = workspace.path;
-      await createDatabaseSnapshot(db.DB_PATH, tempPath);
+      await trackAsync('database_snapshot_download', () =>
+        createDatabaseSnapshot(db.DB_PATH, tempPath));
       const stat = await fs.promises.stat(tempPath);
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
@@ -264,7 +297,8 @@ function registerBackupRoutes(router) {
 }
 
 module.exports = {
-  sendDatabaseBackup, scheduleBackups, registerBackupRoutes,
+  sendDatabaseBackup, scheduleBackups, stopBackups, getBackupRuntimeStatus,
+  registerBackupRoutes,
   createBackupScheduler, nextBackupDelay, BACKUP_INTERVAL_MS,
   BACKUP_START_DELAY_MS, BACKUP_RETRY_MS,
 };

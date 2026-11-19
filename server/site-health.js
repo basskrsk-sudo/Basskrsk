@@ -14,6 +14,13 @@ const { sendTelegram } = require('./telegram');
 const { snapshotApiPerformance } = require('./api-performance');
 const { sampleCpuThrottling, snapshotOperations, snapshotSlowSyncOperations } = require('./runtime-diagnostics');
 const { eventLoopStallProfiler } = require('./event-loop-stall-profiler');
+const { createHealthHistory } = require('./health-history');
+// Backup module is loaded lazily to avoid initializing its scheduler during
+// lightweight public readiness checks. Sampling never reads its SQLite state.
+function backupStatus(includeSchedule=false){
+  try{return require('./backup').getBackupRuntimeStatus(includeSchedule);}
+  catch(_){return null;}
+}
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const BOOTED_AT = Date.now();
@@ -22,6 +29,10 @@ const SAMPLE_INTERVAL_MS = 60000;
 // /data readiness is critical and stays at 60 seconds; the /tmp comparison
 // is supplemental diagnostics, not a reason to write every minute.
 const TEMP_PROBE_INTERVAL_MS = 15 * 60 * 1000;
+const TEMP_COMPARISON_FRESH_MS = 2 * 60 * 1000;
+// No new timers or persistent metric writes: a bounded 5-minute snapshot is
+// added to the existing one-minute health sample, with an extra row on spikes.
+const healthHistory=createHealthHistory({maxSamples:288,minSpacingMs:5*60*1000});
 const ALERT_COOLDOWN_MS = 20 * 60 * 1000;
 const MAX_RECENT_EVENTS = 35;
 const WARNING_RSS_RATIO = 0.85;
@@ -161,6 +172,8 @@ async function metrics() {
     cpu_percent:lastSample ? lastSample.cpu_percent : null,
     sampled_at:lastSample ? lastSample.time : null,
     io_probe:lastSample ? lastSample.io_probe : null,
+    health_history:healthHistory.snapshot(),
+    backup:backupStatus(true),
     api_performance:snapshotApiPerformance(),
     cpu_throttle:lastSample ? lastSample.cpu_throttle : null,
     slow_operations:snapshotOperations(),
@@ -196,6 +209,10 @@ function transition(type, bad, severity, detail) {
 function describeIoSpike(probe) {
   if (!probe) return 'Источник задержки ввода-вывода не установлен.';
   const data = Number(probe.storage_write_ms);
+  // Missing or stale readings must NEVER become a fabricated 0ms /tmp probe.
+  if(probe.temp_status==='stale' || probe.temp_status==='not_sampled' ||
+      probe.temp_write_ms==null)
+    return 'Нет свежего измерения /tmp; сравнение со временем /data сейчас недоступно.';
   const tmp = Number(probe.temp_write_ms);
   if (!Number.isFinite(data) || !Number.isFinite(tmp))
     return 'Недостаточно данных для сравнения /data и /tmp.';
@@ -210,10 +227,14 @@ function describeIoSpike(probe) {
   return 'Файловые пробы быстрые; ищите синхронный код и длительные SQL-запросы.';
 }
 
+function isTemporaryProbeFresh(nowMs,lastAt){
+  return !!lastAt && nowMs>=lastAt && nowMs-lastAt<=TEMP_COMPARISON_FRESH_MS;
+}
 function shouldProbeTemporaryStorage(nowMs,lastAt,health,maxLoopDelayMs,p99LoopDelayMs,driftMs) {
   return !lastAt || nowMs-lastAt>=TEMP_PROBE_INTERVAL_MS ||
     health?.checks?.storage !== 'ok' ||
     Number(health?.probe_storage_ms)>=1500 ||
+    Number(health?.probe_sqlite_ms)>=1500 ||
     maxLoopDelayMs>1500 || p99LoopDelayMs>750 || driftMs>1500;
 }
 function nextLoopState(previous,maxMs,p99Ms) {
@@ -269,15 +290,32 @@ async function sample() {
     const statStarted = performance.now();
     const free = await storageFreeBytes();
     const statMs = Math.round(performance.now() - statStarted);
+    const freshTemp=isTemporaryProbeFresh(Date.now(),lastTemporaryStorageProbeAt);
     lastSample.io_probe = {
       sqlite_ms: health.probe_sqlite_ms,
       storage_write_ms: health.probe_storage_ms,
-      temp_write_ms: temporary?.durationMs ?? null,
-      temp_status: temporary?.storage || 'not_sampled',
+      temp_write_ms: freshTemp ? temporary?.durationMs ?? null : null,
+      temp_status: freshTemp ? (temporary?.storage || 'not_sampled') :
+        (lastTemporaryStorageProbeAt ? 'stale' : 'not_sampled'),
       temp_sampled_at: lastTemporaryStorageProbeAt ?
         new Date(lastTemporaryStorageProbeAt).toISOString() : null,
       storage_stat_ms: statMs,
     };
+    const currentBackup=backupStatus(false);
+    const criticalSample=health.status!=='ok'||maxLoopDelayMs>=1500||
+      p99LoopDelayMs>=750||cpuPercent>=90;
+    healthHistory.record({
+      rss_mb:rssMb,heap_used_mb:Math.round(memory.heapUsed/1048576),
+      cpu_percent:cpuPercent,event_loop_max_ms:maxLoopDelayMs,
+      event_loop_p99_ms:p99LoopDelayMs,sqlite_ms:health.probe_sqlite_ms,
+      storage_write_ms:health.probe_storage_ms,
+      temp_write_ms:lastSample.io_probe.temp_write_ms,
+      temp_status:lastSample.io_probe.temp_status,
+      cpu_throttle_pct:cpuThrottle.throttled_periods_pct ?? null,
+      backup_phase:currentBackup?.phase||'unknown',
+      backup_result:currentBackup?.result||null,
+      backup_duration_ms:currentBackup?.duration_ms??null,
+    },now,criticalSample);
     const cap = limitMemory();
     // A one-minute histogram maximum is not enough to identify a culprit.
     // Include CPU consumed during the actual pause, and any known synchronous
@@ -306,7 +344,9 @@ async function sample() {
         ? 'CPU cgroup throttled '+cpuThrottle.throttled_periods_pct+'% периодов, '+
           cpuThrottle.throttled_ms+' мс. ' : '')+
       'Проверки: SQLite '+health.probe_sqlite_ms+' мс, /data '+
-      health.probe_storage_ms+' мс, /tmp '+temporary.durationMs+' мс, statfs '+statMs+
+      health.probe_storage_ms+' мс, /tmp '+
+      (lastSample.io_probe.temp_write_ms==null?'нет свежих данных':
+        lastSample.io_probe.temp_write_ms+' мс')+', statfs '+statMs+
       ' мс. '+
       (recentStall
         ? 'Снимок паузы: '+recentStall.at+', лаг '+recentStall.late_by_ms+
@@ -383,4 +423,5 @@ function registerSiteHealthRoutes(router) {
 }
 module.exports={registerSiteHealthRoutes,healthProbe,metrics,recentEvents,
   sample,startHealthWatcher,stopHealthWatcher,limitMemory,storageFreeBytes,
-  appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,describeIoSpike};
+  appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,
+  TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike};

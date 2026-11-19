@@ -58,6 +58,11 @@ test('backup scheduler shares one in-flight operation and no longer buffers DB i
   assert.doesNotMatch(code,/fs\.writeFileSync\(tempPath/);
   assert.match(code,/createTemporaryBackupWorkspace\(\)/,
     'scheduled and downloadable snapshots must use ephemeral disk');
+  assert.match(code,/getBackupRuntimeStatus/,'backup diagnostics are on demand');
+  assert.match(code,/database_snapshot_download/,'manual snapshots are profiled');
+  const server=fs.readFileSync(path.join(__dirname,'server.js'),'utf8');
+  assert.match(server,/require\('\.\/backup'\)\.stopBackups\(\)/,
+    'backup scheduler stops during graceful shutdown');
   assert.doesNotMatch(code,/path\.join\(path\.dirname\(db\.DB_PATH\), 'backup-tmp-/,
     'do not put temporary copies back onto the slow persistent volume');
 });

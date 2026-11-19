@@ -4579,6 +4579,28 @@ async function renderSystemHealth() {
         ? (info.cpu_throttle.throttled_periods_pct==null?'Сбор начат':n(info.cpu_throttle.throttled_periods_pct)+'% периодов')
         : 'Нет данных','cgroup: '+(info.cpu_throttle?.throttled_ms==null?'—':n(info.cpu_throttle.throttled_ms)+' мс задержки')],
     ];
+    const backup=info.backup||{};
+    const backupStatus=backup.running?'Выполняется · '+(backup.phase||''):
+      backup.result==='success'?'✅ Успешно':
+      backup.result==='failed'?'⚠️ Последняя попытка не удалась':
+      backup.configured?'Ожидает запуска':'Не настроен';
+    values.push(
+      ['Резервная копия',backupStatus,'Последняя успешная: '+(backup.last_success_at||'нет данных')],
+      ['Снимок SQLite',backup.snapshot_ms==null?'—':n(backup.snapshot_ms)+' мс',
+        'Отправка: '+(backup.email_ms==null?'—':n(backup.email_ms)+' мс')],
+      ['Последний бэкап',backup.duration_ms==null?'—':n(backup.duration_ms)+' мс',
+        'Объём: '+(backup.size_kb==null?'—':n(backup.size_kb)+' КБ')],
+    );
+    const historyRows=(info.health_history||[]).slice().reverse().map(sample=>
+      '<tr><td>'+safe(sample.at||'—')+'</td>'+
+      '<td>'+n(sample.rss_mb)+'</td>'+
+      '<td>'+n(sample.cpu_percent)+'</td>'+
+      '<td>'+n(sample.event_loop_max_ms)+'</td>'+
+      '<td>'+n(sample.sqlite_ms)+'</td>'+
+      '<td>'+n(sample.storage_write_ms)+'</td>'+
+      '<td>'+(sample.temp_write_ms==null?'—':n(sample.temp_write_ms))+'</td>'+
+      '<td>'+safe(sample.backup_phase||'—')+'</td></tr>'
+    ).join('');
     const grid=values.map(row=>'<div style="padding:12px;border:1px solid var(--border);border-radius:9px">'+
       '<small style="color:var(--muted)">'+safe(row[0])+'</small><strong style="display:block;margin:4px 0">'+
       safe(row[1])+'</strong><small>'+safe(row[2])+'</small></div>').join('');
@@ -4586,7 +4608,13 @@ async function renderSystemHealth() {
       '</td><td>'+safe(event.event_type)+'</td><td>'+safe(event.severity)+'</td><td>'+
       safe(event.detail)+'</td></tr>').join('');
     target.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:10px">'+
-      grid+'</div><h3 style="margin:18px 0 8px">Длительность фоновых задач и SQL</h3>'+ 
+      grid+'</div><h3 style="margin:18px 0 8px">История нагрузки (снимки раз в 5 минут, до 24 часов)</h3>'+
+      '<p style="font-size:.8rem;color:var(--muted)">История хранится только в памяти процесса и обнуляется после перезапуска. События сбоев фиксируются отдельно. Прочерк в /tmp означает отсутствие свежего измерения.</p>'+
+      '<div style="overflow-x:auto;max-height:320px;overflow-y:auto"><table class="admin-table"><thead><tr>'+
+      '<th>UTC</th><th>RAM, МБ</th><th>CPU, %</th><th>Пауза, мс</th>'+
+      '<th>SQLite, мс</th><th>/data, мс</th><th>/tmp, мс</th><th>Бэкап</th></tr></thead>'+
+      '<tbody>'+(historyRows||'<tr><td colspan="8">Наблюдения появятся через несколько минут</td></tr>')+
+      '</tbody></table></div><h3 style="margin:18px 0 8px">Длительность фоновых задач и SQL</h3>'+ 
       '<div style="overflow-x:auto"><table class="admin-table"><thead><tr><th>Операция</th><th>Запусков</th><th>Среднее</th><th>Максимум</th></tr></thead><tbody>'+ 
       ((info.slow_operations||[]).map(op=>'<tr><td>'+safe(op.name)+'</td><td>'+n(op.calls)+'</td><td>'+n(op.avg_ms)+' мс</td><td>'+n(op.max_ms)+' мс</td></tr>').join('')||
         '<tr><td colspan="4">Наблюдения появятся после запусков задач</td></tr>')+

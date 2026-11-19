@@ -19,6 +19,10 @@ test('admin Mini App retrieves health from authenticated route without adding it
   assert.match(html,/Event loop: максимум/);
   assert.match(html,/Отклонение таймера/);
   assert.match(html,/Ограничения CPU/);
+  assert.match(html,/История нагрузки \(снимки раз в 5 минут/);
+  assert.match(html,/info\.health_history/);
+  assert.match(html,/backup\.snapshot_ms/);
+  assert.match(html,/backup\.last_success_at/);
   assert.match(html,/Длительность фоновых задач и SQL/);
   assert.match(ui,/Ограничения CPU/);
   assert.match(ui,/cpu_percent/);
