@@ -223,6 +223,7 @@ on:
       - public/max-admin.js
       - public/admin-navigation.js
       - server/admin-essential-metrics-ui.test.js
+      - server/salon-card-scroll-ui.test.js
       - public/admin-point.js
       - public/admin-report-center.js
       - server/routes-admin-point-workspace.js
@@ -520,6 +521,7 @@ jobs:
           node --check public/max-admin.js
           node --check public/admin-navigation.js
           node --check server/admin-essential-metrics-ui.test.js
+          node --check server/salon-card-scroll-ui.test.js
           node --check public/admin-point.js
           node --check public/admin-report-center.js
           node --check server/routes-admin-point-workspace.js
@@ -644,7 +646,7 @@ jobs:
       - name: Verify exact economics totals after streaming paid orders
         run: node --test server/economics-dashboard-performance.test.js
       - name: Verify simplified admin business metrics
-        run: node --test server/admin-essential-metrics-ui.test.js
+        run: node --test server/admin-essential-metrics-ui.test.js server/salon-card-scroll-ui.test.js
       - name: Verify restart-safe daily SQLite backup scheduling
         run: node --test server/backup-schedule.test.js
       - name: Verify indexed groomer phone checks for Gold loyalty

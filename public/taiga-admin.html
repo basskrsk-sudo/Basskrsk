@@ -2933,7 +2933,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="max-admin.js?v=3"></script>
 <script src="partner-network-map.js?v=10"></script>
 <script src="admin-navigation.js?v=4"></script>
-<script src="admin-point.js?v=1"></script>
+<script src="admin-point.js?v=2"></script>
 <script src="/admin-point-equipment.js?v=20261119"></script>
 <script src="admin-report-center.js?v=1"></script>
 <script src="/admin-referral-control.js"></script>
@@ -5422,7 +5422,11 @@ async function openSalonPageModal(pointId, pointName) {
     }
   } catch (e) { /* форма просто останется пустой — не критично */ }
 
-  document.getElementById('salon-page-modal').style.display = 'flex';
+  const modal = document.getElementById('salon-page-modal');
+  modal.style.display = 'flex';
+  // The editor is reused for different salons. Do not reopen at the scroll
+  // position left by the previously edited salon's photo gallery and fields.
+  if (modal.firstElementChild) modal.firstElementChild.scrollTop = 0;
 }
 
 function closeSalonPageModal() {
