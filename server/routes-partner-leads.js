@@ -203,7 +203,7 @@ function registerPartnerLeadRoutes(router, options = {}) {
       (cityRow ? '<b>Город:</b> ' + escapeHtml(cityRow.name) + '\n' : '') +
       (b.contact_name ? '<b>Контакт:</b> ' + escapeHtml(b.contact_name.trim()) + '\n' : '') +
       '<b>Телефон:</b> ' + escapeHtml(phone) +
-      (referrer ? '\n🤝 <b>Реферальный пригласивший:</b> '+escapeHtml(referrer.full_name)+' ('+escapeHtml(referrer.code)+') · 1 000 ₽ при запуске новой точки' : '') +
+      (referrer ? '\n🤝 <b>Реферальный пригласивший:</b> '+escapeHtml(referrer.full_name)+' ('+escapeHtml(referrer.code)+') · бонус 1 000 ₽ '+(referrer.role==='partner'?'после 1 000 ₽ оплаченной выручки новой точки':'по условиям программы владельцев салонов') : '') +
       (b.message ? '\n<b>Сообщение:</b> ' + escapeHtml(b.message.trim()) : '')
     );
     sendJson(res, 201, { ok: true });

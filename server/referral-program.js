@@ -110,24 +110,27 @@ function referralSummary(role,recipientId) {
   const rows=db.prepare(
     'SELECT pr.point_id,pr.point_name,pr.amount,pr.recorded_at,pr.source,' +
     'mp.referred_groomer_id,mp.referred_owner_id,mp.referred_groomer_amount,mp.referred_owner_amount,' +
-    'COALESCE(mp.bonus_paid,0) AS bonus_accrued,mp.id AS manager_point_id,' +
+    'mp.id AS manager_point_id,' +
     'bp.id AS payout_id,bp.paid_at FROM point_referrals pr ' +
     'LEFT JOIN manager_points mp ON mp.id=(SELECT id FROM manager_points WHERE point_id=pr.point_id ORDER BY id LIMIT 1) ' +
     'LEFT JOIN referral_bonus_payouts bp ON bp.manager_point_id=mp.id AND bp.role=pr.role AND bp.recipient_id=pr.recipient_id ' +
     'WHERE pr.role=? AND pr.recipient_id=? ORDER BY pr.recorded_at DESC,pr.point_id'
   ).all(role,Number(recipientId)).map(row=>{
-    const eligible=row.bonus_accrued && (role==='owner' ?
+    const eligible=(role==='owner' ?
       Number(row.referred_owner_id)===Number(recipientId) && row.referred_owner_amount===AMOUNT :
       Number(row.referred_groomer_id)===Number(recipientId) && row.referred_groomer_amount===AMOUNT);
+    const held=role==='partner' && eligible && !row.payout_id
+      && require('./bonus-logic').computePointRevenueSoFar(row.point_id)<1000;
     return {
       point_id:row.point_id,point_name:row.point_name,amount:row.amount,
       recorded_at:row.recorded_at,source:row.source,
-      status:row.payout_id?'paid':eligible?'payable':'awaiting',
+      status:row.payout_id?'paid':eligible?(held?'on_hold':'payable'):'awaiting',
       ...(row.paid_at?{paid_at:row.paid_at}:{}),
     };
   });
   const sum=status=>rows.filter(r=>r.status===status).reduce((n,r)=>n+Number(r.amount||0),0);
-  return {count:rows.length,awaiting:sum('awaiting'),payable:sum('payable'),paid:sum('paid'),rows};
+  return {count:rows.length,awaiting:sum('awaiting'),payable:sum('payable'),
+    held:sum('on_hold'),paid:sum('paid'),rows};
 }
 function referralLeadOptions(cityId,managerId) {
   let query="SELECT id,salon_name,city_id,assigned_manager_id,referral_code FROM partner_leads " +

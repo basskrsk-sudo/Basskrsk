@@ -163,8 +163,11 @@ async function loadRecipientBonuses() {
     const data=await reportRequest('/api/payout-reports/bonuses?role='+role+'&recipient_id='+recipient);
     if (role!==payoutReportRole || recipient!==Number(document.getElementById('pr-recipient').value)) return;
     const pending=data.pending.map(b=>`<p>${reportEscape(b.point_name)} · ${Number(b.amount).toLocaleString('ru-RU')} ₽ · начислено, не выплачено ${role==='manager' ? '(фиксация в разделе менеджеров)' : `<button class="row-btn" onclick="markReferralBonusPaid(${Number(b.manager_point_id)},${Number(b.amount)})">Зафиксировать перевод</button>`}</p>`).join('');
+    const held=(data.held||[]).map(b=>'<p>'+reportEscape(b.point_name)+' · '+
+      Number(b.amount).toLocaleString('ru-RU')+' ₽ — временно недоступен к переводу ('+
+      reportEscape(b.reason||'после возврата выручка ниже порога')+')</p>').join('');
     const paid=data.paid.map(b=>`<p>${reportEscape(b.point_name)} · ${Number(b.amount).toLocaleString('ru-RU')} ₽ · ${reportEscape(b.paid_at)} <button class="row-btn" onclick="openPayoutReportForPayment('${role}',${Number(b.payout_id)},'${role==='manager'?'launch_bonus':'referral_bonus'}')">Отчёт по выплате</button></p>`).join('');
-    document.getElementById('pr-bonuses').innerHTML='<h3>Бонусы за привлечение точек</h3>'+ (pending||'<p>Невыплаченных начисленных бонусов нет.</p>')+paid+'<p style="font-size:.8rem">Фиксируйте только уже выполненный перевод. Эта кнопка не отправляет деньги или сообщения.</p>';
+    document.getElementById('pr-bonuses').innerHTML='<h3>Бонусы за привлечение точек</h3>'+ (pending||'<p>Готовых к выплате бонусов нет.</p>')+(held?'<h4>Ожидают восстановления выручки</h4>'+held:'')+paid+'<p style="font-size:.8rem">Фиксируйте только уже выполненный перевод. Эта кнопка не отправляет деньги или сообщения.</p>';
   } catch(error) {document.getElementById('pr-error').textContent=error.message;}
 }
 

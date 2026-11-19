@@ -2604,6 +2604,43 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
       <div id="partners-risk-banner" style="display:none;background:#FFF4E5;border:1px solid #F0DDB8;border-radius:8px;padding:.9rem 1.1rem;margin-bottom:1rem;font-size:.85rem;color:#7A4A00;line-height:1.6;"></div>
+      <div class="card" id="admin-referral-control" style="margin-bottom:1.1rem;">
+        <div class="card-title">🤝 Приведи партнёра — контроль бонусов</div>
+        <p style="font-size:.82rem;color:var(--muted);margin-bottom:.8rem;line-height:1.5;">
+          В карточке точки укажите пригласившего и приглашённого грумера. После 1 000 ₽ оплаченной выручки
+          точки (за вычетом возвратов) пригласившему автоматически начисляется разовый бонус 1 000 ₽.
+          Премия менеджеру за запуск рассчитывается отдельно.
+        </p>
+        <p id="referral-control-summary" style="font-size:.85rem;font-weight:600;color:var(--forest);margin-bottom:.75rem;"></p>
+        <p id="referral-control-error" role="alert" style="font-size:.8rem;color:var(--red-text);"></p>
+        <div style="overflow-x:auto;">
+          <table class="tbl" aria-label="Контроль акции Приведи партнёра">
+            <thead><tr><th>Новая точка</th><th>Кого пригласил</th><th>Кто пригласил</th><th>Оплаченная выручка</th><th>Состояние бонуса</th><th>Управление</th></tr></thead>
+            <tbody id="referral-control-body"></tbody>
+          </table>
+        </div>
+        <p style="font-size:.76rem;color:var(--muted);margin-top:.8rem;line-height:1.5;">
+          Начисление включается в общий расчёт к выплате грумеру. Фактический перевод подтверждается отдельно:
+          «Отчёты к договорам» → бонусы за привлечение точек. Повторная выплата не допускается.
+        </p>
+      </div>
+      <div id="referral-control-dialog" role="dialog" aria-modal="true" aria-labelledby="referral-modal-title"
+           style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.58);z-index:1200;align-items:center;justify-content:center;padding:1rem;">
+        <div style="background:#fff;border-radius:12px;padding:1.3rem;max-width:480px;width:100%;max-height:90vh;overflow:auto;">
+          <h3 id="referral-modal-title">Назначить пригласившего</h3>
+          <p id="referral-modal-point" style="font-weight:600;margin:.6rem 0;"></p>
+          <div class="admin-field"><label for="referral-inviter">Какой грумер пригласил</label>
+            <select id="referral-inviter" class="pm-select"></select></div>
+          <div class="admin-field"><label for="referral-invited">Кого он пригласил (грумер новой точки)</label>
+            <select id="referral-invited" class="pm-select"></select></div>
+          <p id="referral-modal-note" style="font-size:.78rem;color:var(--muted);line-height:1.5;margin:.6rem 0;"></p>
+          <p id="referral-modal-status" role="alert" style="font-size:.82rem;color:var(--red-text);margin:.6rem 0;"></p>
+          <div style="display:flex;gap:.6rem;justify-content:flex-end;flex-wrap:wrap;">
+            <button type="button" class="row-btn" id="referral-modal-cancel">Отмена</button>
+            <button type="button" class="row-btn" id="referral-modal-save" style="background:var(--forest);color:#fff;">Сохранить приглашение</button>
+          </div>
+        </div>
+      </div>
       <div id="partners-promo-list"></div>
       <div class="card">
         <div class="card-title">
@@ -2824,6 +2861,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="admin-navigation.js?v=3"></script>
 <script src="admin-point.js?v=1"></script>
 <script src="admin-report-center.js?v=1"></script>
+<script src="/admin-referral-control.js"></script>
     <script src="/week-over-week.js"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
@@ -6976,12 +7014,17 @@ async function renderPartners() {
   const responses = await Promise.all([
     authFetch('/api/partners?days=' + days),
     authFetch('/api/partner-payouts?limit=100'),
+    authFetch('/api/admin/referral-control'),
   ]);
   const data = await responses[0].json();
   const payoutData = await responses[1].json();
+  const referralData = responses[2].ok ? await responses[2].json() : null;
+  if (window.HvostAdminReferralControl) {
+    window.HvostAdminReferralControl.render(referralData);
+  }
   adminPartners = data.partners || [];
   document.getElementById('partners-count').textContent = adminPartners.length + ' шт.';
-  document.getElementById('partners-earnings-heading').textContent = 'К выплате';
+  document.getElementById('partners-earnings-heading').textContent = 'К выплате (комиссия + бонус)';
 
   const byId = {};
   adminPartners.forEach(function(p) { byId[p.id] = p; });
@@ -7023,6 +7066,8 @@ async function renderPartners() {
     const formatIcons = [p.display_stand && '🧺 Стойка', p.display_basket && '🧺 Корзинка', p.display_poster && '🖼️ Картинка']
       .filter(Boolean).join('<br>') || '<span style="color:var(--muted)">—</span>';
     const isRisky = p.active && p.commission_rate >= 0.18;
+    const pendingReferralBonus = Number(referralData?.bonus_by_partner?.[p.id] || 0);
+    const payableWithBonus = Number(p.current_earnings || 0) + pendingReferralBonus;
     return '<tr>' +
       '<td style="font-weight:500;">' + p.full_name + '<br><span style="font-size:.72rem;color:var(--muted);font-family:monospace;">' + p.partner_code + ' · ' + p.login + '</span></td>' +
       '<td><button type="button" class="row-btn" style="margin-left:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(p.first_purchase_promo_code || '') + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + (p.first_purchase_promo_code ? escapeOrderCell(p.first_purchase_promo_code) : '—') + '</button></td>' +
@@ -7031,7 +7076,8 @@ async function renderPartners() {
       '<td class="r" style="font-weight:600;' + (isRisky ? 'color:#7A4A00;' : '') + '">' + Math.round(p.commission_rate * 100) + '%' + (isRisky ? ' ⚠️' : '') + '</td>' +
       '<td style="font-size:.78rem;">' + formatIcons + '</td>' +
       '<td style="font-size:.8rem;">' + (referrer ? referrer.full_name + ' (' + referrer.partner_code + ')' : '—') + '</td>' +
-      '<td class="r" style="white-space:nowrap;"><strong style="color:var(--deep);">' + Number(p.current_earnings || 0).toLocaleString('ru-RU') + ' ₽</strong>' +
+      '<td class="r" style="white-space:nowrap;"><strong style="color:var(--deep);">' + payableWithBonus.toLocaleString('ru-RU') + ' ₽</strong>' +
+        (pendingReferralBonus ? '<br><span style="font-size:.7rem;color:var(--deep);">в т. ч. реферальный бонус ' + pendingReferralBonus.toLocaleString('ru-RU') + ' ₽</span>' : '') +
         '<br><span style="font-size:.7rem;color:var(--muted);">' + Number(p.unpaid_orders_count || 0) + ' невыпл. заказов</span>' +
         '<br><span style="font-size:.7rem;color:var(--muted);">за ' + days + ' дней начислено ' + Number(p.period_earnings || 0).toLocaleString('ru-RU') + ' ₽</span></td>' +
       '<td><span class="toggle-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '🟢 Активен' : '⏳ Ожидает') + '</span></td>' +
