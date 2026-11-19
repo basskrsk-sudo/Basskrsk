@@ -11,6 +11,7 @@ const db = require('./db');
 const {
   createBackupScheduler, nextBackupDelay, BACKUP_INTERVAL_MS,
   BACKUP_START_DELAY_MS, BACKUP_RETRY_MS,
+  BACKUP_NIGHT_UTC_HOUR, BACKUP_MIN_SUCCESS_GAP_MS,nextNightBackupAt,
   getBackupRuntimeStatus, stopBackups,
 } = require('./backup');
 
@@ -25,16 +26,24 @@ test('a fresh database sends first backup two minutes after start', () => {
 
 test('recently successful backup suppresses repeated snapshots after redeploy', () => {
   const state = {last_success_at:iso(NOW-10*MINUTE),last_attempt_at:iso(NOW-10*MINUTE)};
-  assert.equal(nextBackupDelay(state,NOW),BACKUP_INTERVAL_MS-10*MINUTE);
+  const expected=nextNightBackupAt(NOW-10*MINUTE+BACKUP_MIN_SUCCESS_GAP_MS);
+  assert.equal(nextBackupDelay(state,NOW),expected-NOW);
   assert.equal(nextBackupDelay({last_success_at:iso(NOW-25*60*MINUTE),
-    last_attempt_at:iso(NOW-25*60*MINUTE)},NOW),BACKUP_START_DELAY_MS);
+    last_attempt_at:iso(NOW-25*60*MINUTE)},NOW),8*60*MINUTE);
+  assert.equal(BACKUP_NIGHT_UTC_HOUR,20,'03:00 in Krasnoyarsk');
+  const last=Date.parse('2026-11-14T20:01:00.000Z');
+  const due=Date.parse('2026-11-15T20:00:00.000Z');
+  assert.equal(nextBackupDelay({last_success_at:iso(last),
+    last_attempt_at:iso(last)},due),BACKUP_START_DELAY_MS,
+    'a midnight timer must not defer another entire day');
 });
 
 test('failed SMTP or snapshot attempts keep a one-hour cooldown across restarts', () => {
   const state = {last_attempt_at:iso(NOW-5*MINUTE)};
   assert.equal(nextBackupDelay(state,NOW),BACKUP_RETRY_MS-5*MINUTE);
   assert.equal(nextBackupDelay({last_success_at:iso(NOW-2*60*MINUTE),
-    last_attempt_at:iso(NOW-5*MINUTE)},NOW),BACKUP_INTERVAL_MS-2*60*MINUTE);
+    last_attempt_at:iso(NOW-5*MINUTE)},NOW),BACKUP_RETRY_MS-5*MINUTE,
+    'failed backup retries hourly after a successful older snapshot');
 });
 
 function fakeScheduler(initialState = {}, backupResult = true) {
@@ -81,7 +90,8 @@ test('idle process schedules one backup, then next day, without intervals',async
   assert.equal(h.recent().delay,BACKUP_START_DELAY_MS);
   await h.runNext();
   assert.equal(h.history.length,1);
-  assert.equal(h.recent().delay,BACKUP_INTERVAL_MS);
+  assert.equal(h.recent().delay,nextNightBackupAt(
+    h.history[0]+BACKUP_MIN_SUCCESS_GAP_MS)-h.history[0]);
   h.scheduler.stop();
   assert.equal(h.recent(),undefined);
 });
@@ -92,7 +102,7 @@ test('successful manual backup before a pending tick suppresses duplicate auto s
   h.updateState({last_success_at:iso(NOW+MINUTE),last_attempt_at:iso(NOW+MINUTE)});
   await h.runNext();
   assert.equal(h.history.length,0);
-  assert.ok(h.recent().delay>=BACKUP_INTERVAL_MS-MINUTE);
+  assert.ok(h.recent().delay>=BACKUP_MIN_SUCCESS_GAP_MS);
   h.scheduler.stop();
 });
 
@@ -110,7 +120,8 @@ test('real backup schedule metadata survives restarts without customer data',()=
     "VALUES(1,'2026-11-14T10:00:00.000Z','2026-11-14T10:01:00.000Z')");
   const row=db.prepare('SELECT * FROM backup_email_schedule WHERE id=1').get();
   assert.equal(row.last_success_at,'2026-11-14T10:01:00.000Z');
-  assert.equal(nextBackupDelay(row,NOW),BACKUP_INTERVAL_MS-119*MINUTE);
+  assert.equal(nextBackupDelay(row,NOW),
+    nextNightBackupAt(Date.parse(row.last_success_at)+BACKUP_MIN_SUCCESS_GAP_MS)-NOW);
 });
 
 test('backup diagnostics expose only timings and persisted schedule dates',()=>{
