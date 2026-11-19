@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   IDLE_RECHECK_MS, OVERDUE_RETRY_MS, FIRST_RUN_MS, EXPIRY_CUSHION_MS,
-  nextReservationCleanupDelay, createReservationCleanupScheduler,
+  nextReservationCleanupDelay, hasOverdueReservation, createReservationCleanupScheduler,
 } = require('./reservation-cleanup-scheduler');
 
 const NOW = Date.parse('2026-11-19T14:04:00.000Z');
@@ -23,6 +23,11 @@ test('deadline query is narrow and follows only pending active reservation expir
   assert.doesNotMatch(empty.sqls[0],/SELECT \*/);
   assert.equal(nextReservationCleanupDelay(NOW,stub('2026-11-19 14:05:00')),60_000+EXPIRY_CUSHION_MS);
   assert.equal(nextReservationCleanupDelay(NOW,stub('2026-11-19 14:03:59')),OVERDUE_RETRY_MS);
+  assert.equal(hasOverdueReservation(NOW,empty),false);
+  assert.equal(hasOverdueReservation(NOW,stub('2026-11-19 14:05:00')),false);
+  assert.equal(hasOverdueReservation(NOW,stub('2026-11-19 14:03:59')),true);
+  assert.equal(hasOverdueReservation(NOW,stub('legacy-invalid')),true,
+    'unparseable deadlines must still be reconciled safely');
 });
 test('one scheduler, wake-up on new order, idle when empty, retry overdue without stacking scans',async()=>{
   let expiry=null,now=NOW,jobCalls=0;
@@ -57,6 +62,7 @@ test('one scheduler, wake-up on new order, idle when empty, retry overdue withou
     assert.equal(tasks.size,1);
     assert.equal(delay(),FIRST_RUN_MS);
     await runTimer();
+    assert.equal(jobCalls,0,'an empty store must not spawn an idle SQLite worker');
     assert.equal(delay(),IDLE_RECHECK_MS);
     expiry='2026-11-19 14:05:00';
     scheduler.wake();
@@ -67,7 +73,7 @@ test('one scheduler, wake-up on new order, idle when empty, retry overdue withou
     suspend=true;
     await runTimer();
     scheduler.wake();
-    assert.equal(jobCalls,2);
+    assert.equal(jobCalls,1,'the worker starts only when the deadline is actually overdue');
     assert.equal(tasks.size,0);
     expiry='2026-11-19 14:04:59';
     suspend=false;resume();
@@ -77,7 +83,7 @@ test('one scheduler, wake-up on new order, idle when empty, retry overdue withou
     expiry=null;
     await runTimer();
     assert.equal(delay(),IDLE_RECHECK_MS);
-    assert.equal(jobCalls,3);
+    assert.equal(jobCalls,1,'returning to an empty store must not spawn more workers');
   } finally {scheduler.stop();}
   assert.equal(tasks.size,0);
 });
