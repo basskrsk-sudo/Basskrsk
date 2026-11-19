@@ -157,3 +157,58 @@ test('historical sales require explicit consent; accrued backfill is idempotent'
   assert.equal(getBonuses(db,'partner',another).pending.length,1);
   assert.equal(db.prepare('SELECT COUNT(*) AS c FROM point_referral_assignment_log WHERE point_id=?').get('backfill-ref-point').c,1);
 });
+
+
+test('late attribution reduces unpaid manager bonus from 2000 to 1000 exactly once',async()=>{
+  const pointId='late-invitation-unpaid';
+  point(pointId,managerId);
+  const newGroomer=partner('GR-INV-105',pointId,'79131110005');
+  order('REF-LATE-2000',pointId,2000);
+  await checkAndPayManagerBonus(pointId);
+  const managerPoint=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(pointId);
+  assert.equal(managerPoint.bonus_manager_amount,2000);
+  const response=await request('PUT','/api/admin/referral-control/points/:id',
+    'admin',adminId,{id:pointId},{
+      inviter_partner_id:another,invited_partner_id:newGroomer,confirm_historical_sales:true
+    });
+  assert.equal(response.status,200,response.body?.error);
+  assert.equal(db.prepare('SELECT bonus_manager_amount FROM manager_points WHERE id=?')
+    .get(managerPoint.id).bonus_manager_amount,1000);
+  const {getLaunchBonusSummary}=require('./manager-payouts');
+  assert.equal(getLaunchBonusSummary(managerPoint.id).amount,1000,'payout uses the reduced amount');
+  assert.equal(getBonuses(db,'manager',managerId).pending.find(b=>b.point_id===pointId).amount,1000);
+  assert.equal(getBonuses(db,'partner',another).pending.find(b=>b.point_id===pointId).amount,1000);
+  await checkAndPayManagerBonus(pointId);
+  assert.equal(getLaunchBonusSummary(managerPoint.id).amount,1000,'recalculation is idempotent');
+  const transfer=require('./manager-payouts').createManagerLaunchBonusPayout(managerPoint.id,adm);
+  assert.equal(transfer.amount,1000,'actual manager launch payout uses the new split amount');
+  assert.equal(db.prepare('SELECT amount FROM manager_launch_bonus_payouts WHERE manager_point_id=?')
+    .get(managerPoint.id).amount,1000);
+  assert.equal(getBonuses(db,'manager',managerId).pending.some(b=>b.point_id===pointId),false);
+
+});
+
+test('referral attachment is blocked after the 2000 RUB manager launch bonus was paid',async()=>{
+  const pointId='late-invitation-paid';
+  point(pointId,managerId);
+  const newGroomer=partner('GR-INV-106',pointId,'79131110006');
+  order('REF-PAID-2000',pointId,2000);
+  await checkAndPayManagerBonus(pointId);
+  const mgrPoint=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(pointId);
+  assert.equal(mgrPoint.bonus_manager_amount,2000);
+  const {createManagerLaunchBonusPayout}=require('./manager-payouts');
+  const transfer=createManagerLaunchBonusPayout(mgrPoint.id,adm);
+  assert.equal(transfer.amount,2000);
+  const response=await request('PUT','/api/admin/referral-control/points/:id',
+    'admin',adminId,{id:pointId},{
+      inviter_partner_id:another,invited_partner_id:newGroomer,confirm_historical_sales:true
+    });
+  assert.equal(response.status,409);
+  assert.match(response.body.error,/уже выплачена/);
+  assert.equal(storedReferral(pointId),null,'failed assignment never persists');
+  await checkAndPayManagerBonus(pointId);
+  assert.equal(db.prepare('SELECT bonus_manager_amount FROM manager_points WHERE id=?')
+    .get(mgrPoint.id).bonus_manager_amount,2000);
+  assert.equal(db.prepare('SELECT amount FROM manager_launch_bonus_payouts WHERE manager_point_id=?')
+    .get(mgrPoint.id).amount,2000);
+});

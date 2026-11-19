@@ -123,6 +123,13 @@ function adminAssignReferral(pointId, body, admin) {
       new Error('Приглашённый грумер уже закреплён за точкой. Исправление требует отдельной проверки'),{statusCode:409});
     const accrued = !!(mgrPoint.referred_groomer_id||mgrPoint.referred_owner_id);
     const paid = db.prepare('SELECT id FROM referral_bonus_payouts WHERE manager_point_id=?').get(mgrPoint.id);
+    // Prevent an additional 1 000 RUB invitation after the manager already
+    // received the entire 2 000 RUB launch budget. No automatic clawback.
+    if ((!previous || previous.role==='none') && db.prepare(
+      'SELECT id FROM manager_launch_bonus_payouts WHERE manager_point_id=? AND amount>?'
+    ).get(mgrPoint.id,1000)) throw Object.assign(new Error(
+      'Менеджеру уже выплачена полная премия 2 000 ₽ за эту точку. Сначала урегулируйте прошлую выплату вручную'
+    ),{statusCode:409});
     if (paid && !previous) throw Object.assign(new Error('По точке уже выплачен реферальный бонус'),{statusCode:409});
     if (accrued && (!previous || previous.role==='none')) throw Object.assign(
       new Error('По точке уже начислен реферальный бонус другому лицу'),{statusCode:409});
