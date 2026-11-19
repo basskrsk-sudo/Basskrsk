@@ -165,8 +165,10 @@ test('previous-period aggregation streams rows without allocating complete order
    'SELECT total,refund_status,refunded_amount FROM orders WHERE status=? AND created_at>=? AND created_at<?'
  ).all('paid',from,to));
  assert.deepEqual(summarizePreviousPeriod(from,to),expected);
- // Verify that an input period including partially or wholly refunded orders
- // preserves the exact legacy rounding and count semantics.
+ // Verify partial and full refunds but roll test fixtures back so later
+ // six-month history assertions see only the intended original paid order.
+ db.exec('SAVEPOINT founder_previous_period_refunds');
+ try {
  const insert=db.prepare(
    'INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,subtotal,total,payment_method,status,refund_status,refunded_amount,created_at) '+
    'VALUES(?,?,?,?,?,?,?,?,?,?,?,?)'
@@ -177,6 +179,9 @@ test('previous-period aggregation streams rows without allocating complete order
    'SELECT total,refund_status,refunded_amount FROM orders WHERE status=? AND created_at>=? AND created_at<?'
  ).all('paid',from,to));
  assert.deepEqual(summarizePreviousPeriod(from,to),revised);
+ } finally {
+   db.exec('ROLLBACK TO founder_previous_period_refunds; RELEASE founder_previous_period_refunds');
+ }
 });
 test('founder counts ALL silent active salons, even past the previous 50-point ranking cutoff', () => {
  const founder=getFounder(1);
