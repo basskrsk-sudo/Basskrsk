@@ -968,21 +968,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
 
-      <div class="card" id="point-economics-card" style="display:none;margin-bottom:1rem;">
-        <div class="card-title">🏪 Экономика запуска по каждой точке</div>
-        <p id="point-economics-summary" style="font-size:.85rem;margin:.6rem 0;"></p>
-        <p id="point-economics-note" style="font-size:.77rem;color:var(--muted);line-height:1.5;margin:.5rem 0;">
-          Это модельная оценка, а не бухгалтерская прибыль и не повторная запись расходов.
-        </p>
-        <div style="overflow-x:auto;max-height:650px;overflow-y:auto;">
-          <table class="tbl" style="min-width:770px;">
-            <thead><tr><th>Точка</th><th>Оборудование при запуске</th><th class="r">Инвестиция (модель)</th>
-              <th class="r">Оплаченная выручка</th><th class="r">Расчётный вклад</th>
-              <th class="r">Окупаемость при текущем темпе</th></tr></thead>
-            <tbody id="point-economics-body"></tbody>
-          </table>
-        </div>
-      </div>
       <div class="card" style="margin-bottom:1rem;">
         <div class="card-title" style="margin-bottom:.8rem;">Расходы (закуп товара, непредвиденные и любые другие) вносите вручную по факту — так точнее, чем расчёт от цены за штуку. Комиссии партнёру, менеджеру, владельцу точки, налог и эквайринг считаются автоматически из реальных заказов и уже настроенных в системе ставок.</div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
@@ -4050,7 +4035,6 @@ function pnlRow(label, value, opts) {
 }
 async function renderEconomics() {
   await renderUnitEconomics();
-  if(window.HvostPointEquipmentUI)void window.HvostPointEquipmentUI.renderEconomics();
   const filterSel = document.getElementById('econ-city-filter');
   const currentFilterValue = filterSel ? filterSel.value : '';
   if (filterSel) {

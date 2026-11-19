@@ -107,11 +107,9 @@ test('admin may set equipment; salon owner and manager cannot access internal in
   const info=await request('GET',base,normalActor,{},p);
   assert.equal(info.status,200);
   assert.equal(info.body.equipment.cost,0);
-  assert.equal((await request('GET','/api/economics/point-launch',normalActor)).status,403);
-  assert.equal((await request('GET','/api/economics/point-launch',{role:'owner',id:77})).status,401);
-  const superResult=await request('GET','/api/economics/point-launch',superActor);
-  assert.equal(superResult.status,200);
-  assert.ok(superResult.body.points.some(x=>x.point_id==='econ-unknown'&&x.type==='none'));
+  // Even a superadmin must not have a point-economics endpoint. Only the
+  // authenticated business-founder dashboard is allowed to return the model.
+  assert.equal(routes.has('GET /api/economics/point-launch'),false);
 });
 
 test('per-point economics matches equipment cost and avoids double-booking actual expenses',()=>{
@@ -169,5 +167,15 @@ test('founder-only boardroom receives all point economics, owners see no cost ba
   for(const field of ['estimated_investment','estimated_period_contribution',
     'equipment_prices','point_launch_equipment','model_contribution_margin_percent'])
     assert.equal(json.includes(field),false,'owner cannot see internal cost: '+field);
+});
+test('point economics UI exists only in the company founder dashboard',()=>{
+  const founder=fs.readFileSync(path.join(__dirname,'../public/miniapp-founder.js'),'utf8');
+  const admin=fs.readFileSync(path.join(__dirname,'../public/taiga-admin.html'),'utf8');
+  const salon=fs.readFileSync(path.join(__dirname,'../public/taiga-owner.html'),'utf8');
+  const editor=fs.readFileSync(path.join(__dirname,'../public/admin-point-equipment.js'),'utf8');
+  assert.match(founder,/Экономика каждой точки/);
+  assert.doesNotMatch(admin,/point-economics-card|point-economics-body|\/api\/economics\/point-launch/);
+  assert.doesNotMatch(editor,/renderEconomics|\/api\/economics\/point-launch/);
+  assert.doesNotMatch(salon,/point_economics|estimated_investment/);
 });
 test.after(()=>{try{db.close();}catch(_){}fs.rmSync(dir,{recursive:true,force:true});});

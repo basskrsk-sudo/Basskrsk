@@ -9,8 +9,6 @@
     small_stand:'Маленькая стойка — 2 500 ₽',
     shelf:'Полка ХвостМаркета'
   };
-  function escape(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','&#39;':'&#39;'}[c]||'&#39;'));}
   function rub(n){return Number(n||0).toLocaleString('ru-RU')+' ₽';}
   function toggleShelf(selectId,wrapId){
     var select=$(selectId),wrap=$(wrapId);
@@ -81,33 +79,6 @@
       return [];
     }
   }
-  function renderEconomics(){
-    var card=$('point-economics-card'),body=$('point-economics-body');
-    if(!card||!body)return Promise.resolve();
-    if(currentAdminRole!=='super'){card.style.display='none';return Promise.resolve();}
-    card.style.display='block';
-    return authFetch('/api/economics/point-launch').then(async res=>{
-      var data=await res.json();
-      if(!res.ok)throw new Error(data.error||'Не удалось загрузить экономику точек');
-      var sum=data.summary||{};
-      $('point-economics-summary').textContent='Точек: '+sum.total_points+
-        ' · Оснащение подтверждено: '+sum.configured+
-        ' · Не указано: '+sum.unknown+
-        ' · Стоимость оборудования: '+rub(sum.equipment_cost);
-      $('point-economics-note').textContent=data.profit_disclaimer||data.assumption;
-      body.innerHTML=(data.points||[]).map(p=>{
-        var investment=p.estimated_investment==null?'—':rub(p.estimated_investment);
-        var c=p.estimated_period_contribution==null?'—':rub(p.estimated_period_contribution);
-        var payback=p.payback_months_at_current_pace==null?'—':Number(p.payback_months_at_current_pace).toLocaleString('ru-RU')+' мес.';
-        return '<tr><td>'+escape(p.point_name)+'</td><td>'+escape(equipmentLabel(p))+
-          '</td><td class="r">'+investment+'</td><td class="r">'+rub(p.period_revenue)+
-          '</td><td class="r">'+c+'</td><td class="r">'+payback+'</td></tr>';
-      }).join('')||'<tr><td colspan="6">Нет данных</td></tr>';
-    }).catch(error=>{
-      $('point-economics-summary').textContent=error.message||'Не удалось загрузить расчёт';
-      body.innerHTML='';
-    });
-  }
   window.HvostPointEquipmentUI={load,rows:()=>rows,resetCreate,readChoice,open,close,save,
-    toggleShelf,equipmentLabel,renderEconomics};
+    toggleShelf,equipmentLabel};
 })();
