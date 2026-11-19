@@ -15,7 +15,10 @@ const FLAGS=['sales','record_check','record_day','first_sale','daily','weekly','
 const DEFAULTS=Object.freeze({sales:true,record_check:true,record_day:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
 db.exec(`CREATE TABLE IF NOT EXISTS partner_club_settings(id INTEGER PRIMARY KEY CHECK(id=1),config_json TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS partner_club_events(id INTEGER PRIMARY KEY AUTOINCREMENT,event_key TEXT UNIQUE NOT NULL,event_type TEXT NOT NULL,message TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL DEFAULT 'draft' CHECK(status='draft'));
-CREATE INDEX IF NOT EXISTS idx_partner_club_events_created ON partner_club_events(created_at DESC);`);
+CREATE INDEX IF NOT EXISTS idx_partner_club_events_created ON partner_club_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_partner_club_events_type ON partner_club_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_partner_club_events_moderation
+ ON partner_club_events(status,event_type,created_at,id);`);
 // On first launch of anonymized reports, retire legacy unsent weekly messages containing names.
 db.exec("CREATE TABLE IF NOT EXISTS partner_club_migrations (key TEXT PRIMARY KEY)");
 if (!db.prepare("SELECT 1 FROM partner_club_migrations WHERE key='anonymous_weekly_v1'").get()) {
@@ -38,10 +41,11 @@ function nextSaleEnding(){
   return saleEndingAt(Number(count));
 }
 function safeText(v){return String(v||'').replace(/[<>\u0000-\u001f]/g,' ').trim().slice(0,100);}
+// The points schema is stable after startup: one PRAGMA, not one per sale.
+const POINT_HAS_TYPE_COLUMN=db.prepare('PRAGMA table_info(points)').all().some(c=>c.name==='point_type');
 function venueType(point) {
   // Prefer the registered point type; fall back to the manager point classification.
-  const cols=db.prepare('PRAGMA table_info(points)').all().map(c=>c.name);
-  const stored=point?.id && cols.includes('point_type')?db.prepare('SELECT point_type FROM points WHERE id=?').get(point.id)?.point_type:null;
+  const stored=point?.id && POINT_HAS_TYPE_COLUMN?db.prepare('SELECT point_type FROM points WHERE id=?').get(point.id)?.point_type:null;
   const managed=point?.id ? db.prepare('SELECT point_type FROM manager_points WHERE point_id=? ORDER BY id DESC LIMIT 1').get(point.id)?.point_type : null;
   const raw=String(stored||managed||'').toLowerCase();
   if(/вет|veterinar|clinic/.test(raw))return 'Ветеринарная клиника';
@@ -49,7 +53,9 @@ function venueType(point) {
   return 'Партнёрская точка';
 }
 function welcomeNewPoint(point) {
-  if (!point || !point.id || !settings().new_points) return false;
+  if (!point || !point.id) return false;
+  const config=settings();
+  if(!config.enabled || !config.chat_id || !config.club_started_at || !config.new_points) return false;
   const name = safeText(point.name || 'Новый минимаркет');
   const city = point.city_id ? db.prepare('SELECT name FROM cities WHERE id=?').get(point.city_id)?.name : null;
   const message = [
@@ -84,9 +90,9 @@ function recordCheckMessage(location,product,total,previous){
    '🎉 Поздравляем команду! Вместе устанавливаем новые рекорды! 🐾'
  ].join('\n');
 }
-function queueRecordCheck(order,product,location){
+function queueRecordCheck(order,product,location,config){
  // A demo checkout has no YooKassa payment ID. Do not count test receipts.
- if(!settings().record_check || order.is_partner_self_order || !order.yookassa_payment_id)return false;
+ if(!config.record_check || order.is_partner_self_order || !order.yookassa_payment_id)return false;
  const total=Number(order.total);
  if(!Number.isFinite(total)||total<=0)return false;
  const row=db.prepare(`
@@ -104,6 +110,11 @@ function queueRecordCheck(order,product,location){
 }
 function recordPaidOrder(order,items,demo=false){
  if(demo||!order||order.status!=='paid'||order.refund_status==='refunded')return false;
+ const config=settings();
+ // The disabled club must not create invisible sales drafts or perform extra
+ // database scans during every paid checkout.
+ if(!config.enabled || !config.chat_id || !config.club_started_at ||
+    !(config.sales || config.first_sale || config.record_check))return false;
  const point=order.point_id?db.prepare('SELECT id,name FROM points WHERE id=?').get(order.point_id):null;
  const product=(items||[]).map(i=>safeText(i.name)+(i.qty>1?' ×'+i.qty:'')).join(', ').slice(0,190)||'товар для питомца';
  // A delivery address may be embedded in pickup_point. Never publish it to a group.
@@ -114,7 +125,7 @@ function recordPaidOrder(order,items,demo=false){
  let saleQueued=false;
  // First paid CUSTOMER order only. Other paid orders prevent retrospective greetings.
  // Permanent event key also prevents repeat milestones after restarts or order removal.
- if(point&&!order.is_partner_self_order&&settings().first_sale){
+ if(point&&!order.is_partner_self_order&&config.first_sale){
    const previous=db.prepare("SELECT 1 FROM orders WHERE point_id=? AND id<>? AND status='paid' AND COALESCE(is_partner_self_order,0)=0 LIMIT 1").get(point.id,order.id);
    if(!previous){
      isFirstSale=true;
@@ -124,12 +135,12 @@ function recordPaidOrder(order,items,demo=false){
      saleQueued=queue('first-sale:point:'+String(point.id),'first_sale',message);
    }
  }
- if(!isFirstSale){
+ if(!isFirstSale && config.sales){
    const message=saleMessage('🐾 Новая покупка!',location,'🦴 '+product,
      '💚 '+money(order.total),nextSaleEnding());
    saleQueued=queue('paid:'+order.id,'sales',message);
  }
- const recordQueued=queueRecordCheck(order,product,location);
+ const recordQueued=queueRecordCheck(order,product,location,config);
  return saleQueued||recordQueued;
 }
 function range(period){const now=new Date();const today=now.toISOString().slice(0,10);
@@ -220,7 +231,7 @@ function registerPartnerClubRoutes(router){
  router.post('/api/admin/partner-club/reviewer',(req,res,ctx)=>{const admin=requireSuperAdmin(req,res,ctx);if(!admin)return;const linked=db.prepare('SELECT telegram_chat_id FROM admins WHERE id=? AND role=?').get(admin.id,'super');if(!linked?.telegram_chat_id)return sendJson(res,409,{error:'Сначала подключите Telegram в кабинете супер-администратора'});const cfg={...settings(),reviewer_admin_id:admin.id};db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json').run(JSON.stringify(cfg));wakeClubWorker();sendJson(res,200,{ok:true,message:'Черновики будут приходить в личный Telegram супер-администратора'});});
  router.get('/api/admin/partner-club/status',(req,res,ctx)=>{if(!auth(req,res,ctx))return;sendJson(res,200,clubStatus());});
  router.post('/api/admin/partner-club/start',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const c=settings();if(!c.chat_id||!process.env.TG_TOKEN)return sendJson(res,409,{error:'Группа не настроена'});db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify({...c,enabled:true,club_started_at:new Date().toISOString().slice(0,19).replace('T',' ')}));wakeClubWorker();sendJson(res,200,{ok:true,...clubStatus()});});
- router.post('/api/admin/partner-club/stop',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const c=settings();db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify({...c,enabled:false}));sendJson(res,200,{ok:true,...clubStatus()});});
+ router.post('/api/admin/partner-club/stop',(req,res,ctx)=>{if(!auth(req,res,ctx))return;const c=settings();db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP').run(JSON.stringify({...c,enabled:false}));wakeClubWorker();sendJson(res,200,{ok:true,...clubStatus()});});
 
  // Bind/test the group without enabling automatic broadcasts.
  router.post('/api/admin/partner-club/connect',async(req,res,ctx)=>{
@@ -663,9 +674,20 @@ async function createClubPhotoDraft(chatId,draft){
 // An idle partner club no longer scans SQLite every 30 seconds. A new sale
 // wakes the moderator promptly; a five-minute safety pass recovers drafts
 // after restarts and checks the completed Krasnoyarsk calendar day.
-const CLUB_IDLE_MS=5*60*1000;
+// No idle polling: new events/configuration explicitly wake moderation.
+// A daily sales record needs only one timer at next Krasnoyarsk midnight.
 const CLUB_RETRY_MS=30*1000;
 const CLUB_WAKE_MS=250;
+const CLUB_DAY_MS=24*60*60*1000;
+const CLUB_KRASNOYARSK_OFFSET_MS=7*60*60*1000;
+function nextClubDailyCheckDelay(nowMs=Date.now()){
+ const local=nowMs+CLUB_KRASNOYARSK_OFFSET_MS;
+ const untilNextDay=CLUB_DAY_MS-((local%CLUB_DAY_MS+CLUB_DAY_MS)%CLUB_DAY_MS);
+ return Math.max(1000,untilNextDay+5000);
+}
+function clubAutomaticReady(cfg){
+ return !!(cfg.enabled && cfg.chat_id && cfg.club_started_at);
+}
 let workerBusy=false,workerStarted=false,workerTimer=null,workerDueAt=0,workerWakeRequested=false;
 function scheduleClubWorker(delayMs){
  if(!workerStarted)return;
@@ -680,8 +702,18 @@ function scheduleClubWorker(delayMs){
  },wait);
  workerTimer.unref?.();
 }
+function parkClubWorker(){
+ if(workerTimer)clearTimeout(workerTimer);
+ workerTimer=null;
+ workerDueAt=0;
+}
 function wakeClubWorker(){
  if(!workerStarted)return;
+ if(!clubAutomaticReady(settings())){
+   workerWakeRequested=false;
+   parkClubWorker();
+   return;
+ }
  if(workerBusy){workerWakeRequested=true;return;}
  scheduleClubWorker(CLUB_WAKE_MS);
 }
@@ -723,19 +755,25 @@ async function runClubWorker(){
  catch(e){console.warn('Partner club:',e.message);outcome={retry:true};}
  const wake=workerWakeRequested;
  workerWakeRequested=false;
- scheduleClubWorker(outcome?.retry?CLUB_RETRY_MS:
-   outcome?.hasMore||wake?CLUB_WAKE_MS:CLUB_IDLE_MS);
+ if(!workerStarted)return;
+ const config=settings();
+ if(!clubAutomaticReady(config)){parkClubWorker();return;}
+ if(outcome?.retry){scheduleClubWorker(CLUB_RETRY_MS);return;}
+ if(outcome?.hasMore||wake){scheduleClubWorker(CLUB_WAKE_MS);return;}
+ // New events wake instantly. Only daily record needs a scheduled check.
+ if(config.record_day) scheduleClubWorker(nextClubDailyCheckDelay());
+ else parkClubWorker();
 }
 function startPartnerClubWorker(){
  if(workerStarted)return;
  workerStarted=true;
- // A restart must recover queued drafts without waiting for five minutes.
- scheduleClubWorker(0);
+ // On restart recover existing queued drafts for an active club.
+ // A disabled club starts no timer and creates no recurring database work.
+ if(clubAutomaticReady(settings()))scheduleClubWorker(0);
 }
 function stopPartnerClubWorker(){
  workerStarted=false;
- if(workerTimer)clearTimeout(workerTimer);
- workerTimer=null;
+ parkClubWorker();
  workerWakeRequested=false;
 }
 function generateApprovedClubReport(type,{approved=false}={}){
@@ -749,4 +787,10 @@ function generateApprovedClubReport(type,{approved=false}={}){
   return {ok:true,created:queue(key,selected,result.message),message:result.message};
 }
 
-module.exports={generateApprovedClubReport,registerPartnerClubRoutes,settings,preview,analytics,dailySalesRecords:dailyRecords.metrics,checkDailySalesRecord:(now)=>dailyRecords.checkYesterday(now,settings(),queue),report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,startPartnerClubWorker,stopPartnerClubWorker,handleClubCallback,handleClubEdit,isClubModerator,startClubPost,handleClubPostInput,cancelClubInput,handleClubPhotoMessage,handleClubPhotoCallback,sendClubReviewPreview};
+module.exports={generateApprovedClubReport,registerPartnerClubRoutes,settings,preview,analytics,
+  nextClubDailyCheckDelay,dailySalesRecords:dailyRecords.metrics,
+  checkDailySalesRecord:(now)=>dailyRecords.checkYesterday(now,settings(),queue),
+  report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,
+  startPartnerClubWorker,stopPartnerClubWorker,handleClubCallback,handleClubEdit,
+  isClubModerator,startClubPost,handleClubPostInput,cancelClubInput,
+  handleClubPhotoMessage,handleClubPhotoCallback,sendClubReviewPreview};

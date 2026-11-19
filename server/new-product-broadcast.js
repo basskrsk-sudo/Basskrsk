@@ -605,15 +605,20 @@ let workerStarted = false;
 let workerTimer = null;
 let workerRunning = false;
 let wakeRequested = false;
-function nextBroadcastPollDelay(database = db, nowMs = Date.now()) {
+function nextBroadcastQueueDelay(database = db, nowMs = Date.now()) {
   const row = database.prepare(
     "SELECT MIN(d.next_attempt_at) AS next_due FROM new_product_deliveries d " +
     "JOIN new_product_campaigns c ON c.id=d.campaign_id " +
     "WHERE d.status='pending' AND c.state IN ('queued','running')"
   ).get();
-  if (row.next_due == null) return BROADCAST_IDLE_MS;
+  // No pending deliveries: new campaigns use wakeBroadcastWorker() on approval.
+  if (row.next_due == null) return null;
   return Math.max(BROADCAST_ACTIVE_MS,
     Math.min(BROADCAST_IDLE_MS, Number(row.next_due) * 1000 - nowMs));
+}
+function nextBroadcastPollDelay(database = db, nowMs = Date.now()) {
+  // Historical public helper still returns a bounded idle interval.
+  return nextBroadcastQueueDelay(database, nowMs) ?? BROADCAST_IDLE_MS;
 }
 function scheduleBroadcastTick(delayMs) {
   if (!workerStarted) return;
@@ -632,24 +637,30 @@ function wakeBroadcastWorker() {
 async function runBroadcastTick() {
   if (workerRunning) { wakeRequested = true; return; }
   workerRunning = true;
-  let worked = false;
+  let failed = false;
   try {
-    worked = await processBroadcastQueue();
+    await processBroadcastQueue();
   } catch (error) {
+    failed = true;
     console.warn('[new-product] delivery:', error.message);
   } finally {
     workerRunning = false;
+    if(!workerStarted)return;
     if (wakeRequested) {
       wakeRequested = false;
       scheduleBroadcastTick(0);
       return;
     }
-    let delay = worked ? BROADCAST_ACTIVE_MS : BROADCAST_IDLE_MS;
-    if (!worked) {
-      try { delay = nextBroadcastPollDelay(); }
-      catch (error) { console.warn('[new-product] schedule:', error.message); }
+    let delay = null;
+    try { delay = nextBroadcastQueueDelay(); }
+    catch (error) {
+      failed = true;
+      console.warn('[new-product] schedule:', error.message);
     }
-    scheduleBroadcastTick(delay);
+    // Retry failed scans, but do not wake an empty queue every five minutes.
+    // A confirmed campaign immediately calls wakeBroadcastWorker().
+    if (failed) scheduleBroadcastTick(BROADCAST_IDLE_MS);
+    else if (delay !== null) scheduleBroadcastTick(delay);
   }
 }
 function startBroadcastWorker() {
@@ -672,4 +683,5 @@ module.exports = {
   productCaption, validPhotoRef, startBroadcast, handleCallback,
   messageInput, cancelDraft, sendProductPhoto, processBroadcastQueue,
   startBroadcastWorker, stopBroadcastWorker, campaignStatus, nextBroadcastPollDelay,
+  nextBroadcastQueueDelay,
 };

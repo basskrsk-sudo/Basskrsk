@@ -8,7 +8,27 @@ const db=require('./db');
 const club=require('./routes-partner-club');
 const telegram=require('./telegram');
 
-test('new sales wake moderation; idle polling and retry are adaptive, disabled drafts do not block sales',async()=>{
+test('disabled Club skips automatic drafts; local daily record wakes at midnight only',()=>{
+  const noon=Date.parse('2026-11-19T06:00:00Z'); // 13:00 Krasnoyarsk
+  assert.equal(club.nextClubDailyCheckDelay(noon),11*60*60*1000+5000);
+  assert.equal(club.nextClubDailyCheckDelay(Date.parse('2026-11-19T16:59:59Z')),6000);
+  const before=db.prepare('SELECT COUNT(*) AS n FROM partner_club_events').get().n;
+  const prior=db.prepare('SELECT config_json FROM partner_club_settings WHERE id=1').get();
+  db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json')
+    .run(JSON.stringify({enabled:false,chat_id:null,sales:true,first_sale:true,record_check:true,new_points:true}));
+  try{
+    assert.equal(club.recordPaidOrder({
+      id:70001,status:'paid',point_id:null,pickup_point:'Салон',
+      refund_status:'none',total:250,
+    },[{name:'Лёгкое говяжье',qty:1}]),false);
+    assert.equal(club.welcomeNewPoint({id:'disabled-point',name:'Отключена'}),false);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM partner_club_events').get().n,before);
+  }finally{
+    if(prior)db.prepare('UPDATE partner_club_settings SET config_json=? WHERE id=1').run(prior.config_json);
+    else db.prepare('DELETE FROM partner_club_settings WHERE id=1').run();
+  }
+});
+test('sales wake the parked Club worker, retries remain punctual and disabled types never block',async()=>{
   const admin=Number(db.prepare(
     'INSERT INTO admins(login,password_hash,role,telegram_chat_id,active) VALUES (?,?,?,?,1)'
   ).run('club-worker-test','hash','super','990099').lastInsertRowid);
@@ -51,7 +71,7 @@ test('new sales wake moderation; idle polling and retry are adaptive, disabled d
     club.startPartnerClubWorker();
     assert.equal(timers.size,1,'only one worker timer');
     assert.equal(await tick(),0,'restart checks pending drafts immediately');
-    assert.equal([...timers.values()][0].delay,300000,'empty queue checks every five minutes');
+    assert.equal(timers.size,0,'no daily record or drafts: worker parks without a timer');
 
     // Inactive, older drafts must not starve an eligible new sale.
     for(let i=0;i<7;i++){
@@ -65,7 +85,7 @@ test('new sales wake moderation; idle polling and retry are adaptive, disabled d
     assert.equal(messages[0].chat,'990099');
     assert.match(messages[0].text,/Дог Стиль/);
     assert.ok(db.prepare("SELECT 1 FROM partner_club_reviews r JOIN partner_club_events e ON e.id=r.event_id WHERE e.event_key='paid:91001'").get());
-    assert.equal([...timers.values()][0].delay,300000);
+    assert.equal(timers.size,0,'after processing the sale, the worker parks again');
 
     assert.equal(sale(91002),true);
     failNext=true;
@@ -74,9 +94,10 @@ test('new sales wake moderation; idle polling and retry are adaptive, disabled d
     assert.equal(db.prepare("SELECT 1 FROM partner_club_reviews r JOIN partner_club_events e ON e.id=r.event_id WHERE e.event_key='paid:91002'").get(),undefined);
     await tick();
     assert.ok(db.prepare("SELECT 1 FROM partner_club_reviews r JOIN partner_club_events e ON e.id=r.event_id WHERE e.event_key='paid:91002'").get());
-    assert.equal([...timers.values()][0].delay,300000);
+    assert.equal(timers.size,0,'after successful retry, worker parks');
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM partner_club_reviews").get().n,2);
   } finally {
+    club.stopPartnerClubWorker();
     global.setTimeout=oldSet;
     global.clearTimeout=oldClear;
     telegram.sendToChat=oldSend;
