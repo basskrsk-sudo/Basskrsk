@@ -9,6 +9,7 @@ const referralProgram = require('./referral-program');
 const { validateOwnerGroomer } = require('./auto-groomer');
 const crypto = require('node:crypto');
 const { hashPassword } = require('./auth');
+const { parsePayoutMethod } = require('./payout-methods');
 const { sendJson } = require('./http-utils');
 const { requireAuth, requireActiveAdmin } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
@@ -37,10 +38,13 @@ function registerOwnerRoutes(router) {
     const payload = requireAuth(['admin', 'manager'])(req, res, ctx);
     if (!payload) return;
     if (payload.role === 'admin' && !requireActiveAdmin(req, res, ctx)) return;
-    const { full_name, phone, login, password, point_id, groomer_partner_id } = ctx.body || {};
+    const { full_name, phone, login, password, point_id, groomer_partner_id, payout_method } = ctx.body || {};
     if (!full_name || !phone || !login || !password) {
       return sendJson(res, 400, { error: 'Заполните ФИО, телефон, логин и пароль' });
     }
+    let payoutMethod;
+    try { payoutMethod = parsePayoutMethod(payout_method); }
+    catch (error) { return sendJson(res, 400, { error: error.message }); }
     // Менеджер может регистрировать владельца только на СВОЮ точку — админ,
     // как и раньше, может указать любую точку или вовсе оставить пустой.
     if (payload.role === 'manager') {
@@ -77,9 +81,9 @@ function registerOwnerRoutes(router) {
       }
     }
     const info = db.prepare(`
-      INSERT INTO salon_owners (login, password_hash, full_name, phone, point_id, groomer_partner_id, active)
-      VALUES (?, ?, ?, ?, ?, ?, 1)
-    `).run(login, hashPassword(password), full_name, phone, point_id || null, groomerLink.id);
+      INSERT INTO salon_owners (login, password_hash, full_name, phone, point_id, groomer_partner_id, payout_method, active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(login, hashPassword(password), full_name, phone, point_id || null, groomerLink.id, payoutMethod);
     // Реферальный код присваивается сразу после вставки — включает
     // собственный id владельца, поэтому не может быть частью самого INSERT.
     const ownerCode = 'OWN-' + String(info.lastInsertRowid).padStart(3, '0');
@@ -261,12 +265,12 @@ function registerOwnerRoutes(router) {
       transactionOpen = true;
       db.prepare(
         'UPDATE salon_owners SET active=?, full_name=?, phone=?, login=?, point_id=?, ' +
-        'groomer_partner_id=?, legal_form=?, inn=?, bank_details=?, telegram_chat_id=?, max_chat_id=? WHERE id=?'
+        'groomer_partner_id=?, legal_form=?, inn=?, bank_details=?, payout_method=?, telegram_chat_id=?, max_chat_id=? WHERE id=?'
       ).run(
         active !== undefined ? (active ? 1 : 0) : existing.active,
         profile.values.full_name, profile.values.phone, profile.values.login,
         targetPointId, groomerLink.id,
-        profile.values.legal_form, profile.values.inn, profile.values.bank_details,
+        profile.values.legal_form, profile.values.inn, profile.values.bank_details, profile.values.payout_method,
         profile.phoneChanged ? null : existing.telegram_chat_id,
         profile.phoneChanged ? null : existing.max_chat_id,
         existing.id
@@ -297,6 +301,20 @@ function registerOwnerRoutes(router) {
     const newPassword = crypto.randomBytes(6).toString('hex');
     db.prepare('UPDATE salon_owners SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword), ctx.params.id);
     sendJson(res, 200, { ok: true, new_password: newPassword });
+  });
+
+  // PUT /api/owner/me/payout-method — only authenticated owner updates their own channel.
+  router.put('/api/owner/me/payout-method', (req, res, ctx) => {
+    const payload = requireAuth(['owner'])(req, res, ctx);
+    if (!payload) return;
+    if (!db.prepare('SELECT id FROM salon_owners WHERE id = ? AND active = 1').get(payload.id)) {
+      return sendJson(res, 404, { error: 'Владелец не найден' });
+    }
+    let method;
+    try { method = parsePayoutMethod(ctx.body?.payout_method, { required: true }); }
+    catch (error) { return sendJson(res, 400, { error: error.message }); }
+    db.prepare('UPDATE salon_owners SET payout_method = ? WHERE id = ?').run(method, payload.id);
+    sendJson(res, 200, { ok: true, payout_method: method });
   });
 
   // GET /api/owner/me — собственный кабинет

@@ -191,7 +191,7 @@ test('customer tab is connected to phone-gated existing orders and bones APIs', 
 
 test('main Mini App loads account identity before both customer and role interfaces', () => {
   const a = html.indexOf('<script src="/miniapp-identity.js"></script>');
-  const b = html.indexOf('<script src="/miniapp-work.js"></script>');
+  const b = html.indexOf('<script src="/miniapp-work.js');
   const c = html.indexOf('<script src="/miniapp-customer.js"></script>');
   assert.ok(a > 0 && a < b && b < c);
   assert.match(html, /HvostMiniAppIdentity\.init\(tg\)/);

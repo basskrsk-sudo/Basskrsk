@@ -94,6 +94,53 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+  var PAYOUT_OPTIONS = [ {id:'sbp',label:'СБП на номер телефона'}, {id:'card',label:'Перевод на банковскую карту'}, {id:'bank_account',label:'На расчётный счёт'}, {id:'cash',label:'Наличными по согласованию'} ];
+  function payoutOptionsMarkup(selected) {
+    return '<option value="">— Выберите способ —</option>' + PAYOUT_OPTIONS.map(function(item) {
+      return '<option value="' + esc(item.id) + '"' + (selected === item.id ? ' selected' : '') + '>' + esc(item.label) + '</option>';
+    }).join('');
+  }
+  function payoutPreferenceSurface(role, user) {
+    if (!user) return '';
+    var id = 'workPayout-' + role;
+    var label = role === 'partner' ? 'грумера' : 'владельца';
+    return surface('💳 Способ получения выплат ' + label,
+      '<form data-payout-role="' + role + '" id="workPayoutForm-' + role + '">' +
+      '<label class="work-register-label" for="' + id + '">Способ получения вознаграждения</label>' +
+      '<select class="work-register-input" id="' + id + '" name="payout_method" required>' +
+      payoutOptionsMarkup(user.payout_method || '') + '</select>' +
+      '<p class="work-note">Выберите способ. Реквизиты согласуем отдельно; полные номера банковских карт не нужны.</p>' +
+      '<button type="submit" class="work-secondary">Сохранить способ выплаты</button>' +
+      '<div role="status" aria-live="polite" class="work-note" data-payout-status></div></form>');
+  }
+  function payoutRegistrationFields(id) {
+    return '<label class="work-register-label" for="' + id + '">Способ получения вознаграждения *</label>' +
+      '<select class="work-register-input" id="' + id + '" required>' + payoutOptionsMarkup('') + '</select>' +
+      '<p class="work-note">Реквизиты для перевода согласуем позже. Номер карты и CVV не запрашиваем.</p>';
+  }
+  async function saveWorkPayoutMethod(form) {
+    var role = form.dataset.payoutRole;
+    if (!['owner','partner'].includes(role) || !getToken(role) ||
+        (activeRole !== role && activeRole !== 'salon')) return;
+    var select = form.querySelector('[name="payout_method"]');
+    var status = form.querySelector('[data-payout-status]');
+    var submit = form.querySelector('button[type="submit"]');
+    if (!select || !status || !submit) return;
+    if (!select.value) { status.textContent = 'Выберите способ получения вознаграждения.'; return; }
+    submit.disabled = true;
+    status.textContent = 'Сохраняем…';
+    try {
+      var result = await fetchJSON(role === 'partner' ? '/api/partners/me/payout-method' :
+        '/api/owner/me/payout-method', getToken(role), {
+          method:'PUT', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({payout_method:select.value}),
+        });
+      if (activeRole === role && currentUser) currentUser.payout_method = result.payout_method;
+      status.textContent = '✅ Способ выплаты сохранён.';
+    } catch (error) {
+      status.textContent = error.message || 'Не удалось сохранить. Повторите попытку.';
+    } finally { submit.disabled = false; }
+  }
   function rub(value) {
     return Number(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
   }
@@ -331,6 +378,8 @@
       line('🏠 За размещение в салоне', 'К выплате владельцу · текущий тариф ' +
         Math.round(Number(owner.commission_rate || 0) * 100) + '%', rub(ownerUnpaid)) +
       '<p class="work-note">Погашенные выплаты уже исключены из сумм «к выплате».</p>');
+    html += payoutPreferenceSurface('partner', partner);
+    html += payoutPreferenceSurface('owner', owner);
     html += groomerPromoSection(partner);
     html += ownerReferralSection(owner,true);
     html += surface('🛍 Мои личные продажи · 30 дней',
@@ -779,6 +828,7 @@
       stat('Ожидает выплаты', data[1] ? rub(pay.unpaid_amount) : '—', 'По всем невыплаченным заказам') +
       stat('Комиссия', Math.round(rate) + '%', 'Ваш текущий тариф') + '</div>';
     html += groomerPromoSection(currentUser);
+    html += payoutPreferenceSurface('partner', currentUser);
     html += surface('Последние продажи', rows(orders.slice(0, 6).map(function(o) {
       return line(o.product || 'Покупка', date(o.date) + ' · ' + o.order_code, '+' + rub(o.commission));
     })));
@@ -1012,7 +1062,7 @@
         '<input class="work-register-input" id="workRegLogin" type="text" autocomplete="off" maxlength="80" required placeholder="Логин для полного кабинета">' +
         '<label class="work-register-label" for="workRegPassword">Пароль *</label>' +
         '<input class="work-register-input" id="workRegPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" required placeholder="Не менее 6 символов">' +
-        ownerLink +
+        payoutRegistrationFields('workRegPayout') + ownerLink +
         '<label class="work-register-consent"><input type="checkbox" id="workRegConsent" required>' +
         '<span>Подтверждаю, что человек дал согласие на обработку персональных данных для регистрации в ХвостМаркет.</span></label>' +
         '<div id="workRegStatus" role="status" aria-live="polite"></div>' +
@@ -1077,8 +1127,10 @@
     if (!get('workRegConsent').checked) {
       return managerRegistrationError('Нужно получить согласие человека на обработку персональных данных.');
     }
+    var payoutMethod = get('workRegPayout').value;
+    if (!payoutMethod) return managerRegistrationError('Выберите способ получения вознаграждения.');
     var body = { point_id: pointId, full_name: name, phone: phone,
-      login: loginName, password: password };
+      login: loginName, password: password, payout_method: payoutMethod };
     if (kind === 'owner') {
       var groomerId = get('workRegLinkedGroomer').value;
       if (groomerId) {
@@ -1222,7 +1274,7 @@
   function ownerDashboard(data) {
     var d = data[0];
     if (!d) return problem('Не удалось получить показатели салона.');
-    if (d.noPoint) return note(d.message || 'Вам ещё не назначена точка.') + ownerReferralSection(currentUser,false);
+    if (d.noPoint) return note(d.message || 'Вам ещё не назначена точка.') + payoutPreferenceSurface('owner',currentUser) + ownerReferralSection(currentUser,false);
     var totals = d.totals || {}, earn = d.owner_earnings || {};
     var html = note('📍 ' + (d.point && d.point.name || 'Ваш салон') + (d.point && d.point.addr ? ' · ' + d.point.addr : '')) +
       '<div class="work-stats">' +
@@ -1231,6 +1283,7 @@
       stat('К выплате владельцу', rub(earn.unpaid), 'Невыплаченное вознаграждение') +
       stat('Средний чек', rub(totals.avg_order), 'За всё время') + '</div>';
     html += ownerReferralSection(currentUser,false);
+    html += payoutPreferenceSurface('owner', currentUser);
     html += surface('Грумеры салона', rows((d.groomers || []).slice(0, 10).map(function(g) {
       return line(g.full_name, number(g.orders_count) + ' продаж · ' + g.tier_percent + '% комиссия', rub(g.revenue));
     })));
@@ -1362,6 +1415,7 @@
         form += '<label class="work-register-label" for="workAdminPersonReferral">Код пригласившего (необязательно)</label>' +
           '<input class="work-register-input" id="workAdminPersonReferral" type="text" maxlength="60" placeholder="GR-001 / OWN-001">';
       }
+      if (kind === 'owner' || kind === 'groomer') form += payoutRegistrationFields('workAdminPersonPayout');
       form += '<label class="work-register-consent"><input id="workAdminConsent" type="checkbox" required>' +
         '<span>Подтверждаю согласие человека на обработку персональных данных для регистрации в ХвостМаркет.</span></label>';
     }
@@ -1476,6 +1530,9 @@
         if (!allowedPoints.some(function(p) { return String(p.id) === pointId; }))
           return adminRegistrationError('Выберите действующий минимаркет.');
         body.point_id = pointId;
+        var payoutMethod = get('workAdminPersonPayout').value;
+        if (!payoutMethod) return adminRegistrationError('Выберите способ получения вознаграждения.');
+        body.payout_method = payoutMethod;
         if (kind === 'owner') {
           var linked = String(get('workAdminPersonGroomer').value || '');
           if (linked) {
@@ -1856,6 +1913,7 @@
     if (action === 'full') return openFullCabinet(activeRole);
   });
   root.addEventListener('submit', function(e) {
+    if (e.target && e.target.dataset && e.target.dataset.payoutRole) { e.preventDefault(); return saveWorkPayoutMethod(e.target); }
     if (e.target.id === 'workLoginForm') { e.preventDefault(); login(); }
     if (e.target.id === 'workRestockForm') { e.preventDefault(); sendRestock(); }
     if (e.target.id === 'workChatForm') { e.preventDefault(); sendChat(); }

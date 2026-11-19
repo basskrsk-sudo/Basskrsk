@@ -207,7 +207,7 @@ canvas#sigCanvas.has-sig{border-color:var(--deep);}
 
   <div class="card" id="form-card">
     <div class="card-title">Стать партнёром «Тайги»</div>
-    <div class="card-sub">Понадобится буквально минута. Остальные детали — реквизиты для выплат, формат размещения на точке — заполним вместе чуть позже, когда всё будет готово к первым продажам.</div>
+    <div class="card-sub">Понадобится буквально минута. Способ получения вознаграждения выберете сейчас; реквизиты для перевода согласуем позже, когда всё будет готово к первым продажам.</div>
 
     <div class="field">
       <label>Имя <span class="req">*</span></label>
@@ -239,6 +239,18 @@ canvas#sigCanvas.has-sig{border-color:var(--deep);}
         <button type="button" class="password-visibility-btn" onclick="togglePasswordVisibility('f-password',this)" aria-label="Показать пароль" title="Показать пароль">👁️</button>
       </div>
     </div>
+
+    <div class="field">
+          <label for="f-payout-method">Способ получения вознаграждения *</label>
+          <select id="f-payout-method" required>
+            <option value="">— Выберите способ —</option>
+            <option value="sbp">СБП на номер телефона</option>
+            <option value="card">Перевод на банковскую карту</option>
+            <option value="bank_account">На расчётный счёт</option>
+            <option value="cash">Наличными по согласованию</option>
+          </select>
+          <div class="field-hint">Выберите предпочтительный вариант. Реквизиты для перевода согласуем отдельно; номер карты и CVV здесь не нужны.</div>
+        </div>
 
     <div id="extra-codes-toggle" style="margin-bottom:1.2rem;">
       <a href="#" onclick="toggleExtraCodes(event)" style="font-size:.85rem;color:var(--amber);text-decoration:underline;cursor:pointer;">Есть код от менеджера или промокод? →</a>
@@ -354,7 +366,7 @@ function setFieldError(id, msg) {
 
 function validateForm() {
   let ok = true;
-  ['f-fname','f-lname','f-phone','f-point','f-login','f-password'].forEach(function(id) {
+  ['f-fname','f-lname','f-phone','f-point','f-login','f-password','f-payout-method'].forEach(function(id) {
     setFieldError(id, '');
   });
   if (!document.getElementById('f-fname').value.trim()) { setFieldError('f-fname', 'Укажите имя'); ok = false; }
@@ -364,6 +376,7 @@ function validateForm() {
   if (!document.getElementById('f-point').value) { setFieldError('f-point', 'Выберите минимаркет'); ok = false; }
   if (!document.getElementById('f-login').value.trim()) { setFieldError('f-login', 'Придумайте логин'); ok = false; }
   if (document.getElementById('f-password').value.length < 6) { setFieldError('f-password', 'Не короче 6 символов'); ok = false; }
+  if (!document.getElementById('f-payout-method').value) { setFieldError('f-payout-method', 'Выберите способ выплаты'); ok = false; }
   return ok;
 }
 
@@ -392,6 +405,7 @@ async function submitForm() {
   const password = document.getElementById('f-password').value;
   const mgrCode = document.getElementById('f-manager').value.trim() || null;
   const refCode = document.getElementById('f-refcode').value.trim() || null;
+  const payoutMethod = document.getElementById('f-payout-method').value;
 
   const submitBtn = document.getElementById('submit-btn');
   submitBtn.disabled = true;
@@ -407,6 +421,7 @@ async function submitForm() {
         point_id: pointId,
         manager_code: mgrCode,
         referral_code: refCode,
+        payout_method: payoutMethod,
         login,
         password,
       }),
@@ -422,6 +437,7 @@ async function submitForm() {
       '<strong>Партнёр:</strong> ' + ln + ' ' + fn + '<br>' +
       '<strong>Телефон:</strong> ' + phone + '<br>' +
       '<strong>Минимаркет:</strong> ' + (selectedPoint ? selectedPoint.icon + ' ' + selectedPoint.name + ' — ' + selectedPoint.addr : '') + '<br>' +
+      '<strong>Выплаты:</strong> ' + document.getElementById('f-payout-method').selectedOptions[0].textContent + '<br>' +
       '<strong>Код партнёра:</strong> ' + data.partner_code + '<br>' +
       '<strong>Ваш промокод −20% на первую покупку:</strong> ' + (data.first_purchase_promo_code || 'Смотрите в кабинете грумера');
   } catch (e) {

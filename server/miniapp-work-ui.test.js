@@ -301,6 +301,7 @@ test('manager Telegram Mini App registers groomers on own salons with consent an
   h.document.getElementById('workRegPhone').value='+7 913 444-55-66';
   h.document.getElementById('workRegLogin').value='new-groomer';
   h.document.getElementById('workRegPassword').value='safe-secret';
+  h.document.getElementById('workRegPayout').value='sbp';
   h.document.getElementById('workRegConsent').checked=false;
   await h.submit('workManagerRegisterForm');
   assert.match(h.document.getElementById('workRegStatus').innerHTML,/Нужно получить согласие/);
@@ -313,7 +314,7 @@ test('manager Telegram Mini App registers groomers on own salons with consent an
   assert.equal(request.opts.method,'POST');
   assert.deepEqual(JSON.parse(request.opts.body),{
     point_id:'a',full_name:'Новая Грумерова',phone:'+7 913 444-55-66',
-    login:'new-groomer',password:'safe-secret',personal_data_consent:true,
+    login:'new-groomer',password:'safe-secret',personal_data_consent:true,payout_method:'sbp',
   });
   assert.equal(h.calls.some(c=>c.url==='/api/partners/register'),false);
   assert.match(h.root.innerHTML,/GR-777/);
@@ -348,6 +349,7 @@ test('manager Mini App owner form links only groomer on chosen salon and uses pr
   h.document.getElementById('workRegPhone').value='79131112233';
   h.document.getElementById('workRegLogin').value='bar-owner';
   h.document.getElementById('workRegPassword').value='temporary-pass';
+  h.document.getElementById('workRegPayout').value='bank_account';
   h.document.getElementById('workRegLinkedGroomer').value='14';
   h.document.getElementById('workRegConsent').checked=true;
   await h.submit('workManagerRegisterForm');
@@ -359,7 +361,7 @@ test('manager Mini App owner form links only groomer on chosen salon and uses pr
   assert.equal(request.opts.headers.Authorization,'Bearer manager-token');
   assert.deepEqual(JSON.parse(request.opts.body),{
     point_id:'a',full_name:'Барсукова Юлия',phone:'79131112233',
-    login:'bar-owner',password:'temporary-pass',groomer_partner_id:13,
+    login:'bar-owner',password:'temporary-pass',groomer_partner_id:13,payout_method:'bank_account',
   });
   assert.match(h.root.innerHTML,/OWN-777/);
   assert.doesNotMatch(h.root.innerHTML,/temporary-pass/);
@@ -523,6 +525,7 @@ test('admin Mini App offers all four network registration actions with active ad
  get('workAdminPersonPhone').value='+7 913 222-33-44';
  get('workAdminPersonLogin').value='test-groomer';
  get('workAdminPersonPassword').value='secret123';
+ get('workAdminPersonPayout').value='card';
  get('workAdminConsent').checked=true;
  await h.submit('workAdminRegistrationForm');
  const groomer=h.calls.find(c=>c.url==='/api/miniapp/admin/register-groomer');
@@ -531,7 +534,7 @@ test('admin Mini App offers all four network registration actions with active ad
  assert.deepEqual(JSON.parse(groomer.opts.body),{
    full_name:'Грумер Новый',phone:'+7 913 222-33-44',
    login:'test-groomer',password:'secret123',
-   point_id:'new-point',personal_data_consent:true,
+   point_id:'new-point',personal_data_consent:true,payout_method:'card',
  });
  assert.doesNotMatch(h.root.innerHTML,/secret123/);
 });
@@ -604,6 +607,7 @@ test('admin owner registration validates same-point groomer and uses protected o
  get('workAdminPersonPhone').value='79131112233';
  get('workAdminPersonLogin').value='owner-julia';
  get('workAdminPersonPassword').value='pass12345';
+ get('workAdminPersonPayout').value='cash';
  get('workAdminConsent').checked=true;
  get('workAdminPersonGroomer').value='31';
  await h.submit('workAdminRegistrationForm');
@@ -616,7 +620,7 @@ test('admin owner registration validates same-point groomer and uses protected o
  assert.equal(req.opts.headers.Authorization,'Bearer admin-token');
  assert.deepEqual(JSON.parse(req.opts.body),{
    full_name:'Юлия Барсукова',phone:'79131112233',login:'owner-julia',
-   password:'pass12345',point_id:'salon-a',groomer_partner_id:30,
+   password:'pass12345',point_id:'salon-a',groomer_partner_id:30,payout_method:'cash',
  });
  assert.match(h.root.innerHTML,/Регистрация выполнена/);
 });
@@ -662,6 +666,7 @@ test('admin registration form survives duplicate API response without re-sending
  get('workAdminPersonPhone').value='79131112233';
  get('workAdminPersonLogin').value='groomer-new';
  get('workAdminPersonPassword').value='secret123';
+ get('workAdminPersonPayout').value='card';
  get('workAdminConsent').checked=true;
  await h.submit('workAdminRegistrationForm');
  assert.match(get('workAdminRegStatus').innerHTML,/уже зарегистрирован/);

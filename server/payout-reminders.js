@@ -10,6 +10,7 @@ const { getUnpaidOrders } = require('./partner-payouts');
 const { getOwnerUnpaidOrders } = require('./owner-payouts');
 const { getLaunchBonusSummary, getManagerPayableOrders } = require('./manager-payouts');
 const { getTierProgress, TIERS } = require('./partner-tiers');
+const { payoutMethodLabel } = require('./payout-methods');
 
 const TIME_ZONE = 'Asia/Krasnoyarsk';
 const MONTHS_RU = [
@@ -178,7 +179,7 @@ function managerLaunchBonusMessage(manager, bonus, paidAt) {
 
 function getPartnerAccount(partnerId) {
   return db.prepare(`
-    SELECT id, full_name, point_id, point_name, commission_rate,
+    SELECT id, full_name, point_id, point_name, commission_rate, payout_method,
            telegram_chat_id, max_chat_id
     FROM partners WHERE id = ?
   `).get(partnerId);
@@ -186,7 +187,7 @@ function getPartnerAccount(partnerId) {
 
 function getOwnerAccount(ownerId) {
   return db.prepare(`
-    SELECT so.id, so.full_name, so.point_id, so.commission_rate,
+    SELECT so.id, so.full_name, so.point_id, so.commission_rate, so.payout_method,
            so.telegram_chat_id, so.max_chat_id, p.name AS point_name
     FROM salon_owners so
     LEFT JOIN points p ON p.id = so.point_id
@@ -207,6 +208,8 @@ function previewPartnerPayout(partnerId) {
   const summary = summarize(getUnpaidOrders(partnerId));
   return {
     recipient_name: account.full_name,
+    payout_method: account.payout_method || null,
+    payout_method_label: payoutMethodLabel(account.payout_method),
     amount: summary.amount,
     orders_count: summary.orders_count,
     channels: { telegram: !!account.telegram_chat_id, max: !!account.max_chat_id },
@@ -220,6 +223,8 @@ function previewOwnerPayout(ownerId) {
   const summary = summarize(getOwnerUnpaidOrders(ownerId));
   return {
     recipient_name: account.full_name,
+    payout_method: account.payout_method || null,
+    payout_method_label: payoutMethodLabel(account.payout_method),
     amount: summary.amount,
     orders_count: summary.orders_count,
     channels: { telegram: !!account.telegram_chat_id, max: !!account.max_chat_id },

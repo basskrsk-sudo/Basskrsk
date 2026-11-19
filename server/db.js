@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS partners (
   legal_form             TEXT,                     -- 'npd' | 'ip' | 'ooo'
   inn                    TEXT,
   bank_details           TEXT,
+  payout_method          TEXT,                    -- sbp | card | bank_account | cash
   commission_rate        REAL NOT NULL DEFAULT 0.15,
   tier_confirmed_month   TEXT,                     -- 'YYYY-MM' — когда показатели последний раз реально подтверждали текущий уровень (не просто перенесён по льготному месяцу)
   display_stand          INTEGER NOT NULL DEFAULT 1,  -- формат размещения на точке: полноценная стойка
@@ -301,6 +302,7 @@ CREATE TABLE IF NOT EXISTS salon_owners (
   telegram_chat_id TEXT,
   max_chat_id    TEXT,
   point_id       TEXT REFERENCES points(id),
+  payout_method  TEXT,                           -- recipient payout preference
   active         INTEGER NOT NULL DEFAULT 1,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -1496,6 +1498,9 @@ ensureColumn('salon_owners', 'commission_rate', 'REAL NOT NULL DEFAULT 0.05');
 ensureColumn('salon_owners', 'legal_form', 'TEXT');
 ensureColumn('salon_owners', 'inn', 'TEXT');
 ensureColumn('salon_owners', 'bank_details', 'TEXT');
+// Non-destructive migration: earlier users choose a method in their profile.
+ensureColumn('partners', 'payout_method', 'TEXT');
+ensureColumn('salon_owners', 'payout_method', 'TEXT');
 
 // Только для супер-админа: неизменяемый журнал исправлений анкет.
 // Значения банковских реквизитов в журнал НЕ сохраняем.
