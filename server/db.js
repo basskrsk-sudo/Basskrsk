@@ -2076,6 +2076,10 @@ db.exec(`
     ON partners(phone_last10,active);
   CREATE INDEX IF NOT EXISTS idx_partners_point_active
     ON partners(point_id,active,id);
+  -- Indexed daily referral threshold and per-partner counts, without scans.
+  CREATE INDEX IF NOT EXISTS idx_partners_referred_by
+    ON partners(referred_by_partner_id)
+    WHERE referred_by_partner_id IS NOT NULL;
 `);
 const missingPartnerPhoneKeys = db.prepare(
   'SELECT id,phone FROM partners WHERE phone_last10 IS NULL'

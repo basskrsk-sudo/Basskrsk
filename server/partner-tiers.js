@@ -102,8 +102,12 @@ async function checkAndUpgradePartnerTier(partnerId) {
     // Показатели ЭТОГО месяца дотягивают до текущего уровня (или выше) —
     // подтверждаем (обновляем месяц подтверждения), и повышаем, если заработал больше.
     const isUpgrade = earnedTier.rate > partner.commission_rate;
-    db.prepare('UPDATE partners SET commission_rate = ?, tier_confirmed_month = ? WHERE id = ?')
-      .run(earnedTier.rate, month, partnerId);
+    // Payments can trigger multiple checks in a month. Only write when the
+    // level or confirmation month actually changes (less SQLite WAL churn).
+    if (isUpgrade || partner.tier_confirmed_month !== month) {
+      db.prepare('UPDATE partners SET commission_rate = ?, tier_confirmed_month = ? WHERE id = ?')
+        .run(earnedTier.rate, month, partnerId);
+    }
     if (isUpgrade) {
       await notifyTierChange(partner, earnedTier, revenue, referralsCount, 'up');
       return { tierName: earnedTier.name, newRate: earnedTier.rate, direction: 'up' };
@@ -164,12 +168,30 @@ async function notifyTierChange(partner, tier, revenue, referralsCount, directio
   } catch (e) { /* уведомление необязательно — не роняем основной процесс */ }
 }
 
-// Прогулка по всем активным партнёрам — для ежедневной фоновой проверки,
-// ловит понижения даже у тех, у кого давно не было заказов.
+// Post-payment calculations already handle revenue-based promotions. The
+// daily safety job only needs to revisit elevated tiers (grace expiration),
+// and baseline partners with enough referrals to earn a higher tier without
+// an additional order. Skip unchanging baseline accounts entirely.
+function dailyTierReviewCandidates(database=db) {
+  const baseline=TIERS[TIERS.length-1].rate;
+  const referralThreshold=Math.min(...TIERS
+    .filter(t=>t.rate>baseline && t.minReferrals>0).map(t=>t.minReferrals));
+  return database.prepare(`
+    SELECT id FROM partners
+    WHERE active=1 AND partner_type='groomer'
+      AND (commission_rate<>? OR commission_rate IS NULL)
+    UNION
+    SELECT p.id FROM partners p
+    JOIN partners invited ON invited.referred_by_partner_id=p.id
+    WHERE p.active=1 AND p.partner_type='groomer' AND p.commission_rate=?
+    GROUP BY p.id HAVING COUNT(invited.id)>=?
+  `).all(baseline,baseline,referralThreshold);
+}
 async function checkAllPartnerTiers() {
-  const partners = db.prepare("SELECT id FROM partners WHERE active=1 AND partner_type='groomer'").all();
-  for (const p of partners) {
-    try { await checkAndUpgradePartnerTier(p.id); } catch (e) { console.warn('Ошибка проверки уровня партнёра #' + p.id + ':', e.message); }
+  const candidates=dailyTierReviewCandidates();
+  for (const partner of candidates) {
+    try { await checkAndUpgradePartnerTier(partner.id); }
+    catch (e) { console.warn('Ошибка проверки уровня партнёра #' + partner.id + ':', e.message); }
   }
 }
 
@@ -236,4 +258,4 @@ function getTierProgress(partnerId) {
   return result;
 }
 
-module.exports = { checkAndUpgradePartnerTier, checkAllPartnerTiers, getTierProgress, getPartnerStats, currentMonthKey, monthDiff, getEligibleTier, TIERS, notifyTierChange };
+module.exports = { checkAndUpgradePartnerTier, checkAllPartnerTiers, dailyTierReviewCandidates, getTierProgress, getPartnerStats, currentMonthKey, monthDiff, getEligibleTier, TIERS, notifyTierChange };

@@ -5,7 +5,8 @@
 const { performance } = require('node:perf_hooks');
 
 function createEventLoopStallProfiler({
-  intervalMs = 250,
+  // Catch stalls above one second without waking the CPU four times a second.
+  intervalMs = 1000,
   thresholdMs = 1000,
   maxEvents = 8,
   monotonicNow = () => performance.now(),
