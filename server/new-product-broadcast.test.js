@@ -247,11 +247,14 @@ test('idle broadcast queue checks every five minutes but scheduled retries remai
       "INSERT INTO new_product_campaigns(id,state) VALUES(1,'queued');");
     const clock=1730000000000;
     assert.equal(marketing.nextBroadcastPollDelay(database,clock),300000);
+    assert.equal(marketing.nextBroadcastQueueDelay(database,clock),null,
+      'an empty delivery queue has no scheduled work');
     database.prepare(
       "INSERT INTO new_product_deliveries(campaign_id,status,next_attempt_at) VALUES(1,'pending',?)"
     ).run(Math.floor((clock+180000)/1000));
     assert.equal(marketing.nextBroadcastPollDelay(database,clock),180000,
       'do not postpone an existing retry for the five-minute idle timeout');
+    assert.equal(marketing.nextBroadcastQueueDelay(database,clock),180000);
     database.prepare("UPDATE new_product_deliveries SET next_attempt_at=?").run(Math.floor((clock+1000)/1000));
     assert.equal(marketing.nextBroadcastPollDelay(database,clock),1700,
       'ready deliveries use the active worker interval');
@@ -261,5 +264,7 @@ test('idle broadcast queue checks every five minutes but scheduled retries remai
     database.prepare("UPDATE new_product_campaigns SET state='cancelled'").run();
     assert.equal(marketing.nextBroadcastPollDelay(database,clock),300000,
       'cancelled campaigns do not keep the worker busy');
+    assert.equal(marketing.nextBroadcastQueueDelay(database,clock),null,
+      'cancelled campaigns do not keep a scheduler timer alive');
   } finally { database.close(); }
 });
