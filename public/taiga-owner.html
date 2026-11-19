@@ -182,6 +182,20 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <tbody id="owner-payout-history-tbody"></tbody>
         </table>
       </div>
+      <div class="card" id="owner-payout-preferences">
+        <div class="card-title">💳 Способ получения вознаграждения</div>
+        <p style="font-size:.8rem;color:var(--muted);margin-bottom:.8rem;">Выберите, как вам удобнее получать вознаграждение за продажи салона. Реквизиты согласуем отдельно, полные данные банковских карт не требуются.</p>
+        <label for="owner-payout-method" style="display:block;font-size:.78rem;margin-bottom:.35rem;">Формат выплаты</label>
+        <select id="owner-payout-method" style="width:100%;padding:.65rem;border:1.5px solid var(--border);border-radius:var(--r);font:inherit;background:#fff;">
+          <option value="">— Выберите способ —</option>
+        <option value="sbp">СБП на номер телефона</option>
+        <option value="card">Перевод на банковскую карту</option>
+        <option value="bank_account">На расчётный счёт</option>
+        <option value="cash">Наличными по согласованию</option>
+        </select>
+        <div id="owner-payout-status" role="status" aria-live="polite" style="font-size:.78rem;margin:.6rem 0;"></div>
+        <button type="button" class="login-btn" style="max-width:340px;" onclick="saveOwnerPayoutMethod()">Сохранить способ выплаты</button>
+      </div>
       <div id="owner-telegram-connect"></div>
       <div id="owner-max-connect"></div>
       <div class="stats-grid">
@@ -487,11 +501,28 @@ async function showApp() {
   await Promise.all([loadDashboard(), loadOwnerTelegramConnect()]);
 }
 
+async function saveOwnerPayoutMethod() {
+  const method = document.getElementById('owner-payout-method').value;
+  const status = document.getElementById('owner-payout-status');
+  if (!method) { status.textContent = 'Выберите способ получения вознаграждения.'; return; }
+  status.textContent = 'Сохраняем…';
+  try {
+    const res = await authFetch('/api/owner/me/payout-method', {method:'PUT', body:{payout_method:method}});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось сохранить');
+    status.textContent = '✅ Способ выплаты сохранён.';
+  } catch (error) {
+    status.textContent = error.message || 'Ошибка сети. Попробуйте ещё раз.';
+  }
+}
+
 async function loadOwnerTelegramConnect() {
   try {
     const res = await authFetch('/api/owner/me');
     if (!res.ok) return;
     const data = await res.json();
+    document.getElementById('owner-payout-method').value = data.owner.payout_method || '';
+    document.getElementById('owner-payout-status').textContent = '';
     HvostTelegramConnect.mount({
       containerId: 'owner-telegram-connect',
       role: 'owner',

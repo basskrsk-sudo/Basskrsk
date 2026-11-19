@@ -2,7 +2,9 @@
 // Только маршруты с requireAuth(['admin']) могут вызывать эти функции.
 'use strict';
 
-const FIELDS = ['full_name', 'phone', 'login', 'legal_form', 'inn', 'bank_details'];
+const { parsePayoutMethod } = require('./payout-methods');
+
+const FIELDS = ['full_name', 'phone', 'login', 'legal_form', 'inn', 'bank_details', 'payout_method'];
 const TRACKED = [...FIELDS, 'point_id', 'groomer_partner_id'];
 
 class ProfileCorrectionError extends Error {}
@@ -27,7 +29,7 @@ function normalizeProfile(existing, patch = {}) {
       throw new ProfileCorrectionError('Неверный формат поля ' + field);
     }
     const normalized = String(raw ?? '').trim();
-    values[field] = ['legal_form', 'inn', 'bank_details'].includes(field)
+    values[field] = ['legal_form', 'inn', 'bank_details', 'payout_method'].includes(field)
       ? (normalized || null) : normalized;
   }
 
@@ -56,6 +58,10 @@ function normalizeProfile(existing, patch = {}) {
   if (values.inn !== (existing.inn || null) &&
       values.inn && !/^(?:\d{10}|\d{12})$/.test(values.inn)) {
     throw new ProfileCorrectionError('ИНН должен содержать 10 или 12 цифр');
+  }
+  if (values.payout_method) {
+    try { parsePayoutMethod(values.payout_method, { required: true }); }
+    catch (error) { throw new ProfileCorrectionError(error.message); }
   }
   if (values.bank_details && values.bank_details.length > 2000) {
     throw new ProfileCorrectionError('Реквизиты не должны превышать 2000 символов');
