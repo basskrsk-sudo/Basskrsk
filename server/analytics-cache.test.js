@@ -5,7 +5,7 @@ const { createAnalyticsCache, createSqliteAnalyticsCache } = require('./analytic
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const Database=require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 
 test('short-lived analytics cache reuses a result and expires at TTL', () => {
   let now = 1000, rev = 7, loads = 0;
@@ -50,7 +50,7 @@ test('analytics cache bounds its size, separates periods and never returns stale
 test('SQLite analytics cache invalidates both same-process and external-connection writes',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hm-analytics-revision-'));
   const file=path.join(dir,'cache-test.db');
-  const a=new Database(file),b=new Database(file);
+  const a=new DatabaseSync(file),b=new DatabaseSync(file);
   try{
     a.exec('CREATE TABLE records (id INTEGER PRIMARY KEY, value TEXT)');
     const cache=createSqliteAnalyticsCache(a,{ttlMs:30000,maxEntries:2});
