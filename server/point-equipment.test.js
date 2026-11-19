@@ -142,6 +142,44 @@ test('per-point economics matches equipment cost and avoids double-booking actua
   assert.equal(db.prepare('SELECT SUM(cost) AS total FROM point_launch_equipment').get().total,700);
 });
 
+test('point stock value uses positive physical qty and current variant purchase cost',()=>{
+  const id=Number(db.prepare('INSERT INTO products(slug,name,category,icon,desc,comp) VALUES(?,?,?,?,?,?)')
+    .run('point-economics-stock','Товар для теста','treats','🐾','Тест','[]').lastInsertRowid);
+  function variant(weight,cost){
+    return Number(db.prepare('INSERT INTO product_variants(product_id,weight,price,cost_price) VALUES(?,?,?,?)')
+      .run(id,weight,500,cost).lastInsertRowid);
+  }
+  const priced=variant('50 г',120.5),free=variant('1 шт',0),
+    missing=variant('100 г',null),extra=variant('2 шт',80);
+  function setStock(pointId,variantId,qty){
+    db.prepare('INSERT INTO stock(point_id,variant_id,qty) VALUES(?,?,?)')
+      .run(pointId,variantId,qty);
+  }
+  setStock('econ-none',priced,3);
+  setStock('econ-none',free,4);
+  setStock('econ-none',missing,2);
+  setStock('econ-large',extra,1);
+  setStock('econ-shelf',extra,-5); // Invalid historical corrections must not count.
+  const assumptions=getUnitEconomicsSettings().assumptions;
+  const unit=calculateUnitEconomics(assumptions);
+  const result=buildPointEquipmentEconomics(db,assumptions,unit);
+  const rows=Object.fromEntries(result.points.map(p=>[p.point_id,p]));
+  assert.equal(rows['econ-none'].inventory_qty,9);
+  assert.equal(rows['econ-none'].inventory_known_value,361.5);
+  assert.equal(rows['econ-none'].inventory_valuation,null);
+  assert.equal(rows['econ-none'].inventory_missing_cost_qty,2);
+  assert.equal(rows['econ-none'].inventory_missing_cost_variants,1);
+  assert.equal(rows['econ-large'].inventory_valuation,80);
+  assert.equal(rows['econ-shelf'].inventory_qty,0);
+  assert.equal(rows['econ-shelf'].inventory_valuation,0);
+  assert.ok(result.summary.inventory_qty>=10);
+  assert.ok(result.summary.inventory_known_value>=441.5);
+  assert.equal(result.summary.inventory_valuation,null);
+  assert.match(result.inventory_disclaimer,/консигнации/);
+  const expenses=db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n;
+  buildPointEquipmentEconomics(db,assumptions,unit);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n,expenses);
+});
 test('founder-only boardroom receives all point economics, owners see no cost basis',async()=>{
   const id=Number(db.prepare('SELECT id FROM business_founders ORDER BY id LIMIT 1').get().id);
   db.prepare(
@@ -154,6 +192,9 @@ test('founder-only boardroom receives all point economics, owners see no cost ba
   assert.ok(info?.points?.length>=5);
   assert.ok(info.points.some(p=>p.point_id==='econ-none'));
   assert.ok(Number.isFinite(info.summary.estimated_period_contribution));
+   assert.equal(info.points.find(p=>p.point_id==='econ-none').inventory_known_value,361.5);
+   assert.equal(info.points.find(p=>p.point_id==='econ-none').inventory_valuation,null);
+   assert.equal(info.summary.inventory_valuation,null);
   assert.equal((await request('GET','/api/business-founder/dashboard',normalActor)).status,401);
   const ownerId=Number(db.prepare(
     'INSERT INTO salon_owners(login,password_hash,full_name,phone,point_id) VALUES(?,?,?,?,?)'
@@ -165,7 +206,8 @@ test('founder-only boardroom receives all point economics, owners see no cost ba
   assert.equal(ownerRes.body.totals.revenue,1200);
   const json=JSON.stringify(ownerRes.body);
   for(const field of ['estimated_investment','estimated_period_contribution',
-    'equipment_prices','point_launch_equipment','model_contribution_margin_percent'])
+    'equipment_prices','point_launch_equipment','model_contribution_margin_percent',
+     'inventory_valuation','inventory_known_value','inventory_missing_cost_qty'])
     assert.equal(json.includes(field),false,'owner cannot see internal cost: '+field);
 });
 test('point economics UI exists only in the company founder dashboard',()=>{
@@ -174,6 +216,8 @@ test('point economics UI exists only in the company founder dashboard',()=>{
   const salon=fs.readFileSync(path.join(__dirname,'../public/taiga-owner.html'),'utf8');
   const editor=fs.readFileSync(path.join(__dirname,'../public/admin-point-equipment.js'),'utf8');
   assert.match(founder,/Экономика каждой точки/);
+  assert.match(founder,/Товар по закупке/);
+  assert.match(founder,/Без закупочной цены/);
   assert.doesNotMatch(admin,/point-economics-card|point-economics-body|\/api\/economics\/point-launch/);
   assert.doesNotMatch(editor,/renderEconomics|\/api\/economics\/point-launch/);
   assert.doesNotMatch(salon,/point_economics|estimated_investment/);

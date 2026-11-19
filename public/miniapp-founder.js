@@ -97,34 +97,47 @@
       card('Оснащение подтверждено',n(pointSummary.configured),'Без учёта старых неизвестных')+
       card('Не указан тип',n(pointSummary.unknown),'Требуется уточнение в админке')+
       card('Вложения в оборудование',rub(pointSummary.equipment_cost),'Сумма подтверждённых типов')+
+      card('Товар на точках по закупке',
+        pointSummary.inventory_valuation==null?'от '+rub(pointSummary.inventory_known_value):rub(pointSummary.inventory_valuation),
+        n(pointSummary.inventory_qty)+' ед. в наличии')+
+      card('Без закупочной цены',n(pointSummary.inventory_missing_cost_qty)+' ед.',
+        'Не включены в известную стоимость')+
       card('Оплаченная выручка',rub(pointSummary.period_revenue),'За выбранный период')+
       card('Модельный вклад',rub(pointSummary.estimated_period_contribution),'Не бухгалтерская прибыль')+
       '</div>';
     var equipmentTable='<label class="work-note" for="founderPointSearch">Поиск точки</label>'+
       '<input type="search" id="founderPointSearch" placeholder="Название салона" '+
       'style="width:100%;max-width:400px;padding:.65rem;border-radius:8px;border:1px solid #CFD9D3;margin:.45rem 0 .8rem;">'+
-      '<div style="overflow-x:auto;max-height:600px;overflow-y:auto;"><table style="width:100%;min-width:730px;border-collapse:collapse;font-size:.78rem;">'+
+      '<div style="overflow-x:auto;max-height:600px;overflow-y:auto;"><table style="width:100%;min-width:920px;border-collapse:collapse;font-size:.78rem;">'+
       '<thead style="position:sticky;top:0;background:#fff;"><tr>'+
       '<th style="text-align:left;padding:.55rem;">Точка</th><th style="text-align:left;padding:.55rem;">Оборудование</th>'+
       '<th style="text-align:right;padding:.55rem;">Запуск с бонусом</th>'+
+      '<th style="text-align:right;padding:.55rem;">Товар по закупке</th>'+
       '<th style="text-align:right;padding:.55rem;">Выручка</th><th style="text-align:right;padding:.55rem;">Вклад, модель</th>'+
       '<th style="text-align:right;padding:.55rem;">Окупаемость</th></tr></thead><tbody>'+
       pointRows.map(function(item){
         var cost=item.estimated_investment==null?'—':rub(item.estimated_investment);
         var label=item.label||'Не указано';
+        var inventoryCost=item.inventory_valuation==null?
+          'от '+rub(item.inventory_known_value):rub(item.inventory_valuation);
+        var inventoryNote=n(item.inventory_qty)+' ед.'+
+          (item.inventory_missing_cost_qty?' · без цены '+n(item.inventory_missing_cost_qty)+' ед.':'');
         var payback=item.payback_months_at_current_pace==null?'—':
           Number(item.payback_months_at_current_pace).toLocaleString('ru-RU')+' мес.';
         return '<tr data-founder-econ-row data-point-search="'+clean((item.point_name||'').toLowerCase())+'">'+
           '<td style="padding:.55rem;border-top:1px solid #e1e9e4;"><b>'+clean(item.point_name)+'</b></td>'+
           '<td style="padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(label)+(item.type==='shelf'?' · '+rub(item.cost):'')+'</td>'+
           '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(cost)+'</td>'+
+          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(inventoryCost)+
+          '<small style="display:block;color:#57675e;">'+clean(inventoryNote)+'</small></td>'+
           '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(rub(item.period_revenue))+'</td>'+
           '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(rub(item.estimated_period_contribution))+'</td>'+
           '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(payback)+'</td></tr>';
       }).join('')+'</tbody></table></div>';
     html += section('🏪 Экономика каждой точки',
-      equipmentStats+equipmentTable+callout(pe.assumption||'')+callout(pe.profit_disclaimer||''),
-      'Выручка за выбранный период, оборудование при запуске и модельная окупаемость. Доступно только собственникам ХвостМаркета.');
+      equipmentStats+equipmentTable+callout(pe.inventory_disclaimer||'')+
+        callout(pe.assumption||'')+callout(pe.profit_disclaimer||''),
+      'Товарные остатки по закупочной себестоимости, выручка, оборудование и модельная окупаемость. Только для собственников ХвостМаркета.');
     var gates=(strategy.scale_gates||[]);
     var readiness=strategy.scale_decision;
     html += section('🎯 Стратегия: 1000 точек',

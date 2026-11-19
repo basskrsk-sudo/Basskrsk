@@ -114,7 +114,26 @@ function estimatePointLaunchCost(item, assumptions, contribution){
     estimated_payback_months:monthly>0?Math.round(investment/monthly*10)/10:null,
     estimated_orders_to_payback:perOrder>0?Math.ceil(investment/perOrder):null};
 }
+// Point stock valuation is a CURRENT inventory snapshot (not a booking or cash expense).
+// A single SQL aggregate covers the entire network; unknown prices stay unknown.
+function loadPointInventoryValuation(database){
+  return new Map(database.prepare(`
+    SELECT s.point_id, SUM(s.qty) AS qty,
+      ROUND(SUM(CASE WHEN v.cost_price IS NOT NULL AND v.cost_price >= 0
+        THEN s.qty * v.cost_price ELSE 0 END),2) AS known_value,
+      SUM(CASE WHEN v.cost_price IS NULL OR v.cost_price < 0
+        THEN s.qty ELSE 0 END) AS missing_cost_qty,
+      SUM(CASE WHEN v.cost_price IS NULL OR v.cost_price < 0
+        THEN 1 ELSE 0 END) AS missing_cost_variants
+    FROM stock s
+    JOIN product_variants v ON v.id=s.variant_id
+    JOIN points p ON p.id=s.point_id
+    WHERE s.qty > 0 AND COALESCE(p.is_hub,0)=0
+    GROUP BY s.point_id
+  `).all().map(row=>[row.point_id,row]));
+}
 function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[],period=null){
+  const inventoryByPoint=loadPointInventoryValuation(database);
   const sales=new Map();
   // Reuse already fetched anonymized paid orders for founder dashboards.
   // Orders with full refunds contribute zero, matching existing reporting.
@@ -146,7 +165,16 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
     const monthlyContribution=monthlyRevenue===null?null:monthlyRevenue*margin;
     const payback=base.estimated_investment!=null&&monthlyContribution>0
       ? Math.round(base.estimated_investment/monthlyContribution*10)/10:null;
+    const inventory=inventoryByPoint.get(row.point_id)||{};
+    const inventoryQty=Number(inventory.qty||0);
+    const inventoryMissingQty=Number(inventory.missing_cost_qty||0);
+    const inventoryKnownValue=Number(inventory.known_value||0);
     return {...base,
+      inventory_qty:inventoryQty,
+      inventory_known_value:inventoryKnownValue,
+      inventory_valuation:inventoryMissingQty>0?null:inventoryKnownValue,
+      inventory_missing_cost_qty:inventoryMissingQty,
+      inventory_missing_cost_variants:Number(inventory.missing_cost_variants||0),
       period_revenue:Math.round(actual.revenue*100)/100,
       period_orders:actual.orders,
       period_average_check:actual.orders?Math.round(actual.revenue/actual.orders):0,
@@ -158,7 +186,8 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   points.sort((a,b)=>b.period_revenue-a.period_revenue||a.point_name.localeCompare(b.point_name,'ru'));
   const configured=points.filter(p=>p.type);
   return {
-    assumption:'Базовая смета запуска включает большую стойку за 5 000 ₽; прочие затраты считаются одинаковыми. Это модель, а не оплаченные счета.',
+    assumption:'Базовая смета запуска включает стойку за 5 000 ₽ и прочие расходы, в том числе предполагаемое стартовое наполнение товаром. Текущие товарные остатки показаны отдельно и не прибавляются к инвестициям/окупаемости повторно.',
+    inventory_disclaimer:'Стоимость текущего товара = положительный остаток × закупочная себестоимость варианта, указанная в каталоге. Это не стоимость исторических поставок. Если себестоимость не указана, оценка неполная. При консигнации товар может принадлежать поставщику: стоимость полки не равна собственным оплаченным вложениям. Повторного списания в расходы нет.',
     profit_disclaimer:'Вклад рассчитывается из фактически оплаченной выручки и плановой маржинальности заказа. Это НЕ фактическая прибыль, не денежный поток и не учтённые расходы. CAPEX не прибавляется к P&L второй раз.',
     equipment_prices:{large_stand:5000,small_stand:2500,none:0,shelf:'вручную'},
     baseline_launch_cost:assumptions.launch_cost,
@@ -171,6 +200,12 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
       configured:configured.length,unknown:points.length-configured.length,
       equipment_cost:configured.reduce((total,row)=>total+row.cost,0),
       estimated_launch_cost:configured.reduce((total,row)=>total+row.estimated_launch_cost,0),
+      inventory_qty:points.reduce((sum,row)=>sum+row.inventory_qty,0),
+      inventory_known_value:Math.round(points.reduce((sum,row)=>sum+row.inventory_known_value,0)*100)/100,
+      inventory_valuation:points.some(row=>row.inventory_missing_cost_qty>0)?null:
+        Math.round(points.reduce((sum,row)=>sum+row.inventory_known_value,0)*100)/100,
+      inventory_missing_cost_qty:points.reduce((sum,row)=>sum+row.inventory_missing_cost_qty,0),
+      inventory_missing_cost_variants:points.reduce((sum,row)=>sum+row.inventory_missing_cost_variants,0),
       total_points:points.length,
       period_revenue:points.reduce((sum,row)=>sum+row.period_revenue,0),
       period_orders:points.reduce((sum,row)=>sum+row.period_orders,0),
