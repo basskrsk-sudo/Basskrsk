@@ -27,6 +27,8 @@ test('partner landing has direct support links and clear /support instructions',
   assert.ok(landing.includes('href="'+supportLinks.max+'"'));
   assert.match(landing, /<strong>\/support<\/strong>/);
   assert.match(landing, /Ответ придёт в тот же мессенджер/);
+  assert.match(landing, /телефон для обратной связи/);
+  assert.match(landing, /до закрытия обращения/);
   assert.doesNotMatch(landing, /href="https:\/\/max\.ru\/se14353857_bot\?startapp"[^>]*>💬 Написать в MAX/);
 });
 
@@ -38,6 +40,10 @@ test('contacts page provides Telegram and MAX support with original bot chat lin
   assert.ok(contacts.includes('href="'+supportLinks.max+'"'));
   assert.match(contacts, /Отправьте \/support и опишите вопрос/);
   assert.match(contacts, /Бот выдаст номер обращения/);
+  assert.match(contacts, /название точки/);
+  assert.match(contacts, /контактный телефон/);
+  assert.match(contacts, /support_history/);
+  assert.match(contacts, /support_close/);
   assert.match(contacts, /id="cf-msg"/);
 });
 

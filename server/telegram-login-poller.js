@@ -234,7 +234,7 @@ function buildWelcomeMessage() {
     'Одна кнопка открывает магазин и все ваши кабинеты прямо в Telegram. Я также помогу войти на сайт и буду присылать уведомления о продажах, заказах и вознаграждениях.',
     '',
     'Нажмите «🐾 Открыть ХвостМаркет» или отправьте /app. После подтверждения телефона увидите только доступные вам разделы.',
-    'Нужна помощь? Отправьте /support и напишите сообщение — администратор ответит в этом чате.',
+    'Нужна помощь? /support — бот запросит название точки, контактный телефон и вопрос. Переписка продолжится в этом чате до /support_close. История: /support_history.',
     '',
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Менеджерам и администраторам: /contact ссылка — контакт из Яндекс Карт или 2ГИС с согласованием. /2gis также работает.',
@@ -790,6 +790,13 @@ async function executeApprovedReport({chatId,type,params}) {
   throw Error('Неизвестный тип отчёта');
 }
 
+async function sendSupportResultToTelegram(chatId,result){
+  if(result?.ok && result.ticket){
+    const sent=await support.notifyAdmins(result.ticket,result.followup?'followup':'new',result.body);
+    await replyToChat(chatId,support.confirmation(result.ticket,sent,!!result.followup));
+  }else if(result?.message)await replyToChat(chatId,result.message);
+}
+
 async function processUpdate(update) {
   const callback = update.callback_query;
   if (callback) {
@@ -821,7 +828,7 @@ async function processUpdate(update) {
       try {
         await callBotApi('answerCallbackQuery',{
           callback_query_id:callback.id,
-          text:prompt.ok?'✅ Напишите ваш вопрос следующим сообщением.':'⚠️ Личный чат обязателен.',
+          text:prompt.ok?'✅ Укажите название точки в следующем сообщении.':'⚠️ Личный чат обязателен.',
           show_alert:!prompt.ok,
         });
       }catch(error){console.warn('[support] telegram callback:',error.message)}
@@ -1230,17 +1237,17 @@ async function processUpdate(update) {
       return;
     }
     const command=msg.text.trim().match(/^\/support(?:@\w+)?(?:\s+([\s\S]+))?$/i);
-    if (command && command[1]) {
-      const result=support.submitTicket('telegram',msg.chat.id,msg.from.id,
-        [msg.from.first_name,msg.from.last_name].filter(Boolean).join(' ')||msg.from.username||'Клиент',command[1]);
-      if (result.ok) {
-        const sent=await support.notifyAdmins(result.ticket);
-        await replyToChat(msg.chat.id,support.confirmation(result.ticket,sent));
-      } else await replyToChat(msg.chat.id,result.message);
-    } else {
-      const started=support.startDraft('telegram',msg.chat.id,msg.from.id);
-      await replyToChat(msg.chat.id,started.message);
-    }
+    const result=support.startDraft('telegram',msg.chat.id,msg.from.id,command?.[1]);
+    await sendSupportResultToTelegram(msg.chat.id,result);
+    return;
+  }
+  // While an appeal is open, plain text is an additional reply, not a new ticket.
+  // Slash commands continue to work (including /support_close and /cancel).
+  if (msg.chat?.type==='private' && typeof msg.text==='string' &&
+      msg.text.trim() && !msg.text.trim().startsWith('/') &&
+      support.getOpenTicket('telegram',msg.chat.id,msg.from?.id)) {
+    const additional=support.appendToOpenTicket('telegram',msg.chat.id,msg.from.id,msg.text);
+    await sendSupportResultToTelegram(msg.chat.id,additional);
     return;
   }
   if (msg.chat?.type === 'private' && typeof msg.text === 'string') {
@@ -1297,6 +1304,33 @@ async function processUpdate(update) {
   }
   if (!msg.text) return;
   const text = msg.text.trim();
+  if (msg.chat?.type === 'private' && /^\/support_add(?:@\w+)?(?:\s|$)/i.test(text)) {
+    const match=text.match(/^\/support_add(?:@\w+)?\s+(\d{1,12})\s+([\s\S]+)$/i);
+    const same=String(msg.chat.id)===String(msg.from?.id);
+    const result=!same?{message:'🔒 Нужен личный чат.'}:
+      !match?{message:'Формат: /support_add 123 ваше сообщение'}:
+      support.clientAdd('telegram',msg.chat.id,msg.from.id,match[1],match[2]);
+    await sendSupportResultToTelegram(msg.chat.id,result);
+    return;
+  }
+  if (msg.chat?.type === 'private' && /^\/support_history(?:@\w+)?(?:\s|$)/i.test(text)) {
+    const match=text.match(/^\/support_history(?:@\w+)?\s+(\d{1,12})(?:\s+(\d{1,3}))?$/i);
+    const same=String(msg.chat.id)===String(msg.from?.id);
+    const result=!same?{message:'🔒 Нужен личный чат.'}:
+      !match?{message:'Формат: /support_history 123'}:
+      support.history('telegram',msg.chat.id,msg.from.id,match[1],match[2]||1);
+    await replyToChat(msg.chat.id,result.message);
+    return;
+  }
+  if (msg.chat?.type === 'private' && /^\/support_close(?:@\w+)?(?:\s|$)/i.test(text)) {
+    const match=text.match(/^\/support_close(?:@\w+)?(?:\s+(\d{1,12}))?$/i);
+    const same=String(msg.chat.id)===String(msg.from?.id);
+    const result=!same?{message:'🔒 Нужен личный чат.'}:
+      !match?{message:'Формат: /support_close 123'}:
+      await support.closeTicket('telegram',msg.chat.id,msg.from.id,match[1]||null);
+    await replyToChat(msg.chat.id,result.message);
+    return;
+  }
   if (msg.chat?.type === 'private' && /^\/support_inbox(?:@\w+)?$/i.test(text)) {
     const same=String(msg.chat.id)===String(msg.from && msg.from.id);
     const r=same?support.inbox('telegram',msg.chat.id):{message:'🔒 Только для привязанных администраторов.'};
@@ -1316,10 +1350,7 @@ async function processUpdate(update) {
     const r=support.consumeDraft('telegram',msg.chat.id,msg.from && msg.from.id,
       [msg.from?.first_name,msg.from?.last_name].filter(Boolean).join(' ')||msg.from?.username||'Клиент',text);
     if(r) {
-      if(r.ok) {
-        const sent=await support.notifyAdmins(r.ticket);
-        await replyToChat(msg.chat.id,support.confirmation(r.ticket,sent));
-      } else await replyToChat(msg.chat.id,r.message);
+      await sendSupportResultToTelegram(msg.chat.id,r);
       return;
     }
   }

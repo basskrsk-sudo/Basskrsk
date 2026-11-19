@@ -279,7 +279,8 @@ function buildMaxHelp(chatId) {
     'Для /tasks и /stock нужен привязанный MAX-аккаунт сотрудника.',
     '/contact ссылка — карточка Яндекс Карт или 2ГИС для согласования (менеджер/администратор).',
     '/app — каталог и рабочие кабинеты для зарегистрированных сотрудников.',
-    '/support — написать вопрос администраторам, ответ придёт сюда.',
+    '/support — создать обращение: название точки, телефон, описание.',
+    '/support_history номер — история переписки; /support_close номер — закрыть обращение.',
     'Подтверждение отчёта об остатках — кнопкой в боте.',
   ];
   const buttons = [];
@@ -431,6 +432,13 @@ async function deliverApprovedStock(chatId, selection) {
   }
 }
 
+async function sendSupportResultToMax(chatId,result){
+  if(result?.ok && result.ticket){
+    const sent=await support.notifyAdmins(result.ticket,result.followup?'followup':'new',result.body);
+    await sendMaxMessage(chatId,support.confirmation(result.ticket,sent,!!result.followup));
+  }else if(result?.message)await sendMaxMessage(chatId,result.message);
+}
+
 async function processUpdate(update) {
   if (!update || typeof update !== 'object') return;
 
@@ -445,7 +453,7 @@ async function processUpdate(update) {
       const senderId = callback.user && (callback.user.user_id || callback.user.id) ||
         callback.sender && callback.sender.user_id || update.user_id;
       const result=support.startDraft('max',chatId,senderId);
-      await answerMaxCallback(callbackId,result.ok?'✅ Напишите вопрос следующим сообщением.':'⚠️ Откройте личный чат с ботом.');
+      await answerMaxCallback(callbackId,result.ok?'✅ Укажите название точки следующим сообщением.':'⚠️ Откройте личный чат с ботом.');
       if(chatId)await sendMaxMessage(chatId,result.message);
       return;
     }
@@ -530,17 +538,32 @@ async function processUpdate(update) {
       return;
     }
     const matched=cleaned.match(/^\/support(?:\s+([\s\S]+))?$/i);
-    if(matched && matched[1]){
-      const result=support.submitTicket('max',chatId,senderId,
-        [update.message.sender.first_name,update.message.sender.last_name].filter(Boolean).join(' ')||
-          update.message.sender.name||'Клиент',matched[1]);
-      if(result.ok){
-        const sent=await support.notifyAdmins(result.ticket);
-        await sendMaxMessage(chatId,support.confirmation(result.ticket,sent));
-      }else await sendMaxMessage(chatId,result.message);
-    } else {
-      await sendMaxMessage(chatId,support.startDraft('max',chatId,senderId).message);
-    }
+    const result=support.startDraft('max',chatId,senderId,matched?.[1]);
+    await sendSupportResultToMax(chatId,result);
+    return;
+  }
+  if(/^\/support_add(?:\s|$)/i.test(cleaned)) {
+    const match=cleaned.match(/^\/support_add\s+(\d{1,12})\s+([\s\S]+)$/i);
+    const result=!ownPrivate?{message:'🔒 Только из личного чата.'}:
+      !match?{message:'Формат: /support_add 123 ваше сообщение'}:
+      support.clientAdd('max',chatId,senderId,match[1],match[2]);
+    await sendSupportResultToMax(chatId,result);
+    return;
+  }
+  if(/^\/support_history(?:\s|$)/i.test(cleaned)) {
+    const match=cleaned.match(/^\/support_history\s+(\d{1,12})(?:\s+(\d{1,3}))?$/i);
+    const result=!ownPrivate?{message:'🔒 Только из личного чата.'}:
+      !match?{message:'Формат: /support_history 123'}:
+      support.history('max',chatId,senderId,match[1],match[2]||1);
+    await sendMaxMessage(chatId,result.message);
+    return;
+  }
+  if(/^\/support_close(?:\s|$)/i.test(cleaned)) {
+    const match=cleaned.match(/^\/support_close(?:\s+(\d{1,12}))?$/i);
+    const result=!ownPrivate?{message:'🔒 Только из личного чата.'}:
+      !match?{message:'Формат: /support_close 123'}:
+      await support.closeTicket('max',chatId,senderId,match[1]||null);
+    await sendMaxMessage(chatId,result.message);
     return;
   }
   if(/^\/support_inbox$/i.test(cleaned)) {
@@ -560,15 +583,18 @@ async function processUpdate(update) {
     await sendMaxMessage(chatId,'Ввод обращения отменён.');
     return;
   }
+  if(ownPrivate && cleaned && !cleaned.startsWith('/') &&
+      support.getOpenTicket('max',chatId,senderId)) {
+    const additional=support.appendToOpenTicket('max',chatId,senderId,cleaned);
+    await sendSupportResultToMax(chatId,additional);
+    return;
+  }
   if(ownPrivate) {
     const result=support.consumeDraft('max',chatId,senderId,
       [update.message.sender.first_name,update.message.sender.last_name].filter(Boolean).join(' ')||
         update.message.sender.name||'Клиент',cleaned);
     if(result){
-      if(result.ok){
-        const sent=await support.notifyAdmins(result.ticket);
-        await sendMaxMessage(chatId,support.confirmation(result.ticket,sent));
-      }else await sendMaxMessage(chatId,result.message);
+      await sendSupportResultToMax(chatId,result);
       return;
     }
   }
