@@ -10,7 +10,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'hm-unpaid-point-ma
 process.env.UNPAID_ORDER_ALERT_MINUTES = '3'; // Old Amvera override must not keep the former delay.
 const db = require('./db');
 const {
-  ALERT_DELAY_MINUTES, POLL_INTERVAL_MS, IDLE_INTERVAL_MS,
+  ALERT_DELAY_MINUTES, POLL_INTERVAL_MS, IDLE_INTERVAL_MS, UNROUTABLE_INTERVAL_MS,
   nextUnpaidAlertDelay, createUnpaidAlertScheduler, responsibleManagerChat,
   pendingOrderIds, runUnpaidOrderAlertCheck, sendUnpaidOrderAlert,
   buildUnpaidOrderMessage,
@@ -95,7 +95,7 @@ test('scheduler only probes an empty queue every five minutes, waking on new pai
     db.prepare("UPDATE orders SET created_at=datetime('now','-2 minutes') WHERE id=?").run(id);
     scheduler.wake();
     await tick();
-    assert.equal(delay(),POLL_INTERVAL_MS,'due orders retain 15-second retry checks');
+    assert.equal(delay(),UNROUTABLE_INTERVAL_MS,'an overdue order without recipients should not hot-poll SQLite');
     db.prepare("UPDATE orders SET status='paid' WHERE id=?").run(id);
     scheduler.wake();
     await tick();
@@ -112,7 +112,7 @@ test('the SQL scan scheduler selects deadlines without selecting private custome
     const next=nextUnpaidAlertDelay();
     assert.ok(next>=53000&&next<=57000,'pending order wakes close to 60 seconds');
     db.prepare("UPDATE orders SET created_at=datetime('now','-2 minutes') WHERE id=?").run(id);
-    assert.equal(nextUnpaidAlertDelay(),POLL_INTERVAL_MS);
+    assert.equal(nextUnpaidAlertDelay(),UNROUTABLE_INTERVAL_MS);
     db.prepare("UPDATE orders SET reservation_status='released' WHERE id=?").run(id);
     assert.equal(nextUnpaidAlertDelay(),IDLE_INTERVAL_MS);
   } finally {
@@ -464,4 +464,60 @@ test('fresh orders, released reservations and payments never trigger batched ale
   const old=order('TG-BATCH-OLD',null,'-40 minutes','pending','active');
   const ids=pendingOrderIds({businessChatId:''});
   for(const id of [fresh,released,paid,old])assert.ok(!ids.includes(id));
+});
+
+test('notified old orders go idle while fresh orders still wake on their minute-one deadline',()=>{
+  isolateAdminAlerts();
+  const previousChat=process.env.TG_CHAT_ID;
+  delete process.env.TG_CHAT_ID;
+  const m=manager('already-notified-manager','900000000111');
+  point('already-notified-point',m);
+  const old=order('TG-SENT-OLD','already-notified-point','-2 minutes');
+  let fresh=null;
+  try {
+    db.prepare("INSERT INTO unpaid_order_alert_log(order_id,alert_type,status) VALUES(?,'pending','sent')").run(old);
+    assert.equal(nextUnpaidAlertDelay(),IDLE_INTERVAL_MS,
+      'sent notification must not force a 15-second check for 30 minutes');
+    fresh=order('TG-NEW-DEADLINE','already-notified-point','-20 seconds');
+    const delay=nextUnpaidAlertDelay();
+    assert.ok(delay>=39000 && delay<=42000,
+      'next unnotified order wakes at about 60 seconds from its creation');
+    db.prepare("UPDATE orders SET created_at=datetime('now','-2 minutes') WHERE id=?").run(fresh);
+    assert.equal(nextUnpaidAlertDelay(),POLL_INTERVAL_MS,
+      'the due unnotified order still needs a short retry interval');
+  } finally {
+    db.prepare("UPDATE orders SET status='paid' WHERE id=?").run(old);
+    if(fresh)db.prepare("UPDATE orders SET status='paid' WHERE id=?").run(fresh);
+    if(previousChat===undefined)delete process.env.TG_CHAT_ID;
+    else process.env.TG_CHAT_ID=previousChat;
+  }
+});
+
+test('failed admin alert wakes at retry deadline without replaying sent messages',()=>{
+  isolateAdminAlerts();
+  const previousChat=process.env.TG_CHAT_ID;
+  delete process.env.TG_CHAT_ID;
+  const m=manager('backoff-manager','900000000112');
+  point('backoff-point',m);
+  const adminId=admin('backoff-admin','900000000113');
+  const id=order('TG-BACKOFF','backoff-point','-2 minutes');
+  try {
+    assert.equal(nextUnpaidAlertDelay(),POLL_INTERVAL_MS);
+    db.prepare("INSERT INTO unpaid_order_alert_log(order_id,alert_type,status) VALUES(?,'pending','sent')").run(id);
+    db.prepare("INSERT INTO unpaid_order_admin_alert_log(order_id,alert_type,target_chat_id,status) " +
+      "VALUES(?,'pending',?,'failed')").run(id,'900000000113');
+    assert.ok(!pendingOrderIds({businessChatId:''}).includes(id),
+      'Telegram failure is not retried before cooldown');
+    const delay=nextUnpaidAlertDelay();
+    assert.ok(delay>=25000 && delay<=32000,
+      'retry should be scheduled close to 30 seconds after failure');
+    db.prepare("UPDATE unpaid_order_admin_alert_log SET created_at=datetime('now','-31 seconds') " +
+      "WHERE order_id=? AND target_chat_id=?").run(id,'900000000113');
+    assert.equal(nextUnpaidAlertDelay(),POLL_INTERVAL_MS);
+  } finally {
+    db.prepare("UPDATE orders SET status='paid' WHERE id=?").run(id);
+    db.prepare("DELETE FROM admins WHERE id=?").run(adminId);
+    if(previousChat===undefined)delete process.env.TG_CHAT_ID;
+    else process.env.TG_CHAT_ID=previousChat;
+  }
 });
