@@ -65,6 +65,28 @@ test('daily and post-sale rechecks do not generate repeated requests',async()=>{
   assert.equal(latest(id).id,original.id);
 });
 
+test('daily safety check skips baseline accounts, still reviews elevated tiers and referral-earned promotions',async()=>{
+  const baseline=groomer(0.15);
+  const elevated=groomer(0.18);
+  const candidates=()=>new Set(tiers.dailyTierReviewCandidates().map(row=>row.id));
+  assert.equal(candidates().has(baseline),false,'baseline groomer needs no daily revenue scan');
+  assert.equal(candidates().has(elevated),true,'elevated tier still requires grace-period review');
+  const referrer=groomer(0.15);
+  db.prepare("UPDATE partners SET partner_type='referrer',commission_rate=0 WHERE id=?").run(referrer);
+  assert.equal(candidates().has(referrer),false,'referral-only partner has no sales tier');
+  // Only referral count changed: no sale is required to earn a tier upgrade.
+  for(let i=0;i<3;i++){
+    const id=groomer(0.15);
+    db.prepare('UPDATE partners SET referred_by_partner_id=? WHERE id=?').run(baseline,id);
+  }
+  assert.equal(candidates().has(baseline),true);
+  // Do not create unrelated pending downgrade approvals in this test.
+  db.prepare('UPDATE partners SET active=0 WHERE id=?').run(elevated);
+  await tiers.checkAllPartnerTiers();
+  assert.equal(get(baseline).commission_rate,0.18);
+  assert.equal(candidates().has(baseline),true,'new high tier remains eligible for later reviews');
+  assert.equal(get(referrer).commission_rate,0);
+});
 test('a new proposal is visible to linked superadmins only',async()=>{
   const proposal=latest(1);
   assert.equal(approvals.requestCardList('712222222').ok,false);

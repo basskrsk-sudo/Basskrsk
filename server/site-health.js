@@ -19,6 +19,9 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const BOOTED_AT = Date.now();
 const HEALTH_CACHE_MS = 10000;
 const SAMPLE_INTERVAL_MS = 60000;
+// /data readiness is critical and stays at 60 seconds; the /tmp comparison
+// is supplemental diagnostics, not a reason to write every minute.
+const TEMP_PROBE_INTERVAL_MS = 15 * 60 * 1000;
 const ALERT_COOLDOWN_MS = 20 * 60 * 1000;
 const MAX_RECENT_EVENTS = 35;
 const WARNING_RSS_RATIO = 0.85;
@@ -31,8 +34,12 @@ let healthFileCounter = 0;
 let lastSample = null;
 let previousSampleAt = BOOTED_AT;
 let previousCpuUsage = process.cpuUsage();
+let lastTemporaryStorageProbe = null;
+let lastTemporaryStorageProbeAt = 0;
 let highCpuSamples = 0;
-const loopHistogram = monitorEventLoopDelay({resolution:20});
+// Long pauses (>750ms p99, >1500ms max) are still measured accurately with
+// a 100ms sampling resolution instead of a continuous 20ms timer.
+const loopHistogram = monitorEventLoopDelay({resolution:100});
 let loopState={slowSamples:0,healthySamples:0,warning:false};
 let watcher = null;
 let lastPruneDay = '';
@@ -203,6 +210,12 @@ function describeIoSpike(probe) {
   return 'Файловые пробы быстрые; ищите синхронный код и длительные SQL-запросы.';
 }
 
+function shouldProbeTemporaryStorage(nowMs,lastAt,health,maxLoopDelayMs,p99LoopDelayMs,driftMs) {
+  return !lastAt || nowMs-lastAt>=TEMP_PROBE_INTERVAL_MS ||
+    health?.checks?.storage !== 'ok' ||
+    Number(health?.probe_storage_ms)>=1500 ||
+    maxLoopDelayMs>1500 || p99LoopDelayMs>750 || driftMs>1500;
+}
 function nextLoopState(previous,maxMs,p99Ms) {
   const abnormal=maxMs>1500 || p99Ms>750;
   const slowSamples=abnormal?previous.slowSamples+1:0;
@@ -239,13 +252,19 @@ async function sample() {
       event_loop_p99_ms:p99LoopDelayMs,sample_schedule_drift_ms:Math.round(delay),
       cpu_percent:cpuPercent,cpu_throttle:null,io_probe:null};
 
-    // Start both probes together. If /data is slow while /tmp is fast,
-    // the persistent volume deserves investigation. If both are delayed,
-    // an event-loop stall or host-wide I/O contention is more likely.
-    // Async timing alone is never proof of the underlying storage cause.
-    const [health, temporary, cpuThrottle] = await Promise.all([
-      healthProbe(true), checkStorageWritable(os.tmpdir()), sampleCpuThrottling(),
+    // Keep SQLite, persistent /data and CPU diagnostics every minute.
+    // Sample /tmp only every 15 minutes when healthy, but immediately after
+    // a delayed timer, stalled event-loop or slow/failing persistent disk.
+    const [health, cpuThrottle] = await Promise.all([
+      healthProbe(true), sampleCpuThrottling(),
     ]);
+    let temporary=lastTemporaryStorageProbe;
+    if(shouldProbeTemporaryStorage(Date.now(),lastTemporaryStorageProbeAt,
+        health,maxLoopDelayMs,p99LoopDelayMs,delay)) {
+      temporary=await checkStorageWritable(os.tmpdir());
+      lastTemporaryStorageProbe=temporary;
+      lastTemporaryStorageProbeAt=Date.now();
+    }
     lastSample.cpu_throttle = cpuThrottle;
     const statStarted = performance.now();
     const free = await storageFreeBytes();
@@ -253,8 +272,10 @@ async function sample() {
     lastSample.io_probe = {
       sqlite_ms: health.probe_sqlite_ms,
       storage_write_ms: health.probe_storage_ms,
-      temp_write_ms: temporary.durationMs,
-      temp_status: temporary.storage,
+      temp_write_ms: temporary?.durationMs ?? null,
+      temp_status: temporary?.storage || 'not_sampled',
+      temp_sampled_at: lastTemporaryStorageProbeAt ?
+        new Date(lastTemporaryStorageProbeAt).toISOString() : null,
       storage_stat_ms: statMs,
     };
     const cap = limitMemory();
@@ -335,6 +356,12 @@ function startHealthWatcher() {
   },SAMPLE_INTERVAL_MS);
   if (watcher.unref) watcher.unref();
 }
+function stopHealthWatcher() {
+  if(watcher) clearInterval(watcher);
+  watcher=null;
+  loopHistogram.disable();
+  eventLoopStallProfiler.stop();
+}
 function registerSiteHealthRoutes(router) {
   router.get('/api/live',(req,res)=>{
     res.setHeader('Cache-Control','no-store');
@@ -355,4 +382,5 @@ function registerSiteHealthRoutes(router) {
   });
 }
 module.exports={registerSiteHealthRoutes,healthProbe,metrics,recentEvents,
-  sample,startHealthWatcher,limitMemory,storageFreeBytes,appendEvent,nextLoopState,describeIoSpike};
+  sample,startHealthWatcher,stopHealthWatcher,limitMemory,storageFreeBytes,
+  appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,describeIoSpike};

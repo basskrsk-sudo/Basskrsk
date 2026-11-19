@@ -65,7 +65,7 @@ const { registerTaskPageRoutes } = require('./routes-task-page');
 const { registerMiniAppTaskRoutes, ensureTaskAccountBindings } = require('./routes-miniapp-tasks');
 const { registerMiniAppManagerMessageRoutes } = require('./miniapp-manager-messages');
 const { registerOperationsRoutes } = require('./routes-operations');
-const { registerSiteHealthRoutes, startHealthWatcher } = require('./site-health');
+const { registerSiteHealthRoutes, startHealthWatcher, stopHealthWatcher } = require('./site-health');
 const { registerPointLaunchRoutes } = require('./routes-point-launch');
 const { registerPointEquipmentRoutes } = require('./routes-point-equipment');
 const { registerPartnerClubRoutes } = require('./routes-partner-club');
@@ -78,6 +78,8 @@ ensureTaskAccountBindings();
 // в /data и при необходимости восстанавливаются до запуска HTTP-сервера.
 require('./salon-page-storage').initializeSalonPagePersistence();
 
+// Daily tier timer is owned by the HTTP server lifecycle.
+let partnerTierReviewTimer = null;
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 // Тот же путь, что и в routes-products.js — фото товаров живут в постоянном
@@ -340,6 +342,9 @@ installGracefulShutdown(server, {
     require('./routes-partner-club').stopPartnerClubWorker();
     require('./unpaid-order-alerts').stopUnpaidOrderAlerts();
     require('./new-product-broadcast').stopBroadcastWorker();
+    stopHealthWatcher();
+    if (partnerTierReviewTimer) clearInterval(partnerTierReviewTimer);
+    partnerTierReviewTimer = null;
   },
 });
 
@@ -368,7 +373,11 @@ server.listen(PORT, () => {
   // у кого давно не было заказов (иначе понижение сработало бы только при
   // следующей продаже, возможно, спустя много месяцев).
   const { checkAllPartnerTiers } = require('./partner-tiers');
-  setInterval(() => { checkAllPartnerTiers().catch((e) => console.warn('Ошибка ежесуточной проверки уровней:', e.message)); }, 24 * 60 * 60 * 1000);
+  partnerTierReviewTimer = setInterval(() => {
+    checkAllPartnerTiers().catch((e) =>
+      console.warn('Ошибка ежесуточной проверки уровней:', e.message));
+  }, 24 * 60 * 60 * 1000);
+  partnerTierReviewTimer.unref?.();
 
   // Win-back promotional messages are now sent only by an explicit admin action.
   // Keep the protected /api/admin/winback/run endpoint without background scans.

@@ -10,7 +10,8 @@ process.env.TOKEN_SECRET='healthcheck-test-token';
 const db=require('./db');
 const {signToken}=require('./auth');
 const {createApiPerformanceTracker}=require('./api-performance');
-const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,appendEvent,nextLoopState,describeIoSpike}=require('./site-health');
+const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,stopHealthWatcher,
+  appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,describeIoSpike}=require('./site-health');
 const routes=new Map(),router={get:(name,handler)=>routes.set(name,handler)};
 registerSiteHealthRoutes(router);
 async function call(pathname,role,id){
@@ -121,6 +122,21 @@ test('event-loop alerts are based on actual histogram latency and remain quiet o
   assert.equal(nextLoopState(state2,155,900).warning,true,'two high p99 readings trigger');
 });
 
+test('optional /tmp write tests back off while healthy and trigger immediately on anomalous I/O',()=>{
+  const healthy={checks:{storage:'ok'},probe_storage_ms:12};
+  const now=Date.parse('2026-11-19T15:00:00.000Z');
+  assert.equal(TEMP_PROBE_INTERVAL_MS,900000);
+  assert.equal(shouldProbeTemporaryStorage(now,0,healthy,20,15,0),true);
+  assert.equal(shouldProbeTemporaryStorage(now,now-60000,healthy,20,15,0),false);
+  assert.equal(shouldProbeTemporaryStorage(now,now-TEMP_PROBE_INTERVAL_MS,healthy,20,15,0),true);
+  assert.equal(shouldProbeTemporaryStorage(now,now-60000,
+    {checks:{storage:'error'},probe_storage_ms:10},20,15,0),true);
+  assert.equal(shouldProbeTemporaryStorage(now,now-60000,
+    {checks:{storage:'ok'},probe_storage_ms:2000},20,15,0),true);
+  assert.equal(shouldProbeTemporaryStorage(now,now-60000,healthy,1800,15,0),true);
+  assert.equal(shouldProbeTemporaryStorage(now,now-60000,healthy,20,850,0),true);
+  assert.equal(shouldProbeTemporaryStorage(now,now-60000,healthy,20,15,1700),true);
+});
 test('diagnostics expose both timer drift and measured event-loop latency',async()=>{
   startHealthWatcher();
   const sample=await metrics();
@@ -173,4 +189,5 @@ test('monitoring compares /data and /tmp without exposing private filesystem pat
   }
   const raw=JSON.stringify(m);
   assert.ok(!raw.includes(dir),'full data directory must never be returned to clients');
+  stopHealthWatcher();
 });
