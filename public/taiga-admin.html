@@ -2653,6 +2653,22 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       <div id="partners-risk-banner" style="display:none;background:#FFF4E5;border:1px solid #F0DDB8;border-radius:8px;padding:.9rem 1.1rem;margin-bottom:1rem;font-size:.85rem;color:#7A4A00;line-height:1.6;"></div>
       <div class="card" id="admin-referral-control" style="margin-bottom:1.1rem;">
         <div class="card-title">🤝 Приведи партнёра — контроль бонусов</div>
+        <details id="referral-new-partner" style="margin:.65rem 0 1rem;padding:1rem;border:1px solid var(--border);border-radius:10px;">
+          <summary style="cursor:pointer;font-weight:600;">➕ Зарегистрировать рекомендателя без точки и стойки</summary>
+          <p style="font-size:.8rem;color:var(--muted);line-height:1.5;">Отдельный партнёр со своим кодом для приглашений и бонусом 1 000 ₽ после 1 000 ₽ выручки новой точки. Комиссия с продаж, остатки и оборудование не назначаются.</p>
+          <form id="referral-new-partner-form" style="display:grid;gap:.7rem;">
+            <div class="admin-field"><label for="referral-new-name">Фамилия и имя *</label><input id="referral-new-name" type="text" maxlength="120" required autocomplete="name"></div>
+            <div class="admin-field"><label for="referral-new-phone">Телефон *</label><input id="referral-new-phone" type="tel" required autocomplete="tel" placeholder="+7 999 123-45-67"></div>
+            <div class="admin-field"><label for="referral-new-login">Логин *</label><input id="referral-new-login" type="text" minlength="3" maxlength="80" required autocomplete="off"></div>
+            <div class="admin-field"><label for="referral-new-password">Пароль для входа *</label><input id="referral-new-password" type="password" minlength="6" maxlength="128" required autocomplete="new-password"></div>
+            <div class="admin-field"><label for="referral-new-payout">Получение бонуса</label><select id="referral-new-payout" class="pm-select">
+              <option value="">Не указано</option><option value="sbp">СБП на телефон</option><option value="card">Перевод на карту</option><option value="bank_account">На расчётный счёт</option><option value="cash">Наличными</option>
+            </select></div>
+            <label style="font-size:.8rem;"><input id="referral-new-consent" type="checkbox" required> Согласие партнёра на обработку персональных данных получено</label>
+            <button id="referral-new-submit" type="submit" class="row-btn" style="background:var(--forest);color:#fff;width:fit-content;">Создать рекомендателя</button>
+            <p id="referral-new-result" role="status" aria-live="polite" style="font-size:.83rem;"></p>
+          </form>
+        </details>
         <p style="font-size:.82rem;color:var(--muted);margin-bottom:.8rem;line-height:1.5;">
           В карточке точки укажите пригласившего и приглашённого грумера. После 1 000 ₽ оплаченной выручки
           точки (за вычетом возвратов) пригласившему автоматически начисляется разовый бонус 1 000 ₽.
@@ -2691,7 +2707,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       <div id="partners-promo-list"></div>
       <div class="card">
         <div class="card-title">
-          <span>Партнёры (грумеры) <span id="partners-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
+          <span>Партнёры и рекомендатели <span id="partners-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
         </div>
         <table class="tbl">
           <thead>
@@ -7122,8 +7138,10 @@ async function renderPartners() {
   document.getElementById('partners-tbody').innerHTML = adminPartners.length ? adminPartners.map(function(p) {
     const referrer = p.referred_by_partner_id ? byId[p.referred_by_partner_id] : null;
     const samePoint = p.point_id ? adminPartners.filter(function(x) { return x.id !== p.id && x.point_id === p.point_id; }) : [];
-    const formatIcons = [p.display_stand && '🧺 Стойка', p.display_basket && '🧺 Корзинка', p.display_poster && '🖼️ Картинка']
-      .filter(Boolean).join('<br>') || '<span style="color:var(--muted)">—</span>';
+    const formatIcons = p.partner_type==='referrer'
+      ? '🤝 Без стойки · рекомендатель'
+      : [p.display_stand && '🧺 Стойка', p.display_basket && '🧺 Корзинка', p.display_poster && '🖼️ Картинка']
+        .filter(Boolean).join('<br>') || '<span style="color:var(--muted)">—</span>';
     const isRisky = p.active && p.commission_rate >= 0.18;
     const pendingReferralBonus = Number(referralData?.bonus_by_partner?.[p.id] || 0);
     const payableWithBonus = Number(p.current_earnings || 0) + pendingReferralBonus;
@@ -7132,7 +7150,8 @@ async function renderPartners() {
       '<td><button type="button" class="row-btn" style="margin-left:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(p.first_purchase_promo_code || '') + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + (p.first_purchase_promo_code ? escapeOrderCell(p.first_purchase_promo_code) : '—') + '</button></td>' +
       '<td>' + p.point_name + (p.point_address ? '<br><span style="font-size:.75rem;color:var(--muted);">' + p.point_address + '</span>' : '') +
         (samePoint.length ? '<br><span style="font-size:.72rem;color:var(--amber);">👥 Также на точке: ' + samePoint.map(function(x) { return x.full_name; }).join(', ') + '</span>' : '') + '</td>' +
-      '<td class="r" style="font-weight:600;' + (isRisky ? 'color:#7A4A00;' : '') + '">' + Math.round(p.commission_rate * 100) + '%' + (isRisky ? ' ⚠️' : '') + '</td>' +
+      '<td class="r" style="font-weight:600;' + (isRisky ? 'color:#7A4A00;' : '') + '">' +
+        (p.partner_type==='referrer'?'Только бонусы':Math.round(p.commission_rate * 100) + '%'+(isRisky ? ' ⚠️' : '')) + '</td>' +
       '<td style="font-size:.78rem;">' + formatIcons + '</td>' +
       '<td style="font-size:.8rem;">' + (referrer ? referrer.full_name + ' (' + referrer.partner_code + ')' : '—') + '</td>' +
       '<td class="r" style="white-space:nowrap;"><strong style="color:var(--deep);">' + payableWithBonus.toLocaleString('ru-RU') + ' ₽</strong>' +

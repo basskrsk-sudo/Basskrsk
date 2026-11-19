@@ -18,7 +18,7 @@ function normalizePhone(phone) {
 // сохраняется БЕЗ нормализации (см. routes-auth.js) — сравниваем по последним
 // 10 цифрам, как и везде в проекте для таблицы partners.
 const activePartnerByPhoneKey = db.prepare(
-  'SELECT 1 FROM partners WHERE phone_last10=? AND active=1 LIMIT 1'
+  'SELECT 1 FROM partners WHERE phone_last10=? AND active=1 AND partner_type=\'groomer\' LIMIT 1'
 );
 function isActivePartnerPhone(digits) {
   if (!digits) return false;

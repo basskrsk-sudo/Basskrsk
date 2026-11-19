@@ -144,6 +144,7 @@ on:
       - server/payout-methods-integration.test.js
       - server/routes-admin-referrals.js
       - server/admin-referral-control.test.js
+      - server/referral-only-partners.test.js
       - public/admin-referral-control.js
       - server/bonus-logic.js
       - server/report-bonuses.js
@@ -470,6 +471,7 @@ jobs:
           node --check server/payout-methods-integration.test.js
           node --check server/routes-admin-referrals.js
           node --check server/admin-referral-control.test.js
+          node --check server/referral-only-partners.test.js
           node --check public/admin-referral-control.js
           node --check server/manager-current-points.test.js
           node --check server/manager-miniapp-registration.test.js
@@ -622,7 +624,7 @@ jobs:
       - name: Verify restart-safe bot profile sync and graceful shutdown
         run: node --test server/bot-config-sync.test.js server/graceful-shutdown.test.js
       - name: Verify invite-a-partner threshold, linkage, payouts and refund safeguards
-        run: node --test --test-concurrency=1 server/referral-flow.test.js server/admin-referral-control.test.js
+        run: node --test --test-concurrency=1 server/referral-flow.test.js server/admin-referral-control.test.js server/referral-only-partners.test.js
       - name: Verify payout preference registration and role-limited updates
         run: node --test --test-concurrency=1 server/payout-methods.test.js server/payout-methods-integration.test.js
       - name: Verify two groomer sign-in paths, without SMS

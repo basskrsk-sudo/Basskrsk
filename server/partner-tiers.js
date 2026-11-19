@@ -92,6 +92,7 @@ async function checkAndUpgradePartnerTier(partnerId) {
   const stats = getPartnerStats(partnerId);
   if (!stats) return null;
   const { partner, revenue, referralsCount, month } = stats;
+  if (partner.partner_type === 'referrer') return null;
 
   const earnedTier = getEligibleTier(revenue, referralsCount);
 
@@ -166,7 +167,7 @@ async function notifyTierChange(partner, tier, revenue, referralsCount, directio
 // Прогулка по всем активным партнёрам — для ежедневной фоновой проверки,
 // ловит понижения даже у тех, у кого давно не было заказов.
 async function checkAllPartnerTiers() {
-  const partners = db.prepare('SELECT id FROM partners WHERE active = 1').all();
+  const partners = db.prepare("SELECT id FROM partners WHERE active=1 AND partner_type='groomer'").all();
   for (const p of partners) {
     try { await checkAndUpgradePartnerTier(p.id); } catch (e) { console.warn('Ошибка проверки уровня партнёра #' + p.id + ':', e.message); }
   }
@@ -177,6 +178,10 @@ function getTierProgress(partnerId) {
   const stats = getPartnerStats(partnerId);
   if (!stats) return null;
   const { partner, revenue, referralsCount, month } = stats;
+  if (partner.partner_type==='referrer') return {
+    partner_type:'referrer',currentRate:0,revenueThisMonth:0,
+    referralsCount,nextTier:null,inGracePeriod:false,pendingDowngradeApproval:null,
+  };
 
   const currentTierIndex = TIERS.findIndex((t) => t.rate === partner.commission_rate);
   const nextTier = currentTierIndex > 0 ? TIERS[currentTierIndex - 1] : null; // TIERS отсортирован по убыванию

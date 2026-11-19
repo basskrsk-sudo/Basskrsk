@@ -1188,6 +1188,67 @@ async function getCityName(cityId) {
   return city ? city.name : cityId;
 }
 
+function referralEscape(input){
+  return String(input==null?'':input).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+async function renderReferralOnlyPage(user){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('sb-name').textContent=user.full_name;
+  document.getElementById('sb-tier').textContent='Партнёр-рекомендатель';
+  document.getElementById('sb-city').textContent='🤝 Без торговой точки';
+  document.getElementById('sec-title').textContent='Мои рекомендации';
+  document.querySelectorAll('#groomer-sidebar .nav-item').forEach(function(el){el.style.display='none';});
+  document.querySelectorAll('.page-sec').forEach(function(el){el.style.display='none';});
+  const dates=document.querySelector('.topbar-right');if(dates)dates.style.display='none';
+  let details=user;
+  try{
+    const response=await authFetch('/api/partners/me');
+    if(response.ok)details=(await response.json()).partner||user;
+  }catch(e){}
+  const referrals=details.referrals||{},items=referrals.rows||[],code=details.partner_code||'';
+  const url='https://хвостмаркет.рф/partner-invite.html?ref='+encodeURIComponent(code);
+  let node=document.getElementById('referral-only-page');
+  if(!node){node=document.createElement('div');node.id='referral-only-page';document.querySelector('.content').appendChild(node);}
+  const money=n=>Number(n||0).toLocaleString('ru-RU')+' ₽';
+  const status={awaiting:'Ожидает выручку',payable:'К выплате',paid:'Выплачено',on_hold:'Удержано после возврата'};
+  node.innerHTML='<div class="card"><h2 style="margin-bottom:.7rem;">🤝 Мой реферальный кабинет</h2>'+
+    '<p>Вы рекомендуете ХвостМаркет другим салонам без собственной стойки. Бонус — 1 000 ₽ после 1 000 ₽ оплаченной выручки подключённой точки.</p>'+
+    '<p style="margin-top:1rem;font-weight:700;">Ваш персональный код: '+referralEscape(code)+'</p>'+
+    '<div class="ref-link-wrap" style="margin-top:.6rem;"><span class="ref-link" id="referral-only-url">'+referralEscape(url)+'</span>'+
+      '<button class="copy-btn" type="button" onclick="copyLink(\'referral-only-url\',this)">Скопировать</button></div></div>'+
+    '<div class="kpi-grid">'+
+      '<div class="kpi-card"><div class="kpi-label">Приглашено точек</div><div class="kpi-value">'+Number(referrals.count||0)+'</div></div>'+
+      '<div class="kpi-card"><div class="kpi-label">Ожидает</div><div class="kpi-value">'+money(referrals.awaiting)+'</div></div>'+
+      '<div class="kpi-card"><div class="kpi-label">К выплате</div><div class="kpi-value">'+money(referrals.payable)+'</div></div>'+
+      '<div class="kpi-card"><div class="kpi-label">Выплачено</div><div class="kpi-value">'+money(referrals.paid)+'</div></div></div>'+
+    (referrals.held?'<p>Выплата временно приостановлена после возвратов: '+money(referrals.held)+'</p>':'')+
+    '<div class="card"><h3>Привлечённые точки</h3>'+
+      (items.length?items.map(function(x){return '<p style="padding:.55rem 0;border-bottom:1px solid #eee;">'+referralEscape(x.point_name)+
+        ' · '+referralEscape(status[x.status]||x.status)+' · <b>'+money(x.amount)+'</b></p>';}).join(''):
+        '<p style="color:#69756c;">Пока нет приглашённых точек. Отправьте ссылку потенциальному партнёру.</p>')+
+    '</div>'+
+    '<div class="card"><h3>Способ выплаты</h3>'+
+      '<label for="referrer-payout-method">Куда перечислять бонусы</label>'+
+      '<select id="referrer-payout-method" style="width:100%;max-width:360px;margin:.6rem 0;padding:.65rem;">'+
+        [['','Не указан'],['sbp','СБП на телефон'],['card','Перевод на карту'],['bank_account','Расчётный счёт'],['cash','Наличными']].map(function(item){
+          return '<option value="'+item[0]+'"'+(details.payout_method===item[0]?' selected':'')+'>'+item[1]+'</option>';
+        }).join('')+'</select>'+
+      '<p><button class="copy-btn" type="button" onclick="saveReferrerPayoutMethod()">Сохранить способ выплаты</button></p>'+
+      '<p id="referrer-payout-status" role="status"></p></div>';
+}
+async function saveReferrerPayoutMethod(){
+  const note=document.getElementById('referrer-payout-status');
+  const method=document.getElementById('referrer-payout-method').value;
+  if(!method){note.textContent='Выберите способ выплаты';return;}
+  try{
+    const r=await authFetch('/api/partners/me/payout-method',{method:'PUT',body:{payout_method:method}});
+    const x=await r.json();
+    note.textContent=r.ok?'✅ Способ выплаты сохранён':x.error||'Не удалось сохранить';
+  }catch(e){note.textContent='Не удалось сохранить способ выплаты';}
+}
 async function onPartnerLoginSuccess(data) {
   setPartnerToken(data.token);
   myPointId = data.user.point_id || null;
@@ -1195,6 +1256,10 @@ async function onPartnerLoginSuccess(data) {
   currentUser.name = data.user.full_name;
   COMMISSION = data.user.commission_rate || 0.15;
   currentPartnerUser = data.user;
+  if(data.user.partner_type==='referrer'){
+    await renderReferralOnlyPage(data.user);
+    return;
+  }
 
   const tierEl = document.getElementById('sb-tier');
   if (tierEl) {

@@ -114,6 +114,31 @@
     }catch(error){note.textContent=error.message||'Ошибка проверки';}
     finally{busy=false;}
   }
+  async function createReferralPartner(event){
+    event.preventDefault();
+    if(busy)return;
+    var status=E('referral-new-result'),submit=E('referral-new-submit'),form=E('referral-new-partner-form');
+    if(!form||!status)return;
+    var requestBody={
+      full_name:E('referral-new-name').value.trim(),
+      phone:E('referral-new-phone').value.trim(),
+      login:E('referral-new-login').value.trim(),
+      password:E('referral-new-password').value,
+      payout_method:E('referral-new-payout').value,
+      personal_data_consent:E('referral-new-consent').checked,
+    };
+    busy=true;submit.disabled=true;status.textContent='Регистрируем рекомендателя…';
+    try{
+      var r=await authFetch('/api/admin/referral-partners',{method:'POST',body:requestBody});
+      var info=await r.json();
+      if(!r.ok)throw new Error(info.error||'Не удалось зарегистрировать рекомендателя');
+      form.reset();
+      status.innerHTML='✅ Рекомендатель создан. Персональный код: <b>'+esc(info.partner_code)+
+        '</b>. <a href="'+esc(info.referral_url)+'" target="_blank" rel="noopener">Открыть ссылку-приглашение</a>';
+      if(typeof renderPartners==='function')await renderPartners();
+    }catch(error){status.textContent=error.message||'Ошибка регистрации';}
+    finally{busy=false;submit.disabled=false;}
+  }
   function install(){
     var root=E('admin-referral-control');
     if(!root||root.dataset.refControlReady)return;
@@ -130,6 +155,8 @@
         });
       }
     });
+    var registration=E('referral-new-partner-form');
+    if(registration)registration.addEventListener('submit',createReferralPartner);
     E('referral-modal-cancel').addEventListener('click',close);
     E('referral-modal-save').addEventListener('click',save);
   }

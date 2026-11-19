@@ -588,7 +588,9 @@
   function dashboardHeader(role) {
     var config = CONFIG[role];
     var displayName = currentUser && (currentUser.full_name || currentUser.name || currentUser.login) || 'Сотрудник';
-    var subtitle = config.title + (currentUser && currentUser.login ? ' · ' + currentUser.login : '');
+    var subtitle = (role==='partner' && currentUser && currentUser.partner_type==='referrer'
+      ? 'Партнёр-рекомендатель' : config.title) +
+      (currentUser && currentUser.login ? ' · ' + currentUser.login : '');
     return back() + heading(config.icon + ' ' + config.title, 'Данные из действующей системы ХвостМаркет') +
       '<div class="work-profile-line"><div class="work-avatar">' + config.icon + '</div><div class="work-profile-text"><b>' +
         esc(displayName) + '</b><small>' + esc(subtitle) + '</small></div>' +
@@ -811,6 +813,30 @@
     }
   }
   function partnerDashboard(data) {
+    if(currentUser && currentUser.partner_type==='referrer'){
+      restockItems=[];
+      var refs=currentUser.referrals||{},entries=refs.rows||[];
+      var code=currentUser.partner_code||'';
+      var url='https://хвостмаркет.рф/partner-invite.html?ref='+encodeURIComponent(code);
+      var statusNames={awaiting:'Ожидает выручку',payable:'К выплате',paid:'Выплачен',
+        on_hold:'Приостановлен после возврата'};
+      return surface('🤝 Ваши рекомендации',
+        '<p class="work-note">У вас нет торговой стойки и комиссии с продаж. За каждую приглашённую точку — разовый бонус 1 000 ₽ после 1 000 ₽ оплаченной выручки за вычетом возвратов.</p>'+
+        '<div class="work-stats">'+
+          stat('Приглашено точек',number(refs.count||0),'Закреплено по вашему коду')+
+          stat('Ожидает',rub(refs.awaiting||0),'Ещё не достигли порога')+
+          stat('К выплате',rub(refs.payable||0),'После выполнения условий')+
+          stat('Выплачено',rub(refs.paid||0),'Подтверждённые переводы')+
+        '</div>'+
+        '<p><strong>Ваш код: '+esc(code)+'</strong></p>'+
+        '<p style="overflow-wrap:anywhere"><a href="'+esc(url)+'" target="_blank" rel="noopener">'+esc(url)+'</a></p>'+
+        '<p class="work-note">Скопируйте ссылку и отправьте её будущему партнёру.</p>')+
+        surface('💰 Бонусы за привлечённые точки',
+          rows(entries.map(function(x){return line(x.point_name||'Новая точка',
+            statusNames[x.status]||x.status,rub(x.amount||0));}))+
+          (refs.held?'<p class="work-note">После возвратов временно удержано: '+rub(refs.held)+'</p>':''))+
+        payoutPreferenceSurface('partner',currentUser);
+    }
     var orders = data[0] && data[0].orders || [];
     var pay = data[1] || {};
     var stock = data[2] && data[2].stock || [];
@@ -1334,6 +1360,7 @@
       owner: '🏠 Новый владелец салона',
       manager: '👤 Новый менеджер',
       groomer: '✂️ Новый грумер',
+      referrer: '🤝 Новый рекомендатель без стойки',
     };
     var top = dashboardHeader('admin') +
       '<button class="work-back" type="button" data-work-action="admin-reg-back">← В кабинет администратора</button>';
@@ -1341,7 +1368,9 @@
       var message = kind === 'point'
         ? 'Минимаркет «' + esc(adminCreatedPointName) +
           '» создан. Можно сразу зарегистрировать владельца и грумеров.'
-        : 'Новый пользователь зарегистрирован. Ему доступен вход по подтверждённому номеру телефона.';
+        : kind === 'referrer'
+          ? 'Рекомендатель зарегистрирован без торговой точки. Он может войти в кабинет и приглашать новые салоны.'
+          : 'Новый пользователь зарегистрирован. Ему доступен вход по подтверждённому номеру телефона.';
       var actions = kind === 'point'
         ? '<button class="work-primary" type="button" data-work-action="admin-reg-groomer">✂️ Добавить грумера</button>' +
           '<button class="work-secondary" type="button" data-work-action="admin-reg-owner">🏠 Добавить владельца</button>'
@@ -1407,7 +1436,7 @@
       if (kind === 'manager') {
         form = '<label class="work-register-label" for="workAdminPersonCity">Город работы *</label>' +
           '<select class="work-register-input" id="workAdminPersonCity" required>' + cityHtml + '</select>';
-      } else {
+      } else if(kind!=='referrer') {
         form = '<label class="work-register-label" for="workAdminPersonPoint">Минимаркет *</label>' +
           '<select class="work-register-input" id="workAdminPersonPoint" required>' +
           adminRegistrationChoicesHtml(points, '— Выберите минимаркет —') + '</select>';
@@ -1432,7 +1461,9 @@
         form += '<label class="work-register-label" for="workAdminPersonReferral">Код пригласившего (необязательно)</label>' +
           '<input class="work-register-input" id="workAdminPersonReferral" type="text" maxlength="60" placeholder="GR-001 / OWN-001">';
       }
-      if (kind === 'owner' || kind === 'groomer') form += payoutRegistrationFields('workAdminPersonPayout');
+      if (kind === 'owner' || kind === 'groomer' || kind === 'referrer')
+        form += payoutRegistrationFields('workAdminPersonPayout');
+      if (kind === 'referrer') form += '<p class="work-note">Без торговой точки и стойки. Комиссии с продаж нет. После регистрации появится собственный код GR-... для приглашений.</p>';
       form += '<label class="work-register-consent"><input id="workAdminConsent" type="checkbox" required>' +
         '<span>Подтверждаю согласие человека на обработку персональных данных для регистрации в ХвостМаркет.</span></label>';
     }
@@ -1454,7 +1485,7 @@
     }
   }
   async function openAdminRegistration(kind) {
-    if (!adminRegisterAuthorized() || !['point','owner','manager','groomer'].includes(kind)) return;
+    if (!adminRegisterAuthorized() || !['point','owner','manager','groomer','referrer'].includes(kind)) return;
     adminRegistrationKind = kind;
     adminRegistrationMode = 'form';
     adminRegistrationBusy = false;
@@ -1552,6 +1583,10 @@
         var email = String(get('workAdminPersonEmail').value || '').trim();
         if (email) body.email = email;
         url = '/api/managers';
+      } else if(kind==='referrer') {
+        body.payout_method=get('workAdminPersonPayout').value;
+        body.personal_data_consent=true;
+        url='/api/admin/referral-partners';
       } else {
         var pointId = String(get('workAdminPersonPoint').value || '');
         var allowedPoints = kind === 'owner' ? opts.owner_points || [] : opts.points || [];
@@ -1697,7 +1732,8 @@
       '<button class="work-primary" type="button" data-work-action="admin-reg-point">📍 Добавить минимаркет</button>' +
       '<button class="work-secondary" type="button" data-work-action="admin-reg-owner">🏠 Зарегистрировать владельца</button>' +
       '<button class="work-secondary" type="button" data-work-action="admin-reg-manager">👤 Зарегистрировать менеджера</button>' +
-      '<button class="work-secondary" type="button" data-work-action="admin-reg-groomer">✂️ Зарегистрировать грумера</button></div>' +
+      '<button class="work-secondary" type="button" data-work-action="admin-reg-groomer">✂️ Зарегистрировать грумера</button>' +
+      '<button class="work-secondary" type="button" data-work-action="admin-reg-referrer">🤝 Зарегистрировать рекомендателя</button></div>' +
       '<p class="work-note">Создание в действующем реестре ХвостМаркета. Доступно только администраторам.</p>');
     html += surface('Последние заказы сети', rows(allOrders.slice(0, 8).map(function(o) {
       return line(o.pickup_point || 'Покупка', date(o.created_at) + ' · ' +
@@ -1882,6 +1918,7 @@
     if (action === 'admin-reg-owner' && activeRole === 'admin') return openAdminRegistration('owner');
     if (action === 'admin-reg-manager' && activeRole === 'admin') return openAdminRegistration('manager');
     if (action === 'admin-reg-groomer' && activeRole === 'admin') return openAdminRegistration('groomer');
+    if (action === 'admin-reg-referrer' && activeRole === 'admin') return openAdminRegistration('referrer');
     if (action === 'admin-reg-repeat' && activeRole === 'admin' && adminRegistrationKind)
       return openAdminRegistration(adminRegistrationKind);
     if (action === 'admin-reg-retry' && activeRole === 'admin' && adminRegistrationKind)
