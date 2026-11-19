@@ -1125,6 +1125,23 @@ ensureColumn('orders', 'referral_code', 'TEXT');
 // Ранее зарегистрированным грумерам без кода заполним его безопасной миграцией.
 ensureColumn('partners', 'first_purchase_promo_code', 'TEXT');
 ensureColumn('points', 'first_purchase_promo_code', 'TEXT');
+// The previous boot path unconditionally DROP/CREATEd both promo triggers.
+// That performs schema writes on the slow persistent /data volume on EVERY
+// process restart. Repair older trigger definitions only when necessary.
+const partnerPromoTriggerSql=db.prepare(
+  "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='trg_partner_first_purchase_promo_insert'"
+).get()?.sql||'';
+if(partnerPromoTriggerSql &&
+   !partnerPromoTriggerSql.includes("NEW.partner_type = 'groomer'")) {
+  db.exec('DROP TRIGGER IF EXISTS trg_partner_first_purchase_promo_insert');
+}
+const pointPromoTriggerSql=db.prepare(
+  "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='trg_point_first_purchase_promo_insert'"
+).get()?.sql||'';
+if(pointPromoTriggerSql &&
+   !pointPromoTriggerSql.includes('first_purchase_point_promo_numbers')) {
+  db.exec('DROP TRIGGER IF EXISTS trg_point_first_purchase_promo_insert');
+}
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_partners_first_purchase_promo
     ON partners(first_purchase_promo_code);
@@ -1133,8 +1150,7 @@ db.exec(`
   -- включая регистрацию из кабинета менеджера и прямые служебные INSERT.
   -- Генерация от первичного ключа гарантирует разные коды даже при
   -- одновременной регистрации нескольких грумеров на одной точке.
-  DROP TRIGGER IF EXISTS trg_partner_first_purchase_promo_insert;
-  CREATE TRIGGER trg_partner_first_purchase_promo_insert
+  CREATE TRIGGER IF NOT EXISTS trg_partner_first_purchase_promo_insert
   AFTER INSERT ON partners
   WHEN NEW.partner_type = 'groomer' AND
        (NEW.first_purchase_promo_code IS NULL OR TRIM(NEW.first_purchase_promo_code) = '')
@@ -1181,8 +1197,7 @@ db.exec(`
     ON points(first_purchase_promo_code);
 
   -- Replace the previous random-string generator for future salons.
-  DROP TRIGGER IF EXISTS trg_point_first_purchase_promo_insert;
-  CREATE TRIGGER trg_point_first_purchase_promo_insert
+  CREATE TRIGGER IF NOT EXISTS trg_point_first_purchase_promo_insert
   AFTER INSERT ON points
   BEGIN
     INSERT OR IGNORE INTO first_purchase_point_promo_numbers(point_id) VALUES (NEW.id);

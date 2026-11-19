@@ -12,7 +12,8 @@ const {signToken}=require('./auth');
 const {createApiPerformanceTracker}=require('./api-performance');
 const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,stopHealthWatcher,
   appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,
-  TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike}=require('./site-health');
+  TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike,
+  shouldWriteHeartbeat,isRestartGap,HEARTBEAT_INTERVAL_MS,RESTART_GAP_THRESHOLD_MS}=require('./site-health');
 const routes=new Map(),router={get:(name,handler)=>routes.set(name,handler)};
 registerSiteHealthRoutes(router);
 async function call(pathname,role,id){
@@ -126,6 +127,25 @@ test('event-loop alerts are based on actual histogram latency and remain quiet o
   assert.equal(nextLoopState(state2,155,900).warning,true,'two high p99 readings trigger');
 });
 
+test('SQLite health heartbeat writes every five minutes, not every sample',()=>{
+  const first=Date.parse('2026-11-19T08:00:00Z');
+  assert.equal(HEARTBEAT_INTERVAL_MS,300000);
+  assert.equal(RESTART_GAP_THRESHOLD_MS,480000);
+  assert.equal(shouldWriteHeartbeat(first,0),true);
+  assert.equal(shouldWriteHeartbeat(first+60000,first),false);
+  assert.equal(shouldWriteHeartbeat(first+299999,first),false);
+  assert.equal(shouldWriteHeartbeat(first+300000,first),true);
+  assert.equal(shouldWriteHeartbeat(first,first+300000),true,
+    'time corrections permit a new heartbeat');
+});
+test('restart gap warning accounts for stale heartbeat without hiding long outages',()=>{
+  const now=Date.parse('2026-11-19T09:00:00Z');
+  assert.equal(isRestartGap(now,new Date(now-3*60000).toISOString()),false);
+  assert.equal(isRestartGap(now,new Date(now-8*60000).toISOString()),false);
+  assert.equal(isRestartGap(now,new Date(now-8*60000-1000).toISOString()),true);
+  assert.equal(isRestartGap(now,'not-a-date'),false);
+  assert.equal(isRestartGap(now,new Date(now-35*24*3600000).toISOString()),false);
+});
 test('optional /tmp write tests back off while healthy and trigger immediately on anomalous I/O',()=>{
   const healthy={checks:{storage:'ok'},probe_storage_ms:12};
   const now=Date.parse('2026-11-19T15:00:00.000Z');

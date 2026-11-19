@@ -26,6 +26,11 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const BOOTED_AT = Date.now();
 const HEALTH_CACHE_MS = 10000;
 const SAMPLE_INTERVAL_MS = 60000;
+// The heartbeat is for restart-gap diagnostics, NOT liveness/readiness.
+// The independent uptime monitor checks the public site every five minutes.
+// Coalesce 5 one-minute samples into one SQLite write while the server is idle.
+const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
+const RESTART_GAP_THRESHOLD_MS = HEARTBEAT_INTERVAL_MS + 3 * 60 * 1000;
 // /data readiness is critical and stays at 60 seconds; the /tmp comparison
 // is supplemental diagnostics, not a reason to write every minute.
 const TEMP_PROBE_INTERVAL_MS = 15 * 60 * 1000;
@@ -54,6 +59,7 @@ const loopHistogram = monitorEventLoopDelay({resolution:100});
 let loopState={slowSamples:0,healthySamples:0,warning:false};
 let watcher = null;
 let lastPruneDay = '';
+let lastHeartbeatAt = 0;
 const lastAlerts = new Map();
 const states = new Map();
 
@@ -358,11 +364,16 @@ async function sample() {
           recentSync.name+' '+recentSync.duration_ms+' мс. '
         : '')+
       describeIoSpike(lastSample.io_probe));
-    try {
-      db.prepare('INSERT INTO site_health_heartbeat(id,last_seen_at,boot_id) VALUES(1,?,?) '+
-        'ON CONFLICT(id) DO UPDATE SET last_seen_at=excluded.last_seen_at,boot_id=excluded.boot_id')
-        .run(new Date(now).toISOString(),bootId);
-    } catch (e) { console.warn('[health] heartbeat unavailable:',e.code||'unknown'); }
+    if (shouldWriteHeartbeat(now,lastHeartbeatAt)) {
+      try {
+        db.prepare('INSERT INTO site_health_heartbeat(id,last_seen_at,boot_id) VALUES(1,?,?) '+
+          'ON CONFLICT(id) DO UPDATE SET last_seen_at=excluded.last_seen_at,boot_id=excluded.boot_id')
+          .run(new Date(now).toISOString(),bootId);
+        // Advance only after a successful write; a failed disk write retries
+        // on the next one-minute sample without spawning additional timers.
+        lastHeartbeatAt=now;
+      } catch (e) { console.warn('[health] heartbeat unavailable:',e.code||'unknown'); }
+    }
     // Limit history to 90 days. Pruning once per UTC day avoids churn.
     const day = new Date(now).toISOString().slice(0,10);
     if (day !== lastPruneDay) {
@@ -372,16 +383,24 @@ async function sample() {
     }
   } finally { sampleInFlight = false; }
 }
+function shouldWriteHeartbeat(now,lastWrittenAt) {
+  return !lastWrittenAt || now<lastWrittenAt ||
+    now-lastWrittenAt>=HEARTBEAT_INTERVAL_MS;
+}
+function isRestartGap(now,lastSeenAt) {
+  const gap=now-Date.parse(lastSeenAt||'');
+  return Number.isFinite(gap)&&gap>RESTART_GAP_THRESHOLD_MS&&gap<30*24*3600000;
+}
 function startHealthWatcher() {
   if (watcher) return;
   try {
     const prev=db.prepare('SELECT last_seen_at FROM site_health_heartbeat WHERE id=1').get();
     if (prev) {
-      const gap=Date.now()-Date.parse(prev.last_seen_at);
-      if (Number.isFinite(gap)&&gap>180000&&gap<30*24*3600000)
-      {
-        appendEvent('restart_gap','warning','После перезапуска обнаружен перерыв наблюдения более 3 минут');
-        void alert('restart_gap','warning','Сервер перезапущен после перерыва наблюдения более 3 минут.');
+      if (isRestartGap(Date.now(),prev.last_seen_at)) {
+        // After a 5-minute heartbeat, the old 3-minute cutoff could falsely
+        // warn on a normal restart. Keep a 3-minute safety allowance.
+        appendEvent('restart_gap','warning','После перезапуска обнаружен перерыв наблюдения более 8 минут');
+        void alert('restart_gap','warning','Сервер перезапущен после перерыва наблюдения более 8 минут.');
       }
     }
   } catch (_) {}
@@ -424,4 +443,5 @@ function registerSiteHealthRoutes(router) {
 module.exports={registerSiteHealthRoutes,healthProbe,metrics,recentEvents,
   sample,startHealthWatcher,stopHealthWatcher,limitMemory,storageFreeBytes,
   appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,
-  TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike};
+  TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike,
+  shouldWriteHeartbeat,isRestartGap,HEARTBEAT_INTERVAL_MS,RESTART_GAP_THRESHOLD_MS};
