@@ -141,6 +141,8 @@ function applyTelegramChromeColors(){
   try{tg.setHeaderColor(TELEGRAM_NATIVE_HEADER_COLOR)}catch(_){}
   try{tg.setBackgroundColor('#f7f7f1')}catch(_){}
 }
+var catalogStale = true;
+var catalogRefreshPromise = null;
 var state = {products:[],points:[],pointId:'',category:'all',search:'',view:'shop',cart:[],partners:[],advisor:'',name:'',phone:'',email:'',promo:'',promoValid:false,promoInfo:null,promoKey:'',verified:false,user:null,selectedProduct:null,selectedVariant:null,pendingCode:'',paymentUncertain:false};
 var CATEGORY = {all:'Все',treats:'🦴 Лакомства',toys:'🧸 Игрушки',accessories:'🎀 Аксессуары',care:'🫧 Уход'};
 function el(id){return document.getElementById(id)}
@@ -158,6 +160,40 @@ function subtotal(){return state.cart.reduce(function(a,i){return a+i.price*i.qt
 function persistPoint(){try{localStorage.setItem('hm_miniapp_point',String(state.pointId))}catch(_){}}
 function readPoint(){try{return localStorage.getItem('hm_miniapp_point')||''}catch(_){return ''}}
 async function api(url,options){var r=await (window.HvostMiniAppReliability?window.HvostMiniAppReliability.request:fetch)(url,Object.assign({cache:'no-store'},options||{}));var data=await r.json().catch(function(){return {}});if(!r.ok){var err=new Error(data.error||'Ошибка сервера ('+r.status+')');err.status=r.status;if(r.status>=500)err.code='server';throw err}return data}
+async function refreshCatalogIfStale(){
+  if(!catalogStale)return;
+  if(catalogRefreshPromise)return catalogRefreshPromise;
+  catalogRefreshPromise=(async function(){
+    var data=await Promise.all([api('/api/products'),api('/api/points')]);
+    state.products=data[0].products||[];
+    state.points=data[1].points||[];
+    catalogStale=false;
+    // Respect an explicit QR point, then the previously saved choice.
+    // Do not discard the active cart or advisor when its point still exists.
+    var preset=new URLSearchParams(location.search).get('point');
+    var selected=state.points.find(function(p){
+      return String(p.id)===String(state.pointId||preset||readPoint());
+    });
+    if(selected){
+      if(String(state.pointId)!==String(selected.id))selectPoint(selected.id);
+      else el('pointName').textContent=selected.name+(selected.addr?' · '+selected.addr:'');
+    }else if(state.points.length===1)selectPoint(state.points[0].id);
+    else{
+      if(state.pointId&&state.cart.length){
+        state.cart=[];
+        toast('Корзина очищена: минимаркет больше недоступен');
+      }
+      state.pointId='';
+      el('pointName').textContent='Выбрать минимаркет';
+    }
+    if(state.view==='shop')renderProducts();
+    if(state.view==='cart')renderCart();
+    if(state.view==='checkout')renderCheckout();
+    renderCartIndicators();
+  })();
+  try{return await catalogRefreshPromise;}
+  finally{catalogRefreshPromise=null;}
+}
 function setView(view,skipWorkRender,target){
   if(view==='work'&&!isPhoneAccessUnlocked())view='profile';
   if(view==='leads'&&(!window.HvostMiniAppLeads||!window.HvostMiniAppLeads.available()))view='profile';
@@ -170,7 +206,12 @@ function setView(view,skipWorkRender,target){
   el('header').classList.toggle('hide',view==='result'||view==='work'||view==='profile'||view==='leads'||view==='map');
   Array.from(document.querySelectorAll('.tab')).forEach(function(btn){btn.classList.toggle('on',btn.dataset.view===view)});
   renderCartIndicators();
-  if(view==='shop')renderProducts();
+  if(view==='shop'){
+    if(catalogStale){
+      el('stockCount').textContent='Обновляем остатки…';
+      el('products').innerHTML='<div class="empty">⏳ Загружаем актуальные товары и остатки…</div>';
+    }else renderProducts();
+  }
   if(view==='cart')renderCart();
   if(view==='checkout')renderCheckout();
   if(view==='profile')renderProfile();
@@ -181,6 +222,13 @@ function setView(view,skipWorkRender,target){
     else window.HvostMiniAppLeads.open();
   }
   if(view==='map'&&window.HvostMiniAppNetworkMap)window.HvostMiniAppNetworkMap.open(target);
+  // A catalog request is unnecessary while viewing profile or staff tools.
+  // If connectivity was restored, fetch it only when shopping resumes.
+  if(catalogStale && (view==='shop'||view==='cart'||view==='checkout')){
+    void refreshCatalogIfStale().catch(function(e){
+      toast('Не удалось обновить товары: '+(e.message||'ошибка сети'));
+    });
+  }
   window.scrollTo(0,0);
 }
 function isPhoneAccessUnlocked(){return !!(window.HvostMiniAppIdentity&&window.HvostMiniAppIdentity.getStatus().verified)}
@@ -284,6 +332,9 @@ if(!tg||!tg.initData){
 try{var d=await api('/api/miniapp/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})});state.verified=true;state.user=d.user;state.name=d.user.first_name||'';el('hello').textContent='Привет, '+state.name+'!';el('appMode').textContent='● Telegram'}catch(e){el('appMode').textContent='Нет входа';toast(e.message)}if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.init(tg,state.verified?state.user:null)}
 async function refreshReadOnlyAfterReconnect(){
   // Only refetch and revalidate: never duplicate payment or inventory writes.
+  // Mark shop stock stale; do not download the entire catalog while a user
+  // is viewing the profile, payment result, CRM, map or a staff cabinet.
+  catalogStale=true;
   if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.refresh();
   syncPhoneAccess();
   if(state.paymentUncertain&&state.pendingCode){
@@ -302,17 +353,9 @@ async function refreshReadOnlyAfterReconnect(){
     await window.HvostMiniAppNetworkMap.refresh();
     return;
   }
-  var data=await Promise.all([api('/api/products'),api('/api/points')]);
-  state.products=data[0].products||[];
-  state.points=data[1].points||[];
-  if(!currentPoint()){
-    if(state.points.length===1)selectPoint(state.points[0].id);
-    else{state.pointId='';el('pointName').textContent='Выбрать минимаркет';}
+  if(state.view==='shop'||state.view==='cart'||state.view==='checkout'){
+    await refreshCatalogIfStale();
   }
-  if(state.view==='shop')renderProducts();
-  if(state.view==='cart')renderCart();
-  if(state.view==='checkout')renderCheckout();
-  renderCartIndicators();
 }
 async function init(){
   // Keep the profile as a safe loading view before signed Telegram checks.
@@ -340,25 +383,19 @@ async function init(){
       setView('map');
     // Old ?view=work links safely show the phone and role picker too.
   }
-  var catalogLoaded=false;
-  try{
-    var data=await Promise.all([api('/api/products'),api('/api/points')]);
-    state.products=data[0].products||[];
-    state.points=data[1].points||[];
-    catalogLoaded=true;
-    var old=readPoint();
-    var preset=query.get('point');
-    var chosen=state.points.find(function(p){return String(p.id)===String(preset||old)});
-    if(chosen)selectPoint(chosen.id);
-    else if(state.points.length===1)selectPoint(state.points[0].id);
-    else{el('pointName').textContent='Выбрать минимаркет';renderProducts()}
-  }catch(e){
-    el('products').innerHTML='<div class="empty"><div class="emoji">⚠️</div><h3>Каталог не загрузился</h3><p>'+esc(e.message)+'</p><button class="btn btn-light" data-action="reload" style="margin-top:16px">Повторить</button></div>';
-    el('stockCount').textContent='Ошибка загрузки';
+  // Partner, owner and admin entry screens do not need stock APIs. A QR
+  // shopping launch remains immediate, using single-flight catalog loading.
+  var needsStore=state.view==='shop'||state.view==='cart'||state.view==='checkout';
+  if(needsStore){
+    try{await refreshCatalogIfStale();}
+    catch(e){
+      el('products').innerHTML='<div class="empty"><div class="emoji">⚠️</div><h3>Каталог не загрузился</h3><p>'+esc(e.message)+'</p><button class="btn btn-light" data-action="reload" style="margin-top:16px">Повторить</button></div>';
+      el('stockCount').textContent='Ошибка загрузки';
+    }
   }
   if(validPayment)await checkPaymentReturn(resultCode);
   renderCartIndicators();
-  if(catalogLoaded&&window.HvostMiniAppReliability)window.HvostMiniAppReliability.markReady();
+  if(window.HvostMiniAppReliability)window.HvostMiniAppReliability.markReady();
 }
 el('pointButton').addEventListener('click',showPointSheet);el('cartFloat').addEventListener('click',function(){setView('cart')});el('searchBox').addEventListener('input',function(e){state.search=e.target.value;renderProducts()});el('sheetCover').addEventListener('click',function(e){if(e.target===el('sheetCover'))hideSheet()});
 document.addEventListener('click',function(e){var t=e.target.closest('button');if(!t)return;if(t.hasAttribute('data-close')){hideSheet();return}if(t.hasAttribute('data-view')){
