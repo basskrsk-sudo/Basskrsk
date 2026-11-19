@@ -13,7 +13,8 @@ const {createApiPerformanceTracker}=require('./api-performance');
 const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatcher,stopHealthWatcher,
   appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,
   TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike,
-  shouldWriteHeartbeat,isRestartGap,HEARTBEAT_INTERVAL_MS,RESTART_GAP_THRESHOLD_MS}=require('./site-health');
+  shouldWriteHeartbeat,isRestartGap,HEARTBEAT_INTERVAL_MS,RESTART_GAP_THRESHOLD_MS,
+  shouldProbePersistentStorage,PERSISTENT_PROBE_INTERVAL_MS}=require('./site-health');
 const routes=new Map(),router={get:(name,handler)=>routes.set(name,handler)};
 registerSiteHealthRoutes(router);
 async function call(pathname,role,id){
@@ -103,7 +104,8 @@ test('only active admin can inspect process metrics and persistent restart log',
   assert.ok(r.data.backup===null||typeof r.data.backup.running==='boolean');
   assert.ok(r.data.cpu_throttle===null || typeof r.data.cpu_throttle.available==='boolean');
   assert.ok(Array.isArray(r.data.api_performance.slow_routes));
-  assert.ok(r.data.io_probe === null || Number.isFinite(r.data.io_probe.storage_write_ms));
+  assert.ok(r.data.io_probe === null || r.data.io_probe.storage_probe_cached ||
+    Number.isFinite(r.data.io_probe.storage_write_ms));
 });
 
 
@@ -218,11 +220,39 @@ test('monitoring compares /data and /tmp without exposing private filesystem pat
   const m=await metrics();
   assert.ok(m.io_probe===null || Number.isFinite(m.io_probe.sqlite_ms));
   if(m.io_probe!==null){
-    assert.ok(Number.isFinite(m.io_probe.storage_write_ms));
+    assert.ok(m.io_probe.storage_probe_cached ||
+      Number.isFinite(m.io_probe.storage_write_ms));
     assert.ok(Number.isFinite(m.io_probe.temp_write_ms));
     assert.ok(['ok','error'].includes(m.io_probe.temp_status));
   }
   const raw=JSON.stringify(m);
   assert.ok(!raw.includes(dir),'full data directory must never be returned to clients');
   stopHealthWatcher();
+});
+
+test('persistent storage write probes back off for five minutes but detect failure on force',async()=>{
+  const now=Date.now();
+  assert.equal(shouldProbePersistentStorage(now,0,'ok'),true);
+  assert.equal(shouldProbePersistentStorage(now,now-60000,'ok'),false);
+  assert.equal(shouldProbePersistentStorage(now,now-PERSISTENT_PROBE_INTERVAL_MS,'ok'),true);
+  assert.equal(shouldProbePersistentStorage(now,now-60000,'error'),true);
+  const original=fs.promises.open;
+  let probes=0;
+  fs.promises.open=async function(file,...args){
+    if(String(file).includes('.hm-health-'))probes++;
+    return original.call(this,file,...args);
+  };
+  try {
+    const first=await healthProbe(true);
+    const second=await healthProbe(true,{reuseStorage:true});
+    assert.equal(first.checks.storage,'ok');
+    assert.equal(second.storage_probe_cached,true);
+    assert.equal(second.probe_storage_ms,null,'cached timing must not appear as a new measurement');
+    assert.equal(probes,1,'one /data write check for short interval');
+    const forced=await healthProbe(true);
+    assert.equal(forced.storage_probe_cached,false);
+    assert.equal(probes,2,'explicit forced health probe always checks disk');
+  } finally {
+    fs.promises.open=original;
+  }
 });
