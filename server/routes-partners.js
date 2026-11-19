@@ -27,9 +27,12 @@ const {
 } = require('./payout-reminders');
 
 function nextPartnerCode() {
-  const row = db.prepare("SELECT partner_code FROM partners ORDER BY id DESC LIMIT 1").get();
-  const lastNum = row ? parseInt(row.partner_code.split('-')[1], 10) : 0;
-  return 'GR-' + String(lastNum + 1).padStart(3, '0');
+  // Shared sequence for groomers and referral-only partners, independent of
+  // record insertion order. Must run inside a write transaction for referrers.
+  const row = db.prepare(
+    "SELECT MAX(CAST(SUBSTR(partner_code,4) AS INTEGER)) AS n FROM partners WHERE partner_code GLOB 'GR-[0-9]*'"
+  ).get();
+  return 'GR-' + String(Number(row?.n||0) + 1).padStart(3, '0');
 }
 
 function safePartner(p) {
@@ -38,6 +41,55 @@ function safePartner(p) {
 }
 
 function registerPartnerRoutes(router) {
+  // Explicit registration for an independent referral-only partner. They use
+  // the existing 'partner' identity and GR- code (same referral ledger), but
+  // never receive a physical point, display format, sales commission or promo.
+  // Public forms and managers cannot create this status.
+  router.post('/api/admin/referral-partners', (req,res,ctx)=>{
+    const admin=requireActiveAdmin(req,res,ctx);
+    if(!admin)return;
+    const body=ctx.body||{};
+    const name=String(body.full_name||'').trim().replace(/\s+/g,' ');
+    const phone=String(body.phone||'').trim();
+    const last10=phone.replace(/\D/g,'').slice(-10);
+    const login=String(body.login||'').trim();
+    const password=String(body.password||'');
+    if(name.length<3||name.length>120 || !/^\+?[\d ()-]{10,25}$/.test(phone) ||
+      last10.length!==10 || login.length<3||login.length>80 ||
+      /\s/.test(login) || password.length<6||password.length>128)
+      return sendJson(res,400,{error:'Укажите ФИО, корректный телефон, логин (3–80 символов без пробелов) и пароль (6–128 символов)'});
+    if(body.personal_data_consent!==true)
+      return sendJson(res,400,{error:'Нужно подтверждённое согласие партнёра на обработку персональных данных'});
+    if(body.point_id!=null&&body.point_id!=='')
+      return sendJson(res,400,{error:'У рекомендателя нет своей точки; для грумера используйте обычную регистрацию'});
+    let payoutMethod;
+    try{payoutMethod=parsePayoutMethod(body.payout_method);}
+    catch(e){return sendJson(res,400,{error:e.message});}
+    try{
+      db.exec('BEGIN IMMEDIATE');
+      if(db.prepare('SELECT id FROM partners WHERE login=? COLLATE NOCASE').get(login))
+        throw Object.assign(new Error('Этот логин уже занят'),{statusCode:409});
+      if(db.prepare('SELECT id FROM partners WHERE phone_last10=?').get(last10))
+        throw Object.assign(new Error('Партнёр с таким телефоном уже зарегистрирован. Используйте его существующий реферальный код'),{statusCode:409});
+      const code=nextPartnerCode();
+      const result=db.prepare(`
+        INSERT INTO partners
+          (partner_code,login,password_hash,full_name,phone,point_id,point_name,
+           commission_rate,partner_type,display_stand,display_poster,display_basket,
+           payout_method,active)
+        VALUES (?,?,?,?,?,NULL,'Рекомендатель (без точки)',0,'referrer',0,0,0,?,1)
+      `).run(code,login,hashPassword(password),name,phone,payoutMethod);
+      db.exec('COMMIT');
+      sendJson(res,201,{ok:true,id:Number(result.lastInsertRowid),
+        partner_code:code,partner_type:'referrer',
+        referral_url:'https://хвостмаркет.рф/partner-invite.html?ref='+encodeURIComponent(code),
+        message:'Партнёр-рекомендатель зарегистрирован без точки и стойки. Реферальные бонусы начисляются по действующим правилам.'});
+    }catch(e){
+      try{db.exec('ROLLBACK');}catch(_){}
+      if(!e.statusCode)console.error('[register-referral-partner]',e);
+      sendJson(res,e.statusCode||500,{error:e.statusCode?e.message:'Не удалось зарегистрировать рекомендателя'});
+    }
+  });
   // POST /api/partners/register — публичная регистрация (форма на сайте)
   // GET /api/points/:pointId/partners — публичный, список активных партнёров
   // (грумеров) на этой точке. Нужен для чекаута: если на точке несколько
@@ -416,6 +468,8 @@ function registerPartnerRoutes(router) {
     if (!payload) return;
     const existing = db.prepare('SELECT * FROM partners WHERE id = ?').get(payload.id);
     if (!existing) return sendJson(res, 404, { error: 'Партнёр не найден' });
+    if(existing.partner_type==='referrer')
+      return sendJson(res,409,{error:'У рекомендателя нет торгового оборудования. Можно изменить только способ выплаты'});
     const { display_stand, display_poster, display_basket } = ctx.body || {};
 
     const nextStand = display_stand !== undefined ? !!display_stand : !!existing.display_stand;
@@ -441,6 +495,11 @@ function registerPartnerRoutes(router) {
       active, commission_rate, point_id, point_name, point_address,
       display_stand, display_poster, display_basket,
     } = patch;
+    if(existing.partner_type==='referrer' &&
+      ((point_id!==undefined && point_id!==null && point_id!=='') ||
+       (commission_rate!==undefined && Number(commission_rate)!==0) ||
+       display_stand===true || display_poster===true || display_basket===true))
+      return sendJson(res,409,{error:'Рекомендатель работает только с приглашениями: торговая точка, ставка продаж и оборудование недоступны'});
 
     let profile;
     try { profile = normalizeProfile(existing, patch); }
@@ -669,6 +728,14 @@ function registerPartnerRoutes(router) {
         hasPaidOrders: true,
         paidOrders,
       });
+    }
+    // Never discard a referral-only partner who already has attributable leads
+    // or points: source of truth and payout history must remain immutable.
+    const type=db.prepare('SELECT partner_type FROM partners WHERE id=?').get(id)?.partner_type;
+    if(type==='referrer' && (db.prepare('SELECT 1 FROM point_referrals WHERE role=? AND recipient_id=? LIMIT 1')
+      .get('partner',id) || db.prepare('SELECT 1 FROM partner_leads WHERE referred_by_role=? AND referred_by_id=? LIMIT 1')
+      .get('partner',id))) {
+      return sendJson(res,409,{error:'За рекомендателем уже закреплены приглашения. Для прекращения сотрудничества отключите аккаунт, не удаляя историю'});
     }
     const paidReferralBonus = db.prepare('SELECT COUNT(*) AS c FROM manager_points WHERE referred_groomer_id = ? AND bonus_paid = 1').get(id).c;
     if (paidReferralBonus > 0 && !force) {

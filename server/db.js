@@ -938,6 +938,9 @@ ensureColumn('guest_product_reviews', 'photos_json', "TEXT NOT NULL DEFAULT '[]'
 ensureColumn('points', 'manager_id', 'INTEGER REFERENCES managers(id)');
 ensureColumn('points', 'is_hub', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('partners', 'point_id', 'TEXT REFERENCES points(id)');
+// Referral-only partners are independent network advocates: no point,
+// equipment, stock, sale commission or groomer loyalty privileges.
+ensureColumn('partners', 'partner_type', "TEXT NOT NULL DEFAULT 'groomer' CHECK(partner_type IN ('groomer','referrer'))");
 ensureColumn('manager_points', 'point_id', 'TEXT REFERENCES points(id)');
 ensureColumn('manager_points', 'commission_rate', 'REAL NOT NULL DEFAULT 0.07');
 // Раньше было два тарифа (3% без сопровождения, 5% с полным сопровождением) —
@@ -1133,7 +1136,8 @@ db.exec(`
   DROP TRIGGER IF EXISTS trg_partner_first_purchase_promo_insert;
   CREATE TRIGGER trg_partner_first_purchase_promo_insert
   AFTER INSERT ON partners
-  WHEN NEW.first_purchase_promo_code IS NULL OR TRIM(NEW.first_purchase_promo_code) = ''
+  WHEN NEW.partner_type = 'groomer' AND
+       (NEW.first_purchase_promo_code IS NULL OR TRIM(NEW.first_purchase_promo_code) = '')
   BEGIN
     UPDATE partners
     SET first_purchase_promo_code = printf('HV20-G-%03d', NEW.id)
@@ -1143,7 +1147,8 @@ db.exec(`
   -- Идемпотентная миграция: не меняем уже выданные индивидуальные коды.
   UPDATE partners
   SET first_purchase_promo_code = printf('HV20-G-%03d', id)
-  WHERE first_purchase_promo_code IS NULL OR TRIM(first_purchase_promo_code) = '';
+  WHERE partner_type = 'groomer' AND
+    (first_purchase_promo_code IS NULL OR TRIM(first_purchase_promo_code) = '');
 
   CREATE TABLE IF NOT EXISTS first_purchase_point_promo_numbers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
