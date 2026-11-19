@@ -11,6 +11,14 @@
   var busy = false;
   var listeners = [];
   var stamp = 0;
+  // Coalesce only concurrent signed /accounts requests, not later reopens.
+  // Never cache a security decision between separate activation events.
+  var accountRefreshPromise = null;
+  var refreshEpoch = 0;
+  var lastResumeAt = 0;
+  var lastResumeInitData = '';
+  var activationListenerTarget = null;
+  var visibilityListenerRegistered = false;
   // A recent self-shared Telegram contact is already proof of phone
   // ownership. We can restore it using SIGNED fresh Telegram initData,
   // without forcing an extra typed phone on every home-screen launch.
@@ -71,6 +79,9 @@
     return data;
   }
   async function refresh() {
+    if (accountRefreshPromise) return accountRefreshPromise;
+    var epoch = ++refreshEpoch;
+    var run = (async function() {
     if (!telegram || !telegram.initData) {
       identity.loaded = true;
       identity.verified = false;
@@ -90,6 +101,9 @@
       // contact (verifiedPhoneForUser). No browser-stored phone or old token
       // can unlock another Telegram account.
       var data = await post('/api/miniapp/accounts');
+      // An older request must not restore data after a different signed
+      // account was initialized or after manual phone verification.
+      if (epoch !== refreshEpoch) return copy();
       identity.loaded = true;
       identity.verified = !!data.verified;
       gateUnlocked = identity.verified;
@@ -104,6 +118,7 @@
       if (!identity.verified) confirmedPhone = '';
       identity.error = '';
     } catch(err) {
+      if (epoch !== refreshEpoch) return copy();
       identity.loaded = true;
       identity.verified = false;
       gateUnlocked = false;
@@ -114,8 +129,12 @@
       identity.preferredRole = null;
       identity.error = err.message;
     }
-    notify();
+    if (epoch === refreshEpoch) notify();
     return copy();
+    })();
+    accountRefreshPromise = run;
+    try { return await run; }
+    finally { if (accountRefreshPromise === run) accountRefreshPromise = null; }
   }
   async function waitForConsent() {
     for (var i = 0; i < 8; i++) {
@@ -183,6 +202,10 @@
     identity.error = '';
     notify();
     try {
+      // Verification is more recent than a background account refresh.
+      // Invalidate its response before applying a manually verified identity.
+      refreshEpoch++;
+      accountRefreshPromise = null;
       var result = await post('/api/miniapp/verify-phone', { phone: phone });
       gateUnlocked = !!result.verified;
       confirmedPhone = gateUnlocked ? phone : '';
@@ -206,6 +229,8 @@
     if (role !== 'shop' && role !== 'salon' &&
         !identity.accounts.some(function(a) { return a.role === role; })) return false;
     if (role === 'salon' && !identity.combinedSalon) return false;
+    // Clicking an already-selected tab is not a new business preference.
+    if (identity.preferredRole === role) return true;
     try {
       var response = await post('/api/miniapp/preferred-role', { role: role });
       if (!response.ok || response.preferred_role !== role) return false;
@@ -263,16 +288,34 @@
       localStorage.setItem(key, id);
     } catch (_) {}
   }
+  function refreshFromResume() {
+    var now = Date.now(), signed = telegram && telegram.initData || '';
+    // Telegram's activated and browser visibilitychange commonly arrive
+    // together. Preserve independent revalidation after the next real reopen.
+    if (lastResumeAt && now - lastResumeAt < 1200 && signed === lastResumeInitData) {
+      return accountRefreshPromise || Promise.resolve(copy());
+    }
+    lastResumeAt = now;
+    lastResumeInitData = signed;
+    return refresh();
+  }
   function init(webApp, serverVerifiedUser) {
+    // A fresh initialization invalidates late requests from the previous user.
+    refreshEpoch++;
+    accountRefreshPromise = null;
+    lastResumeAt = 0;
+    lastResumeInitData = '';
     telegram = webApp || null;
     bindVerifiedTelegramUser(serverVerifiedUser);
-    if (telegram && typeof telegram.onEvent === 'function') {
-      try { telegram.onEvent('activated', function() { refresh(); }); } catch (_) {}
+    if (telegram && typeof telegram.onEvent === 'function' &&
+        activationListenerTarget !== telegram) {
+      try { telegram.onEvent('activated', refreshFromResume); activationListenerTarget = telegram; } catch (_) {}
     }
-    if (typeof document !== 'undefined' && document.addEventListener) {
+    if (!visibilityListenerRegistered && typeof document !== 'undefined' && document.addEventListener) {
       document.addEventListener('visibilitychange', function() {
-        if (!document.hidden) refresh();
+        if (!document.hidden) refreshFromResume();
       });
+      visibilityListenerRegistered = true;
     }
     return refresh();
   }

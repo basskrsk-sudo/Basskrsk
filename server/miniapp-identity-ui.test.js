@@ -216,3 +216,160 @@ test('combined salon remains an authorized presentation role on a returning laun
   const ref=await h.identity.refresh();
   assert.equal(ref.combinedSalon,true);
 });
+
+test('two Mini App resume signals share one signed refresh; next resume rechecks access',async()=>{
+  let timestamp=10000,requests=0;
+  const responseResolvers=[],eventHandlers={},documentHandlers={};
+  const storage={};
+  const FakeDate=class extends Date { static now(){return timestamp;} };
+  const tg={initData:'signed-telegram-A',onEvent(name,callback){eventHandlers[name]=callback;}};
+  const doc={hidden:false,addEventListener(name,callback){documentHandlers[name]=callback;}};
+  const browser={};
+  const fetch=async(url,options)=>{
+    const body=JSON.parse(options.body);
+    assert.equal(body.initData,tg.initData,'signed data is always supplied');
+    if(url==='/api/miniapp/accounts'){
+      requests++;
+      return new Promise(resolve=>responseResolvers.push(data=>resolve({
+        ok:true,json:async()=>data,
+      })));
+    }
+    if(url==='/api/miniapp/preferred-role')return {
+      ok:true,json:async()=>({ok:true,preferred_role:body.role}),
+    };
+    throw new Error('Unexpected route '+url);
+  };
+  vm.runInNewContext(identityCode,{
+    window:browser,document:doc,fetch,Date:FakeDate,Promise,console,
+    localStorage:{
+      getItem(k){return storage[k]||null;},
+      setItem(k,v){storage[k]=String(v);},
+      removeItem(k){delete storage[k];},
+    },
+  });
+  const identity=browser.HvostMiniAppIdentity;
+  const state=(verified,preferredRole='partner')=>({
+    verified,phone_masked:verified?'+7 (***) ***-**-11':'',
+    accounts:verified?[{role:'partner',name:'Тестовый грумер'}]:[],
+    ambiguous_roles:[],combined_salon:false,
+    preferred_role:verified?preferredRole:null,
+  });
+  const first=identity.init(tg,{id:101,first_name:'Тест'});
+  const parallelA=eventHandlers.activated();
+  doc.hidden=false;
+  const parallelB=documentHandlers.visibilitychange();
+  assert.equal(requests,1,'init + activate + visible share a single in-flight request');
+  responseResolvers.shift()(state(true));
+  await Promise.all([first,parallelA,parallelB]);
+  assert.equal(identity.getStatus().verified,true);
+
+  // Selecting a role already persisted on the server must not produce a
+  // redundant write each time users tap the same cabinet.
+  await identity.rememberRole('partner');
+  assert.equal(requests,1);
+  timestamp+=2000;
+  const reopened=eventHandlers.activated();
+  documentHandlers.visibilitychange();
+  assert.equal(requests,2,'a later activation must revalidate against the server');
+  responseResolvers.shift()(state(false));
+  await reopened;
+  assert.equal(identity.getStatus().verified,false,'revoked role takes effect on reopen');
+
+  // Late success from an older Telegram account must not restore its roles.
+  timestamp+=2000;
+  const oldRequest=identity.refresh();
+  assert.equal(requests,3);
+  tg.initData='signed-telegram-B';
+  const newRequest=identity.init(tg,{id:102,first_name:'Другой'});
+  assert.equal(requests,4);
+  responseResolvers.pop()(state(false));
+  await newRequest;
+  responseResolvers.shift()(state(true));
+  await oldRequest;
+  assert.equal(identity.getStatus().verified,false);
+  assert.equal(storage.hm_miniapp_last_telegram_user,'102');
+});
+
+test('initial profile and payment-return launches skip catalog; shopping loads once',async()=>{
+  const start=html.indexOf('async function init(){');
+  const end=html.indexOf("\nel('pointButton').addEventListener",start);
+  assert.ok(start>0&&end>start);
+  const code=html.slice(start,end);
+  async function launch(search){
+    const requests=[],calls=[];
+    const context={
+      window:{
+        HvostMiniAppReliability:{registerRecovery(){},markReady(){calls.push('ready');}},
+      },
+      state:{view:'shop'},location:{search},URLSearchParams,
+      setView(view){this.state.view=view;},
+      syncPhoneAccess(){},renderProfile(){},renderCartIndicators(){},
+      async auth(){},
+      async refreshCatalogIfStale(){requests.push('catalog');},
+      async checkPaymentReturn(code){calls.push('payment:'+code);},
+      refreshReadOnlyAfterReconnect(){},
+    };
+    // vm functions called directly reference context globals, not this.
+    context.setView=function(view){context.state.view=view;};
+    vm.runInNewContext(code,context);
+    await vm.runInNewContext('init()',context);
+    return {requests,calls,view:context.state.view};
+  }
+  let result=await launch('');
+  assert.equal(result.view,'profile');
+  assert.deepEqual(result.requests,[],'partner and profile launches need no catalog SQL');
+  assert.ok(result.calls.includes('ready'));
+  result=await launch('?view=shop');
+  assert.deepEqual(result.requests,['catalog']);
+  result=await launch('?point=point-qr');
+  assert.deepEqual(result.requests,['catalog'],'direct QR shopping still loads stock immediately');
+  result=await launch('?payment_return=ORDER_XYZ123');
+  assert.deepEqual(result.requests,[],'payment return never waits for catalog');
+  assert.ok(result.calls.includes('payment:ORDER_XYZ123'));
+});
+
+test('catalog retries are single-flight and do not re-download until stale',async()=>{
+  const start=html.indexOf('async function refreshCatalogIfStale(){');
+  const end=html.indexOf('\nfunction setView(view',start);
+  assert.ok(start>0&&end>start);
+  const code=html.slice(start,end);
+  const pending=[],calls=[],rendered=[];
+  const state={pointId:'',points:[],products:[],cart:[],view:'shop'};
+  const dom={'pointName':{textContent:''}};
+  const context={
+    state,catalogStale:true,catalogRefreshPromise:null,
+    location:{search:'?point=salon-qr'},URLSearchParams,
+    readPoint:()=>'',currentPoint:()=>state.points.find(p=>p.id===state.pointId),
+    selectPoint(id){state.pointId=String(id);},
+    el(id){return dom[id]||(dom[id]={textContent:''});},
+    renderProducts(){rendered.push('products');},
+    renderCart(){rendered.push('cart');},
+    renderCheckout(){rendered.push('checkout');},
+    renderCartIndicators(){},
+    toast(){},
+    api(url){
+      calls.push(url);
+      return new Promise(resolve=>pending.push({url,resolve}));
+    },
+  };
+  vm.runInNewContext(code,context);
+  const one=vm.runInNewContext('refreshCatalogIfStale()',context);
+  const two=vm.runInNewContext('refreshCatalogIfStale()',context);
+  assert.equal(calls.length,2,'overlapping requests share one products + points batch');
+  pending.find(x=>x.url==='/api/products').resolve({products:[{name:'Лакомство'}]});
+  pending.find(x=>x.url==='/api/points').resolve({points:[{id:'salon-qr',name:'Салон QR'}]});
+  await Promise.all([one,two]);
+  assert.equal(state.pointId,'salon-qr','deep link still selects the matching salon');
+  assert.equal(state.products.length,1);
+  assert.deepEqual(rendered,['products']);
+  await vm.runInNewContext('refreshCatalogIfStale()',context);
+  assert.equal(calls.length,2,'fresh catalog is reused until marked stale');
+  state.view='profile'; // reconnect while checking a staff or customer profile
+  vm.runInNewContext('catalogStale=true',context);
+  const three=vm.runInNewContext('refreshCatalogIfStale()',context);
+  assert.equal(calls.length,4);
+  pending.slice(2).find(x=>x.url==='/api/products').resolve({products:[{name:'Новинка'}]});
+  pending.slice(2).find(x=>x.url==='/api/points').resolve({points:[{id:'salon-qr',name:'Салон QR'}]});
+  await three;
+  assert.deepEqual(rendered,['products'],'background catalog completion never replaces the profile');
+});
