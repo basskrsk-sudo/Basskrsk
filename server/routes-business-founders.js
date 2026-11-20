@@ -55,7 +55,7 @@ function netOrderAmount(order) {
 }
 function ordersInRange(start, end) {
   return db.prepare(
-    'SELECT id, point_id, total, commission_rate, refund_status, refunded_amount, created_at ' +
+    'SELECT id, point_id, partner_id, total, commission_rate, refund_status, refunded_amount, created_at ' +
     'FROM orders WHERE status = ? AND created_at >= ? AND created_at < ?'
   ).all('paid', start, end);
 }

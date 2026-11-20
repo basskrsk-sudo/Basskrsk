@@ -111,7 +111,17 @@
       card('Оплаченная выручка',rub(pointSummary.period_revenue),'За выбранный период')+
       card('Налог 7%',rub(pointSummary.period_tax_est),'По каждой оплаченной продаже за вычетом возвратов')+
       card('Модельный вклад после налога',rub(pointSummary.estimated_period_contribution),
-        'Налог уже вычтен один раз · не бухгалтерская прибыль')+
+        'Оценка по типовым ставкам, не бухгалтерская прибыль')+
+      card('Прибыль собственников (оценка)',rub(pointSummary.founder_profit_est),
+        'После комиссий и переменных расходов, без общесетевых затрат')+
+      card('Грумерам выплачено',rub(pointSummary.partner_paid),
+        'По продажам выбранного периода · реестр выплат')+
+      card('Грумерам к выплате',rub(pointSummary.partner_pending),
+        'По продажам периода, без сумм на сверке возвратов')+
+      card('Владельцам выплачено',rub(pointSummary.owner_paid),
+        'По продажам периода · реестр выплат')+
+      card('Владельцам к выплате',rub(pointSummary.owner_pending),
+        'По продажам периода, без сумм на сверке возвратов')+
       '</div>';
     // Desktop: separate columns for one-off manager, groomer and owner bonuses.
     // Mobile: cards keep names visible rather than forcing 1200px horizontal
@@ -141,7 +151,14 @@
         manager:rub(item.launch_manager_bonus),groomer:rub(item.launch_groomer_bonus),
         owner:rub(item.launch_owner_bonus),total:total,stock:stock,stockNote:stockNote,
         revenue:rub(item.period_revenue),tax:rub(item.period_tax_est),
-        contribution:rub(item.estimated_period_contribution),payback:payback,
+        contribution:rub(item.estimated_period_contribution),
+        founderProfit:rub(item.founder_profit_est),
+        partnerPaid:rub(item.partner_paid),partnerPending:rub(item.partner_pending),
+        ownerPaid:rub(item.owner_paid),ownerPending:rub(item.owner_pending),
+        refundReview:rub(Number(item.partner_refund_hold||0)+Number(item.owner_refund_hold||0)),
+        profitNote:Number(item.profit_missing_item_orders||0)>0?
+          'Без состава заказа: оценка 50% выручки для '+n(item.profit_missing_item_orders)+' продаж.':'',
+        payback:payback,
         note:incomplete?'Оценка неполная: '+(item.type==null?'тип оборудования не указан; ':'')+
           (!item.initial_goods_recorded?'стартовая выкладка не подтверждена; ':'')+
           (item.initial_goods_unpriced_qty?'есть товары без цены; ':''):''
@@ -166,7 +183,7 @@
       '<label class="work-note" for="founderPointSearch">Поиск точки</label>'+
       '<input type="search" id="founderPointSearch" placeholder="Название салона" '+
       'style="width:100%;max-width:400px;padding:.65rem;border-radius:8px;border:1px solid #CFD9D3;margin:.45rem 0 .8rem;">'+
-      '<div class="founder-point-econ-table"><table style="width:100%;min-width:1340px;border-collapse:collapse;font-size:.78rem;">'+
+      '<div class="founder-point-econ-table"><table style="width:100%;min-width:1970px;border-collapse:collapse;font-size:.78rem;">'+
       '<thead style="position:sticky;top:0;background:#fff;"><tr>'+
       '<th style="text-align:left;padding:.55rem;">Точка</th>'+
       '<th style="text-align:left;padding:.55rem;">Оборудование</th>'+
@@ -179,6 +196,11 @@
       '<th style="text-align:right;padding:.55rem;">Выручка</th>'+
       '<th style="text-align:right;padding:.55rem;">Налог 7%</th>'+
       '<th style="text-align:right;padding:.55rem;">Вклад после налога</th>'+
+      '<th style="text-align:right;padding:.55rem;">Грумеру выплачено</th>'+
+      '<th style="text-align:right;padding:.55rem;">Грумеру к выплате</th>'+
+      '<th style="text-align:right;padding:.55rem;">Владельцу выплачено</th>'+
+      '<th style="text-align:right;padding:.55rem;">Владельцу к выплате</th>'+
+      '<th style="text-align:right;padding:.55rem;">Прибыль собственников (оценка)</th>'+
       '<th style="text-align:right;padding:.55rem;">Окупаемость</th></tr></thead><tbody>'+
       pointDisplay.map(function(item){
         function td(content,align){return '<td style="padding:.6rem;border-top:1px solid #e1e9e4;'+
@@ -192,6 +214,11 @@
             (item.note?'<small style="display:block;color:#647b70;">'+clean(item.note)+'</small>':''))+
           td(clean(item.stock)+'<small style="display:block;color:#647b70;">'+clean(item.stockNote)+'</small>')+
           td(clean(item.revenue))+td(clean(item.tax))+td(clean(item.contribution))+
+          td(clean(item.partnerPaid))+td(clean(item.partnerPending))+
+          td(clean(item.ownerPaid))+td(clean(item.ownerPending))+
+          td('<b>'+clean(item.founderProfit)+'</b>'+
+            (item.refundReview!=='0 ₽'?'<small style="display:block;color:#9a6500;">К сверке по возвратам: '+clean(item.refundReview)+'</small>':'')+
+            (item.profitNote?'<small style="display:block;color:#647b70;">'+clean(item.profitNote)+'</small>':''))+
           td(clean(item.payback))+'</tr>';
       }).join('')+'</tbody></table></div>'+
       '<div class="founder-point-econ-mobile">'+pointDisplay.map(function(item){
@@ -210,12 +237,19 @@
           (item.note?'<p class="econ-card-note">'+clean(item.note)+'</p>':'')+
           line('Товар сейчас',item.stock)+line('Выручка',item.revenue)+
           line('Налог 7%',item.tax)+line('Вклад после налога',item.contribution)+
+          line('Грумеру выплачено',item.partnerPaid)+
+          line('Грумеру к выплате',item.partnerPending)+
+          line('Владельцу выплачено',item.ownerPaid)+
+          line('Владельцу к выплате',item.ownerPending)+
+          line('Прибыль собственников (оценка)',item.founderProfit)+
+          (item.refundReview!=='0 ₽'?'<p class="econ-card-note">Возвраты: на сверке '+clean(item.refundReview)+'</p>':'')+
+          (item.profitNote?'<p class="econ-card-note">'+clean(item.profitNote)+'</p>':'')+
           line('Окупаемость',item.payback)+'</article>';
       }).join('')+'</div>';
     html += section('🏪 Экономика каждой точки',
       equipmentStats+equipmentTable+callout(pe.inventory_disclaimer||'')+
         callout(pe.assumption||'')+callout(pe.profit_disclaimer||''),
-      'Запуск: оборудование, стартовый товар, бонусы. Налог 7% на чистую оплачиваемую сумму каждой продажи и вклад после налога. Только для собственников ХвостМаркета.');
+      'Выплачено и к выплате: по заказам выбранного периода, независимо от даты перечисления. Бонусы за приглашение точки выше показаны отдельно и не входят в регулярную комиссию. Прибыль собственников — расчётная после себестоимости, налога 7%, начисленных комиссий и переменных расходов, без общесетевых накладных. Только для собственников ХвостМаркета.');
     var gates=(strategy.scale_gates||[]);
     var readiness=strategy.scale_decision;
     html += section('🎯 Стратегия: 1000 точек',

@@ -149,6 +149,13 @@ test('per-point economics matches equipment cost and avoids double-booking actua
   assert.equal(data.summary.period_tax_est,136.5,
     'network tax is the sum of individual point tax liabilities');
   assert.equal(data.model_tax_rate_percent,7);
+  assert.equal(byId['econ-none'].partner_paid,0);
+  assert.equal(byId['econ-none'].owner_paid,0);
+  assert.ok(Number.isFinite(byId['econ-none'].founder_profit_est),
+    'founders see estimated earnings after commission liabilities and tax');
+  assert.ok(Number.isFinite(data.summary.founder_profit_est));
+  assert.equal(data.summary.founder_profit_est,
+    Math.round(data.points.reduce((sum,row)=>sum+row.founder_profit_est,0)*100)/100);
   assert.equal(byId['econ-small'].period_orders,1);
   assert.ok(data.profit_disclaimer.includes('НЕ фактическая прибыль'));
   const expensesBefore=db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n;
@@ -349,6 +356,9 @@ test('founder-only boardroom receives all point economics, owners see no cost ba
   assert.ok(info?.points?.length>=5);
   assert.ok(info.points.some(p=>p.point_id==='econ-none'));
   assert.ok(Number.isFinite(info.summary.estimated_period_contribution));
+  assert.ok(Number.isFinite(info.summary.founder_profit_est));
+  for(const field of ['partner_paid','partner_pending','owner_paid','owner_pending','founder_profit_est'])
+    assert.ok(Object.hasOwn(info.points[0],field),'founder per-point finance field present: '+field);
    assert.equal(info.points.find(p=>p.point_id==='econ-none').inventory_known_value,361.5);
    assert.equal(info.points.find(p=>p.point_id==='econ-none').inventory_valuation,861.5);
    assert.ok(info.summary.inventory_valuation>=941.5);
@@ -364,7 +374,8 @@ test('founder-only boardroom receives all point economics, owners see no cost ba
   const json=JSON.stringify(ownerRes.body);
   for(const field of ['estimated_investment','estimated_period_contribution',
     'equipment_prices','point_launch_equipment','model_contribution_margin_percent',
-     'inventory_valuation','inventory_known_value','inventory_missing_cost_qty'])
+     'inventory_valuation','inventory_known_value','inventory_missing_cost_qty',
+     'founder_profit_est','partner_paid','owner_pending','profit_cogs_est'])
     assert.equal(json.includes(field),false,'owner cannot see internal cost: '+field);
 });
 test('point economics UI exists only in the company founder dashboard',()=>{
@@ -379,6 +390,10 @@ test('point economics UI exists only in the company founder dashboard',()=>{
   assert.match(founder,/inventory_estimated_value/);
   assert.match(founder,/Без закупочной цены/);
   assert.match(founder,/Налог 7%/);
+  for(const label of ['Грумеру выплачено','Грумеру к выплате',
+    'Владельцу выплачено','Владельцу к выплате','Прибыль собственников',
+    'founderProfit','refundReview'])
+    assert.ok(founder.includes(label),'founder view must show '+label);
   assert.match(founder,/Вклад после налога/);
   assert.match(founder,/period_tax_est/);
   for(const part of ['launch_manager_bonus','launch_groomer_bonus','launch_owner_bonus',
