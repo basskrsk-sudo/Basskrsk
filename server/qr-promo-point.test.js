@@ -26,7 +26,7 @@ test('QR promo validation passes the selected salon point_id to the server', asy
     QR_PROMO_PERCENT: 0,
     QR_PROMO_CODE: '',
     updateQrPayButton() {},
-    fetch: async (url) => {
+    fetchQrPrecheck: async (url) => {
       requestedUrl = url;
       return { json: async () => ({ valid: true, discount_percent: 20, promo_code: 'HV20-007' }) };
     },
