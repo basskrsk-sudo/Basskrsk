@@ -124,6 +124,12 @@ test('founder revenue, capital and expenses derive from actual records, not fabr
  assert.equal(dashboard.sales.orders,1);
  assert.equal(dashboard.sales.avg_check,1000);
  assert.equal(dashboard.finance.manual_expenses,200);
+ assert.equal(dashboard.finance.tax_est,70,
+   'founder-wide tax estimate is also 7% of the same paid order');
+ const pointTax=dashboard.point_economics.points.find(p=>p.point_id==='test-bark');
+ assert.equal(pointTax.period_tax_est,70);
+ assert.equal(pointTax.estimated_period_contribution,
+   Math.round((pointTax.estimated_period_contribution_before_tax-70)*100)/100);
  assert.equal(dashboard.capital.my_planned_share,450000);
  assert.equal(dashboard.capital.personal_expenses_recorded,200);
  assert.equal(dashboard.capital.actual_paid_capital,null);
