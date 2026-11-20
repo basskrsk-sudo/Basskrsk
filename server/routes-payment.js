@@ -29,7 +29,6 @@ const {
   getFirstPurchasePromoPolicy,
   validateFirstPurchasePromo,
   claimFirstPurchasePromo,
-  releaseFirstPurchasePromoClaim,
 } = require('./first-purchase-promo');
 const {
   RESERVATION_TTL_MINUTES,
@@ -43,7 +42,6 @@ const {
 
 function releaseFailedOrderAndAlert(orderId, reason) {
   const result = releaseOrderReservation(orderId, 'failed', reason);
-  if (result.released) releaseFirstPurchasePromoClaim(orderId);
   sendUnpaidOrderAlert(orderId, 'failed', reason).catch((error) => {
     console.warn('[unpaid-order] Не удалось обработать срочное оповещение:', error.message);
   });

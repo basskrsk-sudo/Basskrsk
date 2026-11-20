@@ -1,6 +1,7 @@
 'use strict';
 
 const db = require('./db');
+const { PAID_PHONE_KEY_SQL } = require('./report-phone-key');
 
 const {
   getFirstPurchasePromoPolicy,
@@ -20,8 +21,36 @@ function normalizePromoPhone(value) {
 function hasPaidOrderForPhone(phone) {
   const normalized = normalizePromoPhone(phone);
   if (!normalized) return false;
-  const rows = db.prepare("SELECT customer_phone FROM orders WHERE status = 'paid'").all();
-  return rows.some((row) => normalizePromoPhone(row.customer_phone) === normalized);
+  // Reuse the existing partial, indexed phone key. Never download the entire
+  // paid-order history into JS just to approve a discount.
+  return !!db.prepare(
+    "SELECT 1 FROM orders WHERE status='paid' AND " + PAID_PHONE_KEY_SQL + " = ? LIMIT 1"
+  ).get(normalized);
+}
+
+// The claim is a TEMPORARY hold, not proof of a purchase. A payment that has
+// been conclusively canceled, failed and released must never burn a discount.
+// Do not clear active/pending claims: the bank might still confirm payment.
+const CLAIM_TABLES = ['first_purchase_promo_claims', 'first_purchase_point_promo_claims'];
+function hasUnsettledPromoClaim(phone) {
+  for (const table of CLAIM_TABLES) {
+    const claim = db.prepare('SELECT order_id FROM ' + table + ' WHERE phone=?').get(phone);
+    if (!claim) continue;
+    const order = db.prepare('SELECT status,reservation_status FROM orders WHERE id=?').get(claim.order_id);
+    const inactive = !order ||
+      (order.status !== 'paid' && order.reservation_status === 'released') ||
+      ((order.status === 'failed' || order.status === 'cancelled' ||
+        order.status === 'canceled') && order.reservation_status !== 'active');
+    if (inactive) {
+      // Self-heal claims from earlier deployments where a reservation was
+      // released by an admin/cleanup route without deleting the promo hold.
+      db.prepare('DELETE FROM ' + table + ' WHERE phone=? AND order_id=?')
+        .run(phone, claim.order_id);
+      continue;
+    }
+    return true;
+  }
+  return false;
 }
 
 function validateFirstPurchasePromo(code, phone, pointId = null, now = Date.now()) {
@@ -47,8 +76,7 @@ function validateFirstPurchasePromo(code, phone, pointId = null, now = Date.now(
   if (hasPaidOrderForPhone(normalizedPhone)) {
     return { valid: false, error: 'Скидка действует только на первую покупку по этому номеру телефона' };
   }
-  const claim = db.prepare('SELECT order_id FROM first_purchase_promo_claims WHERE phone = ?').get(normalizedPhone);
-  if (claim || db.prepare('SELECT 1 FROM first_purchase_point_promo_claims WHERE phone = ?').get(normalizedPhone)) return { valid: false, error: 'Промокод для этого номера уже использован или ожидает оплаты' };
+  if (hasUnsettledPromoClaim(normalizedPhone)) return { valid: false, error: 'Промокод для этого номера уже использован или ожидает оплаты' };
 
   return {
     valid: true,
@@ -72,8 +100,7 @@ function claimFirstPurchasePromo(validation, orderId) {
     error.code = 'FIRST_PURCHASE_PROMO_ALREADY_USED';
     throw error;
   }
-  if (db.prepare('SELECT 1 FROM first_purchase_promo_claims WHERE phone = ?').get(validation.normalizedPhone) ||
-      db.prepare('SELECT 1 FROM first_purchase_point_promo_claims WHERE phone = ?').get(validation.normalizedPhone)) {
+  if (hasUnsettledPromoClaim(validation.normalizedPhone)) {
     const error = new Error('Промокод для этого номера уже использован или ожидает оплаты');
     error.statusCode = 409; error.code = 'FIRST_PURCHASE_PROMO_ALREADY_USED'; throw error;
   }
