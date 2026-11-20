@@ -5,6 +5,7 @@
 'use strict';
 
 const db = require('./db');
+const { releaseFirstPurchasePromoClaim } = require('./first-purchase-promo');
 const { EXPIRED_RESERVATIONS_BATCH_SQL } = require('./reservation-cleanup-query');
 const { reserveBones, consumeReservedBones, releaseReservedBones } = require('./bones');
 
@@ -132,7 +133,7 @@ function reserveForOrder(orderId, source, items, bonesCustomerId, bonesAmount) {
 // SQLite не допускает BEGIN внутри другой активной транзакции.
 function releaseOrderReservationInTransaction(orderId, nextOrderStatus = 'failed', reason = 'Оплата отменена или время резерва истекло') {
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-  if (!order || order.reservation_status !== 'active') return { released: false, order };
+  if (!order || order.reservation_status !== 'active' || order.status === 'paid') return { released: false, order };
   const items = db.prepare('SELECT * FROM order_items WHERE order_id = ? AND is_custom = 0').all(order.id);
   restoreInventory(order.inventory_source_type, order.inventory_source_id, items);
   releaseReservedBones(order.id, reason);
@@ -141,6 +142,9 @@ function releaseOrderReservationInTransaction(orderId, nextOrderStatus = 'failed
       status = CASE WHEN ? IS NULL THEN status ELSE ? END
     WHERE id = ? AND reservation_status = 'active'
   `).run(nextOrderStatus, nextOrderStatus, order.id);
+  // Stock and promotional eligibility are released in the SAME transaction,
+  // regardless of which cancellation/admin route called this function.
+  releaseFirstPurchasePromoClaim(order.id);
   return { released: true, order: db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id), items };
 }
 

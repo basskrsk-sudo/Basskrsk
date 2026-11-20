@@ -14,6 +14,7 @@ on:
       - server/first-purchase-promo-policy.js
       - server/first-purchase-promo-policy.test.js
       - server/first-purchase-promo-groomer.test.js
+      - server/first-purchase-promo-unpaid.test.js
       - server/first-purchase-promo-salon.test.js
       - server/first-purchase-promo.js
       - public/telegram-login-polling.js
@@ -491,6 +492,7 @@ jobs:
           node --check server/first-purchase-promo.js
           node --check server/first-purchase-promo-policy.js
           node --check server/first-purchase-promo-policy.test.js
+          node --check server/first-purchase-promo-unpaid.test.js
           node --check public/first-purchase-promo-display.js
           node --check server/checkout-partner-index.test.js
           node --check server/routes-miniapp.js
@@ -700,7 +702,7 @@ jobs:
       - name: Verify indexed self-order grooming attribution and bounded commission checks
         run: node --test server/checkout-partner-index.test.js
       - name: Verify scheduled first-purchase discount, legacy aliases and checkout UI
-        run: node --test --test-concurrency=1 server/first-purchase-promo-policy.test.js server/first-purchase-promo-groomer.test.js server/first-purchase-promo-salon.test.js server/qr-promo-point.test.js server/miniapp-promos-ui.test.js
+        run: node --test --test-concurrency=1 server/first-purchase-promo-policy.test.js server/first-purchase-promo-groomer.test.js server/first-purchase-promo-unpaid.test.js server/first-purchase-promo-salon.test.js server/qr-promo-point.test.js server/miniapp-promos-ui.test.js
       - name: Verify single-query live checkout pricing and receipt totals
         run: node --test server/order-pricing-batch.test.js
       - name: Verify indexed, unambiguous customer phone lookup

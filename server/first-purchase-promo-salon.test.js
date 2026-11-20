@@ -15,6 +15,7 @@ function setup() {
             ? { id:'salon-a', name:'Салон А', first_purchase_promo_code:'HVOST20-S-TEST' } : undefined;
           if (query.includes('FROM partners') && query.includes('UPPER')) return phoneOrCode === 'HVOST20-001'
             ? { id:1, full_name:'Грумер', first_purchase_promo_code:'HVOST20-001' } : undefined;
+          if (query.includes('FROM orders WHERE id=?')) return { status: 'pending', reservation_status: 'active' };
           if (query.includes('FROM first_purchase_promo_claims')) return claims.legacy.get(phoneOrCode);
           if (query.includes('FROM first_purchase_point_promo_claims')) return claims.salon.get(phoneOrCode);
         },
@@ -33,7 +34,7 @@ function setup() {
   };
   const moduleObj = {exports:{}};
   const source = fs.readFileSync(require.resolve('./first-purchase-promo'),'utf8');
-  vm.runInNewContext(source,{require(name) {if(name==='./db') return db;if(name==='./first-purchase-promo-policy') return require('./first-purchase-promo-policy');throw Error(name);},module:moduleObj,exports:moduleObj.exports});
+  vm.runInNewContext(source,{require(name) {if(name==='./db') return db;if(name==='./first-purchase-promo-policy') return require('./first-purchase-promo-policy');if(name==='./report-phone-key') return require('./report-phone-key');throw Error(name);},module:moduleObj,exports:moduleObj.exports});
   return moduleObj.exports;
 }
 
