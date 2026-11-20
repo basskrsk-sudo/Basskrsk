@@ -138,13 +138,51 @@ test('per-point economics matches equipment cost and avoids double-booking actua
   assert.equal(byId['econ-unknown'].estimated_investment,null,
     'a point configured to none with no start deliveries has an unknown budget');
   assert.equal(byId['econ-none'].period_revenue,1200);
+  assert.equal(byId['econ-none'].period_tax_est,84,
+    '7% of 1,000 RUB paid + 200 RUB after partial refund');
+  assert.equal(byId['econ-none'].estimated_period_contribution,
+    Math.round((byId['econ-none'].estimated_period_contribution_before_tax-84)*100)/100,
+    '7% is deducted once from contribution, not added to existing 6%');
   assert.equal(byId['econ-small'].period_revenue,750);
+  assert.equal(byId['econ-small'].period_tax_est,52.5,
+    'a fully refunded 500 RUB order contributes no modeled tax');
+  assert.equal(data.summary.period_tax_est,136.5,
+    'network tax is the sum of individual point tax liabilities');
+  assert.equal(data.model_tax_rate_percent,7);
   assert.equal(byId['econ-small'].period_orders,1);
   assert.ok(data.profit_disclaimer.includes('НЕ фактическая прибыль'));
   const expensesBefore=db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n;
   savePointEquipment(db,'econ-large',{type:'none'},{id:superId,login:'point-econ-super'});
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n,expensesBefore);
   assert.equal(db.prepare('SELECT SUM(cost) AS total FROM point_launch_equipment').get().total,700);
+});
+
+test('7% modeled tax is rounded per net paid order and replaces the old model rate',()=>{
+  const orders=[
+    {point_id:'econ-none',total:1.03,refund_status:'none',refunded_amount:0},
+    {point_id:'econ-none',total:1.03,refund_status:'none',refunded_amount:0},
+    {point_id:'econ-none',total:1.03,refund_status:'none',refunded_amount:0},
+    {point_id:'econ-none',total:10,refund_status:'partially_refunded',refunded_amount:5},
+    {point_id:'econ-none',total:30,refund_status:'refunded',refunded_amount:30},
+  ];
+  const assumptions=getUnitEconomicsSettings().assumptions;
+  const point=(raw)=>{
+    const model=buildPointEquipmentEconomics(db,raw,calculateUnitEconomics(raw),orders);
+    return model.points.find(row=>row.point_id==='econ-none');
+  };
+  const normal=point(assumptions);
+  assert.equal(normal.period_revenue,8.09);
+  assert.equal(normal.period_orders,4);
+  assert.equal(normal.period_tax_est,0.56,
+    'three 1.03 RUB orders round to 0.07 each, and the partial refund has 0.35 tax');
+  assert.equal(normal.estimated_period_contribution,
+    Math.round((normal.estimated_period_contribution_before_tax-0.56)*100)/100);
+  const otherTaxAssumptions={...assumptions,tax_percent:17};
+  const differentOriginalRate=point(otherTaxAssumptions);
+  assert.equal(differentOriginalRate.period_tax_est,0.56);
+  assert.equal(differentOriginalRate.estimated_period_contribution,
+    normal.estimated_period_contribution,
+    'existing modeled tax is replaced, never supplemented by an extra 7%');
 });
 
 test('no-stand launch counts only approved initial goods and bonus, excluding future restocks',()=>{
@@ -240,6 +278,10 @@ test('launch math counts actual stands and first fill and splits referral bonuse
   assert.equal(g.launch_owner_bonus,0);
   assert.equal(g.estimated_investment,7300);
   assert.equal(g.estimated_investment_incomplete,false);
+  const modeledNetPerOrder=Math.round(calculateUnitEconomics(a).revenue_per_order*
+    model.model_contribution_margin_percent)/100;
+  assert.equal(g.estimated_orders_to_payback,Math.ceil(g.estimated_investment/modeledNetPerOrder),
+    'forecast payback must use the adjusted 7% tax, not the old default 6%');
   assert.equal(o.estimated_launch_cost,2900);
   assert.equal(o.launch_manager_bonus,1000);
   assert.equal(o.launch_groomer_bonus,0);
@@ -336,6 +378,9 @@ test('point economics UI exists only in the company founder dashboard',()=>{
   assert.match(founder,/initial_goods_total_estimate/);
   assert.match(founder,/inventory_estimated_value/);
   assert.match(founder,/Без закупочной цены/);
+  assert.match(founder,/Налог 7%/);
+  assert.match(founder,/Вклад после налога/);
+  assert.match(founder,/period_tax_est/);
   for(const part of ['launch_manager_bonus','launch_groomer_bonus','launch_owner_bonus',
     'Бонус грумеру','Бонус владельцу','founder-point-econ-mobile','Итого запуск'])
     assert.ok(founder.includes(part),'founder UI should separate all launch bonus components: '+part);

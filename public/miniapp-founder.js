@@ -109,7 +109,9 @@
       card('Без закупочной цены',n(pointSummary.inventory_missing_cost_qty)+' ед.',
         'Оценка по 50% цены продажи: '+rub(pointSummary.inventory_estimated_value))+
       card('Оплаченная выручка',rub(pointSummary.period_revenue),'За выбранный период')+
-      card('Модельный вклад',rub(pointSummary.estimated_period_contribution),'Не бухгалтерская прибыль')+
+      card('Налог 7%',rub(pointSummary.period_tax_est),'По каждой оплаченной продаже за вычетом возвратов')+
+      card('Модельный вклад после налога',rub(pointSummary.estimated_period_contribution),
+        'Налог уже вычтен один раз · не бухгалтерская прибыль')+
       '</div>';
     // Desktop: separate columns for one-off manager, groomer and owner bonuses.
     // Mobile: cards keep names visible rather than forcing 1200px horizontal
@@ -138,7 +140,8 @@
         goods:goods,goodsNote:goodsNote,
         manager:rub(item.launch_manager_bonus),groomer:rub(item.launch_groomer_bonus),
         owner:rub(item.launch_owner_bonus),total:total,stock:stock,stockNote:stockNote,
-        revenue:rub(item.period_revenue),payback:payback,
+        revenue:rub(item.period_revenue),tax:rub(item.period_tax_est),
+        contribution:rub(item.estimated_period_contribution),payback:payback,
         note:incomplete?'Оценка неполная: '+(item.type==null?'тип оборудования не указан; ':'')+
           (!item.initial_goods_recorded?'стартовая выкладка не подтверждена; ':'')+
           (item.initial_goods_unpriced_qty?'есть товары без цены; ':''):''
@@ -174,6 +177,8 @@
       '<th style="text-align:right;padding:.55rem;">Итого запуск</th>'+
       '<th style="text-align:right;padding:.55rem;">Товар сейчас</th>'+
       '<th style="text-align:right;padding:.55rem;">Выручка</th>'+
+      '<th style="text-align:right;padding:.55rem;">Налог 7%</th>'+
+      '<th style="text-align:right;padding:.55rem;">Вклад после налога</th>'+
       '<th style="text-align:right;padding:.55rem;">Окупаемость</th></tr></thead><tbody>'+
       pointDisplay.map(function(item){
         function td(content,align){return '<td style="padding:.6rem;border-top:1px solid #e1e9e4;'+
@@ -186,7 +191,8 @@
           td('<b>'+clean(item.total)+'</b>'+
             (item.note?'<small style="display:block;color:#647b70;">'+clean(item.note)+'</small>':''))+
           td(clean(item.stock)+'<small style="display:block;color:#647b70;">'+clean(item.stockNote)+'</small>')+
-          td(clean(item.revenue))+td(clean(item.payback))+'</tr>';
+          td(clean(item.revenue))+td(clean(item.tax))+td(clean(item.contribution))+
+          td(clean(item.payback))+'</tr>';
       }).join('')+'</tbody></table></div>'+
       '<div class="founder-point-econ-mobile">'+pointDisplay.map(function(item){
         function line(label,value){return '<div class="econ-card-line"><span>'+clean(label)+
@@ -203,12 +209,13 @@
           line('Всего на запуск',item.total)+
           (item.note?'<p class="econ-card-note">'+clean(item.note)+'</p>':'')+
           line('Товар сейчас',item.stock)+line('Выручка',item.revenue)+
+          line('Налог 7%',item.tax)+line('Вклад после налога',item.contribution)+
           line('Окупаемость',item.payback)+'</article>';
       }).join('')+'</div>';
     html += section('🏪 Экономика каждой точки',
       equipmentStats+equipmentTable+callout(pe.inventory_disclaimer||'')+
         callout(pe.assumption||'')+callout(pe.profit_disclaimer||''),
-      'Единый расчёт запуска: оборудование, стартовый товар, разовые бонусы. Доступно только собственникам ХвостМаркета.');
+      'Запуск: оборудование, стартовый товар, бонусы. Налог 7% на чистую оплачиваемую сумму каждой продажи и вклад после налога. Только для собственников ХвостМаркета.');
     var gates=(strategy.scale_gates||[]);
     var readiness=strategy.scale_decision;
     html += section('🎯 Стратегия: 1000 точек',
