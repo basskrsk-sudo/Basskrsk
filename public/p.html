@@ -486,7 +486,7 @@ async function validateQrPromo(showEmptyError) {
     if (msg) {
       msg.textContent = data.valid
         ? '✓ Скидка ' + data.discount_percent + '% применена. ' +
-          (data.notice || window.HvostFirstPurchasePromo.notice(code))
+          (data.notice || '')
         : '⚠ ' + (data.error || 'Промокод недействителен');
       msg.style.color = data.valid ? '#2D7D46' : '#9B2335';
     }
