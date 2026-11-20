@@ -28,7 +28,7 @@ function fixture(){
       (3,'a',1,0.10,300,'paid','2026-11-03 00:00:00','partially_refunded',100),
       (4,'a',1,0.10,300,'paid','2026-11-04 00:00:00','refunded',300),
       (5,'a',1,0.10,250,'paid','2026-10-01 00:00:00','none',NULL);
-    INSERT INTO order_items VALUES(1,1,1,250),(2,1,1,250),(3,2,1,300),(4,2,1,300),(5,3,1,250);
+    INSERT INTO order_items(order_id,variant_id,qty,price) VALUES(1,1,1,250),(2,1,1,250),(3,2,1,300),(4,2,1,300),(5,3,1,250);
     INSERT INTO partner_payout_items VALUES(1,25),(4,30),(5,80);
     INSERT INTO owner_payout_items VALUES(1,50),(5,60);
   `);
@@ -92,7 +92,7 @@ test('current catalog cost overrides fallback and no owner means no assumed owne
   const db=fixture();
   try{
     db.exec("INSERT INTO orders VALUES(7,'b',1,NULL,250,'paid','2026-11-05 01:00:00','none',NULL)");
-    db.exec("INSERT INTO order_items VALUES(7,3,1,250)");
+    db.exec("INSERT INTO order_items(order_id,variant_id,qty,price) VALUES(7,3,1,250)");
     const row=loadPointPayoutProfit(db,orders(db),assumptions,period).get('b');
     assert.equal(row.profit_cogs,125);
     assert.equal(row.profit_fallback_item_qty,1);
