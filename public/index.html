@@ -2963,6 +2963,8 @@ function updateFirstPurchasePromoNotice(code) {
   const label = document.getElementById('first-purchase-promo-label');
   const note = document.getElementById('first-purchase-promo-policy-notice');
   if (label) label.textContent = 'Промокод грумера или салона −' + p.percent() + '% на первую покупку';
+  const input=document.getElementById('oFirstPurchasePromo');
+  if (input) input.placeholder='Например, '+p.displayCode('HV20-001');
   if (note) note.textContent = p.notice(code || document.getElementById('oFirstPurchasePromo')?.value || '');
 }
 

@@ -303,7 +303,7 @@ function registerPartnerRoutes(router) {
     sendJson(res, 201, {
       ok: true,
       partner_code: partnerCode,
-      first_purchase_promo_code: firstPurchasePromoCode,
+      first_purchase_promo_code: require('./first-purchase-promo-policy').displayFirstPurchasePromoCode(firstPurchasePromoCode),
       id: info.lastInsertRowid,
       message: 'Партнёр зарегистрирован и уже может входить в свой кабинет.',
     });
