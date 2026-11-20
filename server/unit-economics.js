@@ -17,8 +17,10 @@ const DEFAULTS = {
   owner_commission_percent: 5,
   acquiring_percent: 2.7,
   logistics_percent: 5,
-  writeoffs_percent: 1.5,
-  bonuses_it_percent: 1.5,
+  // Planning reserves are temporarily disabled; confirmed operational
+  // expenses remain in their own journal rather than being charged per sale.
+  writeoffs_percent: 0,
+  bonuses_it_percent: 0,
   tax_percent: 6,
   launch_cost: 20000,
   manager_launch_bonus: 2000,
@@ -58,6 +60,11 @@ function normalizeAssumptions(raw, base = DEFAULTS) {
     }
     result[key] = round(value, 2);
   }
+  // Legacy saved settings may still contain 1.5% for each reserve.
+  // Suppress both even when a stale administrator form or old site_settings
+  // payload sends them. Do not overwrite historical settings or expense logs.
+  result.writeoffs_percent = 0;
+  result.bonuses_it_percent = 0;
   return result;
 }
 
@@ -88,8 +95,8 @@ function calculateUnitEconomics(assumptions) {
     owner_commission: revenue * a.owner_commission_percent / 100,
     acquiring: revenue * a.acquiring_percent / 100,
     logistics: revenue * a.logistics_percent / 100,
-    writeoffs: revenue * a.writeoffs_percent / 100,
-    bonuses_it: revenue * a.bonuses_it_percent / 100,
+    writeoffs: 0, // disabled until explicitly reintroduced
+    bonuses_it: 0, // disabled until explicitly reintroduced
     tax: revenue * a.tax_percent / 100,
   };
   const variableCostsAfterProduct = Object.values(rateCosts).reduce((sum, value) => sum + value, 0);
@@ -98,7 +105,7 @@ function calculateUnitEconomics(assumptions) {
   const contributionMargin = revenue ? contributionPerOrder / revenue * 100 : 0;
   const breakEvenGrossMargin = effectiveGroomerRate + a.manager_commission_percent +
     a.owner_commission_percent + a.acquiring_percent + a.logistics_percent +
-    a.writeoffs_percent + a.bonuses_it_percent + a.tax_percent;
+    a.tax_percent;
   const monthlyRevenue = revenue * a.monthly_orders_per_point;
   const monthlyContribution = contributionPerOrder * a.monthly_orders_per_point;
   const launchInvestment = a.launch_cost + a.manager_launch_bonus;

@@ -90,12 +90,13 @@ function loadPointPayoutProfit(database,orders,assumptions,period=null,options={
     }
   }
   const results=new Map();
+  // Only active variable expenses are deducted. The previous hypothetical
+  // 1.5% write-off + 1.5% IT/other-bonuses reserves are suspended, even if
+  // a stale settings object still contains their old percentages.
   const otherRate=(
     number(assumptions.manager_commission_percent)+
     number(assumptions.acquiring_percent)+
-    number(assumptions.logistics_percent)+
-    number(assumptions.writeoffs_percent)+
-    number(assumptions.bonuses_it_percent)
+    number(assumptions.logistics_percent)
   )/100;
   const managerRate=number(assumptions.manager_commission_percent)/100;
 
@@ -159,10 +160,8 @@ function loadPointPayoutProfit(database,orders,assumptions,period=null,options={
       const managerCost=net*managerRate;
       const acquiring=net*number(assumptions.acquiring_percent)/100;
       const logistics=net*number(assumptions.logistics_percent)/100;
-      const writeoffs=net*number(assumptions.writeoffs_percent)/100;
-      const it=net*number(assumptions.bonuses_it_percent)/100;
       const founderProfit=rub(net-orderCogs-orderTax-partnerTotal-ownerTotal-
-        managerCost-acquiring-logistics-writeoffs-it);
+        managerCost-acquiring-logistics);
       if(!row.order_details)row.order_details=[];
       row.order_details.push({
         id,number:String(order.display_number||order.order_code||'Заказ №'+id),
@@ -187,7 +186,8 @@ function loadPointPayoutProfit(database,orders,assumptions,period=null,options={
         owner_rate_percent:rub(ownerRate*100),
         manager_est:rub(managerCost),
         acquiring_est:rub(acquiring),logistics_est:rub(logistics),
-        writeoffs_est:rub(writeoffs),it_est:rub(it),
+        // Keep legacy fields at zero for compatibility with older mini-app builds.
+        writeoffs_est:0,it_est:0,
         founder_profit_est:founderProfit,
       });
     }

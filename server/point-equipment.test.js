@@ -64,6 +64,22 @@ function paidOrder(code,pointId,total,{refund=null,status='paid'}={}){
     refund);
 }
 
+test('legacy reserves of 1.5% each are ignored in all unit-economics calculations',()=>{
+  const assumptions={...getUnitEconomicsSettings().assumptions,
+    average_order_value:1310,writeoffs_percent:1.5,bonuses_it_percent:1.5};
+  const unit=calculateUnitEconomics(assumptions);
+  assert.equal(unit.costs_per_order.writeoffs,0);
+  assert.equal(unit.costs_per_order.bonuses_it,0);
+  const point=buildPointEquipmentEconomics(db,assumptions,unit);
+  assert.equal(point.model_contribution_margin_percent,
+    Math.round((unit.contribution_margin_percent+
+      assumptions.tax_percent-7)*100)/100);
+  assert.equal(point.profit_disclaimer.includes('временно отключены (0%)'),true);
+  assert.equal(unit.total_variable_costs_per_order,
+    Math.round((unit.product_cost_per_order+
+      Object.values(unit.costs_per_order).reduce((sum,c)=>sum+c,0))*100)/100);
+});
+
 test('launch equipment validator keeps fixed stand prices, zero cost and custom shelf cost',()=>{
   assert.deepEqual(normalizePointEquipment({type:'none'}).cost,0);
   assert.equal(normalizePointEquipment({type:'large_stand'}).cost,5000);

@@ -41,6 +41,8 @@ function orders(db){
 const period={from:'2026-11-01 00:00:00',to:'2026-12-01 00:00:00'};
 const assumptions={manager_commission_percent:7,acquiring_percent:2.7,
   logistics_percent:5,writeoffs_percent:1.5,bonuses_it_percent:1.5};
+// The nonzero legacy percentages are intentional regression inputs. Both reserves
+// must remain off until explicitly reintroduced in a later approved change.
 
 test('recorded transfers and pending commissions are separated without double counting',()=>{
   const db=fixture();
@@ -65,8 +67,9 @@ test('founder period profit deducts product costs, manager costs, tax and full p
     assert.equal(p.profit_cogs,280,'only the net share of partially refunded products is counted');
     assert.equal(p.profit_tax,49);
     assert.equal(p.profit_manager_est,49);
-    assert.equal(p.profit_other_costs_est,74.9);
-    assert.equal(p.founder_profit_est,7.1);
+    assert.equal(p.profit_other_costs_est,53.9,
+      'only acquiring and logistics remain; no 3% reserve for writeoffs/IT');
+    assert.equal(p.founder_profit_est,28.1);
     assert.equal(p.profit_missing_item_orders,0);
   }finally{db.close()}
 });
@@ -77,7 +80,7 @@ test('selected sales period excludes historical payout and records, even if tran
     let result=loadPointPayoutProfit(db,orders(db),assumptions,period).get('a');
     assert.equal(result.partner_paid,80);
     assert.equal(result.partner_pending,0);
-    assert.equal(result.founder_profit_est,7.1,
+    assert.equal(result.founder_profit_est,28.1,
       'moving accrued commission from pending to paid must never change company earnings');
     db.exec("INSERT INTO orders VALUES(6,'b',NULL,NULL,100,'paid','2026-11-05 00:00:00','none',NULL)");
     const all=orders(db);
@@ -113,8 +116,8 @@ test('order-level distribution reconciles with point profit and shows real paid 
     const detail=loadPointPayoutProfit(db,selected,assumptions,period,
       {includeOrderDetails:true}).get('a');
     assert.equal(detail.order_details.length,4);
-    assert.deepEqual(detail.order_details.map(x=>x.founder_profit_est),[13.25,13.25,10.6,-30]);
-    assert.ok(Math.abs(detail.order_details.reduce((sum,x)=>sum+x.founder_profit_est,0)-7.1)<0.001);
+    assert.deepEqual(detail.order_details.map(x=>x.founder_profit_est),[20.75,20.75,16.6,-30]);
+    assert.ok(Math.abs(detail.order_details.reduce((sum,x)=>sum+x.founder_profit_est,0)-28.1)<0.001);
     assert.equal(detail.founder_profit_est,all.founder_profit_est,
       'the drilldown and summary must use identical calculations');
     const first=detail.order_details[0];
@@ -128,8 +131,8 @@ test('order-level distribution reconciles with point profit and shows real paid 
     assert.equal(first.manager_est,17.5);
     assert.equal(first.acquiring_est,6.75);
     assert.equal(first.logistics_est,12.5);
-    assert.equal(first.writeoffs_est,3.75);
-    assert.equal(first.it_est,3.75);
+    assert.equal(first.writeoffs_est,0,'writeoff reserve is disabled');
+    assert.equal(first.it_est,0,'IT and miscellaneous bonus reserve is disabled');
     assert.equal(first.items.length,1);
     assert.equal(first.items[0].qty,1);
     assert.equal(first.items[0].unit_cost,100);
@@ -160,7 +163,7 @@ test('drilldown restricts payout, items and calculation to selected order IDs',(
     assert.equal(one.order_details[0].partner_paid,0);
     assert.equal(one.order_details[0].partner_pending,25);
     assert.equal(one.order_details[0].owner_pending,50);
-    assert.equal(one.founder_profit_est,13.25);
+    assert.equal(one.founder_profit_est,20.75);
     assert.equal(loadPointPayoutProfit(db,[],assumptions,period,
       {includeOrderDetails:true}).size,0);
   }finally{db.close()}

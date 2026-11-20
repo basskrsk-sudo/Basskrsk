@@ -99,8 +99,6 @@
       detailRow('Налог 7%', '−'+money(item.tax_est))+
       detailRow('Эквайринг (модель)', '−'+money(item.acquiring_est))+
       detailRow('Логистика (модель)', '−'+money(item.logistics_est))+
-      detailRow('Списания (модель)', '−'+money(item.writeoffs_est))+
-      detailRow('IT и прочие бонусы (модель)', '−'+money(item.it_est))+
       detailRow('Остаётся ХвостМаркету (оценка)',money(item.founder_profit_est),true)+
       notes+'</article>';
   }
