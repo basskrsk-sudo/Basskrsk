@@ -33,7 +33,7 @@ function setup() {
   };
   const moduleObj = {exports:{}};
   const source = fs.readFileSync(require.resolve('./first-purchase-promo'),'utf8');
-  vm.runInNewContext(source,{require(name) {if(name==='./db') return db;throw Error(name);},module:moduleObj,exports:moduleObj.exports});
+  vm.runInNewContext(source,{require(name) {if(name==='./db') return db;if(name==='./first-purchase-promo-policy') return require('./first-purchase-promo-policy');throw Error(name);},module:moduleObj,exports:moduleObj.exports});
   return moduleObj.exports;
 }
 
@@ -52,4 +52,19 @@ test('a phone cannot claim both a salon code and an old groomer code', () => {
   assert.equal(api.validateFirstPurchasePromo('HVOST20-001','+79130000001','salon-a').valid,false);
   api.releaseFirstPurchasePromoClaim(10);
   assert.equal(api.validateFirstPurchasePromo('HVOST20-001','+79130000001','salon-a').valid,true);
+});
+
+test('salon HVOST20 and HVOST15 aliases resolve to the same location from 1 December',()=>{
+ const api=setup(),cutoff=Date.parse('2026-11-30T17:00:00.000Z');
+ const before=api.validateFirstPurchasePromo('HVOST20-S-TEST','+79130000021','salon-a',cutoff-1);
+ assert.equal(before.discountPercent,20);
+ assert.equal(api.validateFirstPurchasePromo('HVOST15-S-TEST','+79130000022','salon-a',cutoff-1).valid,false);
+ const old=api.validateFirstPurchasePromo('HVOST20-S-TEST','+79130000023','salon-a',cutoff);
+ const current=api.validateFirstPurchasePromo('HVOST15-S-TEST','+79130000024','salon-a',cutoff);
+ assert.equal(old.valid,true);
+ assert.equal(current.valid,true);
+ assert.equal(old.discountPercent,15);
+ assert.equal(current.discountPercent,15);
+ assert.equal(current.pointId,'salon-a');
+ assert.equal(api.validateFirstPurchasePromo('HVOST15-S-TEST','+79130000025','salon-b',cutoff).valid,false);
 });

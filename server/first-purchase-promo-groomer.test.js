@@ -45,7 +45,8 @@ test('registration auto-generates separate codes and keeps old promo codes valid
   assert.equal(old.first_purchase_promo_code, 'HVOST20-TEST-LEGACY');
 
   const phone = '+7 (900) 999-00-01';
-  const validation = validateFirstPurchasePromo(first.first_purchase_promo_code, phone, pointId);
+  const validation = validateFirstPurchasePromo(first.first_purchase_promo_code, phone, pointId,
+    Date.parse('2026-11-20T00:00:00Z'));
   assert.equal(validation.valid, true);
   assert.equal(validation.discountPercent, 20);
   assert.equal(validation.partnerId, first.id);
@@ -65,4 +66,32 @@ test('registration auto-generates separate codes and keeps old promo codes valid
   assert.equal(validateFirstPurchasePromo(second.first_purchase_promo_code, phone, pointId).valid, false);
   assert.equal(validateFirstPurchasePromo(first.first_purchase_promo_code, phone, pointId).valid, false);
   assert.equal(validateFirstPurchasePromo(old.first_purchase_promo_code, '+79009990003', pointId).valid, true);
+});
+
+test('existing groomer HV20 and legacy code work after cutoff at 15%, new HV15 is identical',()=>{
+  const groomer=db.prepare("SELECT id,first_purchase_promo_code FROM partners WHERE first_purchase_promo_code LIKE 'HV20-G-%' ORDER BY id LIMIT 1").get();
+  assert.ok(groomer);
+  const pointId='test-groomer-promo-point';
+  const cutoff=Date.parse('2026-11-30T17:00:00.000Z');
+  const oldCode=groomer.first_purchase_promo_code;
+  const newCode=oldCode.replace('HV20-','HV15-');
+  const before=validateFirstPurchasePromo(oldCode,'+79007771001',pointId,cutoff-1);
+  assert.equal(before.valid,true);
+  assert.equal(before.discountPercent,20);
+  assert.equal(validateFirstPurchasePromo(newCode,'+79007771002',pointId,cutoff-1).valid,false);
+  const old=validateFirstPurchasePromo(oldCode,'+79007771003',pointId,cutoff);
+  const revised=validateFirstPurchasePromo(newCode,'+79007771004',pointId,cutoff);
+  assert.equal(old.discountPercent,15);
+  assert.equal(revised.discountPercent,15);
+  assert.equal(old.partnerId,revised.partnerId);
+  assert.equal(old.promoCode,oldCode);
+  assert.equal(revised.promoCode,newCode);
+  assert.match(old.notice,/старый промокод действует/i);
+  const legacy=validateFirstPurchasePromo('HVOST20-TEST-LEGACY','+79007771005',pointId,cutoff);
+  const legacyNew=validateFirstPurchasePromo('HVOST15-TEST-LEGACY','+79007771006',pointId,cutoff);
+  assert.equal(legacy.valid,true);
+  assert.equal(legacyNew.valid,true);
+  assert.equal(legacy.discountPercent,15);
+  assert.equal(legacyNew.discountPercent,15);
+  assert.equal(legacyNew.partnerId,legacy.partnerId);
 });
