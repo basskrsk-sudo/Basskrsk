@@ -278,6 +278,10 @@ test('launch math counts actual stands and first fill and splits referral bonuse
   assert.equal(g.launch_owner_bonus,0);
   assert.equal(g.estimated_investment,7300);
   assert.equal(g.estimated_investment_incomplete,false);
+  const modeledNetPerOrder=Math.round(calculateUnitEconomics(a).revenue_per_order*
+    model.model_contribution_margin_percent)/100;
+  assert.equal(g.estimated_orders_to_payback,Math.ceil(g.estimated_investment/modeledNetPerOrder),
+    'forecast payback must use the adjusted 7% tax, not the old default 6%');
   assert.equal(o.estimated_launch_cost,2900);
   assert.equal(o.launch_manager_bonus,1000);
   assert.equal(o.launch_groomer_bonus,0);
