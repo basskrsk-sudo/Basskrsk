@@ -18,7 +18,7 @@ const { getUnitEconomicsSettings,calculateUnitEconomics } = require('./unit-econ
 const { buildPointEquipmentEconomics } = require('./point-equipment');
 
 const CAPITAL_PLAN_RUB = 1000000;
-const TAX_ESTIMATE_RATE = 0.06;
+const TAX_ESTIMATE_RATE = 0.07; // Founder management estimate: per net paid sale.
 const ACQUIRING_ESTIMATE_RATE = 0.02;
 const DAY = 86400000;
 const ZONE_SHIFT = 7 * 3600000;
@@ -111,7 +111,11 @@ function estimatedEconomics(orders, startDate, endDate) {
   ).all(startDate, endDate);
   const manual = Math.round(manualRows.reduce((s, e) => s + safeNumber(e.total), 0));
   const revenue = summarizeOrders(orders).revenue;
-  const tax = Math.round(revenue * TAX_ESTIMATE_RATE);
+  // Tax each paid order separately. Refunds reduce that order's tax base,
+  // and a fully refunded order has no modeled tax. Do not calculate a
+  // second tax from the summary of all orders.
+  const tax = Math.round(orders.reduce((sum,order) =>
+    sum + Math.round(netOrderAmount(order)*TAX_ESTIMATE_RATE*100)/100,0)*100)/100;
   const acquiring = Math.round(revenue * ACQUIRING_ESTIMATE_RATE);
   const partnerCommission = Math.round(partner);
   const managerCommission = Math.round(manager);
