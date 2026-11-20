@@ -10,11 +10,8 @@ const EQUIPMENT = Object.freeze({
   shelf: {label:'Полка ХвостМаркета',cost:null},
 });
 const STANDARD_LARGE_STAND_COST = 5000;
-// Management-only fallback: use 50% of retail price when purchase cost is absent.
-// Does not populate cost_price or alter accounting, commissions, or payouts.
-const ESTIMATED_COST_SHARE = 0.5;
-// Founder management estimate only, not a declaration of the legal tax regime.
-const POINT_SALES_TAX_RATE = 0.07;
+const {ESTIMATED_COST_SHARE,POINT_SALES_TAX_RATE}=require('./point-economics-rates');
+const {loadPointPayoutProfit}=require('./point-period-finance');
 const roundMoney = value => Math.round(Number(value||0)*100)/100;
 const MAX_SHELF_COST = 1000000;
 function invalid(message){
@@ -245,6 +242,7 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   const inventoryByPoint=loadPointInventoryValuation(database);
   const initialGoodsByPoint=loadInitialGoodsValuation(database);
   const bonusByPoint=loadPointLaunchBonusAllocations(database,assumptions);
+  const financeByPoint=loadPointPayoutProfit(database,orders,assumptions,period);
   const sales=new Map();
   // Reuse already fetched anonymized paid orders for founder dashboards.
   // Tax each paid sale separately (to kopecks) on its net amount after refunds.
@@ -298,8 +296,14 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
     const beforeTax=roundMoney(actual.revenue*marginBeforeTax);
     const tax=roundMoney(actual.tax);
     const afterTax=roundMoney(beforeTax-tax);
-    const payback=base.estimated_investment!=null&&!base.estimated_investment_incomplete&&monthlyContribution>0
-      ? Math.round(base.estimated_investment/monthlyContribution*10)/10:null;
+    const finance=financeByPoint.get(row.point_id)||{};
+    // Earnings from period sales after both actual recorded transfers and
+    // still outstanding commissions. Do NOT subtract transfers again.
+    const ownerProfit=Number(finance.founder_profit_est||0);
+    const projectedMonthlyOwnerProfit=days?ownerProfit/days*30.4375:null;
+    const payback=base.estimated_investment!=null&&!base.estimated_investment_incomplete&&
+      projectedMonthlyOwnerProfit>0
+      ? Math.round(base.estimated_investment/projectedMonthlyOwnerProfit*10)/10:null;
     const inventory=inventoryByPoint.get(row.point_id)||{};
     const inventoryQty=Number(inventory.qty||0);
     const inventoryMissingQty=Number(inventory.missing_cost_qty||0);
@@ -307,6 +311,23 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
     const inventoryEstimatedValue=Number(inventory.estimated_value||0);
     const inventoryUnpricedQty=Number(inventory.unpriced_qty||0);
     return {...base,
+      partner_accrued:Number(finance.partner_accrued||0),
+      partner_paid:Number(finance.partner_paid||0),
+      partner_pending:Number(finance.partner_pending||0),
+      partner_refund_hold:Number(finance.partner_refund_hold||0),
+      owner_accrued:Number(finance.owner_accrued||0),
+      owner_paid:Number(finance.owner_paid||0),
+      owner_pending:Number(finance.owner_pending||0),
+      owner_refund_hold:Number(finance.owner_refund_hold||0),
+      profit_cogs_est:Number(finance.profit_cogs||0),
+      profit_manager_est:Number(finance.profit_manager_est||0),
+      profit_other_costs_est:Number(finance.profit_other_costs_est||0),
+      profit_missing_item_orders:Number(finance.profit_missing_item_orders||0),
+      profit_fallback_item_qty:Number(finance.profit_fallback_item_qty||0),
+      commission_refund_review_orders:Number(finance.commission_refund_review_orders||0),
+      founder_profit_est:ownerProfit,
+      projected_monthly_founder_profit:projectedMonthlyOwnerProfit===null?null:
+        roundMoney(projectedMonthlyOwnerProfit),
       inventory_qty:inventoryQty,
       inventory_known_value:inventoryKnownValue,
       inventory_estimated_value:inventoryEstimatedValue,
@@ -330,7 +351,7 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   return {
     assumption:'ВСЕ точки оцениваются одинаково: фактически выбранное оборудование + стартовая выкладка из подтверждённых перемещений ДО первой оплаченной продажи + модельные разовые бонусы менеджеру и пригласившему грумеру/владельцу. Общие условные расходы 15 000 ₽ и 20 000 ₽ не применяются. Для товара без закупочной цены берём 50% розничной цены; последующие пополнения не включаем. Без подтверждения первоначальных поставок выводим нижний предел («от») или прочерк — вымышленных затрат нет. Бюджет запуска обычно 2 000 ₽: без приглашения менеджеру 2 000 ₽, с приглашением 1 000 ₽ менеджеру и 1 000 ₽ партнёру, без двойного учёта.',
     inventory_disclaimer:'Для товаров с указанной закупочной ценой используется она. Для товаров без закупочной цены применяется модельная себестоимость = цена продажи / 2 (50%), такая часть показывается отдельно и не записывается как фактическая закупка. Начальная выкладка берётся из подтверждённых перемещений до первой продажи; текущие остатки показываются отдельно. Для старых поставок используются сегодняшние цены каталога, а не историческая цена покупки. При консигнации товар может принадлежать поставщику: это оценка размещения, не доказательство оплаты.',
-    profit_disclaimer:'Налог в экономике каждой точки = 7% от каждой оплаченной продажи за вычетом возвратов; полностью возвращённый заказ не облагается в этой управленческой модели. Ставка 7% заменяет уже учтённый в исходной марже модельный налог (обычно 6%), а не добавляется вторым налогом. Вклад и окупаемость рассчитаны ПОСЛЕ налога. Это плановый расчёт, не подтверждение фактически уплаченных налогов; это НЕ фактическая прибыль и НЕ бухгалтерская прибыль. CAPEX и разовые премии учитываются в запуске, а не повторно в текущем вкладе.',
+    profit_disclaimer:'ПРИБЫЛЬ СОБСТВЕННИКОВ (ОЦЕНКА) = оплаченная выручка за выбранный период после возвратов − себестоимость проданных товаров − налог 7% − начисленные комиссии грумерам и владельцам (как выплаченные, так и ещё не выплаченные) − модельные расходы на менеджера, эквайринг, логистику, списания и IT. Фактические переводы берутся из реестра выплат по заказам периода; они не вычитаются повторно при выплате. Удержанные из-за возвратов комиссии показаны отдельно для сверки и консервативно учтены в оценке. Себестоимость берётся из текущего каталога, при отсутствии закупочной цены = 50% розничной; если строки заказа не сохранились, 50% оплаченной суммы. Ключевые суммы остаются модельными: без общесетевых постоянных расходов, зарплат учредителей, бухгалтерских корректировок, стоимости оборудования и разовых затрат на открытие. Это НЕ фактическая прибыль и НЕ бухгалтерская прибыль. Вклад за период и прибыль собственников могут отличаться: вклад использует типовые проценты комиссий, прибыль — начисления и реестры выплат конкретных точек.',
     equipment_prices:{large_stand:5000,small_stand:2500,none:0,shelf:'вручную'},
     baseline_launch_cost:assumptions.launch_cost,
     baseline_other_launch_cost:Math.max(0,Number(assumptions.launch_cost)-5000),
@@ -360,6 +381,21 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
       period_revenue:roundMoney(points.reduce((sum,row)=>sum+row.period_revenue,0)),
       period_orders:points.reduce((sum,row)=>sum+row.period_orders,0),
       period_tax_est:roundMoney(points.reduce((sum,row)=>sum+row.period_tax_est,0)),
+      partner_accrued:roundMoney(points.reduce((sum,row)=>sum+row.partner_accrued,0)),
+      partner_paid:roundMoney(points.reduce((sum,row)=>sum+row.partner_paid,0)),
+      partner_pending:roundMoney(points.reduce((sum,row)=>sum+row.partner_pending,0)),
+      partner_refund_hold:roundMoney(points.reduce((sum,row)=>sum+row.partner_refund_hold,0)),
+      owner_accrued:roundMoney(points.reduce((sum,row)=>sum+row.owner_accrued,0)),
+      owner_paid:roundMoney(points.reduce((sum,row)=>sum+row.owner_paid,0)),
+      owner_pending:roundMoney(points.reduce((sum,row)=>sum+row.owner_pending,0)),
+      owner_refund_hold:roundMoney(points.reduce((sum,row)=>sum+row.owner_refund_hold,0)),
+      founder_profit_est:roundMoney(points.reduce((sum,row)=>sum+row.founder_profit_est,0)),
+      profit_cogs_est:roundMoney(points.reduce((sum,row)=>sum+row.profit_cogs_est,0)),
+      profit_manager_est:roundMoney(points.reduce((sum,row)=>sum+row.profit_manager_est,0)),
+      profit_other_costs_est:roundMoney(points.reduce((sum,row)=>sum+row.profit_other_costs_est,0)),
+      profit_missing_item_orders:points.reduce((sum,row)=>sum+row.profit_missing_item_orders,0),
+      profit_fallback_item_qty:points.reduce((sum,row)=>sum+row.profit_fallback_item_qty,0),
+      commission_refund_review_orders:points.reduce((sum,row)=>sum+row.commission_refund_review_orders,0),
       estimated_period_contribution_before_tax:roundMoney(
         points.reduce((sum,row)=>sum+row.estimated_period_contribution_before_tax,0)),
       estimated_period_contribution:roundMoney(
