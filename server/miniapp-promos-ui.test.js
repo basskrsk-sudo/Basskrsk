@@ -7,6 +7,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 
 const source=fs.readFileSync(path.join(__dirname,'../public/miniapp-promos.js'),'utf8');
+const policySource=fs.readFileSync(path.join(__dirname,'../public/first-purchase-promo-display.js'),'utf8');
 const html=fs.readFileSync(path.join(__dirname,'../public/miniapp.html'),'utf8');
 const css=fs.readFileSync(path.join(__dirname,'../public/miniapp-work.css'),'utf8');
 const work=fs.readFileSync(path.join(__dirname,'../public/miniapp-work.js'),'utf8');
@@ -40,7 +41,11 @@ function harness(opts={}){
     },
   }};
   const window={navigator,prompt:(message,value)=>prompts.push({message,value})};
-  vm.runInNewContext(source,{document,window,console},{filename:'miniapp-promos.js'});
+  // Simulate the calendar rather than depending on the CI runner's real date.
+  class Clock extends Date {static now(){return opts.now??Date.parse('2026-11-20T08:00:00Z')}}
+  const context={document,window,console,Date:Clock};
+  vm.runInNewContext(policySource,context,{filename:'first-purchase-promo-display.js'});
+  vm.runInNewContext(source,context,{filename:'miniapp-promos.js'});
   const api=window.HvostMiniAppPromos;
   const click=async(key)=>{
     let prevented=false;
@@ -190,4 +195,20 @@ test('owner referral invitation requires verified owner role and cannot be read 
   active=false;
   await h.click('ownerInvite');
   assert.equal(h.copied.length,0);
+});
+
+test('on December 1 partner sees HV15 code and link; printed HV20 remains valid as an alias',async()=>{
+  const h=harness({now:Date.parse('2026-11-30T17:00:00.000Z')});
+  const markup=h.api.section(personalPartner,()=>true);
+  assert.match(markup,/скидка 15%/i);
+  assert.match(markup,/HV15-G-053/);
+  assert.match(markup,/HV15-002/);
+  assert.doesNotMatch(markup,/HV20-G-053/);
+  assert.match(markup,/С 1 декабря 2026 года скидка на первую покупку — 15%/);
+  await h.click('groomer');
+  assert.equal(h.copied.at(-1),'HV15-G-053');
+  await h.click('salon');
+  assert.equal(h.copied.at(-1),'HV15-002');
+  await h.click('buyer');
+  assert.match(h.copied.at(-1),/promo=HV15-G-053/);
 });
