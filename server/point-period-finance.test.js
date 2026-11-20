@@ -96,3 +96,68 @@ test('current catalog cost overrides fallback and no owner means no assumed owne
     assert.equal(row.owner_pending,0);
   }finally{db.close()}
 });
+
+test('order-level distribution reconciles with point profit and shows real paid versus pending',()=>{
+  const db=fixture();
+  try{
+    const selected=orders(db).map(o=>({...o,
+      order_code:'ORDER-'+o.id,
+      created_at:'2026-11-0'+o.id+' 10:00:00',
+      partner_name:'Test groomer'
+    }));
+    const all=loadPointPayoutProfit(db,selected,assumptions,period).get('a');
+    const detail=loadPointPayoutProfit(db,selected,assumptions,period,
+      {includeOrderDetails:true}).get('a');
+    assert.equal(detail.order_details.length,4);
+    assert.deepEqual(detail.order_details.map(x=>x.founder_profit_est),[13.25,13.25,10.6,-30]);
+    assert.ok(Math.abs(detail.order_details.reduce((sum,x)=>sum+x.founder_profit_est,0)-7.1)<0.001);
+    assert.equal(detail.founder_profit_est,all.founder_profit_est,
+      'the drilldown and summary must use identical calculations');
+    const first=detail.order_details[0];
+    assert.equal(first.revenue,250);
+    assert.equal(first.cogs_est,100);
+    assert.equal(first.tax_est,17.5);
+    assert.equal(first.partner_paid,25);
+    assert.equal(first.partner_pending,0);
+    assert.equal(first.owner_paid,50);
+    assert.equal(first.owner_pending,0);
+    assert.equal(first.manager_est,17.5);
+    assert.equal(first.acquiring_est,6.75);
+    assert.equal(first.logistics_est,12.5);
+    assert.equal(first.writeoffs_est,3.75);
+    assert.equal(first.it_est,3.75);
+    assert.equal(first.items.length,1);
+    assert.equal(first.items[0].qty,1);
+    assert.equal(first.items[0].unit_cost,100);
+    assert.equal(first.items[0].net_cost,100);
+    assert.equal(first.items[0].cost_estimated,false);
+    assert.equal(Object.hasOwn(first,'customer_phone'),false);
+    const partial=detail.order_details.find(x=>x.id===3);
+    assert.equal(partial.refund_amount,100);
+    assert.equal(partial.revenue,200);
+    assert.equal(partial.cogs_est,80);
+    assert.equal(partial.partner_refund_hold,20);
+    assert.equal(partial.owner_refund_hold,40);
+    const full=detail.order_details.find(x=>x.id===4);
+    assert.equal(full.revenue,0);
+    assert.equal(full.partner_paid,30);
+    assert.equal(full.founder_profit_est,-30);
+  }finally{db.close()}
+});
+
+test('drilldown restricts payout, items and calculation to selected order IDs',()=>{
+  const db=fixture();
+  try{
+    const all=orders(db);
+    const one=loadPointPayoutProfit(db,[all[1]],assumptions,period,
+      {includeOrderDetails:true}).get('a');
+    assert.equal(one.order_details.length,1);
+    assert.equal(one.order_details[0].id,2);
+    assert.equal(one.order_details[0].partner_paid,0);
+    assert.equal(one.order_details[0].partner_pending,25);
+    assert.equal(one.order_details[0].owner_pending,50);
+    assert.equal(one.founder_profit_est,13.25);
+    assert.equal(loadPointPayoutProfit(db,[],assumptions,period,
+      {includeOrderDetails:true}).size,0);
+  }finally{db.close()}
+});
