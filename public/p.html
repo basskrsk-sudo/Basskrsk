@@ -206,44 +206,121 @@ var QR_SELF_ORDER = false;
 var QR_PROMO_VALID = false;
 var QR_PROMO_PERCENT = 0;
 var QR_PROMO_CODE = '';
-var YOOKASSA_WIDGET_URL = 'https://yookassa.ru/checkout-widget/v1/checkout-widget.js';
-var widgetLoadPromise = null;
+var QR_PAYMENT_STORAGE_KEY = 'hvost_qr_payment:' + location.pathname;
+var QR_PAYMENT_PREFILL = null;
 
-function widgetReady() { return typeof window.YooMoneyCheckoutWidget === 'function'; }
-function loadWidget(forceReload) {
-  if (widgetReady()) return Promise.resolve(true);
-  if (forceReload) {
-    document.querySelectorAll('script[data-yookassa-widget]').forEach(function(s) { s.remove(); });
-    widgetLoadPromise = null;
-  }
-  if (widgetLoadPromise) return widgetLoadPromise;
-  widgetLoadPromise = new Promise(function(resolve, reject) {
-    var script = document.createElement('script');
-    script.async = true;
-    script.dataset.yookassaWidget = 'true';
-    script.src = YOOKASSA_WIDGET_URL + (forceReload ? '?retry=' + Date.now() : '');
-    var done = false;
-    var timer = setTimeout(function() { finish(new Error('Платёжный модуль не ответил вовремя')); }, 10000);
-    function finish(error) {
-      if (done) return;
-      done = true; clearTimeout(timer); script.onload = null; script.onerror = null;
-      if (error) reject(error); else resolve(true);
-    }
-    script.onload = function() { finish(widgetReady() ? null : new Error('Платёжный модуль загрузился некорректно')); };
-    script.onerror = function() { finish(new Error('Не удалось загрузить платёжный модуль')); };
-    document.head.appendChild(script);
-  }).catch(function(error) { widgetLoadPromise = null; throw error; });
-  return widgetLoadPromise;
+function readPendingQrPayment() {
+  try {
+    var data = JSON.parse(sessionStorage.getItem(QR_PAYMENT_STORAGE_KEY) || 'null');
+    if (data && data.orderId && data.body && data.pointId === CTX.pointId &&
+        data.productSlug === CTX.productSlug &&
+        Date.now() - data.createdAt < 24 * 60 * 60 * 1000) return data;
+  } catch (e) { /* storage may be disabled on some devices */ }
+  return null;
 }
-async function prepareWidget() {
-  try { await loadWidget(false); return true; }
-  catch (firstError) {
-    console.warn('Первая загрузка виджета ЮKassa не удалась:', firstError);
-    try { await loadWidget(true); return true; }
-    catch (secondError) {
-      console.warn('Используем защищённую страницу ЮKassa:', secondError);
-      return false;
+function savePendingQrPayment(data) {
+  try { sessionStorage.setItem(QR_PAYMENT_STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+}
+function clearPendingQrPayment() {
+  try { sessionStorage.removeItem(QR_PAYMENT_STORAGE_KEY); } catch (e) {}
+}
+function newQrPaymentCode() {
+  var bytes = crypto.getRandomValues(new Uint8Array(8));
+  return 'TG-' + Date.now() + '-' + Array.from(bytes).map(function(x) { return x.toString(16).padStart(2, '0'); }).join('');
+}
+function showPendingQrPayment(message) {
+  var saved = readPendingQrPayment();
+  if (!saved) { showPhoneStep(); return; }
+  state('<div class="panel" style="padding:24px 16px;text-align:center">'
+    + '<div style="font-size:40px;margin-bottom:10px">📶</div>'
+    + '<h2>Покупка сохранена</h2>'
+    + '<p class="small muted" style="line-height:1.6;margin-bottom:16px">'
+    + esc(message || 'Продолжите оплату после восстановления интернета.') + '</p>'
+    + '<div class="note" style="display:block;text-align:left;margin-bottom:16px">'
+    + '<b>Заказ:</b> ' + esc(CTX.product.name) + ' · ' + fmtPrice(saved.amount)
+    + '<br>Если связь прервалась, мы проверим предыдущий платёж, прежде чем продолжать.'
+    + '</div>'
+    + '<button class="cta" id="retryQrPayment" onclick="resumePendingQrPayment()">Проверить и продолжить оплату</button>'
+    + '<p class="small muted" style="margin-top:14px">Повторное нажатие не создаст второй платёж.</p></div>');
+}
+// Preflight checks should not hold the checkout hostage during a network switch.
+async function fetchQrPrecheck(url) {
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, 4500);
+  try { return await fetch(url, { signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
+function qrPaymentFetch(body) {
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, 8000);
+  return fetch('/api/create-payment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  }).then(async function(response) {
+    var data = await response.json();
+    return { response: response, data: data };
+  }).finally(function() { clearTimeout(timer); });
+}
+var QR_PAYMENT_BUSY = false;
+var QR_PAYMENT_PREPARING = false;
+async function resumePendingQrPayment() {
+  var saved = readPendingQrPayment();
+  if (!saved) { showPhoneStep(); return; }
+  await runQrPayment(saved);
+}
+async function runQrPayment(saved) {
+  if (QR_PAYMENT_BUSY) return;
+  QR_PAYMENT_BUSY = true;
+  state('<div class="state"><div class="em">⏳</div><h2>Готовим оплату…</h2>'
+    + '<p>Проверяем заказ. Если связь пропадёт, покупка сохранится.</p></div>');
+  try {
+    var result = await qrPaymentFetch(saved.body);
+    var response = result.response;
+    var data = result.data || {};
+    if (data.paid === true && response.ok) {
+      clearPendingQrPayment();
+      QR_PUBLIC_NUMBER = data.display_number || '';
+      showSuccess(saved.orderId, saved.phone, !!data.is_partner_self_order, data.display_number);
+      return;
     }
+    if (response.status === 202 || data.status === 'initializing') {
+      showPendingQrPayment('ЮKassa ещё создаёт платёж. Проверьте соединение и нажмите кнопку ещё раз.');
+      return;
+    }
+    if (!response.ok) {
+      if (data.code === 'PAYMENT_RETRY_REQUIRED' || data.code === 'PAYMENT_RETRY_MISMATCH' ||
+          data.code === 'ORDER_TOTAL_CHANGED' || data.code === 'FIRST_PURCHASE_PROMO_INVALID') {
+        QR_PAYMENT_PREFILL = saved.body;
+        clearPendingQrPayment();
+        showPhoneStep();
+        showErr(data.error || 'Предыдущий платёж не завершён. Проверьте заказ и попробуйте ещё раз.');
+        return;
+      }
+      showPendingQrPayment(data.error || 'Платёж пока недоступен. Проверьте соединение и повторите.');
+      return;
+    }
+    if (!data.confirmation_url) {
+      showPendingQrPayment('Подтверждение оплаты ещё не готово. Попробуйте проверить статус снова.');
+      return;
+    }
+    QR_PUBLIC_NUMBER = data.display_number || '';
+    recordQrEvent('payment_created', saved.orderId);
+    trackGoalOnce('payment_created', saved.orderId, {
+      scenario: 'qr', order_id: saved.orderId, product_id: CTX.product.id,
+      variant_id: saved.variantId, point_id: CTX.pointId, revenue: saved.amount,
+      confirmation_mode: 'redirect',
+    });
+    // Redirect to YooKassa rather than loading and retrying an embedded widget.
+    location.assign(data.confirmation_url);
+  } catch (error) {
+    trackGoal('qr_payment_connection_error', {
+      scenario: 'qr', point_id: CTX.pointId, error_type: error.name || 'network',
+    });
+    showPendingQrPayment('Соединение прервалось или сервер отвечает слишком долго. Переключите интернет и продолжите тот же заказ.');
+  } finally {
+    QR_PAYMENT_BUSY = false;
   }
 }
 
@@ -327,6 +404,13 @@ async function boot() {
       await handlePaymentReturn(paymentReturn);
       return;
     }
+    var saved = readPendingQrPayment();
+    if (saved) {
+      CTX.selVariant = CTX.variants.find(function(v) { return String(v.id) === String(saved.variantId); })
+        || { id: saved.variantId, weight: saved.weight || '', price: saved.amount };
+      showPendingQrPayment('Вы начали оплату, но она не была завершена на этом устройстве. Продолжите тот же заказ.');
+      return;
+    }
     var avail = CTX.variants.filter(function(v) { return v.qty > 0; });
     if (!avail.length) {
       var alts = findAlts(products, prod, p.point);
@@ -397,6 +481,8 @@ function pickVariant(id) {
 /* ── Экран 2: телефон ── */
 function showPhoneStep() {
   var v = CTX.selVariant;
+  var restored = QR_PAYMENT_PREFILL;
+  QR_PAYMENT_PREFILL = null;
   trackGoal('buy_now_clicked', {
     scenario: 'qr', source: 'qr_product', product_id: CTX.product.id,
     variant_id: v.id, price: v.price, point_id: CTX.pointId,
@@ -419,10 +505,10 @@ function showPhoneStep() {
     + '<div style="background:#E9F4EC;color:#143d35;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.45">🐾 ХвостМаркет направит 10 ₽ на помощь животным — цена товара не увеличивается</div>'
     + (CTX.point ? '<br>Забрать: ' + esc(CTX.point.name) + (CTX.point.addr ? ', ' + esc(CTX.point.addr) : '') : '') + '</p>'
     + '<label for="phone">Номер телефона</label>'
-    + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(knownPhone()) + '" oninput="invalidateQrPromo();checkQrSelfOrder()" onblur="checkQrSelfOrder();validateQrPromo(false)">'
+    + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(restored?.customerPhone || knownPhone()) + '" oninput="invalidateQrPromo();checkQrSelfOrder()" onblur="checkQrSelfOrder();validateQrPromo(false)">'
     + '<p class="small muted" id="qrBonesNote" style="margin-top:6px">Свяжем заказ с вашим номером и начислим косточки-бонусы.</p>'
     + '<label for="qrPromo">Промокод грумера −' + window.HvostFirstPurchasePromo.percent() + '% на первую покупку</label>'
-    + '<div style="display:flex;gap:8px;margin-bottom:4px"><input id="qrPromo" value="' + esc(new URLSearchParams(location.search).get('promo') || '') + '" placeholder="' + window.HvostFirstPurchasePromo.displayCode('HVOST20-001') + '" oninput="this.value=this.value.toUpperCase();invalidateQrPromo()" style="margin-bottom:0;flex:1;min-width:0"><button type="button" class="variant" onclick="validateQrPromo(true)" style="white-space:nowrap">Применить</button></div>'
+    + '<div style="display:flex;gap:8px;margin-bottom:4px"><input id="qrPromo" value="' + esc(restored?.promoCode || new URLSearchParams(location.search).get('promo') || '') + '" placeholder="' + window.HvostFirstPurchasePromo.displayCode('HVOST20-001') + '" oninput="this.value=this.value.toUpperCase();invalidateQrPromo()" style="margin-bottom:0;flex:1;min-width:0"><button type="button" class="variant" onclick="validateQrPromo(true)" style="white-space:nowrap">Применить</button></div>'
     + '<p class="small" id="qrPromoMsg" style="min-height:18px;margin-bottom:6px"></p>'
     + '<p class="small" style="color:#775000;margin:0 0 12px;line-height:1.5">' + esc(window.HvostFirstPurchasePromo.notice()) + '</p>'
     + advisorField
@@ -434,6 +520,10 @@ function showPhoneStep() {
   if (advisor && CTX.defaultPartnerId &&
       CTX.partners.some(function(partner) { return String(partner.id) === String(CTX.defaultPartnerId); })) {
     advisor.value = String(CTX.defaultPartnerId);
+  }
+  if (restored && advisor) {
+    var restoredAdvisor = restored.advisorSelection === 'self' ? 'self' : String(restored.partnerId || '');
+    if (Array.from(advisor.options).some(function(opt) { return opt.value === restoredAdvisor; })) advisor.value = restoredAdvisor;
   }
   var inp = document.getElementById('phone');
   inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
@@ -476,7 +566,7 @@ async function validateQrPromo(showEmptyError) {
   }
   try {
     // Для промокодов салонов серверу необходим ID выбранной точки.
-    var res = await fetch('/api/first-purchase-promo/validate?code=' + encodeURIComponent(code)
+    var res = await fetchQrPrecheck('/api/first-purchase-promo/validate?code=' + encodeURIComponent(code)
       + '&phone=' + encodeURIComponent(phone)
       + '&point_id=' + encodeURIComponent(CTX.pointId));
     var data = await res.json();
@@ -509,7 +599,7 @@ async function checkQrSelfOrder() {
     return false;
   }
   try {
-    var response = await fetch('/api/points/' + encodeURIComponent(CTX.pointId) + '/is-self-order?phone=' + encodeURIComponent(phone));
+    var response = await fetchQrPrecheck('/api/points/' + encodeURIComponent(CTX.pointId) + '/is-self-order?phone=' + encodeURIComponent(phone));
     var result = await response.json();
     QR_SELF_ORDER = !!result.isSelfOrder;
   } catch (e) {
@@ -526,6 +616,16 @@ function showErr(msg) { var e = document.getElementById('err'); e.textContent = 
 
 /* ── Экран 3: оплата ── */
 async function startPayment() {
+  if (QR_PAYMENT_BUSY || QR_PAYMENT_PREPARING) return;
+  QR_PAYMENT_PREPARING = true;
+  var paymentButton = document.getElementById('payBtn');
+  if (paymentButton) {
+    paymentButton.disabled = true;
+    paymentButton.textContent = 'Готовим оплату…';
+  }
+  try {
+  var existing = readPendingQrPayment();
+  if (existing) { showPendingQrPayment('Незавершённая оплата уже сохранена. Продолжите тот же платёж.'); return; }
   var phone = normPhone(document.getElementById('phone').value);
   if (!validatePhone(phone || '')) { showErr('Укажите телефон в формате +7 (900) 000-00-00.'); return; }
   var advisorValue = document.getElementById('advisor') ? document.getElementById('advisor').value : '';
@@ -535,22 +635,20 @@ async function startPayment() {
   }
   var selectedPartnerId = advisorValue && advisorValue !== 'self' ? Number(advisorValue) : null;
   var promoInput = document.getElementById('qrPromo');
-  var previousPromoPercent=QR_PROMO_PERCENT;
+  var previousPromoPercent = QR_PROMO_PERCENT;
   if (promoInput && promoInput.value.trim() && !(await validateQrPromo(false))) return;
   if (promoInput && promoInput.value.trim() && previousPromoPercent &&
       previousPromoPercent !== QR_PROMO_PERCENT) {
     showErr('С 1 декабря 2026 скидка на первую покупку — 15%. Сумма обновилась. Проверьте её и нажмите «Оплатить» ещё раз.');
     return;
   }
-  await checkQrSelfOrder();
+  // The server independently detects groomer self-orders. Do not block
+  // checkout on an extra advisory network request.
   rememberPhone(phone);
-  var btn = document.getElementById('payBtn');
-  btn.disabled = true; btn.textContent = 'Готовим оплату…';
-
-  var orderId = 'TG-' + Date.now();
-  QR_PUBLIC_NUMBER = '';
   var v = CTX.selVariant;
   var paymentAmount = qrPayAmount();
+  var orderId = newQrPaymentCode();
+  QR_PUBLIC_NUMBER = '';
   var funnelKey = 'qr:' + CTX.pointId + ':' + v.id;
   trackGoalOnce('phone_entered', funnelKey, {
     scenario: 'qr', product_id: CTX.product.id, variant_id: v.id, point_id: CTX.pointId,
@@ -559,135 +657,49 @@ async function startPayment() {
     scenario: 'qr', product_id: CTX.product.id, variant_id: v.id,
     point_id: CTX.pointId, revenue: paymentAmount, items_count: 1,
   });
-  try {
-    // Сначала проверяем внешний модуль и только затем резервируем товар.
-    // Если модуль заблокирован браузером, используем redirect-оплату.
-    var useEmbeddedWidget = await prepareWidget();
-    var confirmationMode = useEmbeddedWidget ? 'embedded' : 'redirect';
-    recordQrEvent('checkout');
-    var res = await fetch('/api/create-payment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orderId: orderId,
-        amount: paymentAmount,
-        // Способ оплаты клиент выбирает в защищённой форме ЮKassa.
-        method: 'yookassa',
-        customerPhone: phone,
-        customerEmail: null,
-        customerName: null,
-        customerLname: null,
-        pickupPoint: CTX.point ? CTX.point.name + (CTX.point.addr ? ' — ' + CTX.point.addr : '') : '',
-        pointId: CTX.pointId,
-        partnerId: selectedPartnerId,
-        advisorSelection: advisorValue === 'self' ? 'self' : null,
-        comment: null,
-        bonesUsed: 0,
-        fulfillmentType: 'pickup',
-        deliveryAddress: null,
-        cityId: null,
-        referralCode: null,
-        promoCode: QR_PROMO_VALID ? QR_PROMO_CODE : null,
-        confirmationMode: confirmationMode,
-        returnPath: location.pathname,
-        cartItems: [{ variantId: v.id, qty: 1 }]
-      })
-    });
-    var data = await res.json();
-    if (!res.ok) {
-      if (data && data.code === 'ORDER_TOTAL_CHANGED') {
-        invalidateQrPromo();
-        if (promoInput && promoInput.value.trim()) await validateQrPromo(false);
-        throw new Error('Сумма изменилась, в том числе из-за обновления скидки. Проверьте новую цену и повторите оплату.');
-      }
-      throw new Error((data && data.error) || 'Не удалось создать заказ');
+  var body = {
+    orderId: orderId,
+    amount: paymentAmount,
+    method: 'yookassa',
+    customerPhone: phone,
+    customerEmail: null,
+    customerName: null,
+    customerLname: null,
+    pickupPoint: CTX.point ? CTX.point.name + (CTX.point.addr ? ' — ' + CTX.point.addr : '') : '',
+    pointId: CTX.pointId,
+    partnerId: selectedPartnerId,
+    advisorSelection: advisorValue === 'self' ? 'self' : null,
+    comment: null,
+    bonesUsed: 0,
+    fulfillmentType: 'pickup',
+    deliveryAddress: null,
+    cityId: null,
+    referralCode: null,
+    promoCode: QR_PROMO_VALID ? QR_PROMO_CODE : null,
+    confirmationMode: 'redirect',
+    returnPath: location.pathname,
+    cartItems: [{ variantId: v.id, qty: 1 }],
+  };
+  var saved = {
+    orderId: orderId, pointId: CTX.pointId, productSlug: CTX.productSlug,
+    variantId: v.id, weight: v.weight, amount: paymentAmount,
+    phone: phone, createdAt: Date.now(), body: body,
+  };
+  savePendingQrPayment(saved);
+  recordQrEvent('checkout');
+  await runQrPayment(saved);
+  } finally {
+    QR_PAYMENT_PREPARING = false;
+    if (paymentButton && paymentButton.isConnected) {
+      paymentButton.disabled = false;
+      updateQrPayButton();
     }
-    QR_PUBLIC_NUMBER = data.display_number || '';
-
-    recordQrEvent('payment_created',orderId);
-    trackGoalOnce('payment_created', orderId, {
-      scenario: 'qr', order_id: orderId, product_id: CTX.product.id,
-      variant_id: v.id, point_id: CTX.pointId, revenue: paymentAmount,
-      confirmation_mode: confirmationMode,
-    });
-
-    if (data.demo === true) { showSuccess(orderId, phone, !!data.is_partner_self_order, data.display_number); return; }
-
-    if (!data.confirmation_token) {
-      if (confirmationMode === 'redirect' && data.confirmation_url) {
-        btn.textContent = 'Открываем безопасную оплату…';
-        location.assign(data.confirmation_url);
-        return;
-      }
-      throw new Error((data && data.error) || 'Не удалось открыть форму оплаты');
-    }
-
-    btn.style.display = 'none';
-    var noteEl = document.createElement('div');
-    noteEl.className = 'note'; noteEl.id = 'payNote';
-    noteEl.style.display = 'block';
-    noteEl.textContent = '🔒 Товар зарезервирован на ' + (data.reservation_minutes || 1) + ' минут. Завершите оплату в этом окне.';
-    btn.parentNode.insertBefore(noteEl, btn.nextSibling);
-    var box = document.createElement('div');
-    box.id = 'yk-box'; box.style.display = 'block';
-    btn.parentNode.insertBefore(box, noteEl.nextSibling);
-
-    var finished = false;
-    var stopTimer = null;
-    var checkout = new window.YooMoneyCheckoutWidget({
-      confirmation_token: data.confirmation_token,
-      return_url: (function() {
-        var returnUrl = new URL(location.href);
-        returnUrl.searchParams.set('payment_return', orderId);
-        returnUrl.hash = '';
-        return returnUrl.href;
-      })(),
-      error_callback: function() { showErr('⚠️ Ошибка инициализации оплаты, попробуйте ещё раз.'); }
-    });
-    CTX.checkout = checkout;
-
-    async function checkStatus() {
-      try {
-        var r = await fetch('/api/payment-status/' + encodeURIComponent(data.payment_id), { cache: 'no-store' });
-        if (!r.ok) return;
-        var st = await r.json();
-        if (finished) return;
-        if (st.paid) { finished = true; if (stopTimer) clearInterval(stopTimer); try { checkout.destroy(); } catch (e) {} showSuccess(orderId, phone, !!st.is_partner_self_order, st.display_number); }
-        else if (st.status === 'failed' || st.status === 'canceled') {
-          finished = true; if (stopTimer) clearInterval(stopTimer); try { checkout.destroy(); } catch (e) {}
-          box.style.display = 'none';
-          noteEl.textContent = 'Оплата не прошла. Можно безопасно попробовать оплатить заказ заново.';
-          btn.style.display = 'block'; btn.disabled = false; btn.textContent = 'Оплатить ' + fmtPrice(paymentAmount);
-          trackGoalOnce('payment_cancelled', orderId, {
-            scenario: 'qr', order_id: orderId, status: st.status, revenue: v.price,
-          });
-        }
-      } catch (e) { /* временный сбой — опрос продолжится */ }
-    }
-
-    checkout.on('success', function() {
-      noteEl.textContent = '⏳ Подтверждаем оплату на сервере. Не закрывайте страницу…';
-      checkStatus();
-    });
-    checkout.on('fail', function() {
-      noteEl.textContent = 'Оплата не прошла. Попробуйте ещё раз.';
-      trackGoalOnce('payment_cancelled', orderId, {
-        scenario: 'qr', order_id: orderId, status: 'widget_fail', revenue: v.price,
-      });
-    });
-    await checkout.render('yk-box');
-    checkStatus();
-    stopTimer = setInterval(checkStatus, 2500);
-  } catch (e) {
-    console.error('Не удалось запустить оплату:', e);
-    showErr('Не удалось открыть оплату. Проверьте интернет и попробуйте ещё раз.');
-    trackGoal('payment_create_error', { scenario: 'qr', order_id: orderId, point_id: CTX.pointId });
-    btn.disabled = false; btn.textContent = 'Оплатить ' + fmtPrice(paymentAmount);
   }
 }
 
 /* ── Экран 4: успех ── */
 function showSuccess(orderId, phone, isSelfOrder, displayNumber) {
+  clearPendingQrPayment();
   var shownNumber = displayNumber || QR_PUBLIC_NUMBER || orderId;
   QR_SELF_ORDER = !!isSelfOrder;
   SUCCESS_PHONE = phone || '';
@@ -802,7 +814,8 @@ async function handlePaymentReturn(orderCode) {
         trackGoalOnce('payment_cancelled', orderCode, {
           scenario: 'qr', order_id: orderCode, status: result.status,
         });
-        failState('Оплата не прошла', 'Товар снова доступен. Попробуйте оплатить ещё раз.');
+        clearPendingQrPayment();
+        failState('Оплата не прошла', 'Товар снова доступен. Вернитесь к товару и попробуйте ещё раз.');
         return;
       }
     } catch (e) { /* временный сетевой сбой — повторяем */ }

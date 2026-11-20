@@ -1,6 +1,7 @@
 // routes-payment.js — создание платежа в ЮKassa, вебхук подтверждения,
 // проверка статуса. Заказ создаётся сразу (status='pending'), товар и
-// косточки резервируются на 1 минуту, а уведомление уходит только после
+// косточки резервируются на 1 минуту до платежа (3 минуты после его создания),
+// а уведомление уходит только после
 // подтверждения реальной оплаты вебхуком — не по клиентскому колбэку.
 'use strict';
 
@@ -12,6 +13,7 @@ const { createSingleFlightJob } = require('./single-flight-job');
 const { assignDisplayNumber } = require('./order-display-number');
 const { resolveCheckoutGroomer } = require('./auto-groomer');
 const yookassa = require('./yookassa');
+const { matchesQrPaymentRetry } = require('./qr-payment-retry');
 const { sendTelegram, buildOrderMessage } = require('./telegram');
 const { sendPaidOrderNotifications } = require('./order-notifications');
 const { sendJson } = require('./http-utils');
@@ -290,6 +292,7 @@ async function finalizePaidOrder(orderId, demo = false) {
   return true;
 }
 
+const PAYMENT_ACTIVE_RESERVATION_MINUTES = 3;
 const RESERVATION_CLEANUP_BATCH_SIZE = 8;
 let reservationCleanupCursor = 0;
 async function reconcileExpiredReservations() {
@@ -385,6 +388,79 @@ function registerPaymentRoutes(router) {
     }
     if (fulfillmentType === 'home_delivery' && !deliveryAddress) {
       return sendJson(res, 400, { error: 'Укажите адрес доставки' });
+    }
+
+
+    // When a QR request timed out on a weak connection, the browser retries
+    // the SAME order code. Never reserve a second unit or create a new charge.
+    const existingOrder = db.prepare('SELECT * FROM orders WHERE order_code = ?').get(orderId);
+    if (existingOrder) {
+      const existingItems = db.prepare('SELECT variant_id, qty FROM order_items WHERE order_id = ?').all(existingOrder.id);
+      if (!matchesQrPaymentRetry(existingOrder, existingItems, {
+        customerPhone, pointId, amount, cartItems, confirmationMode, returnPath,
+      })) {
+        return sendJson(res, 409, {
+          code: 'PAYMENT_RETRY_MISMATCH',
+          error: 'Заказ уже существует. Для новой покупки начните оформление заново.',
+        });
+      }
+      const existingSummary = {
+        order_id: existingOrder.id,
+        display_number: existingOrder.display_number,
+        is_partner_self_order: !!existingOrder.is_partner_self_order,
+      };
+      if (existingOrder.status === 'paid') {
+        return sendJson(res, 200, { ...existingSummary, paid: true });
+      }
+      if (existingOrder.status !== 'pending' || existingOrder.reservation_status !== 'active') {
+        return sendJson(res, 409, {
+          code: 'PAYMENT_RETRY_REQUIRED',
+          error: 'Предыдущий платёж отменён. Вернитесь к товару и начните новую оплату.',
+        });
+      }
+      // The original request is still creating the payment. Do not issue a
+      // second YooKassa POST while the original outcome is unknown.
+      if (!existingOrder.yookassa_payment_id) {
+        return sendJson(res, 202, {
+          ...existingSummary,
+          status: 'initializing',
+          error: 'Платёж ещё создаётся. Проверьте соединение и повторите через несколько секунд.',
+        });
+      }
+      try {
+        const payment = await yookassa.getPayment(existingOrder.yookassa_payment_id);
+        if (payment.status === 'succeeded') {
+          await finalizePaidOrder(existingOrder.id);
+          const paidOrder = db.prepare('SELECT status FROM orders WHERE id = ?').get(existingOrder.id);
+          return sendJson(res, 200, {
+            ...existingSummary, paid: paidOrder?.status === 'paid',
+            status: paidOrder?.status || 'pending',
+          });
+        }
+        if (payment.status === 'canceled') {
+          releaseFailedOrderAndAlert(existingOrder.id, 'ЮKassa отменила платёж');
+          return sendJson(res, 409, {
+            code: 'PAYMENT_RETRY_REQUIRED',
+            error: 'Платёж отменён. Начните оплату заново.',
+          });
+        }
+        if (payment.confirmation?.type === 'redirect' && payment.confirmation.confirmation_url) {
+          return sendJson(res, 200, {
+            ...existingSummary, payment_id: payment.id,
+            confirmation_url: payment.confirmation.confirmation_url,
+          });
+        }
+        return sendJson(res, 202, {
+          ...existingSummary, status: 'initializing',
+          error: 'Ожидаем подтверждения от ЮKassa. Повторите проверку чуть позже.',
+        });
+      } catch (error) {
+        console.warn('[create-payment] Не удалось восстановить заказ ' + orderId + ': ' + error.message);
+        return sendJson(res, 503, {
+          code: 'PAYMENT_STATUS_TEMPORARY',
+          error: 'Связь с ЮKassa временно недоступна. Заказ сохранён, проверьте ещё раз.',
+        });
+      }
     }
 
     // Браузер не является источником цены. Получаем каждую фасовку заново из
@@ -583,15 +659,21 @@ function registerPaymentRoutes(router) {
         returnUrl: paymentReturnUrl(req, orderId, returnPath),
       });
       console.log(`[create-payment] Заказ ${orderId}: платёж создан, payment_id=${payment.id}`);
-      db.prepare('UPDATE orders SET yookassa_payment_id = ? WHERE id = ?').run(payment.id, orderRowId);
+      // A created payment needs time for switching to a banking app / Wi-Fi.
+      // Keep the initial no-payment stock reservation at one minute.
+      const paymentExpiry = new Date(Date.now() + PAYMENT_ACTIVE_RESERVATION_MINUTES * 60 * 1000)
+        .toISOString().slice(0, 19).replace('T', ' ');
+      db.prepare("UPDATE orders SET yookassa_payment_id = ?, reservation_expires_at = ? WHERE id = ? AND status = 'pending' AND reservation_status = 'active'")
+        .run(payment.id, paymentExpiry, orderRowId);
+      reservationCleanupScheduler.wake();
       sendJson(res, 201, {
         order_id: orderRowId,
         display_number: paymentSummary?.display_number,
         payment_id: payment.id,
         confirmation_token: payment.confirmation && payment.confirmation.confirmation_token,
         confirmation_url: payment.confirmation && payment.confirmation.confirmation_url,
-        reservation_expires_at: paymentSummary.reservation_expires_at,
-        reservation_minutes: RESERVATION_TTL_MINUTES,
+        reservation_expires_at: paymentExpiry,
+        reservation_minutes: PAYMENT_ACTIVE_RESERVATION_MINUTES,
         is_partner_self_order: isSelfOrder,
       });
     } catch (e) {

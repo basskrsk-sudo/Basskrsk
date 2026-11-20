@@ -2,6 +2,7 @@
 // только здесь, на сервере — в браузер он никогда не попадает.
 'use strict';
 
+const { createHash } = require('node:crypto');
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID || '';
 const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY || '';
 const API_BASE = 'https://api.yookassa.ru/v3';
@@ -64,7 +65,8 @@ async function parseJsonSafe(res, context) {
 // receiptItems — уже готовый по формату ЮKassa состав чека (собирается на фронтенде
 // с учётом пропорционального распределения скидок по позициям).
 async function createPayment({ amount, description, orderCode, receiptItems, customerPhone, customerEmail, method, confirmationMode, returnUrl }) {
-  const idempotenceKey = orderCode + '-' + Date.now();
+  // Stable across retries: a network timeout must never create another charge.
+  const idempotenceKey = createHash('sha256').update(String(orderCode)).digest('hex');
   const useRedirect = confirmationMode === 'redirect';
   const body = {
     amount: { value: amount.toFixed(2), currency: 'RUB' },
