@@ -93,6 +93,7 @@ test('QR возврат проверяет оплату даже после пр
   const context = {
     URLSearchParams, location: { search: '?payment_return=TG-last' },
     CTX: {}, parseParams: () => ({ point: 'p1', product: 'toy' }),
+    readPendingQrPayment: () => null,
     fetch: async (url) => ({ ok: true, json: async () =>
       url === '/api/products' ? { products: [{ id: 1, slug: 'toy', active: true, variants: [{ id: 2, active: true, stock: { p1: 0 } }] }] }
         : url === '/api/points' ? { points: [{ id: 'p1', name: 'Точка' }] } : { partners: [] }

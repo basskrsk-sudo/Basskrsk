@@ -97,5 +97,5 @@ test('QR checkout uses direct redirect without an embedded widget and bounds net
   const checkout = page.slice(page.indexOf('async function startPayment()'), page.indexOf('/* ── Экран 4: успех ── */'));
   assert.match(checkout, /confirmationMode: 'redirect'/);
   assert.doesNotMatch(page, /YooMoneyCheckoutWidget|prepareWidget\(/);
-  assert.match(recoverySource, /controller\.abort\(\); \}, 8000/);
+  assert.match(recoverySource, /controller\.abort\(\); \}, 12000/);
 });

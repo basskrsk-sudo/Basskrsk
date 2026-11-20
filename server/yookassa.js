@@ -116,6 +116,7 @@ async function createPayment({ amount, description, orderCode, receiptItems, cus
     const err = new Error((data.description || 'Ошибка создания платежа в ЮKassa') + (details ? ` (${details})` : ''));
     err.statusCode = 502;
     err.details = data;
+    err.providerDefinitive = res.status >= 400 && res.status < 500;
     throw err;
   }
   return data; // { id, status, confirmation: { confirmation_token }, ... }

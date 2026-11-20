@@ -14,6 +14,7 @@ const { assignDisplayNumber } = require('./order-display-number');
 const { resolveCheckoutGroomer } = require('./auto-groomer');
 const yookassa = require('./yookassa');
 const { matchesQrPaymentRetry } = require('./qr-payment-retry');
+const { storedQrPaymentArgs } = require('./qr-payment-recovery');
 const { sendTelegram, buildOrderMessage } = require('./telegram');
 const { sendPaidOrderNotifications } = require('./order-notifications');
 const { sendJson } = require('./http-utils');
@@ -180,8 +181,8 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
         (order_code, customer_name, customer_lname, customer_phone, customer_email, pickup_point, point_id, partner_id, partner_name, comment,
          subtotal, discount, total, promo_code, payment_method, needs_delivery, has_custom_item,
          fulfillment_type, delivery_address, delivery_fee, referral_code, bones_used, commission_rate, is_partner_self_order, status,
-         reservation_status, reservation_expires_at, inventory_source_type, inventory_source_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'active', ?, ?, ?)
+         reservation_status, reservation_expires_at, inventory_source_type, inventory_source_id, payment_return_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'active', ?, ?, ?, ?)
     `).run(
       orderData.orderId, orderData.customerName, orderData.customerLname || null,
       orderData.customerPhone, orderData.customerEmail || null, orderData.pickupPoint,
@@ -190,7 +191,7 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
       orderData.method || 'yookassa', orderData.needsDelivery ? 1 : 0, 0,
       orderData.fulfillmentType, orderData.deliveryAddress || null, orderData.deliveryFee,
       orderData.referralCode || null, orderData.bonesUsed, orderData.commissionRate, orderData.isSelfOrder ? 1 : 0,
-      newReservationExpiry(), inventorySource.type, inventorySource.id
+      newReservationExpiry(), inventorySource.type, inventorySource.id, orderData.paymentReturnUrl || null
     );
     const orderRowId = Number(info.lastInsertRowid);
     // Assigned inside the same SQLite reservation transaction. Unpaid and
@@ -209,10 +210,6 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
 }
 
 async function runPaidOrderSideEffects(order, items, demo = false) {
-  recordCustomerOrder(
-    order.customer_phone, order.customer_name, order.customer_lname, order.total,
-    order.customer_email, order.referral_code, order.bones_used, !!order.is_partner_self_order
-  );
   if (order.point_id) {
     try {
       await checkAndPayManagerBonus(order.point_id);
@@ -288,11 +285,36 @@ async function finalizePaidOrder(orderId, demo = false) {
   } catch (error) {
     console.error('[partner-club] Could not record paid order draft:', error.message);
   }
-  await runPaidOrderSideEffects(finalized.order, finalized.items, demo);
+  // Commit the paid state BEFORE waiting on Telegram, email or bonus services.
+  // A slow notification must never keep the buyer on "Подтверждаем оплату".
+  try {
+    recordCustomerOrder(
+      finalized.order.customer_phone, finalized.order.customer_name, finalized.order.customer_lname,
+      finalized.order.total, finalized.order.customer_email, finalized.order.referral_code,
+      finalized.order.bones_used, !!finalized.order.is_partner_self_order
+    );
+  } catch (error) {
+    console.error('[paid-order] Не удалось обновить профиль покупателя:', error.message);
+  }
+  setImmediate(() => {
+    runPaidOrderSideEffects(finalized.order, finalized.items, demo).catch((error) =>
+      console.error('[paid-order] Ошибка фоновых уведомлений:', error.message));
+  });
   return true;
 }
 
-const PAYMENT_ACTIVE_RESERVATION_MINUTES = 3;
+const PAYMENT_ACTIVE_RESERVATION_MINUTES = 5;
+function attachQrPayment(order, payment) {
+  if (!payment?.id) throw new Error('ЮKassa не вернула ID платежа');
+  const expiry = new Date(Date.now() + PAYMENT_ACTIVE_RESERVATION_MINUTES * 60000)
+    .toISOString().slice(0, 19).replace('T', ' ');
+  const update = db.prepare(
+    "UPDATE orders SET yookassa_payment_id=?, reservation_expires_at=? " +
+    "WHERE id=? AND status='pending' AND reservation_status='active'"
+  ).run(payment.id, expiry, order.id);
+  reservationCleanupScheduler.wake();
+  return { attached: update.changes > 0, expiry };
+}
 const RESERVATION_CLEANUP_BATCH_SIZE = 8;
 let reservationCleanupCursor = 0;
 async function reconcileExpiredReservations() {
@@ -309,7 +331,40 @@ async function reconcileExpiredReservations() {
   for (const order of expired) {
     try {
       if (!order.yookassa_payment_id) {
-        releaseFailedOrderAndAlert(order.id, 'Платёж не был создан, время резерва истекло');
+        // A lost response might mean that YooKassa created the payment.
+        // Reissue the same idempotent request and cancel safely if unpaid.
+        const existing = db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);
+        const args = storedQrPaymentArgs(existing, db.prepare(
+          'SELECT * FROM order_items WHERE order_id=? ORDER BY id'
+        ).all(order.id));
+        if (!args) {
+          releaseFailedOrderAndAlert(order.id, 'Платёж не был создан, резерв истёк');
+          continue;
+        }
+        if (!yookassa.isConfigured()) continue;
+        const createdAt = Date.parse(String(existing.created_at || '').replace(' ', 'T') + 'Z');
+        if (!Number.isFinite(createdAt) || Date.now() - createdAt > 30 * 60 * 1000) {
+          console.error('[reservations] Требуется ручная сверка неопределённого платежа ' + order.order_code);
+          continue; // Never re-create after an uncertain, old provider key.
+        }
+        const payment = await yookassa.createPayment(args);
+        const latest = db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);
+        if (latest.status !== 'pending' || latest.reservation_status !== 'active') continue;
+        if (payment.status === 'succeeded') {
+          db.prepare('UPDATE orders SET yookassa_payment_id=? WHERE id=? AND yookassa_payment_id IS NULL')
+            .run(payment.id, order.id);
+          await finalizePaidOrder(order.id);
+        } else {
+          // A customer may have resumed the same payment in parallel.
+          if (latest.reservation_expires_at > new Date().toISOString().slice(0,19).replace('T',' ')) continue;
+          const canceled = payment.status === 'canceled' ? payment : await yookassa.cancelPayment(payment.id);
+          if (canceled.status === 'canceled') {
+            const nowOrder = db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);
+            if (nowOrder.status==='pending' && nowOrder.reservation_status==='active' &&
+                nowOrder.reservation_expires_at <= new Date().toISOString().slice(0,19).replace('T',' '))
+              releaseFailedOrderAndAlert(order.id, 'ЮKassa подтвердила отмену платежа');
+          }
+        }
         continue;
       }
       if (!yookassa.isConfigured()) {
@@ -418,14 +473,46 @@ function registerPaymentRoutes(router) {
           error: 'Предыдущий платёж отменён. Вернитесь к товару и начните новую оплату.',
         });
       }
-      // The original request is still creating the payment. Do not issue a
-      // second YooKassa POST while the original outcome is unknown.
+      // YooKassa's idempotency key makes this the SAME payment operation.
+      // Reconstruct its original request from persisted, server-priced data.
       if (!existingOrder.yookassa_payment_id) {
-        return sendJson(res, 202, {
-          ...existingSummary,
-          status: 'initializing',
-          error: 'Платёж ещё создаётся. Проверьте соединение и повторите через несколько секунд.',
+        const args = storedQrPaymentArgs(existingOrder, db.prepare(
+          'SELECT * FROM order_items WHERE order_id=? ORDER BY id'
+        ).all(existingOrder.id));
+        if (!args) return sendJson(res, 202, {
+          ...existingSummary, status:'initializing',
+          error:'Платёж ещё создаётся. Повторите проверку через несколько секунд.',
         });
+        try {
+          const recovered = await yookassa.createPayment(args);
+          if (recovered.status === 'canceled') {
+            releaseFailedOrderAndAlert(existingOrder.id, 'ЮKassa подтвердила отмену платежа');
+            return sendJson(res, 409, { code:'PAYMENT_RETRY_REQUIRED',
+              error:'Платёж отменён. Начните оплату заново.' });
+          }
+          const attached = attachQrPayment(existingOrder, recovered);
+          if (!attached.attached) {
+            const latest = db.prepare('SELECT status FROM orders WHERE id=?').get(existingOrder.id);
+            if (latest?.status === 'paid') return sendJson(res, 200, { ...existingSummary,paid:true });
+            return sendJson(res, 409, { code:'RESERVATION_CLOSED',
+              error:'Время оплаты истекло. Проверьте статус предыдущего платежа.' });
+          }
+          if (recovered.status === 'succeeded') {
+            await finalizePaidOrder(existingOrder.id);
+            const updated = db.prepare('SELECT status FROM orders WHERE id=?').get(existingOrder.id);
+            return sendJson(res, 200, { ...existingSummary,paid:updated?.status==='paid',
+              status:updated?.status||'pending' });
+          }
+          if (recovered.confirmation?.confirmation_url) {
+            return sendJson(res, 200, { ...existingSummary,
+              payment_id:recovered.id,confirmation_url:recovered.confirmation.confirmation_url });
+          }
+          return sendJson(res, 202, { ...existingSummary,status:'initializing' });
+        } catch (error) {
+          console.warn('[create-payment] Не удалось проверить создание заказа ' + orderId + ': ' + error.message);
+          return sendJson(res, 202, { ...existingSummary,status:'initializing',
+            error:'Связь с ЮKassa нестабильна. Заказ сохранён.' });
+        }
       }
       try {
         const payment = await yookassa.getPayment(existingOrder.yookassa_payment_id);
@@ -608,6 +695,7 @@ function registerPaymentRoutes(router) {
       return sendJson(res, e.statusCode || 409, { error: e.message, code: e.code || 'RESERVATION_ERROR', details: e.details });
     }
 
+    const exactPaymentReturnUrl = paymentReturnUrl(req, orderId, returnPath);
     let orderRowId;
     try {
       orderRowId = createReservedOrder({
@@ -619,6 +707,7 @@ function registerPaymentRoutes(router) {
         deliveryAddress: authoritativeFulfillment === 'home_delivery' ? String(deliveryAddress).trim() : null,
         deliveryFee: authoritativeDeliveryFee, referralCode, bonesUsed: bonesToDeduct,
         commissionRate: orderCommissionRate, isSelfOrder,
+        paymentReturnUrl: exactPaymentReturnUrl,
       }, pricedCart.items, inventorySource, bonesCustomerId);
     } catch (e) {
       console.warn(`[create-payment] Заказ ${orderId}: резерв не создан — ${e.message}`);
@@ -656,16 +745,21 @@ function registerPaymentRoutes(router) {
         customerEmail,
         method,
         confirmationMode: confirmationMode === 'redirect' ? 'redirect' : 'embedded',
-        returnUrl: paymentReturnUrl(req, orderId, returnPath),
+        returnUrl: exactPaymentReturnUrl,
       });
       console.log(`[create-payment] Заказ ${orderId}: платёж создан, payment_id=${payment.id}`);
-      // A created payment needs time for switching to a banking app / Wi-Fi.
-      // Keep the initial no-payment stock reservation at one minute.
-      const paymentExpiry = new Date(Date.now() + PAYMENT_ACTIVE_RESERVATION_MINUTES * 60 * 1000)
-        .toISOString().slice(0, 19).replace('T', ' ');
-      db.prepare("UPDATE orders SET yookassa_payment_id = ?, reservation_expires_at = ? WHERE id = ? AND status = 'pending' AND reservation_status = 'active'")
-        .run(payment.id, paymentExpiry, orderRowId);
-      reservationCleanupScheduler.wake();
+      // Five minutes for bank confirmation; one minute before creation.
+      const attachedResult = attachQrPayment({ id: orderRowId }, payment);
+      const paymentExpiry = attachedResult.expiry;
+      if (!attachedResult.attached) {
+        const latest = db.prepare('SELECT status FROM orders WHERE id=?').get(orderRowId);
+        if (latest?.status === 'paid') {
+          return sendJson(res, 200, { paid:true, order_id:orderRowId,
+            display_number:paymentSummary?.display_number });
+        }
+        return sendJson(res, 409, { code:'RESERVATION_CLOSED',
+          error:'Время оплаты истекло. Проверьте статус предыдущего платежа.' });
+      }
       sendJson(res, 201, {
         order_id: orderRowId,
         display_number: paymentSummary?.display_number,
@@ -677,9 +771,15 @@ function registerPaymentRoutes(router) {
         is_partner_self_order: isSelfOrder,
       });
     } catch (e) {
-      console.error(`[create-payment] Заказ ${orderId}: ОШИБКА создания платежа — ${e.message}`);
-      releaseFailedOrderAndAlert(orderRowId, 'Платёж не удалось создать: ' + e.message);
-      sendJson(res, e.statusCode || 502, { error: e.message });
+      console.error(`[create-payment] Заказ ${orderId}: ошибка создания платежа — ${e.message}`);
+      if (!e.providerDefinitive) {
+        return sendJson(res, 202, {
+          status:'initializing',order_id:orderRowId,display_number:paymentSummary?.display_number,
+          error:'Связь прервалась. Проверяем тот же платёж без повторной покупки.',
+        });
+      }
+      releaseFailedOrderAndAlert(orderRowId, 'ЮKassa отклонила платёж: ' + e.message);
+      return sendJson(res, e.statusCode || 502, { error:e.message });
     }
   });
 
@@ -745,6 +845,9 @@ function registerPaymentRoutes(router) {
       order_code: order.order_code,
       display_number: order.display_number || null,
       is_partner_self_order: !!order.is_partner_self_order,
+      item: order.status === 'paid' ? db.prepare(
+        'SELECT name,weight,qty FROM order_items WHERE order_id=? ORDER BY id LIMIT 1'
+      ).get(order.id) || null : null,
     });
   });
 

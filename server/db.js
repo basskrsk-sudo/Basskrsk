@@ -707,6 +707,7 @@ CREATE TABLE IF NOT EXISTS orders (
   reservation_expires_at TEXT,
   inventory_source_type TEXT,                    -- 'point' | 'warehouse'
   inventory_source_id TEXT,                      -- point_id либо city_id
+  payment_return_url TEXT,                         -- exact URL for safe provider retries
   refund_status    TEXT NOT NULL DEFAULT 'none',  -- 'none' | 'refunded'
   refunded_amount  INTEGER,
   refund_reason    TEXT,
@@ -1461,6 +1462,7 @@ ensureColumn('orders', 'reservation_status', "TEXT NOT NULL DEFAULT 'none'");
 ensureColumn('orders', 'reservation_expires_at', 'TEXT');
 ensureColumn('orders', 'inventory_source_type', 'TEXT');
 ensureColumn('orders', 'inventory_source_id', 'TEXT');
+ensureColumn('orders', 'payment_return_url', 'TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS idx_orders_active_reservations ON orders(reservation_status, reservation_expires_at)');
 // The minute-long expired-payment sweeper scans at most one small ID-ordered
 // batch. This partial index avoids sorting historical paid orders.

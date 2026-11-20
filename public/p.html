@@ -181,19 +181,22 @@ function normPhone(p) {
 var KNOWN_PHONE_KEY = 'taiga_known_phone';
 function rememberPhone(phone) {
   var digits = String(phone || '').replace(/\D/g, '');
-  if (digits.length >= 10) localStorage.setItem(KNOWN_PHONE_KEY, '7' + digits.slice(-10));
+  try { if (digits.length >= 10) localStorage.setItem(KNOWN_PHONE_KEY, '7' + digits.slice(-10)); } catch (e) {}
 }
 function knownPhone() {
-  var digits = localStorage.getItem(KNOWN_PHONE_KEY) || '';
+  var digits = '';
+  try { digits = localStorage.getItem(KNOWN_PHONE_KEY) || ''; } catch (e) {}
   if (digits.length === 10) digits = '7' + digits;
   return digits.length === 11 ? '+' + digits : '+7';
 }
 
 function rememberQrPoint(point) {
   if (!point || !point.id) return;
-  var cityId = point.city_id || localStorage.getItem('taiga_city') || 'krsk';
-  localStorage.setItem('taiga_city', cityId);
-  localStorage.setItem('hvostmarket_catalog_point:' + cityId, String(point.id));
+  try {
+    var cityId = point.city_id || localStorage.getItem('taiga_city') || 'krsk';
+    localStorage.setItem('taiga_city', cityId);
+    localStorage.setItem('hvostmarket_catalog_point:' + cityId, String(point.id));
+  } catch (e) { /* unavailable storage must not block a purchase */ }
 }
 
 var CTX = { point: null, product: null, variants: [], selVariant: null, checkout: null, partners: [], defaultPartnerId: null, defaultSource: null };
@@ -252,7 +255,7 @@ async function fetchQrPrecheck(url) {
 }
 function qrPaymentFetch(body) {
   var controller = new AbortController();
-  var timer = setTimeout(function() { controller.abort(); }, 8000);
+  var timer = setTimeout(function() { controller.abort(); }, 12000);
   return fetch('/api/create-payment', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -347,80 +350,67 @@ function failState(title, text, alts) {
 
 /* ── Загрузка данных ── */
 async function boot() {
-  var p = parseParams();
-  CTX.pointId = p.point; CTX.productSlug = p.product;
-  if (!p.point || !p.product) {
+  var params = parseParams();
+  CTX.pointId = params.point; CTX.productSlug = params.product;
+  if (!params.point || !params.product) {
     failState('Не получилось открыть товар', 'Ссылка неполная. Попробуйте отсканировать QR-код на упаковке ещё раз.');
     return;
   }
+  // Payment return must never depend on catalog, groomer list or live stock.
+  var paymentReturn = new URLSearchParams(location.search).get('payment_return');
+  if (paymentReturn) {
+    var receipt = readPendingQrPayment();
+    if (receipt && receipt.orderId === paymentReturn) {
+      CTX.product = { id: 0, name: receipt.productName || 'Товар по заказу' };
+      CTX.selVariant = { id: receipt.variantId, weight: receipt.weight || '', price: receipt.amount || 0 };
+    }
+    await handlePaymentReturn(paymentReturn);
+    return;
+  }
+  var saved = readPendingQrPayment();
+  if (saved) {
+    CTX.product = { id: 0, name: saved.productName || 'Товар по заказу' };
+    CTX.selVariant = { id: saved.variantId, weight: saved.weight || '', price: saved.amount };
+    showPendingQrPayment('Вы начали оплату, но она не была завершена. Продолжите тот же заказ.');
+    return;
+  }
   try {
-    var responses = await Promise.all([
-      fetch('/api/products', { cache: 'no-store' }),
-      fetch('/api/points', { cache: 'no-store' }),
-      fetch('/api/points/' + encodeURIComponent(p.point) + '/partners', { cache: 'no-store' })
-    ]);
-    var res = responses[0];
-    if (!res.ok) throw new Error('catalog');
-    var pdata = await res.json();
-    var products = pdata.products || pdata;
-    var pres = responses[1];
-    var ptsdata = pres.ok ? await pres.json() : {};
-    var points = ptsdata.points || [];
-    var partnersRes = responses[2];
-    if (!partnersRes.ok) throw new Error('partners');
-    var partnersData = await partnersRes.json();
-    CTX.partners = Array.isArray(partnersData.partners) ? partnersData.partners : [];
-    CTX.defaultPartnerId = partnersData.default_partner_id || null;
-    CTX.defaultSource = partnersData.default_source || null;
-    CTX.point = (points || []).find(function(x) { return x.id === p.point; }) || null;
-    if (!CTX.point) {
-      state('<div class="state"><div class="em">📍</div><h2>Точка не найдена</h2>'
-        + '<p>Возможно, QR-код устарел или точка временно не работает.</p>'
-        + '<button class="link-btn" onclick="location.href=\'/\'">Найти другой минимаркет</button></div>');
+    var response = await fetchQrPrecheck('/api/qr-preview/'
+      + encodeURIComponent(params.point) + '/' + encodeURIComponent(params.product));
+    var data = await response.json();
+    if (!response.ok || !data.point || !data.product) {
+      failState('Товар не найден', 'Проверьте QR-код или выберите другую точку.');
       return;
     }
+    CTX.point = data.point;
+    CTX.product = data.product;
+    CTX.partners = Array.isArray(data.partners) ? data.partners : [];
+    CTX.defaultPartnerId = data.default_partner_id || null;
+    CTX.defaultSource = data.default_source || null;
     rememberQrPoint(CTX.point);
-    var prod = (products || []).find(function(x) { return x.slug === p.product || String(x.id) === String(p.product); });
-    if (!prod || prod.active === false) { failState('Товар не найден', 'Возможно, его сняли с продажи.'); return; }
-    CTX.product = prod;
     recordQrEvent('open');
     trackGoalOnce('minimarket_selected', 'qr:' + CTX.point.id, {
       scenario: 'qr', selection_mode: 'qr_auto', point_id: CTX.point.id, point_name: CTX.point.name,
     });
-    trackGoalOnce('product_opened', 'qr:' + CTX.point.id + ':' + prod.id, {
-      scenario: 'qr', product_id: prod.id, product_name: prod.name, point_id: CTX.point.id,
+    trackGoalOnce('product_opened', 'qr:' + CTX.point.id + ':' + CTX.product.id, {
+      scenario: 'qr', product_id: CTX.product.id, product_name: CTX.product.name, point_id: CTX.point.id,
     });
-
     var chip = document.getElementById('pointChip');
-    if (CTX.point) { chip.textContent = '📍 ' + CTX.point.name; chip.style.display = 'block'; }
-
-    CTX.variants = (prod.variants || []).filter(function(v) { return v.active; })
-      .map(function(v) { return { id: v.id, weight: v.weight, price: v.price, qty: (v.stock && typeof v.stock[p.point] === 'number') ? v.stock[p.point] : 0 }; });
-    var paymentReturn = new URLSearchParams(location.search).get('payment_return');
-    if (paymentReturn) {
-      // Оплаченная последняя единица уже списана: остатки не должны
-      // блокировать подтверждение существующего заказа.
-      CTX.selVariant = CTX.variants[0] || { id: '', weight: '', price: 0 };
-      await handlePaymentReturn(paymentReturn);
-      return;
-    }
-    var saved = readPendingQrPayment();
-    if (saved) {
-      CTX.selVariant = CTX.variants.find(function(v) { return String(v.id) === String(saved.variantId); })
-        || { id: saved.variantId, weight: saved.weight || '', price: saved.amount };
-      showPendingQrPayment('Вы начали оплату, но она не была завершена на этом устройстве. Продолжите тот же заказ.');
-      return;
-    }
+    if (chip) { chip.textContent = '📍 ' + CTX.point.name; chip.style.display = 'block'; }
+    CTX.variants = (CTX.product.variants || []).filter(function(v) { return v.active; })
+      .map(function(v) { return { id: v.id, weight: v.weight, price: v.price, qty: v.qty }; });
     var avail = CTX.variants.filter(function(v) { return v.qty > 0; });
     if (!avail.length) {
-      var alts = findAlts(products, prod, p.point);
-      failState('Сейчас нет на полке', 'Этого товара временно нет в точке' + (CTX.point ? ' «' + CTX.point.name + '»' : '') + '.' + (alts.length ? ' Посмотрите, что есть рядом:' : ''), alts);
+      failState('Сейчас нет на полке', 'Этот товар временно недоступен в данной точке.');
       return;
     }
     CTX.selVariant = avail[0];
     renderCard();
-  } catch (e) {
-    failState('Не удалось загрузить', 'Проверьте интернет и обновите страницу.');
+  } catch (error) {
+    trackGoal('qr_product_load_error', { scenario: 'qr', type: error.name || 'network' });
+    state('<div class="state"><div class="em">📶</div><h2>Не удалось открыть товар</h2>'
+      + '<p>Возможно, прервалось соединение. Проверьте интернет — сканировать QR повторно не нужно.</p>'
+      + '<button class="cta" style="margin-top:18px" onclick="boot()">Повторить загрузку</button></div>');
   }
 }
 
@@ -502,7 +492,7 @@ function showPhoneStep() {
   }
   state('<div class="panel"><h2>Почти готово</h2>'
     + '<p class="small muted" style="margin-bottom:8px">' + esc(CTX.product.name) + ' · ' + esc(v.weight) + ' · <b>' + fmtPrice(v.price) + '</b>'
-    + '<div style="background:#E9F4EC;color:#143d35;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.45">🐾 ХвостМаркет направит 10 ₽ на помощь животным — цена товара не увеличивается</div>'
+    + '<div style="background:#E9F4EC;color:#143d35;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.45">🐾 Оплата онлайн — после подтверждения можно сразу забрать товар с полки</div>'
     + (CTX.point ? '<br>Забрать: ' + esc(CTX.point.name) + (CTX.point.addr ? ', ' + esc(CTX.point.addr) : '') : '') + '</p>'
     + '<label for="phone">Номер телефона</label>'
     + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(restored?.customerPhone || knownPhone()) + '" oninput="invalidateQrPromo();checkQrSelfOrder()" onblur="checkQrSelfOrder();validateQrPromo(false)">'
@@ -682,7 +672,7 @@ async function startPayment() {
   };
   var saved = {
     orderId: orderId, pointId: CTX.pointId, productSlug: CTX.productSlug,
-    variantId: v.id, weight: v.weight, amount: paymentAmount,
+    variantId: v.id, weight: v.weight, productName: CTX.product.name, amount: paymentAmount,
     phone: phone, createdAt: Date.now(), body: body,
   };
   savePendingQrPayment(saved);
@@ -699,6 +689,8 @@ async function startPayment() {
 
 /* ── Экран 4: успех ── */
 function showSuccess(orderId, phone, isSelfOrder, displayNumber) {
+  if (!CTX.product) CTX.product = { id: 0, name: 'Оплаченный товар' };
+  if (!CTX.selVariant) CTX.selVariant = { id: 0, weight: '', price: 0 };
   clearPendingQrPayment();
   var shownNumber = displayNumber || QR_PUBLIC_NUMBER || orderId;
   QR_SELF_ORDER = !!isSelfOrder;
@@ -802,11 +794,15 @@ async function handlePaymentReturn(orderCode) {
   // Сохраняем payment_return, чтобы обновление страницы повторяло сверку.
   loadState('Подтверждаем оплату…', '⏳');
 
-  for (var attempt = 0; attempt < 15; attempt += 1) {
+  for (var attempt = 0; attempt < 5; attempt += 1) {
     try {
-      var response = await fetch('/api/order-payment-status/' + encodeURIComponent(orderCode), { cache:'no-store' });
+      var response = await fetchQrPrecheck('/api/order-payment-status/' + encodeURIComponent(orderCode));
       var result = await response.json();
       if (response.ok && result.paid) {
+        if (result.item) {
+          CTX.product = { id: 0, name: result.item.name || 'Оплаченный товар' };
+          CTX.selVariant = { id: 0, weight: result.item.weight || '', price: 0 };
+        }
         showSuccess(result.order_code || orderCode, knownPhone() === '+7' ? '' : knownPhone(), !!result.is_partner_self_order, result.display_number);
         return;
       }
