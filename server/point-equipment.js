@@ -13,6 +13,9 @@ const STANDARD_LARGE_STAND_COST = 5000;
 // Management-only fallback: use 50% of retail price when purchase cost is absent.
 // Does not populate cost_price or alter accounting, commissions, or payouts.
 const ESTIMATED_COST_SHARE = 0.5;
+// Founder management estimate only, not a declaration of the legal tax regime.
+const POINT_SALES_TAX_RATE = 0.07;
+const roundMoney = value => Math.round(Number(value||0)*100)/100;
 const MAX_SHELF_COST = 1000000;
 function invalid(message){
   const e=new Error(message); e.statusCode=400;e.code='INVALID_POINT_EQUIPMENT'; return e;
@@ -244,20 +247,25 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   const bonusByPoint=loadPointLaunchBonusAllocations(database,assumptions);
   const sales=new Map();
   // Reuse already fetched anonymized paid orders for founder dashboards.
-  // Orders with full refunds contribute zero, matching existing reporting.
+  // Tax each paid sale separately (to kopecks) on its net amount after refunds.
+  // A full refund contributes zero revenue and zero tax.
   for(const order of orders){
     if(!order.point_id)continue;
-    const item=sales.get(order.point_id)||{revenue:0,orders:0};
+    const item=sales.get(order.point_id)||{revenue:0,orders:0,tax:0};
     if(order.net_revenue!==undefined){
-      // SQL grouped path for all-time administrative overview avoids
-      // loading an unbounded historical set of orders into Node memory.
-      item.revenue+=Number(order.net_revenue||0);
+      // For aggregated historical inputs individual-sale rounding cannot be
+      // reconstructed; use the grouped total as an explicit approximation.
+      const amount=Math.max(0,Number(order.net_revenue||0));
+      item.revenue+=amount;
+      item.tax+=roundMoney(amount*POINT_SALES_TAX_RATE);
       item.orders+=Number(order.net_orders||0);
     }else{
-      const amount=order.refund_status==='refunded'&&order.refunded_amount==null
-        ? 0:Math.max(0,Number(order.total||0)-Number(order.refunded_amount||0));
+      const amount=order.refund_status==='refunded'
+        ?0:Math.max(0,Number(order.total||0)-Number(order.refunded_amount||0));
       if(amount<=0)continue;
-      item.revenue+=amount;item.orders+=1;
+      item.revenue+=amount;
+      item.tax+=roundMoney(amount*POINT_SALES_TAX_RATE);
+      item.orders+=1;
     }
     sales.set(order.point_id,item);
   }
@@ -265,13 +273,20 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   const dateEnd=period&&period.to?Date.parse(period.to.replace(' ','T')+'Z'):NaN;
   const days=Number.isFinite(dateStart)&&Number.isFinite(dateEnd)&&dateEnd>dateStart
     ? Math.max(1,(dateEnd-dateStart)/86400000):null;
-  const margin=Number(contribution.contribution_margin_percent||0)/100;
+  // calculateUnitEconomics already deducts the configured tax rate (often 6%).
+  // Replace that component with 7%; never charge 6% AND 7% together.
+  const marginBeforeTax=(Number(contribution.contribution_margin_percent||0)+
+    Number(assumptions.tax_percent||0))/100;
+  const marginAfterTax=marginBeforeTax-POINT_SALES_TAX_RATE;
   const points=listPointEquipment(database).map(row=>{
     const base=estimatePointLaunchCost(row,assumptions,contribution,
       initialGoodsByPoint.get(row.point_id),bonusByPoint.get(row.point_id));
-    const actual=sales.get(row.point_id)||{revenue:0,orders:0};
+    const actual=sales.get(row.point_id)||{revenue:0,orders:0,tax:0};
     const monthlyRevenue=days?actual.revenue/days*30.4375:null;
-    const monthlyContribution=monthlyRevenue===null?null:monthlyRevenue*margin;
+    const monthlyContribution=monthlyRevenue===null?null:monthlyRevenue*marginAfterTax;
+    const beforeTax=roundMoney(actual.revenue*marginBeforeTax);
+    const tax=roundMoney(actual.tax);
+    const afterTax=roundMoney(beforeTax-tax);
     const payback=base.estimated_investment!=null&&!base.estimated_investment_incomplete&&monthlyContribution>0
       ? Math.round(base.estimated_investment/monthlyContribution*10)/10:null;
     const inventory=inventoryByPoint.get(row.point_id)||{};
@@ -292,8 +307,10 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
       period_revenue:Math.round(actual.revenue*100)/100,
       period_orders:actual.orders,
       period_average_check:actual.orders?Math.round(actual.revenue/actual.orders):0,
-      estimated_period_contribution:Math.round(actual.revenue*margin*100)/100,
-      projected_monthly_contribution:monthlyContribution===null?null:Math.round(monthlyContribution*100)/100,
+      period_tax_est:tax,
+      estimated_period_contribution_before_tax:beforeTax,
+      estimated_period_contribution:afterTax,
+      projected_monthly_contribution:monthlyContribution===null?null:roundMoney(monthlyContribution),
       payback_months_at_current_pace:payback,
     };
   });
@@ -302,12 +319,13 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   return {
     assumption:'ВСЕ точки оцениваются одинаково: фактически выбранное оборудование + стартовая выкладка из подтверждённых перемещений ДО первой оплаченной продажи + модельные разовые бонусы менеджеру и пригласившему грумеру/владельцу. Общие условные расходы 15 000 ₽ и 20 000 ₽ не применяются. Для товара без закупочной цены берём 50% розничной цены; последующие пополнения не включаем. Без подтверждения первоначальных поставок выводим нижний предел («от») или прочерк — вымышленных затрат нет. Бюджет запуска обычно 2 000 ₽: без приглашения менеджеру 2 000 ₽, с приглашением 1 000 ₽ менеджеру и 1 000 ₽ партнёру, без двойного учёта.',
     inventory_disclaimer:'Для товаров с указанной закупочной ценой используется она. Для товаров без закупочной цены применяется модельная себестоимость = цена продажи / 2 (50%), такая часть показывается отдельно и не записывается как фактическая закупка. Начальная выкладка берётся из подтверждённых перемещений до первой продажи; текущие остатки показываются отдельно. Для старых поставок используются сегодняшние цены каталога, а не историческая цена покупки. При консигнации товар может принадлежать поставщику: это оценка размещения, не доказательство оплаты.',
-    profit_disclaimer:'Стоимость запуска и разовые бонусы отражают управленческую модель, а не подтверждённые переводы денег. Бонусы приглашения не включают текущие комиссии грумеров и владельцев за продажи. Вклад рассчитан из выручки и плановой маржи; это НЕ фактическая прибыль, НЕ бухгалтерская прибыль или денежный поток, CAPEX не включается в P&L второй раз.',
+    profit_disclaimer:'Налог в экономике каждой точки = 7% от каждой оплаченной продажи за вычетом возвратов; полностью возвращённый заказ не облагается в этой управленческой модели. Ставка 7% заменяет уже учтённый в исходной марже модельный налог (обычно 6%), а не добавляется вторым налогом. Вклад и окупаемость рассчитаны ПОСЛЕ налога. Это плановый расчёт, не подтверждение фактически уплаченных налогов и не бухгалтерская прибыль. CAPEX и разовые премии учитываются в запуске, а не повторно в текущем вкладе.',
     equipment_prices:{large_stand:5000,small_stand:2500,none:0,shelf:'вручную'},
     baseline_launch_cost:assumptions.launch_cost,
     baseline_other_launch_cost:Math.max(0,Number(assumptions.launch_cost)-5000),
     manager_launch_bonus:assumptions.manager_launch_bonus,
-    model_contribution_margin_percent:contribution.contribution_margin_percent,
+    model_contribution_margin_percent:Math.round(marginAfterTax*10000)/100,
+    model_tax_rate_percent:POINT_SALES_TAX_RATE*100,
     period:period?{key:period.key,from:period.from,to:period.to}:null,
     points,
     summary:{
@@ -328,14 +346,18 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
       inventory_missing_cost_qty:points.reduce((sum,row)=>sum+row.inventory_missing_cost_qty,0),
       inventory_missing_cost_variants:points.reduce((sum,row)=>sum+row.inventory_missing_cost_variants,0),
       total_points:points.length,
-      period_revenue:points.reduce((sum,row)=>sum+row.period_revenue,0),
+      period_revenue:roundMoney(points.reduce((sum,row)=>sum+row.period_revenue,0)),
       period_orders:points.reduce((sum,row)=>sum+row.period_orders,0),
-      estimated_period_contribution:Math.round(points.reduce((sum,row)=>sum+row.estimated_period_contribution,0)*100)/100,
+      period_tax_est:roundMoney(points.reduce((sum,row)=>sum+row.period_tax_est,0)),
+      estimated_period_contribution_before_tax:roundMoney(
+        points.reduce((sum,row)=>sum+row.estimated_period_contribution_before_tax,0)),
+      estimated_period_contribution:roundMoney(
+        points.reduce((sum,row)=>sum+row.estimated_period_contribution,0)),
     },
   };
 }
 module.exports={
-  EQUIPMENT,STANDARD_LARGE_STAND_COST,ESTIMATED_COST_SHARE,
+  EQUIPMENT,STANDARD_LARGE_STAND_COST,ESTIMATED_COST_SHARE,POINT_SALES_TAX_RATE,
   normalizePointEquipment,equipmentLabel,equipmentFromRow,getPointEquipment,
   listPointEquipment,savePointEquipmentInTransaction,savePointEquipment,
   estimatePointLaunchCost,buildPointEquipmentEconomics,
