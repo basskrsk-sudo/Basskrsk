@@ -293,6 +293,11 @@
       '.founder-order-dialog{background:#fff;max-width:680px;width:100%;margin:auto;'+
         'max-height:95vh;overflow-y:auto;overscroll-behavior:contain;border-radius:17px;'+
         'padding:16px;box-sizing:border-box;color:#213f32;}'+
+      '.econ-order .econ-card-line{display:flex;justify-content:space-between;'+
+        'align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid #edf2ee;font-size:.88rem;}'+
+      '.econ-order .econ-card-line span{color:#647b70;flex:1;}'+
+      '.econ-order .econ-card-line strong{text-align:right;flex-shrink:0;}'+
+      '.econ-order .econ-card-note{font-size:.76rem;color:#647b70;line-height:1.4;margin:7px 0;}'+
       '.econ-order{border:1px solid #dbe7df;border-radius:12px;padding:13px;'+
         'margin:12px 0;background:#fff;}'+
       '.econ-order h4{margin:0 0 10px;font-size:1.05rem;}'+
