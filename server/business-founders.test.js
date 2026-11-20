@@ -239,3 +239,41 @@ test('six-month founder sales keep the same net figures with one grouped SQL que
   const november=d.sales.last_six_months.find(row => row.month==='2026-11');
   assert.deepEqual(november,{month:'2026-11',revenue:0,orders:0,avg_check:0});
 });
+
+test('founder-only receipt drilldown paginates sales and excludes customer personal data',()=>{
+  const founderToken=signToken({role:'founder',id:1});
+  const adminToken=signToken({role:'admin',id:admin('super',1),adminRole:'super'});
+  const endpoint='/api/business-founder/point-orders';
+  const query={point_id:'test-bark',period:'year',page:'0'};
+  assert.equal(call('GET',endpoint,{query}).status,401);
+  assert.equal(call('GET',endpoint,{token:adminToken,query}).status,401);
+  assert.equal(call('GET',endpoint,{token:founderToken,query:{...query,period:'all'}}).status,400);
+  assert.equal(call('GET',endpoint,{token:founderToken,query:{...query,page:'-1'}}).status,400);
+  assert.equal(call('GET',endpoint,{token:founderToken,query:{...query,point_id:'missing'}}).status,404);
+  const insert=db.prepare(
+    'INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,'+
+    'subtotal,total,payment_method,status,commission_rate,created_at) '+
+    'VALUES(?,?,?,?,?,?,?,?,?,?,?)'
+  );
+  for(let i=0;i<22;i++)insert.run('FOUNDER-DETAIL-'+i,'Личный покупатель',
+    '79998887777','БаркЛай','test-bark',250,250,'sbp','paid',0.15,
+    '2026-11-01 13:'+String(i).padStart(2,'0')+':00');
+  const first=call('GET',endpoint,{token:founderToken,query});
+  assert.equal(first.status,200);
+  assert.equal(first.body.point.name,'БаркЛай');
+  assert.equal(first.body.orders.length,20);
+  assert.equal(first.body.has_more,true);
+  assert.equal(first.body.page,0);
+  assert.equal(first.body.orders[0].number,'FOUNDER-DETAIL-21');
+  const next=call('GET',endpoint,{token:founderToken,
+    query:{...query,page:'1'}});
+  assert.equal(next.status,200);
+  assert.equal(next.body.orders.length,3);
+  assert.equal(next.body.has_more,false);
+  assert.equal(next.body.page,1);
+  const raw=JSON.stringify({first:first.body,next:next.body});
+  assert.doesNotMatch(raw,/79998887777|79135554433|Личный покупатель/);
+  assert.doesNotMatch(raw,/password_hash|customer_phone|customer_name|yookassa_payment_id/);
+  assert.ok(first.body.orders.every(order=>Number.isFinite(order.founder_profit_est)));
+  assert.ok(first.body.orders.every(order=>order.items_missing));
+});

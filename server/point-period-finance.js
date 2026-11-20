@@ -20,10 +20,18 @@ const empty = () => ({
   commission_refund_review_orders:0,
 });
 
-function loadPointPayoutProfit(database,orders,assumptions,period=null) {
-  const where=period?.from && period?.to ?
-    " AND o.created_at>=? AND o.created_at<?":'';
-  const args=where?[period.from,period.to]:[];
+function loadPointPayoutProfit(database,orders,assumptions,period=null,options={}) {
+  const includeOrderDetails=options.includeOrderDetails===true;
+  // On-demand drilldown selects only 20 orders; never reread a full
+  // year of payout items or order lines when one salon is opened.
+  const selectedIds=includeOrderDetails
+    ?orders.map(o=>Number(o.id)).filter(Number.isSafeInteger):[];
+  if(includeOrderDetails&&!selectedIds.length)return new Map();
+  const where=includeOrderDetails
+    ?' AND o.id IN ('+selectedIds.map(()=>'?').join(',')+')'
+    :(period?.from && period?.to ? " AND o.created_at>=? AND o.created_at<?":'');
+  const args=includeOrderDetails?selectedIds:
+    (where?[period.from,period.to]:[]);
   const fetchPaid=(table)=>{
     const data=database.prepare(
       `SELECT pi.order_id,pi.commission_amount FROM ${table} pi
@@ -59,6 +67,28 @@ function loadPointPayoutProfit(database,orders,assumptions,period=null) {
      WHERE o.status='paid'${where}
      GROUP BY o.id`
   ).all(...args).map(row=>[Number(row.order_id),row]));
+  const itemsByOrder=new Map();
+  if(includeOrderDetails){
+    const placeholders=selectedIds.map(()=>'?').join(',');
+    const detailItems=database.prepare(
+      'SELECT oi.order_id,oi.name,oi.weight,oi.qty,oi.price,oi.is_custom,'+
+      'v.cost_price,v.price AS variant_price FROM order_items oi '+
+      'LEFT JOIN product_variants v ON v.id=oi.variant_id '+
+      'WHERE oi.order_id IN ('+placeholders+') ORDER BY oi.order_id,oi.id'
+    ).all(...selectedIds);
+    for(const item of detailItems){
+      const unitCost=item.cost_price!=null&&Number(item.cost_price)>=0
+        ?Number(item.cost_price):
+        number(item.variant_price??item.price)*ESTIMATED_COST_SHARE;
+      const id=Number(item.order_id);
+      const list=itemsByOrder.get(id)||[];
+      list.push({name:String(item.name||'Товар'),weight:String(item.weight||''),
+        qty:number(item.qty),unit_price:number(item.price),
+        unit_cost:rub(unitCost),cost_estimated:!(item.cost_price!=null&&Number(item.cost_price)>=0),
+        line_cost:unitCost*number(item.qty)});
+      itemsByOrder.set(id,list);
+    }
+  }
   const results=new Map();
   const otherRate=(
     number(assumptions.manager_commission_percent)+
@@ -99,19 +129,67 @@ function loadPointPayoutProfit(database,orders,assumptions,period=null) {
     row.partner_accrued+=partnerActual+partnerPlanned;
     row.owner_accrued+=ownerActual+ownerPlanned;
     row.profit_revenue+=net;
-    row.profit_tax+=rub(net*POINT_SALES_TAX_RATE);
+    const orderTax=rub(net*POINT_SALES_TAX_RATE);
+    row.profit_tax+=orderTax;
     const c=costs.get(id);
     // When order lines were not retained, the 50% gross-cost fallback is
     // explicit. For refunds, only a proportional allocation is possible.
+    let orderCogs=0;
+    const refundFactor=number(order.total)>0?
+      Math.min(1,net/number(order.total)):0;
     if(net>0){
       if(c?.item_count){
-        row.profit_cogs+=number(c.cogs)*
-          (number(order.total)>0?Math.min(1,net/number(order.total)):0);
+        orderCogs=number(c.cogs)*refundFactor;
+        row.profit_cogs+=orderCogs;
         row.profit_fallback_item_qty+=number(c.fallback_qty);
       }else{
-        row.profit_cogs+=net*ESTIMATED_COST_SHARE;
+        orderCogs=net*ESTIMATED_COST_SHARE;
+        row.profit_cogs+=orderCogs;
         row.profit_missing_item_orders++;
       }
+    }
+    if(includeOrderDetails){
+      const rawItems=itemsByOrder.get(id)||[];
+      const items=rawItems.map(item=>{
+        const {line_cost,...safe}=item;
+        return {...safe,net_cost:rub(line_cost*refundFactor)};
+      });
+      const partnerTotal=partnerActual+partnerPlanned;
+      const ownerTotal=ownerActual+ownerPlanned;
+      const managerCost=net*managerRate;
+      const acquiring=net*number(assumptions.acquiring_percent)/100;
+      const logistics=net*number(assumptions.logistics_percent)/100;
+      const writeoffs=net*number(assumptions.writeoffs_percent)/100;
+      const it=net*number(assumptions.bonuses_it_percent)/100;
+      const founderProfit=rub(net-orderCogs-orderTax-partnerTotal-ownerTotal-
+        managerCost-acquiring-logistics-writeoffs-it);
+      if(!row.order_details)row.order_details=[];
+      row.order_details.push({
+        id,number:String(order.display_number||order.order_code||'Заказ №'+id),
+        created_at:String(order.created_at||''),
+        partner_name:order.partner_id==null?null:String(order.partner_name||'Грумер'),
+        total:number(order.total),
+        refund_amount:rub(number(order.total)-net),
+        revenue:rub(net),
+        refund_status:String(order.refund_status||'none'),
+        items,items_missing:items.length===0,
+        item_cost_fallback_qty:number(c?.fallback_qty||0),
+        cogs_est:rub(orderCogs),tax_est:orderTax,
+        partner_paid:rub(partnerActual),
+        partner_pending:refund?0:rub(partnerPlanned),
+        partner_refund_hold:refund?rub(partnerPlanned):0,
+        partner_total:rub(partnerTotal),
+        partner_rate_percent:rub(partnerRate*100),
+        owner_paid:rub(ownerActual),
+        owner_pending:refund?0:rub(ownerPlanned),
+        owner_refund_hold:refund?rub(ownerPlanned):0,
+        owner_total:rub(ownerTotal),
+        owner_rate_percent:rub(ownerRate*100),
+        manager_est:rub(managerCost),
+        acquiring_est:rub(acquiring),logistics_est:rub(logistics),
+        writeoffs_est:rub(writeoffs),it_est:rub(it),
+        founder_profit_est:founderProfit,
+      });
     }
     row.profit_manager_est+=net*managerRate;
     row.profit_other_costs_est+=net*(otherRate-managerRate);
@@ -119,7 +197,8 @@ function loadPointPayoutProfit(database,orders,assumptions,period=null) {
   }
   for(const [pointId,raw] of results){
     for(const key of Object.keys(raw))if(key!=='profit_missing_item_orders'&&
-      key!=='profit_fallback_item_qty'&&key!=='commission_refund_review_orders')
+      key!=='profit_fallback_item_qty'&&key!=='commission_refund_review_orders'&&
+      key!=='order_details')
       raw[key]=rub(raw[key]);
     const totalCommission=raw.partner_paid+raw.partner_pending+raw.partner_refund_hold+
       raw.owner_paid+raw.owner_pending+raw.owner_refund_hold;

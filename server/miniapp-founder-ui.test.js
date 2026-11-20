@@ -93,3 +93,28 @@ test('founder Mini App shows verified personal expenses with private document ac
  assert.doesNotMatch(html,/server-signed-founder-token/);
  assert.doesNotMatch(html,/Личные траты другого инвестора/);
 });
+
+test('founder economics shows lazy receipt controls and no customer contacts in its HTML',()=>{
+ const view=loadFounder();
+ const sample={
+  founder:{full_name:'Тест собственника',share_percent:45},
+  sales:{revenue:360,orders:1,avg_check:360,previous:{},last_six_months:[]},
+  point_economics:{
+    points:[{point_id:'sir-barsik',point_name:'Sir Barsik',
+      type:'none',label:'Без стойки',cost:0,
+      initial_goods_recorded:true,initial_goods_total_estimate:6365,
+      inventory_qty:10,inventory_valuation:5845,
+      period_revenue:360,period_tax_est:25.2,founder_profit_est:18.08}],
+    summary:{total_points:1,period_revenue:360,founder_profit_est:18.08},
+  },
+  finance:{estimated_result:18},network:{},strategy:{},capital:{},tasks:{},
+ };
+ const html=view.render(sample,'should-not-appear-in-html');
+ assert.match(html,/data-founder-point-orders-open="sir-barsik"/);
+ assert.match(html,/Чеки и прибыль по продажам/);
+ assert.match(html,/founderPointOrderDetails/);
+ assert.match(html,/data-founder-order-more/);
+ assert.match(html,/data-founder-order-close/);
+ assert.doesNotMatch(html,/should-not-appear-in-html/);
+ assert.doesNotMatch(html,/79998887777/);
+});

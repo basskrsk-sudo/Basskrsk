@@ -51,8 +51,116 @@
         clean(item.revenue ? n(item.revenue) : '0') + '</small></div>';
     }).join('') + '</div>';
   }
+  var orderDrilldown=null;
+  function money(value) {
+    var num=Number(value)||0;
+    return num.toLocaleString('ru-RU',{maximumFractionDigits:2,
+      minimumFractionDigits:Math.abs(num-Math.round(num))>0.0001?2:0})+' ₽';
+  }
+  function orderDate(value) {
+    var time=new Date(String(value||'').replace(' ','T')+'Z');
+    return Number.isNaN(time.getTime()) ? String(value||'') :
+      time.toLocaleString('ru-RU',{timeZone:'Asia/Krasnoyarsk',
+        day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+  function detailRow(label,value,highlight) {
+    return '<div class="econ-card-line'+(highlight?' econ-order-profit':'')+'"><span>'+
+      clean(label)+'</span><strong>'+clean(value)+'</strong></div>';
+  }
+  function orderDetailMarkup(item) {
+    var list=(item.items||[]).map(function(p){
+      return '<div class="econ-order-item"><b>'+clean(p.name||'Товар')+
+        (p.weight?' · '+clean(p.weight):'')+'</b><small>'+
+        clean(String(p.qty)+' шт. × '+money(p.unit_cost))+
+        (p.cost_estimated?' · себестоимость 50% розничной':'')+
+        ' = '+clean(money(p.net_cost))+' (после возвратов)</small></div>';
+    }).join('');
+    var status=Number(item.refund_amount)>0?
+      '<p class="econ-card-note">Возврат клиенту: '+clean(money(item.refund_amount))+
+      (item.refund_status==='refunded'?' · полный':' · частичный')+'</p>':'';
+    var notes=(item.items_missing?
+      '<p class="econ-card-note">⚠️ Нет состава заказа: себестоимость оценена как 50% оплаченной суммы.</p>':'')+
+      (Number(item.partner_refund_hold||0)+Number(item.owner_refund_hold||0)>0?
+      '<p class="econ-card-note">⚠️ Возврат: невыплаченные комиссии требуют сверки перед выплатой.</p>':'');
+    return '<article class="econ-order"><h4>'+clean(item.number||'Заказ')+
+      ' <small>'+clean(orderDate(item.created_at))+' (Красноярск)</small></h4>'+
+      (item.partner_name?'<p class="econ-card-note">Грумер: '+clean(item.partner_name)+'</p>':'')+
+      '<div class="econ-order-products">'+(list||'<small>Нет сохранённого состава.</small>')+'</div>'+
+      detailRow('Сумма заказа',money(item.total))+status+
+      detailRow('Оплаченная выручка',money(item.revenue))+
+      detailRow('Себестоимость проданного', '−'+money(item.cogs_est))+
+      detailRow('Грумеру ('+money(item.partner_rate_percent).replace(' ₽','%')+')','−'+money(item.partner_total))+
+      (item.partner_total?'<p class="econ-card-note">Грумер: выплачено '+
+        clean(money(item.partner_paid))+'; ожидает '+clean(money(item.partner_pending))+'</p>':'')+
+      detailRow('Владельцу ('+money(item.owner_rate_percent).replace(' ₽','%')+')','−'+money(item.owner_total))+
+      (item.owner_total?'<p class="econ-card-note">Владельцу: выплачено '+
+        clean(money(item.owner_paid))+'; ожидает '+clean(money(item.owner_pending))+'</p>':'')+
+      detailRow('Менеджер (модель)', '−'+money(item.manager_est))+
+      detailRow('Налог 7%', '−'+money(item.tax_est))+
+      detailRow('Эквайринг (модель)', '−'+money(item.acquiring_est))+
+      detailRow('Логистика (модель)', '−'+money(item.logistics_est))+
+      detailRow('Списания (модель)', '−'+money(item.writeoffs_est))+
+      detailRow('IT и прочие бонусы (модель)', '−'+money(item.it_est))+
+      detailRow('Остаётся ХвостМаркету (оценка)',money(item.founder_profit_est),true)+
+      notes+'</article>';
+  }
+  function closePointOrders(){
+    orderDrilldown=null;
+    if(!root)return;
+    var panel=root.querySelector('#founderPointOrderDetails');
+    if(panel)panel.hidden=true;
+  }
+  async function loadPointOrders(view) {
+    if(!root||!view||view.loading||!accessToken)return;
+    var panel=root.querySelector('#founderPointOrderDetails');
+    if(!panel)return;
+    var target=panel.querySelector('[data-founder-order-body]');
+    var more=panel.querySelector('[data-founder-order-more]');
+    if(!target||!more)return;
+    view.loading=true;
+    more.hidden=true;
+    if(view.page===0)target.innerHTML='<p class="econ-card-note">Загружаем заказы…</p>';
+    try{
+      var query='?point_id='+encodeURIComponent(view.pointId)+
+        '&period='+encodeURIComponent(view.period)+'&page='+view.page;
+      var response=await fetch('/api/business-founder/point-orders'+query,{
+        headers:{Authorization:'Bearer '+accessToken},cache:'no-store'});
+      if(!response.ok)throw new Error(response.status===401?
+        'Сессия завершилась. Войдите в кабинет повторно.':'Не удалось загрузить заказы ('+response.status+').');
+      var payload=await response.json();
+      if(orderDrilldown!==view||!panel.isConnected)return;
+      var rows=(payload.orders||[]).map(orderDetailMarkup).join('');
+      if(view.page===0)target.innerHTML=rows||'<p class="econ-card-note">Нет оплаченных продаж за выбранный период.</p>';
+      else target.insertAdjacentHTML('beforeend',rows);
+      view.page++;
+      more.hidden=!payload.has_more;
+      var note=panel.querySelector('[data-founder-order-note]');
+      if(note)note.textContent=payload.disclaimer||'';
+    }catch(error){
+      if(orderDrilldown===view&&panel.isConnected)
+        target.insertAdjacentHTML('beforeend','<p class="econ-card-note">'+
+          clean(error.message||'Ошибка загрузки')+'</p>');
+    }finally{
+      view.loading=false;
+    }
+  }
+  function openPointOrders(pointId,name) {
+    if(!root||!accessToken||!pointId)return;
+    var panel=root.querySelector('#founderPointOrderDetails');
+    if(!panel)return;
+    orderDrilldown={pointId:String(pointId),period:period,page:0,loading:false};
+    var heading=panel.querySelector('[data-founder-order-title]');
+    if(heading)heading.textContent='Продажи: '+String(name||pointId);
+    var note=panel.querySelector('[data-founder-order-note]');
+    if(note)note.textContent='';
+    panel.hidden=false;
+    var scroll=panel.querySelector('.founder-order-dialog');
+    if(scroll)scroll.scrollTop=0;
+    loadPointOrders(orderDrilldown);
+  }
   function render(data,token) {
     accessToken=String(token||'');
+    orderDrilldown=null;
     if (!data || !data.founder || !data.sales) {
       return '<div class="work-message">Нет данных собственника. Попробуйте обновить кабинет.</div>';
     }
@@ -146,7 +254,7 @@
       var payback=incomplete||item.payback_months_at_current_pace==null?'—':
         Number(item.payback_months_at_current_pace).toLocaleString('ru-RU')+' мес.';
       return {
-        point:item.point_name||'',equipment:equipment,equipmentCost:equipmentCost,
+        point:item.point_name||'',pointId:String(item.point_id||''),equipment:equipment,equipmentCost:equipmentCost,
         goods:goods,goodsNote:goodsNote,
         manager:rub(item.launch_manager_bonus),groomer:rub(item.launch_groomer_bonus),
         owner:rub(item.launch_owner_bonus),total:total,stock:stock,stockNote:stockNote,
@@ -176,6 +284,29 @@
       '.founder-point-econ-mobile .econ-card-line strong{text-align:right;flex-shrink:0;}'+
       '.founder-point-econ-mobile .econ-card-note{font-size:.76rem;color:#627b6d;'+
         'line-height:1.4;margin:6px 0 8px;}'+
+      '.founder-order-open{margin:8px 0;min-height:38px;padding:7px 12px;'+
+        'color:#176b4f;background:#edf8f1;border:1px solid #b8d6c5;border-radius:8px;font-weight:700;}'+
+      '.founder-order-modal{position:fixed;inset:0;z-index:30001;'+
+        'background:rgba(15,38,27,.55);display:flex;justify-content:center;'+
+        'align-items:stretch;padding:12px;}'+
+      '.founder-order-modal[hidden]{display:none!important;}'+
+      '.founder-order-dialog{background:#fff;max-width:680px;width:100%;margin:auto;'+
+        'max-height:95vh;overflow-y:auto;overscroll-behavior:contain;border-radius:17px;'+
+        'padding:16px;box-sizing:border-box;color:#213f32;}'+
+      '.econ-order .econ-card-line{display:flex;justify-content:space-between;'+
+        'align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid #edf2ee;font-size:.88rem;}'+
+      '.econ-order .econ-card-line span{color:#647b70;flex:1;}'+
+      '.econ-order .econ-card-line strong{text-align:right;flex-shrink:0;}'+
+      '.econ-order .econ-card-note{font-size:.76rem;color:#647b70;line-height:1.4;margin:7px 0;}'+
+      '.econ-order{border:1px solid #dbe7df;border-radius:12px;padding:13px;'+
+        'margin:12px 0;background:#fff;}'+
+      '.econ-order h4{margin:0 0 10px;font-size:1.05rem;}'+
+      '.econ-order h4 small{display:block;font-size:.76rem;color:#648074;font-weight:400;margin-top:4px;}'+
+      '.econ-order-item{padding:5px 0;border-bottom:1px solid #e6ede8;}'+
+      '.econ-order-item b{display:block;font-size:.85rem;}'+
+      '.econ-order-item small{display:block;color:#627b6d;}'+
+      '.econ-order-profit{color:#165d40;font-weight:700;background:#f1f9f4;padding:9px 4px!important;}'+
+      '.founder-order-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;}'+
       '@media(max-width:700px){.founder-point-econ-table{display:none;}'+
         '.founder-point-econ-mobile{display:block;}}'+
       '</style>';
@@ -206,7 +337,9 @@
         function td(content,align){return '<td style="padding:.6rem;border-top:1px solid #e1e9e4;'+
           'text-align:'+(align||'right')+';">'+content+'</td>';}
         return '<tr data-founder-econ-row data-point-search="'+clean(item.point.toLowerCase())+'">'+
-          td('<b>'+clean(item.point)+'</b>','left')+
+          td('<b>'+clean(item.point)+'</b><button type="button" class="founder-order-open" '+
+            'data-founder-point-orders-open="'+clean(item.pointId)+'" data-founder-point-name="'+clean(item.point)+
+            '">Чеки и прибыль</button>','left')+
           td(clean(item.equipment)+'<small style="display:block;color:#647b70;">'+clean(item.equipmentCost)+'</small>','left')+
           td(clean(item.goods)+'<small style="display:block;color:#647b70;">'+clean(item.goodsNote)+'</small>')+
           td(clean(item.manager))+td(clean(item.groomer))+td(clean(item.owner))+
@@ -226,6 +359,8 @@
           '</span><strong>'+clean(value)+'</strong></div>';}
         return '<article class="econ-card" data-founder-econ-row data-point-search="'+clean(item.point.toLowerCase())+'">'+
           '<div class="econ-card-title">'+clean(item.point)+'</div>'+
+          '<button type="button" class="founder-order-open" data-founder-point-orders-open="'+
+            clean(item.pointId)+'" data-founder-point-name="'+clean(item.point)+'">Чеки и прибыль по продажам</button>'+
           '<p class="econ-card-note">'+clean(item.equipment)+'</p>'+
           line('Оборудование',item.equipmentCost)+
           line('Стартовый товар',item.goods)+
@@ -246,10 +381,18 @@
           (item.profitNote?'<p class="econ-card-note">'+clean(item.profitNote)+'</p>':'')+
           line('Окупаемость',item.payback)+'</article>';
       }).join('')+'</div>';
+    var orderDialog='<div id="founderPointOrderDetails" class="founder-order-modal" hidden>'+
+      '<div class="founder-order-dialog" role="dialog" aria-modal="true" aria-labelledby="founderOrderTitle">'+
+      '<div class="founder-order-toolbar"><h3 id="founderOrderTitle" data-founder-order-title>Продажи по заказам</h3>'+
+      '<button type="button" class="founder-order-open" data-founder-order-close>Закрыть ✕</button></div>'+
+      '<div data-founder-order-body></div>'+
+      '<button type="button" class="founder-order-open" data-founder-order-more hidden>Показать ещё 20 заказов</button>'+
+      '<p class="econ-card-note" data-founder-order-note></p></div></div>';
     html += section('🏪 Экономика каждой точки',
       equipmentStats+equipmentTable+callout(pe.inventory_disclaimer||'')+
         callout(pe.assumption||'')+callout(pe.profit_disclaimer||''),
       'Выплачено и к выплате: по заказам выбранного периода, независимо от даты перечисления. Бонусы за приглашение точки выше показаны отдельно и не входят в регулярную комиссию. Прибыль собственников — расчётная после себестоимости, налога 7%, начисленных комиссий и переменных расходов, без общесетевых накладных. Только для собственников ХвостМаркета.');
+    html += orderDialog;
     var gates=(strategy.scale_gates||[]);
     var readiness=strategy.scale_decision;
     html += section('🎯 Стратегия: 1000 точек',
@@ -393,6 +536,17 @@
       }finally{input.disabled=false;input.value='';}
     });
     root.addEventListener('click',async function(event){
+      var control=event.target && event.target.closest && event.target.closest(
+        '[data-founder-point-orders-open],[data-founder-order-close],[data-founder-order-more]');
+      if(control){
+        event.preventDefault();
+        if(control.hasAttribute('data-founder-order-close'))return closePointOrders();
+        if(control.hasAttribute('data-founder-order-more'))return loadPointOrders(orderDrilldown);
+        if(control.hasAttribute('data-founder-point-orders-open')){
+          return openPointOrders(control.dataset.founderPointOrdersOpen,
+            control.dataset.founderPointName);
+        }
+      }
       var button=event.target && event.target.closest &&
         event.target.closest('[data-expense-file-action="download"]');
       if(!button||!root.querySelector('.founder-banner')||!accessToken ||

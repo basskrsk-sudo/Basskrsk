@@ -16,6 +16,7 @@ const founderDashboardCache = createSqliteAnalyticsCache(db, { ttlMs: 8000, maxE
 const { getCachedWeeklyBsc } = require('./weekly-report');
 const { getUnitEconomicsSettings,calculateUnitEconomics } = require('./unit-economics');
 const { buildPointEquipmentEconomics } = require('./point-equipment');
+const { loadPointPayoutProfit } = require('./point-period-finance');
 
 const CAPITAL_PLAN_RUB = 1000000;
 const TAX_ESTIMATE_RATE = 0.07; // Founder management estimate: per net paid sale.
@@ -365,6 +366,49 @@ function registerBusinessFounderRoutes(router) {
     const founder=activeFounder(payload.id);
     if(!founder)return sendJson(res,401,{error:'Доступ собственника отключён'});
     sendJson(res,200,{founder:safeFounder(founder)});
+  });
+  // On-demand drilldown: one authorized founder, one valid point, at most
+  // 20 orders/page. Never include customer phone, name or payment details.
+  router.get('/api/business-founder/point-orders', (req,res,ctx)=>{
+    const payload=requireAuth(['founder'])(req,res,ctx);
+    if(!payload)return;
+    const founder=activeFounder(payload.id);
+    if(!founder)return sendJson(res,401,{error:'Доступ собственника отключён'});
+    const pointId=String(ctx.query.point_id||'').trim();
+    const period=String(ctx.query.period||'30d');
+    const page=Number(ctx.query.page??0);
+    if(!pointId || pointId.length>128 || !['month','30d','year'].includes(period)||
+      !Number.isSafeInteger(page) || page<0 || page>500)
+      return sendJson(res,400,{error:'Неверные параметры детализации заказов'});
+    const point=db.prepare(
+      'SELECT id,name FROM points WHERE id=? AND COALESCE(is_hub,0)=0'
+    ).get(pointId);
+    if(!point)return sendJson(res,404,{error:'Точка не найдена'});
+    const bounds=periodBounds(period,new Date());
+    const limit=20;
+    const rows=db.prepare(
+      'SELECT id,order_code,display_number,created_at,point_id,partner_id,partner_name,'+
+      'total,commission_rate,refund_status,refunded_amount FROM orders '+
+      'WHERE point_id=? AND status=? AND created_at>=? AND created_at<? '+
+      'ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?'
+    ).all(pointId,'paid',bounds.from,bounds.to,limit+1,page*limit);
+    const hasMore=rows.length>limit;
+    const selected=rows.slice(0,limit);
+    const modelSettings=getUnitEconomicsSettings().assumptions;
+    const detail=loadPointPayoutProfit(db,selected,modelSettings,bounds,
+      {includeOrderDetails:true}).get(pointId);
+    return sendJson(res,200,{
+      point:{id:point.id,name:point.name},period:bounds.key,
+      page,has_more:hasMore,page_size:limit,
+      orders:detail?.order_details||[],
+      disclaimer:'Разбивка по каждой продаже — управленческая оценка. '+
+        'Себестоимость по текущему каталогу, при отсутствии — 50% розничной. '+
+        'Возвраты распределены пропорционально сумме заказа. '+
+        'Комиссии из реестров выплат и ожидающие начисления показаны раздельно. '+
+        'Налог 7% и прочие расходы расчётные; округление отдельных заказов '+
+        'может давать расхождение в несколько копеек со сводкой. '+
+        'Не включены общесетевые постоянные расходы и разовые вложения.',
+    });
   });
   router.get('/api/business-founder/dashboard', (req,res,ctx)=>{
     const payload=requireAuth(['founder'])(req,res,ctx);
