@@ -94,9 +94,13 @@
     var pe=data.point_economics||{}, pointRows=pe.points||[], pointSummary=pe.summary||{};
     var equipmentStats='<div class="work-stats">'+
       card('Точек в модели',n(pointSummary.total_points),'Все точки, включая без продаж')+
-      card('Оснащение подтверждено',n(pointSummary.configured),'Без учёта старых неизвестных')+
-      card('Не указан тип',n(pointSummary.unknown),'Требуется уточнение в админке')+
-      card('Вложения в оборудование',rub(pointSummary.equipment_cost),'Сумма подтверждённых типов')+
+      card('Оборудование',rub(pointSummary.equipment_cost),'Подтверждённые виды стоек и полок')+
+      card('Запуск точек (оценка)',(pointSummary.incomplete_launch_points?'от ':'')+
+        rub(pointSummary.estimated_investment),
+        'Нет общей сметы 15–20 тыс. ₽ · неполных: '+n(pointSummary.incomplete_launch_points))+
+      card('Разовые бонусы менеджерам',rub(pointSummary.launch_manager_bonus),'План запуска')+
+      card('Разовые бонусы грумерам',rub(pointSummary.launch_groomer_bonus),'За приглашение точки')+
+      card('Разовые бонусы владельцам',rub(pointSummary.launch_owner_bonus),'За приглашение точки')+
       card('Товар на точках по закупке (оценка)',
         pointSummary.inventory_valuation==null?
           'от '+rub(Number(pointSummary.inventory_known_value||0)+Number(pointSummary.inventory_estimated_value||0)):
@@ -107,49 +111,104 @@
       card('Оплаченная выручка',rub(pointSummary.period_revenue),'За выбранный период')+
       card('Модельный вклад',rub(pointSummary.estimated_period_contribution),'Не бухгалтерская прибыль')+
       '</div>';
-    var equipmentTable='<label class="work-note" for="founderPointSearch">Поиск точки</label>'+
+    // Desktop: separate columns for one-off manager, groomer and owner bonuses.
+    // Mobile: cards keep names visible rather than forcing 1200px horizontal
+    // scrolling, which previously hid the salon name on iPhone.
+    var pointDisplay=pointRows.map(function(item){
+      var incomplete=!!item.estimated_investment_incomplete;
+      var total=item.estimated_investment==null?'—':(incomplete?'от ':'')+rub(item.estimated_investment);
+      var goods=item.initial_goods_recorded?
+        ((item.initial_goods_unpriced_qty?'от ':'')+rub(item.initial_goods_total_estimate)):'—';
+      var goodsNote=item.initial_goods_recorded?
+        ((item.initial_goods_missing_cost_qty
+          ?'В т.ч. оценка 50% розничной: '+rub(item.initial_goods_estimated_value):'По закупочной цене')+
+          ' · первоначальная выкладка, без пополнений'):
+        'Нет подтверждённых стартовых перемещений';
+      var equipment=item.type==null?'Не указано':(item.label||'Не указано');
+      var equipmentCost=item.type==null?'—':rub(item.cost);
+      var stock=item.inventory_valuation==null?
+        'от '+rub(Number(item.inventory_known_value||0)+Number(item.inventory_estimated_value||0)):
+        rub(item.inventory_valuation);
+      var stockNote=n(item.inventory_qty)+' ед.'+
+        (item.inventory_missing_cost_qty?' · по 50% цены '+n(item.inventory_missing_cost_qty)+' ед.':'');
+      var payback=incomplete||item.payback_months_at_current_pace==null?'—':
+        Number(item.payback_months_at_current_pace).toLocaleString('ru-RU')+' мес.';
+      return {
+        point:item.point_name||'',equipment:equipment,equipmentCost:equipmentCost,
+        goods:goods,goodsNote:goodsNote,
+        manager:rub(item.launch_manager_bonus),groomer:rub(item.launch_groomer_bonus),
+        owner:rub(item.launch_owner_bonus),total:total,stock:stock,stockNote:stockNote,
+        revenue:rub(item.period_revenue),payback:payback,
+        note:incomplete?'Оценка неполная: '+(item.type==null?'тип оборудования не указан; ':'')+
+          (!item.initial_goods_recorded?'стартовая выкладка не подтверждена; ':'')+
+          (item.initial_goods_unpriced_qty?'есть товары без цены; ':''):''
+      };
+    });
+    var econCss='<style>'+
+      '.founder-point-econ-mobile{display:none;}'+
+      '.founder-point-econ-table{overflow-x:auto;max-height:620px;overflow-y:auto;}'+
+      '.founder-point-econ-mobile .econ-card{border:1px solid #dae5de;border-radius:14px;'+
+        'padding:14px;margin:12px 0;background:#fff;}'+
+      '.founder-point-econ-mobile .econ-card-title{font-weight:700;color:#214938;font-size:1rem;}'+
+      '.founder-point-econ-mobile .econ-card-line{display:flex;justify-content:space-between;'+
+        'align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid #edf2ee;font-size:.86rem;}'+
+      '.founder-point-econ-mobile .econ-card-line span{color:#647b70;flex:1;}'+
+      '.founder-point-econ-mobile .econ-card-line strong{text-align:right;flex-shrink:0;}'+
+      '.founder-point-econ-mobile .econ-card-note{font-size:.76rem;color:#627b6d;'+
+        'line-height:1.4;margin:6px 0 8px;}'+
+      '@media(max-width:700px){.founder-point-econ-table{display:none;}'+
+        '.founder-point-econ-mobile{display:block;}}'+
+      '</style>';
+    var equipmentTable=econCss+
+      '<label class="work-note" for="founderPointSearch">Поиск точки</label>'+
       '<input type="search" id="founderPointSearch" placeholder="Название салона" '+
       'style="width:100%;max-width:400px;padding:.65rem;border-radius:8px;border:1px solid #CFD9D3;margin:.45rem 0 .8rem;">'+
-      '<div style="overflow-x:auto;max-height:600px;overflow-y:auto;"><table style="width:100%;min-width:920px;border-collapse:collapse;font-size:.78rem;">'+
+      '<div class="founder-point-econ-table"><table style="width:100%;min-width:1340px;border-collapse:collapse;font-size:.78rem;">'+
       '<thead style="position:sticky;top:0;background:#fff;"><tr>'+
-      '<th style="text-align:left;padding:.55rem;">Точка</th><th style="text-align:left;padding:.55rem;">Оборудование</th>'+
-      '<th style="text-align:right;padding:.55rem;">Запуск с бонусом</th>'+
-      '<th style="text-align:right;padding:.55rem;">Товар по закупке</th>'+
-      '<th style="text-align:right;padding:.55rem;">Выручка</th><th style="text-align:right;padding:.55rem;">Вклад, модель</th>'+
+      '<th style="text-align:left;padding:.55rem;">Точка</th>'+
+      '<th style="text-align:left;padding:.55rem;">Оборудование</th>'+
+      '<th style="text-align:right;padding:.55rem;">Стартовый товар</th>'+
+      '<th style="text-align:right;padding:.55rem;">Бонус менеджеру</th>'+
+      '<th style="text-align:right;padding:.55rem;">Бонус грумеру</th>'+
+      '<th style="text-align:right;padding:.55rem;">Бонус владельцу</th>'+
+      '<th style="text-align:right;padding:.55rem;">Итого запуск</th>'+
+      '<th style="text-align:right;padding:.55rem;">Товар сейчас</th>'+
+      '<th style="text-align:right;padding:.55rem;">Выручка</th>'+
       '<th style="text-align:right;padding:.55rem;">Окупаемость</th></tr></thead><tbody>'+
-      pointRows.map(function(item){
-        var cost=item.estimated_investment==null?'—':
-          (item.estimated_investment_incomplete?'от ':'')+rub(item.estimated_investment);
-        var launchNote=item.type!=='none'?'':(!item.initial_goods_recorded
-          ?'Не найдена подтверждённая стартовая выкладка'
-          :'Стартовый товар: '+(item.initial_goods_unpriced_qty?'от ':'')+
-            rub(item.initial_goods_total_estimate)+
-            ' + бонус менеджеру (модель)'+
-            (item.initial_goods_missing_cost_qty
-              ?' · оценка 50% розничной для '+n(item.initial_goods_missing_cost_qty)+' ед.':''));
-        var label=item.label||'Не указано';
-        var inventoryCost=item.inventory_valuation==null?
-          'от '+rub(Number(item.inventory_known_value||0)+Number(item.inventory_estimated_value||0)):
-          rub(item.inventory_valuation);
-        var inventoryNote=n(item.inventory_qty)+' ед.'+
-          (item.inventory_missing_cost_qty?' · оценено по 50% цены '+n(item.inventory_missing_cost_qty)+' ед.':'');
-        var payback=item.payback_months_at_current_pace==null?'—':
-          Number(item.payback_months_at_current_pace).toLocaleString('ru-RU')+' мес.';
-        return '<tr data-founder-econ-row data-point-search="'+clean((item.point_name||'').toLowerCase())+'">'+
-          '<td style="padding:.55rem;border-top:1px solid #e1e9e4;"><b>'+clean(item.point_name)+'</b></td>'+
-          '<td style="padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(label)+(item.type==='shelf'?' · '+rub(item.cost):'')+'</td>'+
-          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(cost)+
-          (launchNote?'<small style="display:block;color:#57675e;">'+clean(launchNote)+'</small>':'')+'</td>'+
-          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(inventoryCost)+
-          '<small style="display:block;color:#57675e;">'+clean(inventoryNote)+'</small></td>'+
-          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(rub(item.period_revenue))+'</td>'+
-          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(rub(item.estimated_period_contribution))+'</td>'+
-          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(payback)+'</td></tr>';
-      }).join('')+'</tbody></table></div>';
+      pointDisplay.map(function(item){
+        function td(content,align){return '<td style="padding:.6rem;border-top:1px solid #e1e9e4;'+
+          'text-align:'+(align||'right')+';">'+content+'</td>';}
+        return '<tr data-founder-econ-row data-point-search="'+clean(item.point.toLowerCase())+'">'+
+          td('<b>'+clean(item.point)+'</b>','left')+
+          td(clean(item.equipment)+'<small style="display:block;color:#647b70;">'+clean(item.equipmentCost)+'</small>','left')+
+          td(clean(item.goods)+'<small style="display:block;color:#647b70;">'+clean(item.goodsNote)+'</small>')+
+          td(clean(item.manager))+td(clean(item.groomer))+td(clean(item.owner))+
+          td('<b>'+clean(item.total)+'</b>'+
+            (item.note?'<small style="display:block;color:#647b70;">'+clean(item.note)+'</small>':''))+
+          td(clean(item.stock)+'<small style="display:block;color:#647b70;">'+clean(item.stockNote)+'</small>')+
+          td(clean(item.revenue))+td(clean(item.payback))+'</tr>';
+      }).join('')+'</tbody></table></div>'+
+      '<div class="founder-point-econ-mobile">'+pointDisplay.map(function(item){
+        function line(label,value){return '<div class="econ-card-line"><span>'+clean(label)+
+          '</span><strong>'+clean(value)+'</strong></div>';}
+        return '<article class="econ-card" data-founder-econ-row data-point-search="'+clean(item.point.toLowerCase())+'">'+
+          '<div class="econ-card-title">'+clean(item.point)+'</div>'+
+          '<p class="econ-card-note">'+clean(item.equipment)+'</p>'+
+          line('Оборудование',item.equipmentCost)+
+          line('Стартовый товар',item.goods)+
+          '<p class="econ-card-note">'+clean(item.goodsNote)+'</p>'+
+          line('Бонус менеджеру',item.manager)+
+          line('Бонус грумеру',item.groomer)+
+          line('Бонус владельцу',item.owner)+
+          line('Всего на запуск',item.total)+
+          (item.note?'<p class="econ-card-note">'+clean(item.note)+'</p>':'')+
+          line('Товар сейчас',item.stock)+line('Выручка',item.revenue)+
+          line('Окупаемость',item.payback)+'</article>';
+      }).join('')+'</div>';
     html += section('🏪 Экономика каждой точки',
       equipmentStats+equipmentTable+callout(pe.inventory_disclaimer||'')+
         callout(pe.assumption||'')+callout(pe.profit_disclaimer||''),
-      'Товарные остатки по закупочной себестоимости, выручка, оборудование и модельная окупаемость. Только для собственников ХвостМаркета.');
+      'Единый расчёт запуска: оборудование, стартовый товар, разовые бонусы. Доступно только собственникам ХвостМаркета.');
     var gates=(strategy.scale_gates||[]);
     var readiness=strategy.scale_decision;
     html += section('🎯 Стратегия: 1000 точек',
