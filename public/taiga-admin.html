@@ -3897,8 +3897,6 @@ const UNIT_ECON_FIELDS = [
   { key:'owner_commission_percent', label:'Вознаграждение владельцу точки', suffix:'%', step:'0.1' },
   { key:'acquiring_percent', label:'Эквайринг', suffix:'%', step:'0.1' },
   { key:'logistics_percent', label:'Логистика', suffix:'%', step:'0.1' },
-  { key:'writeoffs_percent', label:'Списания и недостачи', suffix:'%', step:'0.1' },
-  { key:'bonuses_it_percent', label:'Бонусы и переменный IT', suffix:'%', step:'0.1' },
   { key:'tax_percent', label:'Налоговый резерв', suffix:'%', step:'0.1' },
   { key:'launch_cost', label:'Запуск новой точки', suffix:'₽', step:'100' },
   { key:'manager_launch_bonus', label:'Бонус менеджеру за запуск', suffix:'₽', step:'100' },
@@ -3927,8 +3925,6 @@ function calculateUnitEconomicsClient(a) {
     owner_commission: revenue * a.owner_commission_percent / 100,
     acquiring: revenue * a.acquiring_percent / 100,
     logistics: revenue * a.logistics_percent / 100,
-    writeoffs: revenue * a.writeoffs_percent / 100,
-    bonuses_it: revenue * a.bonuses_it_percent / 100,
     tax: revenue * a.tax_percent / 100,
   };
   const afterProduct = Object.values(costs).reduce(function(sum, value) { return sum + value; }, 0);
@@ -3944,7 +3940,7 @@ function calculateUnitEconomicsClient(a) {
     total_variable_costs_per_order: productCost + afterProduct,
     contribution_per_order: contribution,
     contribution_margin_percent: revenue ? contribution / revenue * 100 : 0,
-    break_even_gross_margin_percent: effectiveGroomerRate + a.manager_commission_percent + a.owner_commission_percent + a.acquiring_percent + a.logistics_percent + a.writeoffs_percent + a.bonuses_it_percent + a.tax_percent,
+    break_even_gross_margin_percent: effectiveGroomerRate + a.manager_commission_percent + a.owner_commission_percent + a.acquiring_percent + a.logistics_percent + a.tax_percent,
     monthly_revenue_per_point: revenue * a.monthly_orders_per_point,
     monthly_contribution_per_point: monthlyContribution,
     launch_investment: launchInvestment,
@@ -3967,7 +3963,7 @@ function renderUnitEconomicsResults(results) {
     unitEconResultCard('Окупаемость запуска', results.payback_months === null ? 'не окупается' : Number(results.payback_months).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' мес.', contributionColor);
   const costLabels = {
     groomer_commission:'Грумер (эффективно ' + Number(results.effective_groomer_rate_percent).toLocaleString('ru-RU', { maximumFractionDigits:2 }) + '%)', manager_commission:'Менеджер', owner_commission:'Владелец точки',
-    acquiring:'Эквайринг', logistics:'Логистика', writeoffs:'Списания', bonuses_it:'Бонусы и IT', tax:'Налоговый резерв'
+    acquiring:'Эквайринг', logistics:'Логистика', tax:'Налоговый резерв'
   };
   let rows = pnlRow('Выручка заказа', results.revenue_per_order);
   rows += pnlRow('Себестоимость товара', results.product_cost_per_order, { isCost:true });
