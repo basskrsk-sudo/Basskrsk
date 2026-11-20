@@ -124,14 +124,15 @@ test('per-point economics matches equipment cost and avoids double-booking actua
   ).all();
   const data=buildPointEquipmentEconomics(db,a,unit,orders);
   const byId=Object.fromEntries(data.points.map(x=>[x.point_id,x]));
-  assert.equal(byId['econ-none'].estimated_launch_cost,15000);
+  assert.equal(byId['econ-none'].estimated_launch_cost,null,
+    'a salon without equipment or tracked starting stock must not inherit fictional overhead');
   assert.equal(byId['econ-large'].estimated_launch_cost,20000);
   assert.equal(byId['econ-small'].estimated_launch_cost,15000);
   assert.equal(byId['econ-shelf'].estimated_launch_cost,15700);
-  assert.equal(byId['econ-none'].estimated_investment,17000);
+  assert.equal(byId['econ-none'].estimated_investment,null);
   assert.equal(byId['econ-large'].estimated_investment,22000);
-  assert.equal(byId['econ-unknown'].estimated_investment,17000,
-    'this point was deliberately configured to none in previous test');
+  assert.equal(byId['econ-unknown'].estimated_investment,null,
+    'a point configured to none with no start deliveries has an unknown budget');
   assert.equal(byId['econ-none'].period_revenue,1200);
   assert.equal(byId['econ-small'].period_revenue,750);
   assert.equal(byId['econ-small'].period_orders,1);
@@ -140,6 +141,48 @@ test('per-point economics matches equipment cost and avoids double-booking actua
   savePointEquipment(db,'econ-large',{type:'none'},{id:superId,login:'point-econ-super'});
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n,expensesBefore);
   assert.equal(db.prepare('SELECT SUM(cost) AS total FROM point_launch_equipment').get().total,700);
+});
+
+test('no-stand launch counts only approved initial goods and bonus, excluding future restocks',()=>{
+  const id=Number(db.prepare(
+    "INSERT INTO managers(mgr_code,login,password_hash,full_name,phone,active) VALUES(?,?,?,?,?,1)"
+  ).run('MGR-ECON-START','manager-econ-start','hash','Менеджер','79130000031').lastInsertRowid);
+  const productId=Number(db.prepare(
+    'INSERT INTO products(slug,name,category,icon,desc,comp) VALUES(?,?,?,?,?,?)'
+  ).run('point-launch-initial-items','Первый товар','treats','🐾','Тест','[]').lastInsertRowid);
+  const insertVariant=db.prepare(
+    'INSERT INTO product_variants(product_id,weight,price,cost_price) VALUES(?,?,?,?)'
+  );
+  const known=Number(insertVariant.run(productId,'50 г',300,120).lastInsertRowid);
+  const other=Number(insertVariant.run(productId,'100 г',360,170).lastInsertRowid);
+  const missing=Number(insertVariant.run(productId,'1 шт',200,null).lastInsertRowid);
+  const shipment=(when,items,status='approved')=>{
+    const movementId=Number(db.prepare(
+      'INSERT INTO stock_movements(manager_id,point_id,city_id,status,reported_at) VALUES(?,?,?,?,?)'
+    ).run(id,'econ-none','krsk',status,when).lastInsertRowid);
+    for(const [variant,qty] of items) db.prepare(
+      'INSERT INTO stock_movement_items(movement_id,variant_id,qty) VALUES(?,?,?)'
+    ).run(movementId,variant,qty);
+  };
+  shipment('2026-09-01 09:00:00',[[known,4],[missing,2]]);
+  shipment('2026-09-15 09:00:00',[[other,2]]);
+  shipment('2099-01-01 09:00:00',[[known,100]]);
+  shipment('2026-08-01 09:00:00',[[known,100]],'rejected');
+
+  const assumptions=getUnitEconomicsSettings().assumptions;
+  const unit=calculateUnitEconomics(assumptions);
+  const data=buildPointEquipmentEconomics(db,assumptions,unit);
+  const point=data.points.find(row=>row.point_id==='econ-none');
+  assert.equal(point.initial_goods_known_value,820);
+  assert.equal(point.initial_goods_missing_cost_qty,2);
+  assert.equal(point.initial_goods_missing_cost_variants,1);
+  assert.equal(point.estimated_launch_cost,820);
+  assert.equal(point.estimated_investment,2820,
+    'must include only initial goods plus 2,000 RUB manager bonus, never 15,000 RUB overhead');
+  assert.equal(point.estimated_investment_incomplete,true);
+  assert.equal(point.payback_months_at_current_pace,null,
+    'unknown initial prices must not imply precise payback');
+  assert.ok(data.assumption.includes('15 000 ₽'));
 });
 
 test('point stock value uses positive physical qty and current variant purchase cost',()=>{
@@ -217,6 +260,8 @@ test('point economics UI exists only in the company founder dashboard',()=>{
   const editor=fs.readFileSync(path.join(__dirname,'../public/admin-point-equipment.js'),'utf8');
   assert.match(founder,/Экономика каждой точки/);
   assert.match(founder,/Товар по закупке/);
+  assert.match(founder,/estimated_investment_incomplete/);
+  assert.match(founder,/initial_goods_known_value/);
   assert.match(founder,/Без закупочной цены/);
   assert.doesNotMatch(admin,/point-economics-card|point-economics-body|\/api\/economics\/point-launch/);
   assert.doesNotMatch(editor,/renderEconomics|\/api\/economics\/point-launch/);
