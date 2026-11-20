@@ -96,23 +96,67 @@ function savePointEquipment(database,pointId,input,actor){
   }
 }
 
-// The currently configured "launch_cost" model is the baseline FOR a large
-// 5,000 ₽ stand. Decompose it into "other costs" + known equipment, so the
-// 20,000 ₽ default keeps its original meaning, and no-stand launches save 5,000 ₽.
-// This is a model only; actual expenses remain recorded exclusively via expenses.
-function estimatePointLaunchCost(item, assumptions, contribution){
-  if(!item.type)return {...item,other_launch_cost:null,
-    estimated_launch_cost:null,estimated_investment:null,
-    estimated_payback_months:null,estimated_orders_to_payback:null};
-  const baseOther=Math.max(0,Number(assumptions.launch_cost||0)-STANDARD_LARGE_STAND_COST);
-  const launchCost=baseOther+item.cost;
-  const investment=launchCost+Number(assumptions.manager_launch_bonus||0);
+// Points without a HvostMarket stand/shelf have NO default 15,000 RUB
+// "other costs": those were a planning assumption for outfitted salons,
+// not evidenced expenditure at Sir Barsik or other no-equipment locations.
+// Their initial product placement is valued from APPROVED stock movements
+// before the first paid sale. Current stock and later restocking must not
+// silently rewrite the original launch estimate.
+// Historical prices are not snapshotted in older movements; use current
+// catalog cost_price and clearly flag missing prices as a lower bound.
+function estimatePointLaunchCost(item, assumptions, contribution, initialGoods = null){
+  const noEquipment=item.type==='none';
+  const hasGoods=Number(initialGoods?.movement_count||0)>0;
+  const goodsKnown=Math.max(0,Number(initialGoods?.known_value||0));
+  const missingQty=Number(initialGoods?.missing_cost_qty||0);
+  const initialDetails={
+    initial_goods_recorded:hasGoods,
+    initial_goods_known_value:hasGoods?goodsKnown:null,
+    initial_goods_missing_cost_qty:hasGoods?missingQty:null,
+    initial_goods_missing_cost_variants:hasGoods?Number(initialGoods?.missing_cost_variants||0):null,
+    estimated_investment_incomplete:noEquipment&&hasGoods&&missingQty>0,
+  };
+  if(!item.type || (noEquipment&&!hasGoods))
+    return {...item,...initialDetails,other_launch_cost:null,
+      estimated_launch_cost:null,estimated_investment:null,
+      estimated_payback_months:null,estimated_orders_to_payback:null};
+  const baseOther=noEquipment
+    ?0:Math.max(0,Number(assumptions.launch_cost||0)-STANDARD_LARGE_STAND_COST);
+  const launchCost=baseOther+Number(item.cost||0)+(noEquipment?goodsKnown:0);
+  const investment=Math.round((launchCost+Number(assumptions.manager_launch_bonus||0))*100)/100;
   const monthly=Number(contribution.monthly_contribution_per_point||0);
   const perOrder=Number(contribution.contribution_per_order||0);
-  return {...item,other_launch_cost:baseOther,
-    estimated_launch_cost:launchCost,estimated_investment:investment,
+  return {...item,...initialDetails,other_launch_cost:baseOther,
+    estimated_launch_cost:Math.round(launchCost*100)/100,
+    estimated_investment:investment,
     estimated_payback_months:monthly>0?Math.round(investment/monthly*10)/10:null,
     estimated_orders_to_payback:perOrder>0?Math.ceil(investment/perOrder):null};
+}
+
+// One aggregate query for all points; includes multiple approved deliveries
+// before first paid order and excludes later replenishment. Never infer a
+// historical purchase price for a SKU without catalog cost data.
+function loadInitialGoodsValuation(database){
+  return new Map(database.prepare(`
+    SELECT sm.point_id,
+      COUNT(DISTINCT sm.id) AS movement_count,
+      ROUND(SUM(CASE WHEN v.cost_price IS NOT NULL AND v.cost_price >= 0
+        THEN smi.qty * v.cost_price ELSE 0 END),2) AS known_value,
+      SUM(CASE WHEN v.cost_price IS NULL OR v.cost_price < 0
+        THEN smi.qty ELSE 0 END) AS missing_cost_qty,
+      COUNT(DISTINCT CASE WHEN v.cost_price IS NULL OR v.cost_price < 0
+        THEN smi.variant_id END) AS missing_cost_variants
+    FROM stock_movements sm
+    JOIN stock_movement_items smi ON smi.movement_id=sm.id
+    JOIN product_variants v ON v.id=smi.variant_id
+    LEFT JOIN (
+      SELECT point_id,MIN(created_at) AS first_paid_at
+      FROM orders WHERE status='paid' GROUP BY point_id
+    ) first_sale ON first_sale.point_id=sm.point_id
+    WHERE sm.status='approved' AND smi.qty>0
+      AND (first_sale.first_paid_at IS NULL OR sm.reported_at<first_sale.first_paid_at)
+    GROUP BY sm.point_id
+  `).all().map(row=>[row.point_id,row]));
 }
 // Point stock valuation is a CURRENT inventory snapshot (not a booking or cash expense).
 // A single SQL aggregate covers the entire network; unknown prices stay unknown.
@@ -134,6 +178,7 @@ function loadPointInventoryValuation(database){
 }
 function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[],period=null){
   const inventoryByPoint=loadPointInventoryValuation(database);
+  const initialGoodsByPoint=loadInitialGoodsValuation(database);
   const sales=new Map();
   // Reuse already fetched anonymized paid orders for founder dashboards.
   // Orders with full refunds contribute zero, matching existing reporting.
@@ -159,7 +204,8 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
     ? Math.max(1,(dateEnd-dateStart)/86400000):null;
   const margin=Number(contribution.contribution_margin_percent||0)/100;
   const points=listPointEquipment(database).map(row=>{
-    const base=estimatePointLaunchCost(row,assumptions,contribution);
+    const base=estimatePointLaunchCost(row,assumptions,contribution,
+      initialGoodsByPoint.get(row.point_id));
     const actual=sales.get(row.point_id)||{revenue:0,orders:0};
     const monthlyRevenue=days?actual.revenue/days*30.4375:null;
     const monthlyContribution=monthlyRevenue===null?null:monthlyRevenue*margin;
@@ -186,8 +232,8 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   points.sort((a,b)=>b.period_revenue-a.period_revenue||a.point_name.localeCompare(b.point_name,'ru'));
   const configured=points.filter(p=>p.type);
   return {
-    assumption:'Базовая смета запуска включает стойку за 5 000 ₽ и прочие расходы, в том числе предполагаемое стартовое наполнение товаром. Текущие товарные остатки показаны отдельно и не прибавляются к инвестициям/окупаемости повторно.',
-    inventory_disclaimer:'Стоимость текущего товара = положительный остаток × закупочная себестоимость варианта, указанная в каталоге. Это не стоимость исторических поставок. Если себестоимость не указана, оценка неполная. При консигнации товар может принадлежать поставщику: стоимость полки не равна собственным оплаченным вложениям. Повторного списания в расходы нет.',
+    assumption:'Для точек без стойки/полки запуск = подтверждённая стартовая выкладка по закупочным ценам каталога + модельный бонус менеджеру. Условные 15 000 ₽ общих расходов не добавляются. Стартовая выкладка определяется по подтверждённым перемещениям ДО первой оплаченной продажи: поздние пополнения не учитываются. При отсутствии данных сумма не выводится; при пропущенных закупочных ценах показана только известная часть («от»). Для точек с собственным оборудованием пока сохраняется ранее принятая модельная смета; текущие остатки не прибавляются к ней.',
+    inventory_disclaimer:'Стоимость текущего товара = положительный остаток × закупочная себестоимость варианта. Для точки без стойки вклад стартовой выкладки рассчитан отдельно по ранним подтверждённым перемещениям до первой продажи, а не по сегодняшним остаткам. Для исторических поставок используется актуальная цена из каталога (снимков старых закупочных цен нет). Без цены оценка неполная. При консигнации товар может принадлежать поставщику: это оценка размещения, а не доказательство понесённых денежных затрат.',
     profit_disclaimer:'Вклад рассчитывается из фактически оплаченной выручки и плановой маржинальности заказа. Это НЕ фактическая прибыль, не денежный поток и не учтённые расходы. CAPEX не прибавляется к P&L второй раз.',
     equipment_prices:{large_stand:5000,small_stand:2500,none:0,shelf:'вручную'},
     baseline_launch_cost:assumptions.launch_cost,
