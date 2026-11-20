@@ -127,7 +127,8 @@ test('per-point economics matches equipment cost and avoids double-booking actua
   assert.equal(byId['econ-none'].estimated_launch_cost,null,
     'a salon without equipment or tracked starting stock must not inherit fictional overhead');
   assert.equal(byId['econ-large'].estimated_launch_cost,20000);
-  assert.equal(byId['econ-small'].estimated_launch_cost,15000);
+  assert.equal(byId['econ-small'].estimated_launch_cost,null,
+    'previous test changed this point to none; no initial fill was recorded');
   assert.equal(byId['econ-shelf'].estimated_launch_cost,15700);
   assert.equal(byId['econ-none'].estimated_investment,null);
   assert.equal(byId['econ-large'].estimated_investment,22000);
