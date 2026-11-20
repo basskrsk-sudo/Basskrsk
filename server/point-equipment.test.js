@@ -177,12 +177,14 @@ test('no-stand launch counts only approved initial goods and bonus, excluding fu
   assert.equal(point.initial_goods_known_value,820);
   assert.equal(point.initial_goods_missing_cost_qty,2);
   assert.equal(point.initial_goods_missing_cost_variants,1);
-  assert.equal(point.estimated_launch_cost,820);
-  assert.equal(point.estimated_investment,2820,
-    'must include only initial goods plus 2,000 RUB manager bonus, never 15,000 RUB overhead');
-  assert.equal(point.estimated_investment_incomplete,true);
-  assert.equal(point.payback_months_at_current_pace,null,
-    'unknown initial prices must not imply precise payback');
+  assert.equal(point.initial_goods_estimated_value,200,'two items at 200 RUB retail / 2');
+  assert.equal(point.initial_goods_total_estimate,1020);
+  assert.equal(point.estimated_launch_cost,1020);
+  assert.equal(point.estimated_investment,3020,
+    'must include initial goods (actual and 50% retail fallback) plus 2,000 RUB manager bonus');
+  assert.equal(point.estimated_investment_uses_fallback,true);
+  assert.equal(point.estimated_investment_incomplete,false,
+    'retail-priced inventory can be valued without a recorded purchase price');
   assert.ok(data.assumption.includes('15 000 ₽'));
 });
 
@@ -210,7 +212,9 @@ test('point stock value uses positive physical qty and current variant purchase 
   const rows=Object.fromEntries(result.points.map(p=>[p.point_id,p]));
   assert.equal(rows['econ-none'].inventory_qty,9);
   assert.equal(rows['econ-none'].inventory_known_value,361.5);
-  assert.equal(rows['econ-none'].inventory_valuation,null);
+  assert.equal(rows['econ-none'].inventory_estimated_value,500,
+    'missing cost defaults to 50% of the 500 RUB retail price per unit');
+  assert.equal(rows['econ-none'].inventory_valuation,861.5);
   assert.equal(rows['econ-none'].inventory_missing_cost_qty,2);
   assert.equal(rows['econ-none'].inventory_missing_cost_variants,1);
   assert.equal(rows['econ-large'].inventory_valuation,80);
@@ -218,7 +222,8 @@ test('point stock value uses positive physical qty and current variant purchase 
   assert.equal(rows['econ-shelf'].inventory_valuation,0);
   assert.ok(result.summary.inventory_qty>=10);
   assert.ok(result.summary.inventory_known_value>=441.5);
-  assert.equal(result.summary.inventory_valuation,null);
+  assert.equal(result.summary.inventory_estimated_value,500);
+  assert.ok(result.summary.inventory_valuation>=941.5);
   assert.match(result.inventory_disclaimer,/консигнации/);
   const expenses=db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n;
   buildPointEquipmentEconomics(db,assumptions,unit);
@@ -237,8 +242,8 @@ test('founder-only boardroom receives all point economics, owners see no cost ba
   assert.ok(info.points.some(p=>p.point_id==='econ-none'));
   assert.ok(Number.isFinite(info.summary.estimated_period_contribution));
    assert.equal(info.points.find(p=>p.point_id==='econ-none').inventory_known_value,361.5);
-   assert.equal(info.points.find(p=>p.point_id==='econ-none').inventory_valuation,null);
-   assert.equal(info.summary.inventory_valuation,null);
+   assert.equal(info.points.find(p=>p.point_id==='econ-none').inventory_valuation,861.5);
+   assert.ok(info.summary.inventory_valuation>=941.5);
   assert.equal((await request('GET','/api/business-founder/dashboard',normalActor)).status,401);
   const ownerId=Number(db.prepare(
     'INSERT INTO salon_owners(login,password_hash,full_name,phone,point_id) VALUES(?,?,?,?,?)'
@@ -262,7 +267,8 @@ test('point economics UI exists only in the company founder dashboard',()=>{
   assert.match(founder,/Экономика каждой точки/);
   assert.match(founder,/Товар по закупке/);
   assert.match(founder,/estimated_investment_incomplete/);
-  assert.match(founder,/initial_goods_known_value/);
+  assert.match(founder,/initial_goods_total_estimate/);
+  assert.match(founder,/inventory_estimated_value/);
   assert.match(founder,/Без закупочной цены/);
   assert.doesNotMatch(admin,/point-economics-card|point-economics-body|\/api\/economics\/point-launch/);
   assert.doesNotMatch(editor,/renderEconomics|\/api\/economics\/point-launch/);

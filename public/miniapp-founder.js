@@ -97,11 +97,13 @@
       card('Оснащение подтверждено',n(pointSummary.configured),'Без учёта старых неизвестных')+
       card('Не указан тип',n(pointSummary.unknown),'Требуется уточнение в админке')+
       card('Вложения в оборудование',rub(pointSummary.equipment_cost),'Сумма подтверждённых типов')+
-      card('Товар на точках по закупке',
-        pointSummary.inventory_valuation==null?'от '+rub(pointSummary.inventory_known_value):rub(pointSummary.inventory_valuation),
-        n(pointSummary.inventory_qty)+' ед. в наличии')+
+      card('Товар на точках по закупке (оценка)',
+        pointSummary.inventory_valuation==null?
+          'от '+rub(Number(pointSummary.inventory_known_value||0)+Number(pointSummary.inventory_estimated_value||0)):
+          rub(pointSummary.inventory_valuation),
+        n(pointSummary.inventory_qty)+' ед. · без закупочной цены = 50% розничной')+
       card('Без закупочной цены',n(pointSummary.inventory_missing_cost_qty)+' ед.',
-        'Не включены в известную стоимость')+
+        'Оценка по 50% цены продажи: '+rub(pointSummary.inventory_estimated_value))+
       card('Оплаченная выручка',rub(pointSummary.period_revenue),'За выбранный период')+
       card('Модельный вклад',rub(pointSummary.estimated_period_contribution),'Не бухгалтерская прибыль')+
       '</div>';
@@ -120,15 +122,17 @@
           (item.estimated_investment_incomplete?'от ':'')+rub(item.estimated_investment);
         var launchNote=item.type!=='none'?'':(!item.initial_goods_recorded
           ?'Не найдена подтверждённая стартовая выкладка'
-          :'Стартовый товар: от '+rub(item.initial_goods_known_value)+
+          :'Стартовый товар: '+(item.initial_goods_unpriced_qty?'от ':'')+
+            rub(item.initial_goods_total_estimate)+
             ' + бонус менеджеру (модель)'+
             (item.initial_goods_missing_cost_qty
-              ?' · без закупочной цены '+n(item.initial_goods_missing_cost_qty)+' ед.':''));
+              ?' · оценка 50% розничной для '+n(item.initial_goods_missing_cost_qty)+' ед.':''));
         var label=item.label||'Не указано';
         var inventoryCost=item.inventory_valuation==null?
-          'от '+rub(item.inventory_known_value):rub(item.inventory_valuation);
+          'от '+rub(Number(item.inventory_known_value||0)+Number(item.inventory_estimated_value||0)):
+          rub(item.inventory_valuation);
         var inventoryNote=n(item.inventory_qty)+' ед.'+
-          (item.inventory_missing_cost_qty?' · без цены '+n(item.inventory_missing_cost_qty)+' ед.':'');
+          (item.inventory_missing_cost_qty?' · оценено по 50% цены '+n(item.inventory_missing_cost_qty)+' ед.':'');
         var payback=item.payback_months_at_current_pace==null?'—':
           Number(item.payback_months_at_current_pace).toLocaleString('ru-RU')+' мес.';
         return '<tr data-founder-econ-row data-point-search="'+clean((item.point_name||'').toLowerCase())+'">'+
