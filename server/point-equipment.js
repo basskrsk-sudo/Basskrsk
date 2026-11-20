@@ -99,22 +99,26 @@ function savePointEquipment(database,pointId,input,actor){
   }
 }
 
-// Points without a HvostMarket stand/shelf have NO default 15,000 RUB
-// "other costs": those were a planning assumption for outfitted salons,
-// not evidenced expenditure at Sir Barsik or other no-equipment locations.
-// Their initial product placement is valued from APPROVED stock movements
-// before the first paid sale. Current stock and later restocking must not
-// silently rewrite the original launch estimate.
-// Historical prices are not snapshotted in older movements; use current
-// catalog cost_price and clearly flag missing prices as a lower bound.
-function estimatePointLaunchCost(item, assumptions, contribution, initialGoods = null){
-  const noEquipment=item.type==='none';
+// Uniform factual point-launch valuation, whether or not the point has
+// equipment. The global 15,000/20,000-RUB planning baseline is NOT an expense.
+// Initial goods come from approved pre-sale movements, and 50% of current
+// retail is used for missing historical purchase costs as an estimate.
+
+function estimatePointLaunchCost(item, assumptions, contribution, initialGoods = null, launchBonus = null){
+  // Same factual components for ALL points. Never inject default 15k/20k
+  // theoretical opening expenses for salons that have no evidence of them.
+  const hasEquipment=!!item.type;
   const hasGoods=Number(initialGoods?.movement_count||0)>0;
   const goodsKnown=Math.max(0,Number(initialGoods?.known_value||0));
   const goodsEstimated=Math.max(0,Number(initialGoods?.estimated_value||0));
   const missingQty=Number(initialGoods?.missing_cost_qty||0);
   const unpricedQty=Number(initialGoods?.unpriced_qty||0);
-  const initialDetails={
+  const managerBonus=Number(launchBonus?.manager_bonus||0);
+  const groomerBonus=Number(launchBonus?.groomer_bonus||0);
+  const ownerBonus=Number(launchBonus?.owner_bonus||0);
+  const bonusTotal=managerBonus+groomerBonus+ownerBonus;
+  const incomplete=!hasEquipment||!hasGoods||unpricedQty>0;
+  const details={
     initial_goods_recorded:hasGoods,
     initial_goods_known_value:hasGoods?goodsKnown:null,
     initial_goods_estimated_value:hasGoods?goodsEstimated:null,
@@ -122,28 +126,65 @@ function estimatePointLaunchCost(item, assumptions, contribution, initialGoods =
     initial_goods_missing_cost_qty:hasGoods?missingQty:null,
     initial_goods_missing_cost_variants:hasGoods?Number(initialGoods?.missing_cost_variants||0):null,
     initial_goods_unpriced_qty:hasGoods?unpricedQty:null,
-    estimated_investment_incomplete:noEquipment&&hasGoods&&unpricedQty>0,
-    estimated_investment_uses_fallback:noEquipment&&hasGoods&&missingQty>0,
+    launch_manager_bonus:managerBonus,
+    launch_groomer_bonus:groomerBonus,
+    launch_owner_bonus:ownerBonus,
+    launch_bonus_total:bonusTotal,
+    launch_bonus_referral_role:launchBonus?.referral_role||null,
+    estimated_investment_incomplete:incomplete,
+    estimated_investment_uses_fallback:hasGoods&&missingQty>0,
   };
-  if(!item.type || (noEquipment&&!hasGoods))
-    return {...item,...initialDetails,other_launch_cost:null,
+  // With no recorded initial shipment and no installed equipment, there is
+  // no sound basis to claim a total. Bonuses still appear in their columns.
+  if(!hasGoods&&(!hasEquipment||item.type==='none'))
+    return {...item,...details,other_launch_cost:0,
       estimated_launch_cost:null,estimated_investment:null,
       estimated_payback_months:null,estimated_orders_to_payback:null};
-  const baseOther=noEquipment
-    ?0:Math.max(0,Number(assumptions.launch_cost||0)-STANDARD_LARGE_STAND_COST);
-  const launchCost=baseOther+Number(item.cost||0)+(noEquipment?goodsKnown+goodsEstimated:0);
-  const investment=Math.round((launchCost+Number(assumptions.manager_launch_bonus||0))*100)/100;
+  const launchCost=(hasEquipment?Number(item.cost||0):0)+goodsKnown+goodsEstimated;
+  const investment=Math.round((launchCost+bonusTotal)*100)/100;
   const monthly=Number(contribution.monthly_contribution_per_point||0);
   const perOrder=Number(contribution.contribution_per_order||0);
-  return {...item,...initialDetails,other_launch_cost:baseOther,
+  return {...item,...details,other_launch_cost:0,
     estimated_launch_cost:Math.round(launchCost*100)/100,
     estimated_investment:investment,
-    estimated_payback_months:!initialDetails.estimated_investment_incomplete && monthly>0
-      ?Math.round(investment/monthly*10)/10:null,
-    estimated_orders_to_payback:!initialDetails.estimated_investment_incomplete && perOrder>0
-      ?Math.ceil(investment/perOrder):null};
+    estimated_payback_months:!incomplete&&monthly>0?Math.round(investment/monthly*10)/10:null,
+    estimated_orders_to_payback:!incomplete&&perOrder>0?Math.ceil(investment/perOrder):null};
 }
 
+// Batched read of attribution; this remains a PLANNED one-time bonus budget,
+// not evidence of an accrual or transfer. Split 2,000 into 1,000 manager
+// and 1,000 referring partner when an inviter is recorded. Do not touch ledgers.
+function loadPointLaunchBonusAllocations(database,assumptions){
+  const budget=Math.max(0,Number(assumptions.manager_launch_bonus||0));
+  const records=database.prepare(`
+    SELECT p.id AS point_id,mp.id AS manager_point_id,
+      mp.referred_groomer_id,mp.referred_groomer_amount,
+      mp.referred_owner_id,mp.referred_owner_amount,
+      pr.role AS referral_role,pr.recipient_id AS referral_recipient_id,
+      pr.amount AS referral_amount
+    FROM points p
+    LEFT JOIN manager_points mp ON mp.id=(
+      SELECT m.id FROM manager_points m WHERE m.point_id=p.id ORDER BY m.id LIMIT 1)
+    LEFT JOIN point_referrals pr ON pr.point_id=p.id
+    WHERE COALESCE(p.is_hub,0)=0
+  `).all();
+  return new Map(records.map(row=>{
+    const registered=row.referral_recipient_id!=null&&
+      ['partner','owner'].includes(row.referral_role)?row.referral_role:null;
+    const legacy=row.referred_groomer_id!=null?'partner':
+      row.referred_owner_id!=null?'owner':null;
+    const role=registered||legacy;
+    const oldAmount=role==='partner'?row.referred_groomer_amount:row.referred_owner_amount;
+    const recordedAmount=registered?row.referral_amount:oldAmount;
+    const referral=role?Math.min(budget,Math.max(0,Number(recordedAmount??1000))):0;
+    return [row.point_id,{
+      manager_bonus:row.manager_point_id!=null?Math.max(0,budget-referral):0,
+      groomer_bonus:role==='partner'?referral:0,
+      owner_bonus:role==='owner'?referral:0,
+      referral_role:role,
+    }];
+  }));
+}
 // One aggregate query for all points: approved deliveries before the first
 // paid order, excluding later replenishment. Missing purchase cost is modeled
 // as half current retail price (not a historical supplier invoice).
@@ -200,6 +241,7 @@ function loadPointInventoryValuation(database){
 function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[],period=null){
   const inventoryByPoint=loadPointInventoryValuation(database);
   const initialGoodsByPoint=loadInitialGoodsValuation(database);
+  const bonusByPoint=loadPointLaunchBonusAllocations(database,assumptions);
   const sales=new Map();
   // Reuse already fetched anonymized paid orders for founder dashboards.
   // Orders with full refunds contribute zero, matching existing reporting.
@@ -226,7 +268,7 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   const margin=Number(contribution.contribution_margin_percent||0)/100;
   const points=listPointEquipment(database).map(row=>{
     const base=estimatePointLaunchCost(row,assumptions,contribution,
-      initialGoodsByPoint.get(row.point_id));
+      initialGoodsByPoint.get(row.point_id),bonusByPoint.get(row.point_id));
     const actual=sales.get(row.point_id)||{revenue:0,orders:0};
     const monthlyRevenue=days?actual.revenue/days*30.4375:null;
     const monthlyContribution=monthlyRevenue===null?null:monthlyRevenue*margin;
@@ -258,9 +300,9 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   points.sort((a,b)=>b.period_revenue-a.period_revenue||a.point_name.localeCompare(b.point_name,'ru'));
   const configured=points.filter(p=>p.type);
   return {
-    assumption:'Для точек без стойки/полки запуск = первоначально размещённый товар по себестоимости + модельный бонус менеджеру. Если закупочная себестоимость варианта неизвестна, для управленческой оценки берём 50% от цены продажи. Условные 15 000 ₽ иных расходов не добавляются. Стартовый товар определяется по подтверждённым перемещениям до первой оплаченной продажи, без поздних пополнений. При отсутствии записей о стартовой выкладке сумма не выводится. Для точек с оборудованием сохраняется модельная смета; текущие остатки в неё повторно не прибавляются.',
+    assumption:'ВСЕ точки оцениваются одинаково: фактически выбранное оборудование + стартовая выкладка из подтверждённых перемещений ДО первой оплаченной продажи + модельные разовые бонусы менеджеру и пригласившему грумеру/владельцу. Общие условные расходы 15 000 ₽ и 20 000 ₽ не применяются. Для товара без закупочной цены берём 50% розничной цены; последующие пополнения не включаем. Без подтверждения первоначальных поставок выводим нижний предел («от») или прочерк — вымышленных затрат нет. Бюджет запуска обычно 2 000 ₽: без приглашения менеджеру 2 000 ₽, с приглашением 1 000 ₽ менеджеру и 1 000 ₽ партнёру, без двойного учёта.',
     inventory_disclaimer:'Для товаров с указанной закупочной ценой используется она. Для товаров без закупочной цены применяется модельная себестоимость = цена продажи / 2 (50%), такая часть показывается отдельно и не записывается как фактическая закупка. Начальная выкладка берётся из подтверждённых перемещений до первой продажи; текущие остатки показываются отдельно. Для старых поставок используются сегодняшние цены каталога, а не историческая цена покупки. При консигнации товар может принадлежать поставщику: это оценка размещения, не доказательство оплаты.',
-    profit_disclaimer:'Вклад рассчитывается из фактически оплаченной выручки и плановой маржинальности заказа. Это НЕ фактическая прибыль, не денежный поток и не учтённые расходы. CAPEX не прибавляется к P&L второй раз.',
+    profit_disclaimer:'Стоимость запуска и разовые бонусы отражают управленческую модель, а не подтверждённые переводы денег. Бонусы приглашения не включают текущие комиссии грумеров и владельцев за продажи. Вклад рассчитан из выручки и плановой маржи; это НЕ фактическая прибыль, НЕ бухгалтерская прибыль или денежный поток, CAPEX не включается в P&L второй раз.',
     equipment_prices:{large_stand:5000,small_stand:2500,none:0,shelf:'вручную'},
     baseline_launch_cost:assumptions.launch_cost,
     baseline_other_launch_cost:Math.max(0,Number(assumptions.launch_cost)-5000),
@@ -271,7 +313,12 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
     summary:{
       configured:configured.length,unknown:points.length-configured.length,
       equipment_cost:configured.reduce((total,row)=>total+row.cost,0),
-      estimated_launch_cost:configured.reduce((total,row)=>total+row.estimated_launch_cost,0),
+      estimated_launch_cost:Math.round(points.reduce((total,row)=>total+Number(row.estimated_launch_cost||0),0)*100)/100,
+      estimated_investment:Math.round(points.reduce((total,row)=>total+Number(row.estimated_investment||0),0)*100)/100,
+      incomplete_launch_points:points.filter(row=>row.estimated_investment_incomplete).length,
+      launch_manager_bonus:points.reduce((total,row)=>total+row.launch_manager_bonus,0),
+      launch_groomer_bonus:points.reduce((total,row)=>total+row.launch_groomer_bonus,0),
+      launch_owner_bonus:points.reduce((total,row)=>total+row.launch_owner_bonus,0),
       inventory_qty:points.reduce((sum,row)=>sum+row.inventory_qty,0),
       inventory_known_value:Math.round(points.reduce((sum,row)=>sum+row.inventory_known_value,0)*100)/100,
       inventory_estimated_value:Math.round(points.reduce((sum,row)=>sum+row.inventory_estimated_value,0)*100)/100,
