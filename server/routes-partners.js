@@ -313,7 +313,7 @@ function registerPartnerRoutes(router) {
       '🖊 <b>Новая заявка партнёра — ХвостМаркет</b>',
       '',
       '📋 Код партнёра: ' + partnerCode,
-      firstPurchasePromoCode ? '🎁 Промокод −20% для первой покупки: ' + firstPurchasePromoCode : '',
+      firstPurchasePromoCode ? '🎁 Промокод −' + require('./first-purchase-promo-policy').getFirstPurchasePromoPolicy().discountPercent + '% для первой покупки: ' + require('./first-purchase-promo-policy').displayFirstPurchasePromoCode(firstPurchasePromoCode) : '',
       '👤 ' + full_name,
       '📞 ' + phone,
       '📍 Точка: ' + point.name + ' — ' + point.addr,
