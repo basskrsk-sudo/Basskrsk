@@ -126,12 +126,15 @@ test('per-point economics matches equipment cost and avoids double-booking actua
   const byId=Object.fromEntries(data.points.map(x=>[x.point_id,x]));
   assert.equal(byId['econ-none'].estimated_launch_cost,null,
     'a salon without equipment or tracked starting stock must not inherit fictional overhead');
-  assert.equal(byId['econ-large'].estimated_launch_cost,20000);
+  assert.equal(byId['econ-large'].estimated_launch_cost,5000,
+    'the existing large stand costs only 5,000 RUB; no fictitious 15,000 overhead');
   assert.equal(byId['econ-small'].estimated_launch_cost,null,
     'previous test changed this point to none; no initial fill was recorded');
-  assert.equal(byId['econ-shelf'].estimated_launch_cost,15700);
+  assert.equal(byId['econ-shelf'].estimated_launch_cost,700,
+    'a 700 RUB shelf must not inherit an extra 15,000 RUB');
   assert.equal(byId['econ-none'].estimated_investment,null);
-  assert.equal(byId['econ-large'].estimated_investment,22000);
+  assert.equal(byId['econ-large'].estimated_investment,5000,
+    'a test point with no manager and no shipments has only the known equipment cost');
   assert.equal(byId['econ-unknown'].estimated_investment,null,
     'a point configured to none with no start deliveries has an unknown budget');
   assert.equal(byId['econ-none'].period_revenue,1200);
@@ -148,6 +151,8 @@ test('no-stand launch counts only approved initial goods and bonus, excluding fu
   const id=Number(db.prepare(
     "INSERT INTO managers(mgr_code,login,password_hash,full_name,phone,active) VALUES(?,?,?,?,?,1)"
   ).run('MGR-ECON-START','manager-econ-start','hash','Менеджер','79130000031').lastInsertRowid);
+  db.prepare('INSERT INTO manager_points(manager_id,point_id,point_name,point_type) VALUES(?,?,?,?)')
+    .run(id,'econ-none','Точка econ-none','Груминг');
   const productId=Number(db.prepare(
     'INSERT INTO products(slug,name,category,icon,desc,comp) VALUES(?,?,?,?,?,?)'
   ).run('point-launch-initial-items','Первый товар','treats','🐾','Тест','[]').lastInsertRowid);
@@ -186,6 +191,67 @@ test('no-stand launch counts only approved initial goods and bonus, excluding fu
   assert.equal(point.estimated_investment_incomplete,false,
     'retail-priced inventory can be valued without a recorded purchase price');
   assert.ok(data.assumption.includes('15 000 ₽'));
+});
+
+test('launch math counts actual stands and first fill and splits referral bonuses by role',()=>{
+  const managerId=Number(db.prepare(
+    "INSERT INTO managers(mgr_code,login,password_hash,full_name,phone,active) VALUES(?,?,?,?,?,1)"
+  ).run('MGR-REFERRAL-LAUNCH','manager-referral-launch','hash','Менеджер бонусов','79130000441').lastInsertRowid);
+  const groomerId=Number(db.prepare(
+    'INSERT INTO partners(partner_code,login,password_hash,full_name,phone,point_name,point_id) VALUES(?,?,?,?,?,?,?)'
+  ).run('GR-ECON-REF','groomer-econ-ref','hash','Пригласивший грумер','79130000442','Точка econ-none','econ-none').lastInsertRowid);
+  const ownerId=Number(db.prepare(
+    'INSERT INTO salon_owners(login,password_hash,full_name,phone,point_id) VALUES(?,?,?,?,?)'
+  ).run('owner-econ-ref','hash','Пригласивший владелец','79130000443','econ-none').lastInsertRowid);
+
+  const groomerPoint='econ-ref-groomer',ownerPoint='econ-ref-owner';
+  newPoint(groomerPoint);newPoint(ownerPoint);
+  savePointEquipment(db,groomerPoint,{type:'large_stand'},{id:superId,login:'point-econ-super'});
+  savePointEquipment(db,ownerPoint,{type:'small_stand'},{id:superId,login:'point-econ-super'});
+  for(const pointId of [groomerPoint,ownerPoint]){
+    db.prepare('INSERT INTO manager_points(manager_id,point_id,point_name,point_type) VALUES(?,?,?,?)')
+      .run(managerId,pointId,'Точка '+pointId,'Груминг');
+  }
+  db.prepare('INSERT INTO point_referrals(point_id,point_name,role,recipient_id,recipient_code,amount,source) VALUES(?,?,?,?,?,?,?)')
+    .run(groomerPoint,'Точка '+groomerPoint,'partner',groomerId,'GR-ECON-REF',1000,'test');
+  db.prepare('INSERT INTO point_referrals(point_id,point_name,role,recipient_id,recipient_code,amount,source) VALUES(?,?,?,?,?,?,?)')
+    .run(ownerPoint,'Точка '+ownerPoint,'owner',ownerId,'OWN-ECON-REF',1000,'test');
+
+  const productId=Number(db.prepare('INSERT INTO products(slug,name,category,icon,desc,comp) VALUES(?,?,?,?,?,?)')
+    .run('point-referral-stock','Себестоимость старта','treats','🐾','Тест','[]').lastInsertRowid);
+  const variantId=Number(db.prepare('INSERT INTO product_variants(product_id,weight,price,cost_price) VALUES(?,?,?,?)')
+    .run(productId,'100 г',300,100).lastInsertRowid);
+  for(const [pointId,qty] of [[groomerPoint,3],[ownerPoint,4]]){
+    const id=Number(db.prepare(
+      'INSERT INTO stock_movements(manager_id,point_id,city_id,status,reported_at) VALUES(?,?,?,?,?)'
+    ).run(managerId,pointId,'krsk','approved','2026-09-01 08:00:00').lastInsertRowid);
+    db.prepare('INSERT INTO stock_movement_items(movement_id,variant_id,qty) VALUES(?,?,?)')
+      .run(id,variantId,qty);
+  }
+  paidOrder('ECO-REF-GROOMER-PAID',groomerPoint,250);
+  paidOrder('ECO-REF-OWNER-PAID',ownerPoint,250);
+  const a=getUnitEconomicsSettings().assumptions;
+  const model=buildPointEquipmentEconomics(db,a,calculateUnitEconomics(a));
+  const g=model.points.find(p=>p.point_id===groomerPoint);
+  const o=model.points.find(p=>p.point_id===ownerPoint);
+  assert.equal(g.estimated_launch_cost,5300);
+  assert.equal(g.launch_manager_bonus,1000);
+  assert.equal(g.launch_groomer_bonus,1000);
+  assert.equal(g.launch_owner_bonus,0);
+  assert.equal(g.estimated_investment,7300);
+  assert.equal(g.estimated_investment_incomplete,false);
+  assert.equal(o.estimated_launch_cost,2900);
+  assert.equal(o.launch_manager_bonus,1000);
+  assert.equal(o.launch_groomer_bonus,0);
+  assert.equal(o.launch_owner_bonus,1000);
+  assert.equal(o.estimated_investment,4900);
+  assert.equal(o.estimated_investment_incomplete,false);
+  assert.equal(g.launch_bonus_total,2000);
+  assert.equal(o.launch_bonus_total,2000);
+  assert.ok(model.summary.launch_groomer_bonus>=1000);
+  assert.ok(model.summary.launch_owner_bonus>=1000);
+  assert.ok(model.summary.incomplete_launch_points>=1,
+    'points lacking initial movements are marked incomplete rather than filled from current stock');
 });
 
 test('point stock value uses positive physical qty and current variant purchase cost',()=>{
@@ -270,6 +336,9 @@ test('point economics UI exists only in the company founder dashboard',()=>{
   assert.match(founder,/initial_goods_total_estimate/);
   assert.match(founder,/inventory_estimated_value/);
   assert.match(founder,/Без закупочной цены/);
+  for(const part of ['launch_manager_bonus','launch_groomer_bonus','launch_owner_bonus',
+    'Бонус грумеру','Бонус владельцу','founder-point-econ-mobile','Итого запуск'])
+    assert.ok(founder.includes(part),'founder UI should separate all launch bonus components: '+part);
   assert.doesNotMatch(admin,/point-economics-card|point-economics-body|\/api\/economics\/point-launch/);
   assert.doesNotMatch(editor,/renderEconomics|\/api\/economics\/point-launch/);
   assert.doesNotMatch(salon,/point_economics|estimated_investment/);
