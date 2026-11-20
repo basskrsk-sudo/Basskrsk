@@ -421,9 +421,10 @@ function showPhoneStep() {
     + '<label for="phone">Номер телефона</label>'
     + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(knownPhone()) + '" oninput="invalidateQrPromo();checkQrSelfOrder()" onblur="checkQrSelfOrder();validateQrPromo(false)">'
     + '<p class="small muted" id="qrBonesNote" style="margin-top:6px">Свяжем заказ с вашим номером и начислим косточки-бонусы.</p>'
-    + '<label for="qrPromo">Промокод грумера −20% на первую покупку</label>'
+    + '<label for="qrPromo">Промокод грумера −' + window.HvostFirstPurchasePromo.percent() + '% на первую покупку</label>'
     + '<div style="display:flex;gap:8px;margin-bottom:4px"><input id="qrPromo" value="' + esc(new URLSearchParams(location.search).get('promo') || '') + '" placeholder="HVOST20-001" oninput="this.value=this.value.toUpperCase();invalidateQrPromo()" style="margin-bottom:0;flex:1;min-width:0"><button type="button" class="variant" onclick="validateQrPromo(true)" style="white-space:nowrap">Применить</button></div>'
-    + '<p class="small" id="qrPromoMsg" style="min-height:18px;margin-bottom:8px"></p>'
+    + '<p class="small" id="qrPromoMsg" style="min-height:18px;margin-bottom:6px"></p>'
+    + '<p class="small" style="color:#775000;margin:0 0 12px;line-height:1.5">' + esc(window.HvostFirstPurchasePromo.notice()) + '</p>'
     + advisorField
     + '<div class="note" style="display:block">📍 Точка уже определена по QR-коду товара. Повторно выбирать её не нужно.</div>'
     + '<button class="cta" id="payBtn" onclick="startPayment()">Оплатить ' + fmtPrice(v.price) + '</button>'
@@ -483,7 +484,10 @@ async function validateQrPromo(showEmptyError) {
     QR_PROMO_PERCENT = data.valid ? data.discount_percent : 0;
     QR_PROMO_CODE = data.valid ? data.promo_code : '';
     if (msg) {
-      msg.textContent = data.valid ? '✓ Скидка ' + data.discount_percent + '% применена' : '⚠ ' + (data.error || 'Промокод недействителен');
+      msg.textContent = data.valid
+        ? '✓ Скидка ' + data.discount_percent + '% применена. ' +
+          (data.notice || window.HvostFirstPurchasePromo.notice(code))
+        : '⚠ ' + (data.error || 'Промокод недействителен');
       msg.style.color = data.valid ? '#2D7D46' : '#9B2335';
     }
     updateQrPayButton();
@@ -531,7 +535,13 @@ async function startPayment() {
   }
   var selectedPartnerId = advisorValue && advisorValue !== 'self' ? Number(advisorValue) : null;
   var promoInput = document.getElementById('qrPromo');
+  var previousPromoPercent=QR_PROMO_PERCENT;
   if (promoInput && promoInput.value.trim() && !(await validateQrPromo(false))) return;
+  if (promoInput && promoInput.value.trim() && previousPromoPercent &&
+      previousPromoPercent !== QR_PROMO_PERCENT) {
+    showErr('С 1 декабря 2026 скидка на первую покупку — 15%. Сумма обновилась. Проверьте её и нажмите «Оплатить» ещё раз.');
+    return;
+  }
   await checkQrSelfOrder();
   rememberPhone(phone);
   var btn = document.getElementById('payBtn');
@@ -584,7 +594,14 @@ async function startPayment() {
       })
     });
     var data = await res.json();
-    if (!res.ok) throw new Error((data && data.error) || 'Не удалось создать заказ');
+    if (!res.ok) {
+      if (data && data.code === 'ORDER_TOTAL_CHANGED') {
+        invalidateQrPromo();
+        if (promoInput && promoInput.value.trim()) await validateQrPromo(false);
+        throw new Error('Сумма изменилась, в том числе из-за обновления скидки. Проверьте новую цену и повторите оплату.');
+      }
+      throw new Error((data && data.error) || 'Не удалось создать заказ');
+    }
     QR_PUBLIC_NUMBER = data.display_number || '';
 
     recordQrEvent('payment_created',orderId);
