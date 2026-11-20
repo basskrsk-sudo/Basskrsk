@@ -129,8 +129,10 @@ function estimatePointLaunchCost(item, assumptions, contribution, initialGoods =
   return {...item,...initialDetails,other_launch_cost:baseOther,
     estimated_launch_cost:Math.round(launchCost*100)/100,
     estimated_investment:investment,
-    estimated_payback_months:monthly>0?Math.round(investment/monthly*10)/10:null,
-    estimated_orders_to_payback:perOrder>0?Math.ceil(investment/perOrder):null};
+    estimated_payback_months:!initialDetails.estimated_investment_incomplete && monthly>0
+      ?Math.round(investment/monthly*10)/10:null,
+    estimated_orders_to_payback:!initialDetails.estimated_investment_incomplete && perOrder>0
+      ?Math.ceil(investment/perOrder):null};
 }
 
 // One aggregate query for all points; includes multiple approved deliveries
@@ -148,7 +150,7 @@ function loadInitialGoodsValuation(database){
         THEN smi.variant_id END) AS missing_cost_variants
     FROM stock_movements sm
     JOIN stock_movement_items smi ON smi.movement_id=sm.id
-    JOIN product_variants v ON v.id=smi.variant_id
+    LEFT JOIN product_variants v ON v.id=smi.variant_id
     LEFT JOIN (
       SELECT point_id,MIN(created_at) AS first_paid_at
       FROM orders WHERE status='paid' GROUP BY point_id
@@ -209,7 +211,7 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
     const actual=sales.get(row.point_id)||{revenue:0,orders:0};
     const monthlyRevenue=days?actual.revenue/days*30.4375:null;
     const monthlyContribution=monthlyRevenue===null?null:monthlyRevenue*margin;
-    const payback=base.estimated_investment!=null&&monthlyContribution>0
+    const payback=base.estimated_investment!=null&&!base.estimated_investment_incomplete&&monthlyContribution>0
       ? Math.round(base.estimated_investment/monthlyContribution*10)/10:null;
     const inventory=inventoryByPoint.get(row.point_id)||{};
     const inventoryQty=Number(inventory.qty||0);
