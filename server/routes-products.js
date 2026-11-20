@@ -10,6 +10,8 @@ const { sendJson } = require('./http-utils');
 const { requireAuth, requireActiveAdmin, requireSuperAdmin, tryAuth } = require('./routes-auth');
 const { reverseAndDeleteOrdersBy } = require('./order-reversal');
 const { buildCatalog } = require('./product-catalog');
+const { loadQrPreview } = require('./qr-fast-preview');
+const { findDefaultGroomer } = require('./auto-groomer');
 const { createSalesCountCache } = require('./product-sales-cache');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
@@ -56,6 +58,12 @@ function normalizeSalonPhotoUrls(value, legacyPhoto) {
 }
 
 function registerProductRoutes(router) {
+  // Payment-critical QR preview: compact indexed reads, no global catalog or reviews.
+  router.get('/api/qr-preview/:pointId/:product', (req, res, ctx) => {
+    const preview = loadQrPreview(db, ctx.params.pointId, ctx.params.product, findDefaultGroomer);
+    if (!preview) return sendJson(res, 404, { error: 'Точка или товар не найдены' });
+    return sendJson(res, 200, preview);
+  });
   // POST /api/products/upload-image — загрузка фото товара (админ или кладовщик).
   // Картинка приходит base64 в JSON-теле (без multipart — сервер без внешних
   // библиотек), сжимается и приводится к единому размеру через ImageMagick,
