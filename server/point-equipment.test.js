@@ -331,7 +331,7 @@ test('point economics UI exists only in the company founder dashboard',()=>{
   const salon=fs.readFileSync(path.join(__dirname,'../public/taiga-owner.html'),'utf8');
   const editor=fs.readFileSync(path.join(__dirname,'../public/admin-point-equipment.js'),'utf8');
   assert.match(founder,/Экономика каждой точки/);
-  assert.match(founder,/Товар по закупке/);
+  assert.match(founder,/Товар на точках по закупке/);
   assert.match(founder,/estimated_investment_incomplete/);
   assert.match(founder,/initial_goods_total_estimate/);
   assert.match(founder,/inventory_estimated_value/);

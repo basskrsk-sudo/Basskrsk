@@ -99,14 +99,11 @@ function savePointEquipment(database,pointId,input,actor){
   }
 }
 
-// Points without a HvostMarket stand/shelf have NO default 15,000 RUB
-// "other costs": those were a planning assumption for outfitted salons,
-// not evidenced expenditure at Sir Barsik or other no-equipment locations.
-// Their initial product placement is valued from APPROVED stock movements
-// before the first paid sale. Current stock and later restocking must not
-// silently rewrite the original launch estimate.
-// Historical prices are not snapshotted in older movements; use current
-// catalog cost_price and clearly flag missing prices as a lower bound.
+// Uniform factual point-launch valuation, whether or not the point has
+// equipment. The global 15,000/20,000-RUB planning baseline is NOT an expense.
+// Initial goods come from approved pre-sale movements, and 50% of current
+// retail is used for missing historical purchase costs as an estimate.
+
 function estimatePointLaunchCost(item, assumptions, contribution, initialGoods = null, launchBonus = null){
   // Same factual components for ALL points. Never inject default 15k/20k
   // theoretical opening expenses for salons that have no evidence of them.
@@ -305,7 +302,7 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   return {
     assumption:'ВСЕ точки оцениваются одинаково: фактически выбранное оборудование + стартовая выкладка из подтверждённых перемещений ДО первой оплаченной продажи + модельные разовые бонусы менеджеру и пригласившему грумеру/владельцу. Общие условные расходы 15 000 ₽ и 20 000 ₽ не применяются. Для товара без закупочной цены берём 50% розничной цены; последующие пополнения не включаем. Без подтверждения первоначальных поставок выводим нижний предел («от») или прочерк — вымышленных затрат нет. Бюджет запуска обычно 2 000 ₽: без приглашения менеджеру 2 000 ₽, с приглашением 1 000 ₽ менеджеру и 1 000 ₽ партнёру, без двойного учёта.',
     inventory_disclaimer:'Для товаров с указанной закупочной ценой используется она. Для товаров без закупочной цены применяется модельная себестоимость = цена продажи / 2 (50%), такая часть показывается отдельно и не записывается как фактическая закупка. Начальная выкладка берётся из подтверждённых перемещений до первой продажи; текущие остатки показываются отдельно. Для старых поставок используются сегодняшние цены каталога, а не историческая цена покупки. При консигнации товар может принадлежать поставщику: это оценка размещения, не доказательство оплаты.',
-    profit_disclaimer:'Стоимость запуска и разовые бонусы отражают управленческую модель, а не подтверждённые переводы денег. Бонусы приглашения не включают текущие комиссии грумеров и владельцев за продажи. Вклад рассчитан из выручки и плановой маржи; это НЕ бухгалтерская прибыль или денежный поток, CAPEX не включается в P&L второй раз.',
+    profit_disclaimer:'Стоимость запуска и разовые бонусы отражают управленческую модель, а не подтверждённые переводы денег. Бонусы приглашения не включают текущие комиссии грумеров и владельцев за продажи. Вклад рассчитан из выручки и плановой маржи; это НЕ фактическая прибыль, НЕ бухгалтерская прибыль или денежный поток, CAPEX не включается в P&L второй раз.',
     equipment_prices:{large_stand:5000,small_stand:2500,none:0,shelf:'вручную'},
     baseline_launch_cost:assumptions.launch_cost,
     baseline_other_launch_cost:Math.max(0,Number(assumptions.launch_cost)-5000),
