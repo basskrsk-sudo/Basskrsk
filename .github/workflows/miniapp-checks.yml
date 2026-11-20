@@ -113,6 +113,9 @@ on:
       - server/routes-economics.js
       - server/point-equipment.js
       - server/point-equipment.test.js
+      - server/point-period-finance.js
+      - server/point-period-finance.test.js
+      - server/point-economics-rates.js
       - server/routes-point-equipment.js
       - public/admin-point-equipment.js
       - server/economics-dashboard.js
@@ -401,6 +404,9 @@ jobs:
           node --check server/routes-economics.js
           node --check server/point-equipment.js
           node --check server/point-equipment.test.js
+          node --check server/point-period-finance.js
+          node --check server/point-period-finance.test.js
+          node --check server/point-economics-rates.js
           node --check server/routes-point-equipment.js
           node --check public/admin-point-equipment.js
           node --check server/economics-dashboard.js
@@ -648,7 +654,7 @@ jobs:
       - name: Verify one-minute reservation expiry, safe stock release and predeploy cleanup
         run: node --test --test-concurrency=1 server/reservation-one-minute.test.js server/reservation-cleanup-scheduler.test.js server/reservation-predeploy-release.test.js
       - name: Verify point equipment costs, economics, founder and salon access
-        run: node --test --test-concurrency=1 server/point-equipment.test.js
+        run: node --test --test-concurrency=1 server/point-equipment.test.js server/point-period-finance.test.js
       - name: Verify batched stock movement lists and preserved response shape
         run: node --test server/stock-movement-batch.test.js
       - name: Verify atomic receipt and stock movement operations
