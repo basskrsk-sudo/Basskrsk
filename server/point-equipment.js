@@ -325,7 +325,7 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
     baseline_other_launch_cost:Math.max(0,Number(assumptions.launch_cost)-5000),
     manager_launch_bonus:assumptions.manager_launch_bonus,
     model_contribution_margin_percent:Math.round(marginAfterTax*10000)/100,
-    model_tax_rate_percent:POINT_SALES_TAX_RATE*100,
+    model_tax_rate_percent:Math.round(POINT_SALES_TAX_RATE*10000)/100,
     period:period?{key:period.key,from:period.from,to:period.to}:null,
     points,
     summary:{
