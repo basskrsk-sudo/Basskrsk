@@ -2512,12 +2512,13 @@
       <div class="form-group"><label>Телефон *</label><input type="tel" id="oPhone" placeholder="+7 (900) 000-00-00" oninput="formatPhone(this); scheduleCheckoutTelegramOffer(); onFirstPurchasePromoContextChange();" onblur="liveValidatePhone(this); checkLoyaltyByPhone(); checkSelfOrderWarning(); showCheckoutTelegramOffer(); validateFirstPurchasePromo();" autocomplete="new-password"></div>
       <div id="loyalty-msg" style="font-size:.82rem;margin:-.6rem 0 1rem;min-height:1.1em;color:#2D7D46;"></div>
       <div class="form-group">
-        <label>Промокод грумера или салона −20% на первую покупку</label>
+        <label id="first-purchase-promo-label">Промокод грумера или салона на первую покупку</label>
         <div style="display:flex;gap:.5rem;">
           <input type="text" id="oFirstPurchasePromo" placeholder="Например, HV20-001" oninput="this.value=this.value.toUpperCase(); onFirstPurchasePromoContextChange();" style="flex:1;min-width:0;">
           <button type="button" onclick="validateFirstPurchasePromo(true)" style="border:0;border-radius:8px;background:var(--deep);color:#fff;padding:0 .9rem;font-weight:600;cursor:pointer;">Применить</button>
         </div>
         <div id="first-purchase-promo-msg" style="font-size:.8rem;margin-top:.4rem;min-height:1.1em;"></div>
+        <div id="first-purchase-promo-policy-notice" style="font-size:.78rem;margin-top:.45rem;color:#775000;line-height:1.5;"></div>
       </div>
       <input type="hidden" id="oName" value="">
       <input type="hidden" id="oLname" value="">
@@ -2953,6 +2954,18 @@ let firstPurchasePromoPercent = 0;
 let firstPurchasePromoPartnerName = '';
 let lastCheckedFirstPurchasePromoKey = '';
 
+function firstPurchasePromoOffer() {
+  return window.HvostFirstPurchasePromo;
+}
+function updateFirstPurchasePromoNotice(code) {
+  const p = firstPurchasePromoOffer();
+  if (!p) return;
+  const label = document.getElementById('first-purchase-promo-label');
+  const note = document.getElementById('first-purchase-promo-policy-notice');
+  if (label) label.textContent = 'Промокод грумера или салона −' + p.percent() + '% на первую покупку';
+  if (note) note.textContent = p.notice(code || document.getElementById('oFirstPurchasePromo')?.value || '');
+}
+
 function onFirstPurchasePromoContextChange() {
   firstPurchasePromoValid = false;
   firstPurchasePromoPercent = 0;
@@ -2960,6 +2973,7 @@ function onFirstPurchasePromoContextChange() {
   lastCheckedFirstPurchasePromoKey = '';
   const msg = document.getElementById('first-purchase-promo-msg');
   if (msg) msg.textContent = '';
+  updateFirstPurchasePromoNotice();
   renderBonesBlock();
 }
 
@@ -2970,6 +2984,7 @@ async function validateFirstPurchasePromo(showEmptyError = false) {
   if (!codeInput || !phoneInput) return true;
   const code = codeInput.value.trim().toUpperCase();
   const phone = phoneInput.value.trim();
+  updateFirstPurchasePromoNotice(code);
   if (!code) {
     onFirstPurchasePromoContextChange();
     if (showEmptyError && msg) { msg.textContent = 'Введите промокод'; msg.style.color = '#9B2335'; }
@@ -2982,7 +2997,8 @@ async function validateFirstPurchasePromo(showEmptyError = false) {
     return false;
   }
   const pickupPointId = document.getElementById('oPickupSelect')?.value || '';
-  const key = code + ':' + digits.slice(-10) + ':' + pickupPointId;
+  const key = code + ':' + digits.slice(-10) + ':' + pickupPointId + ':' +
+    (firstPurchasePromoOffer()?.percent() || 20);
   if (firstPurchasePromoValid && key === lastCheckedFirstPurchasePromoKey) return true;
   try {
     const res = await fetch('/api/first-purchase-promo/validate?code=' + encodeURIComponent(code) + '&phone=' + encodeURIComponent(phone) + '&point_id=' + encodeURIComponent(pickupPointId));
@@ -2997,6 +3013,8 @@ async function validateFirstPurchasePromo(showEmptyError = false) {
         : '⚠ ' + (data.error || 'Промокод недействителен');
       msg.style.color = data.valid ? '#2D7D46' : '#9B2335';
     }
+    const note = document.getElementById('first-purchase-promo-policy-notice');
+    if (note && data.valid && data.notice) note.textContent = data.notice;
     renderBonesBlock();
     return !!data.valid;
   } catch (e) {
@@ -5547,6 +5565,7 @@ async function openModal() {
   if (refMsg) refMsg.textContent = '';
   const promoInput = document.getElementById('oFirstPurchasePromo');
   if (promoInput) promoInput.value = window._firstPurchasePromoFromLink || '';
+  updateFirstPurchasePromoNotice();
   const promoMsg = document.getElementById('first-purchase-promo-msg');
   if (promoMsg) promoMsg.textContent = '';
   document.getElementById('loyalty-msg').textContent = '';
@@ -5870,6 +5889,9 @@ async function goToPayment() {
     ${promoDiscount > 0 ? `
     <div style="display:flex;justify-content:space-between;color:#2D7D46;">
       <span>🏷️ Промокод на первую покупку −${firstPurchasePromoPercent}%</span><span>−${promoDiscount} ₽</span>
+    </div>
+    <div style="font-size:.8rem;color:#775000;margin-top:8px;padding:8px;background:#FFF8E6;border-radius:8px;">
+      ℹ️ ${escapeHtml(firstPurchasePromoOffer()?.notice(document.getElementById('oFirstPurchasePromo')?.value) || '')}
     </div>` : ''}
     ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 Самозаказ: вознаграждение по тарифу; косточки не списываются и не начисляются.</div>' : ''}
     <div style="border-top:1px solid var(--border);margin-top:.75rem;padding-top:.75rem;display:flex;justify-content:space-between;font-weight:700;font-size:1rem;">
@@ -6069,8 +6091,18 @@ async function launchYooKassaPayment() {
   rememberPhone(phone);
   await checkSelfOrderWarning();
   const promoInput = document.getElementById('oFirstPurchasePromo');
+  const percentBeforeValidation = firstPurchasePromoPercent;
   if (promoInput && promoInput.value.trim() && !(await validateFirstPurchasePromo())) {
     backToStep1();
+    return;
+  }
+  // A checkout left open across midnight must not charge a new amount without
+  // showing it. Recalculate and ask the shopper to confirm the changed offer.
+  if (promoInput && promoInput.value.trim() && percentBeforeValidation &&
+    percentBeforeValidation !== firstPurchasePromoPercent) {
+    backToStep1();
+    const note = document.getElementById('first-purchase-promo-policy-notice');
+    if (note) note.textContent = 'С 01.12.2026 скидка на первую покупку — 15%. Проверьте сумму и подтвердите оформление повторно.';
     return;
   }
   if (isCurrentOrderSelfOrder) { useBones = false; bonesToUse = 0; }
