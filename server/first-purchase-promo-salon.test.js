@@ -34,7 +34,7 @@ function setup() {
   };
   const moduleObj = {exports:{}};
   const source = fs.readFileSync(require.resolve('./first-purchase-promo'),'utf8');
-  vm.runInNewContext(source,{require(name) {if(name==='./db') return db;if(name==='./first-purchase-promo-policy') return require('./first-purchase-promo-policy');throw Error(name);},module:moduleObj,exports:moduleObj.exports});
+  vm.runInNewContext(source,{require(name) {if(name==='./db') return db;if(name==='./first-purchase-promo-policy') return require('./first-purchase-promo-policy');if(name==='./report-phone-key') return require('./report-phone-key');throw Error(name);},module:moduleObj,exports:moduleObj.exports});
   return moduleObj.exports;
 }
 
