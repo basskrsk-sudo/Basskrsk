@@ -10,6 +10,9 @@ const EQUIPMENT = Object.freeze({
   shelf: {label:'Полка ХвостМаркета',cost:null},
 });
 const STANDARD_LARGE_STAND_COST = 5000;
+// Management-only fallback: use 50% of retail price when purchase cost is absent.
+// Does not populate cost_price or alter accounting, commissions, or payouts.
+const ESTIMATED_COST_SHARE = 0.5;
 const MAX_SHELF_COST = 1000000;
 function invalid(message){
   const e=new Error(message); e.statusCode=400;e.code='INVALID_POINT_EQUIPMENT'; return e;
@@ -108,13 +111,19 @@ function estimatePointLaunchCost(item, assumptions, contribution, initialGoods =
   const noEquipment=item.type==='none';
   const hasGoods=Number(initialGoods?.movement_count||0)>0;
   const goodsKnown=Math.max(0,Number(initialGoods?.known_value||0));
+  const goodsEstimated=Math.max(0,Number(initialGoods?.estimated_value||0));
   const missingQty=Number(initialGoods?.missing_cost_qty||0);
+  const unpricedQty=Number(initialGoods?.unpriced_qty||0);
   const initialDetails={
     initial_goods_recorded:hasGoods,
     initial_goods_known_value:hasGoods?goodsKnown:null,
+    initial_goods_estimated_value:hasGoods?goodsEstimated:null,
+    initial_goods_total_estimate:hasGoods?Math.round((goodsKnown+goodsEstimated)*100)/100:null,
     initial_goods_missing_cost_qty:hasGoods?missingQty:null,
     initial_goods_missing_cost_variants:hasGoods?Number(initialGoods?.missing_cost_variants||0):null,
-    estimated_investment_incomplete:noEquipment&&hasGoods&&missingQty>0,
+    initial_goods_unpriced_qty:hasGoods?unpricedQty:null,
+    estimated_investment_incomplete:noEquipment&&hasGoods&&unpricedQty>0,
+    estimated_investment_uses_fallback:noEquipment&&hasGoods&&missingQty>0,
   };
   if(!item.type || (noEquipment&&!hasGoods))
     return {...item,...initialDetails,other_launch_cost:null,
@@ -122,7 +131,7 @@ function estimatePointLaunchCost(item, assumptions, contribution, initialGoods =
       estimated_payback_months:null,estimated_orders_to_payback:null};
   const baseOther=noEquipment
     ?0:Math.max(0,Number(assumptions.launch_cost||0)-STANDARD_LARGE_STAND_COST);
-  const launchCost=baseOther+Number(item.cost||0)+(noEquipment?goodsKnown:0);
+  const launchCost=baseOther+Number(item.cost||0)+(noEquipment?goodsKnown+goodsEstimated:0);
   const investment=Math.round((launchCost+Number(assumptions.manager_launch_bonus||0))*100)/100;
   const monthly=Number(contribution.monthly_contribution_per_point||0);
   const perOrder=Number(contribution.contribution_per_order||0);
@@ -135,17 +144,22 @@ function estimatePointLaunchCost(item, assumptions, contribution, initialGoods =
       ?Math.ceil(investment/perOrder):null};
 }
 
-// One aggregate query for all points; includes multiple approved deliveries
-// before first paid order and excludes later replenishment. Never infer a
-// historical purchase price for a SKU without catalog cost data.
+// One aggregate query for all points: approved deliveries before the first
+// paid order, excluding later replenishment. Missing purchase cost is modeled
+// as half current retail price (not a historical supplier invoice).
 function loadInitialGoodsValuation(database){
   return new Map(database.prepare(`
     SELECT sm.point_id,
       COUNT(DISTINCT sm.id) AS movement_count,
       ROUND(SUM(CASE WHEN v.cost_price IS NOT NULL AND v.cost_price >= 0
         THEN smi.qty * v.cost_price ELSE 0 END),2) AS known_value,
+      ROUND(SUM(CASE WHEN (v.cost_price IS NULL OR v.cost_price < 0) AND v.price >= 0
+        THEN smi.qty * v.price * ${ESTIMATED_COST_SHARE} ELSE 0 END),2) AS estimated_value,
       SUM(CASE WHEN v.cost_price IS NULL OR v.cost_price < 0
         THEN smi.qty ELSE 0 END) AS missing_cost_qty,
+      SUM(CASE WHEN (v.cost_price IS NULL OR v.cost_price < 0) AND
+        (v.price IS NULL OR v.price < 0)
+        THEN smi.qty ELSE 0 END) AS unpriced_qty,
       COUNT(DISTINCT CASE WHEN v.cost_price IS NULL OR v.cost_price < 0
         THEN smi.variant_id END) AS missing_cost_variants
     FROM stock_movements sm
@@ -160,15 +174,20 @@ function loadInitialGoodsValuation(database){
     GROUP BY sm.point_id
   `).all().map(row=>[row.point_id,row]));
 }
-// Point stock valuation is a CURRENT inventory snapshot (not a booking or cash expense).
-// A single SQL aggregate covers the entire network; unknown prices stay unknown.
+// Current stock valuation: catalog cost if known, otherwise 50% retail.
+// Separate the estimated share; never write an estimated cost to the catalog.
 function loadPointInventoryValuation(database){
   return new Map(database.prepare(`
     SELECT s.point_id, SUM(s.qty) AS qty,
       ROUND(SUM(CASE WHEN v.cost_price IS NOT NULL AND v.cost_price >= 0
         THEN s.qty * v.cost_price ELSE 0 END),2) AS known_value,
+      ROUND(SUM(CASE WHEN (v.cost_price IS NULL OR v.cost_price < 0) AND v.price >= 0
+        THEN s.qty * v.price * ${ESTIMATED_COST_SHARE} ELSE 0 END),2) AS estimated_value,
       SUM(CASE WHEN v.cost_price IS NULL OR v.cost_price < 0
         THEN s.qty ELSE 0 END) AS missing_cost_qty,
+      SUM(CASE WHEN (v.cost_price IS NULL OR v.cost_price < 0) AND
+        (v.price IS NULL OR v.price < 0)
+        THEN s.qty ELSE 0 END) AS unpriced_qty,
       SUM(CASE WHEN v.cost_price IS NULL OR v.cost_price < 0
         THEN 1 ELSE 0 END) AS missing_cost_variants
     FROM stock s
@@ -217,10 +236,15 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
     const inventoryQty=Number(inventory.qty||0);
     const inventoryMissingQty=Number(inventory.missing_cost_qty||0);
     const inventoryKnownValue=Number(inventory.known_value||0);
+    const inventoryEstimatedValue=Number(inventory.estimated_value||0);
+    const inventoryUnpricedQty=Number(inventory.unpriced_qty||0);
     return {...base,
       inventory_qty:inventoryQty,
       inventory_known_value:inventoryKnownValue,
-      inventory_valuation:inventoryMissingQty>0?null:inventoryKnownValue,
+      inventory_estimated_value:inventoryEstimatedValue,
+      inventory_valuation:inventoryUnpricedQty>0?null:
+        Math.round((inventoryKnownValue+inventoryEstimatedValue)*100)/100,
+      inventory_unpriced_qty:inventoryUnpricedQty,
       inventory_missing_cost_qty:inventoryMissingQty,
       inventory_missing_cost_variants:Number(inventory.missing_cost_variants||0),
       period_revenue:Math.round(actual.revenue*100)/100,
@@ -234,8 +258,8 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   points.sort((a,b)=>b.period_revenue-a.period_revenue||a.point_name.localeCompare(b.point_name,'ru'));
   const configured=points.filter(p=>p.type);
   return {
-    assumption:'Для точек без стойки/полки запуск = подтверждённая стартовая выкладка по закупочным ценам каталога + модельный бонус менеджеру. Условные 15 000 ₽ общих расходов не добавляются. Стартовая выкладка определяется по подтверждённым перемещениям ДО первой оплаченной продажи: поздние пополнения не учитываются. При отсутствии данных сумма не выводится; при пропущенных закупочных ценах показана только известная часть («от»). Для точек с собственным оборудованием пока сохраняется ранее принятая модельная смета; текущие остатки не прибавляются к ней.',
-    inventory_disclaimer:'Стоимость текущего товара = положительный остаток × закупочная себестоимость варианта. Для точки без стойки вклад стартовой выкладки рассчитан отдельно по ранним подтверждённым перемещениям до первой продажи, а не по сегодняшним остаткам. Для исторических поставок используется актуальная цена из каталога (снимков старых закупочных цен нет). Без цены оценка неполная. При консигнации товар может принадлежать поставщику: это оценка размещения, а не доказательство понесённых денежных затрат.',
+    assumption:'Для точек без стойки/полки запуск = первоначально размещённый товар по себестоимости + модельный бонус менеджеру. Если закупочная себестоимость варианта неизвестна, для управленческой оценки берём 50% от цены продажи. Условные 15 000 ₽ иных расходов не добавляются. Стартовый товар определяется по подтверждённым перемещениям до первой оплаченной продажи, без поздних пополнений. При отсутствии записей о стартовой выкладке сумма не выводится. Для точек с оборудованием сохраняется модельная смета; текущие остатки в неё повторно не прибавляются.',
+    inventory_disclaimer:'Для товаров с указанной закупочной ценой используется она. Для товаров без закупочной цены применяется модельная себестоимость = цена продажи / 2 (50%), такая часть показывается отдельно и не записывается как фактическая закупка. Начальная выкладка берётся из подтверждённых перемещений до первой продажи; текущие остатки показываются отдельно. Для старых поставок используются сегодняшние цены каталога, а не историческая цена покупки. При консигнации товар может принадлежать поставщику: это оценка размещения, не доказательство оплаты.',
     profit_disclaimer:'Вклад рассчитывается из фактически оплаченной выручки и плановой маржинальности заказа. Это НЕ фактическая прибыль, не денежный поток и не учтённые расходы. CAPEX не прибавляется к P&L второй раз.',
     equipment_prices:{large_stand:5000,small_stand:2500,none:0,shelf:'вручную'},
     baseline_launch_cost:assumptions.launch_cost,
@@ -250,8 +274,10 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
       estimated_launch_cost:configured.reduce((total,row)=>total+row.estimated_launch_cost,0),
       inventory_qty:points.reduce((sum,row)=>sum+row.inventory_qty,0),
       inventory_known_value:Math.round(points.reduce((sum,row)=>sum+row.inventory_known_value,0)*100)/100,
-      inventory_valuation:points.some(row=>row.inventory_missing_cost_qty>0)?null:
-        Math.round(points.reduce((sum,row)=>sum+row.inventory_known_value,0)*100)/100,
+      inventory_estimated_value:Math.round(points.reduce((sum,row)=>sum+row.inventory_estimated_value,0)*100)/100,
+      inventory_valuation:points.some(row=>row.inventory_unpriced_qty>0)?null:
+        Math.round(points.reduce((sum,row)=>sum+Number(row.inventory_valuation||0),0)*100)/100,
+      inventory_unpriced_qty:points.reduce((sum,row)=>sum+row.inventory_unpriced_qty,0),
       inventory_missing_cost_qty:points.reduce((sum,row)=>sum+row.inventory_missing_cost_qty,0),
       inventory_missing_cost_variants:points.reduce((sum,row)=>sum+row.inventory_missing_cost_variants,0),
       total_points:points.length,
@@ -262,7 +288,7 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   };
 }
 module.exports={
-  EQUIPMENT,STANDARD_LARGE_STAND_COST,
+  EQUIPMENT,STANDARD_LARGE_STAND_COST,ESTIMATED_COST_SHARE,
   normalizePointEquipment,equipmentLabel,equipmentFromRow,getPointEquipment,
   listPointEquipment,savePointEquipmentInTransaction,savePointEquipment,
   estimatePointLaunchCost,buildPointEquipmentEconomics,
