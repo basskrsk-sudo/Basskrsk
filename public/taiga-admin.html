@@ -1441,7 +1441,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
         <table class="tbl">
           <thead>
-            <tr><th>Точка</th><th>Дата создания</th><th>Промокод −20%</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Открытие</th><th>Оснащение</th><th>Статус</th><th class="r">Действие</th></tr>
+            <tr><th>Точка</th><th>Дата создания</th><th>Промокод на первую покупку</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Открытие</th><th>Оснащение</th><th>Статус</th><th class="r">Действие</th></tr>
           </thead>
           <tbody id="points-mgmt-tbody"></tbody>
         </table>
@@ -2723,7 +2723,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <table class="tbl">
           <thead>
             <tr>
-              <th>Партнёр</th><th>Промокод −20%</th><th>Точка</th><th class="r">Тариф</th><th>Формат</th>
+              <th>Партнёр</th><th>Промокод на первую покупку</th><th>Точка</th><th class="r">Тариф</th><th>Формат</th>
               <th>Приведён грумером</th><th class="r" id="partners-earnings-heading">К выплате</th><th>Статус</th><th class="r">Действия</th>
             </tr>
           </thead>
@@ -2938,6 +2938,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="admin-report-center.js?v=1"></script>
 <script src="/admin-referral-control.js"></script>
     <script src="/week-over-week.js"></script>
+<script src="/first-purchase-promo-display.js?v=20261201"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 // (Старый демонстрационный список точек убран — нигде не использовался,
@@ -5397,7 +5398,7 @@ async function renderPointsManagement() {
     return '<tr>' +
       '<td style="font-weight:500;">' + escapeOrderCell(p.icon + ' ' + p.name) + '</td>' +
       '<td style="font-size:.79rem;">' + dateCell + '</td>' +
-      '<td><button type="button" class="row-btn" data-promo="' + escapeOrderCell(p.first_purchase_promo_code || '') + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + escapeOrderCell(p.first_purchase_promo_code || '—') + '</button></td>' +
+      '<td><button type="button" class="row-btn" data-promo="' + escapeOrderCell(window.HvostFirstPurchasePromo.displayCode(p.first_purchase_promo_code || '')) + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + escapeOrderCell(window.HvostFirstPurchasePromo.displayCode(p.first_purchase_promo_code || '—')) + '</button></td>' +
       '<td style="font-size:.82rem;color:var(--muted);">' + cityName(p.city_id) + '</td>' +
       '<td style="font-size:.82rem;color:var(--muted);">' + p.addr + '</td>' +
       '<td style="font-size:.8rem;">' + type + '</td>' +
@@ -6138,7 +6139,7 @@ function renderMgrPointsTable(filterCode) {
       rows.push('<tr>' +
         '<td style="font-weight:500">' + p.point_name + '</td>' +
         '<td style="font-size:.78rem;color:var(--muted)">' + a.full_name + '</td>' +
-        '<td><button type="button" class="row-btn" data-promo="' + escapeOrderCell(p.salon_first_purchase_promo_code || '') + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.salon_first_purchase_promo_code ? ' disabled' : '') + '>' + escapeOrderCell(p.salon_first_purchase_promo_code || '—') + '</button></td>' +
+        '<td><button type="button" class="row-btn" data-promo="' + escapeOrderCell(window.HvostFirstPurchasePromo.displayCode(p.salon_first_purchase_promo_code || '')) + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.salon_first_purchase_promo_code ? ' disabled' : '') + '>' + escapeOrderCell(window.HvostFirstPurchasePromo.displayCode(p.salon_first_purchase_promo_code || '—')) + '</button></td>' +
         '<td>' + p.point_type + '</td>' +
         '<td class="r">' + p.revenue.toLocaleString('ru-RU') + ' ₽</td>' +
         '<td class="r" style="font-weight:600;color:var(--amber)">' + Math.round(p.revenue * rate).toLocaleString('ru-RU') + ' ₽</td>' +
@@ -7163,13 +7164,13 @@ async function renderPartners() {
   const partnersWithPromo = adminPartners.filter(function(p) { return p.first_purchase_promo_code; });
   promoList.innerHTML = '<div class="card" style="margin-bottom:1rem;">' +
     '<div class="card-title">Персональные промокоды грумеров на первую покупку</div>' +
-    '<p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка 20% применяется один раз по номеру телефона. Нажмите на код, чтобы скопировать.</p>' +
+    '<p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка на первую покупку применяется один раз по номеру телефона. С 01.12.2026 — 15%, ранее выданные коды тоже работают. Нажмите на код, чтобы скопировать.</p>' +
     (partnersWithPromo.length ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.65rem;">' +
       partnersWithPromo.map(function(p) {
         return '<div style="display:flex;align-items:center;justify-content:space-between;gap:.7rem;border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;background:#FAFBF8;">' +
           '<div style="min-width:0;"><div style="font-weight:600;font-size:.84rem;">' + escapeOrderCell(p.full_name) + '</div>' +
           '<div style="font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeOrderCell(p.point_name || 'Точка не указана') + (p.active ? '' : ' · отключён') + '</div></div>' +
-          '<button type="button" class="row-btn" style="margin:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(p.first_purchase_promo_code) + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)">' + escapeOrderCell(p.first_purchase_promo_code) + '</button>' +
+          '<button type="button" class="row-btn" style="margin:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(window.HvostFirstPurchasePromo.displayCode(p.first_purchase_promo_code)) + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)">' + escapeOrderCell(window.HvostFirstPurchasePromo.displayCode(p.first_purchase_promo_code)) + '</button>' +
         '</div>';
       }).join('') + '</div>' : '<p style="color:var(--muted);font-size:.82rem;">Промокодов пока нет.</p>') +
     '</div>';
@@ -7186,7 +7187,7 @@ async function renderPartners() {
     const payableWithBonus = Number(p.current_earnings || 0) + pendingReferralBonus;
     return '<tr>' +
       '<td style="font-weight:500;">' + p.full_name + '<br><span style="font-size:.72rem;color:var(--muted);font-family:monospace;">' + p.partner_code + ' · ' + p.login + '</span></td>' +
-      '<td><button type="button" class="row-btn" style="margin-left:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(p.first_purchase_promo_code || '') + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + (p.first_purchase_promo_code ? escapeOrderCell(p.first_purchase_promo_code) : '—') + '</button></td>' +
+      '<td><button type="button" class="row-btn" style="margin-left:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(window.HvostFirstPurchasePromo.displayCode(p.first_purchase_promo_code || '')) + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + (p.first_purchase_promo_code ? escapeOrderCell(window.HvostFirstPurchasePromo.displayCode(p.first_purchase_promo_code)) : '—') + '</button></td>' +
       '<td>' + p.point_name + (p.point_address ? '<br><span style="font-size:.75rem;color:var(--muted);">' + p.point_address + '</span>' : '') +
         (samePoint.length ? '<br><span style="font-size:.72rem;color:var(--amber);">👥 Также на точке: ' + samePoint.map(function(x) { return x.full_name; }).join(', ') + '</span>' : '') + '</td>' +
       '<td class="r" style="font-weight:600;' + (isRisky ? 'color:#7A4A00;' : '') + '">' +

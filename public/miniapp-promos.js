@@ -12,6 +12,10 @@
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
     });
   }
+  function offerPolicy() { return window.HvostFirstPurchasePromo; }
+  function codeForCustomer(code) {
+    return offerPolicy().displayCode(code);
+  }
   function card(key, title, value, description) {
     if (!value) {
       return '<div class="work-promo-card"><b>' + esc(title) + '</b>' +
@@ -75,8 +79,9 @@
     var point = partner.current_point &&
       String(partner.current_point.id) === String(partner.point_id)
       ? partner.current_point : null;
-    var groomerCode = String(partner.first_purchase_promo_code || '').trim();
-    var salonCode = point ? String(point.first_purchase_promo_code || '').trim() : '';
+    var groomerCode = codeForCustomer(partner.first_purchase_promo_code || '');
+    var salonCode = point ? codeForCustomer(point.first_purchase_promo_code || '') : '';
+    var promoPercent=offerPolicy().percent();
     var referralCode = String(partner.partner_code || '').trim();
     var buyerLink = point && groomerCode
       ? 'https://хвостмаркет.рф/?ref=' + encodeURIComponent(point.id) +
@@ -88,12 +93,13 @@
       ? 'https://хвостмаркет.рф/partner-invite.html?ref=' + encodeURIComponent(referralCode)
       : '';
     return '<section class="work-surface"><h2>🎁 Мои промокоды</h2>' +
-      '<p class="work-note">Скидка 20% на первую покупку доступна один раз ' +
-      'на номер телефона покупателя. Промокоды грумера и салона отличаются.</p>' +
+      '<p class="work-note">Скидка '+promoPercent+'% на первую покупку доступна один раз ' +
+      'на номер телефона покупателя. Промокоды грумера и салона отличаются. '+
+      esc(offerPolicy().notice(groomerCode))+'</p>' +
       '<div class="work-promo-list">' +
-      card('groomer', '✂️ Персональный промокод грумера −20%', groomerCode,
+      card('groomer', '✂️ Персональный промокод грумера −'+promoPercent+'%', groomerCode,
         'Поделитесь с новым покупателем.') +
-      card('salon', '🏪 Промокод моего салона −20%', salonCode,
+      card('salon', '🏪 Промокод моего салона −'+promoPercent+'%', salonCode,
         point ? 'Действующая точка: ' + point.name : 'Нет действующего назначенного салона.') +
       card('referral', '🤝 Реферальный код для привлечения точек', referralCode,
         'Пригласите нового грумера или салон.') +
