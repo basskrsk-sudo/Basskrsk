@@ -116,7 +116,14 @@
       '<th style="text-align:right;padding:.55rem;">Выручка</th><th style="text-align:right;padding:.55rem;">Вклад, модель</th>'+
       '<th style="text-align:right;padding:.55rem;">Окупаемость</th></tr></thead><tbody>'+
       pointRows.map(function(item){
-        var cost=item.estimated_investment==null?'—':rub(item.estimated_investment);
+        var cost=item.estimated_investment==null?'—':
+          (item.estimated_investment_incomplete?'от ':'')+rub(item.estimated_investment);
+        var launchNote=item.type!=='none'?'':(!item.initial_goods_recorded
+          ?'Не найдена подтверждённая стартовая выкладка'
+          :'Стартовый товар: от '+rub(item.initial_goods_known_value)+
+            ' + бонус менеджеру (модель)'+
+            (item.initial_goods_missing_cost_qty
+              ?' · без закупочной цены '+n(item.initial_goods_missing_cost_qty)+' ед.':''));
         var label=item.label||'Не указано';
         var inventoryCost=item.inventory_valuation==null?
           'от '+rub(item.inventory_known_value):rub(item.inventory_valuation);
@@ -127,7 +134,8 @@
         return '<tr data-founder-econ-row data-point-search="'+clean((item.point_name||'').toLowerCase())+'">'+
           '<td style="padding:.55rem;border-top:1px solid #e1e9e4;"><b>'+clean(item.point_name)+'</b></td>'+
           '<td style="padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(label)+(item.type==='shelf'?' · '+rub(item.cost):'')+'</td>'+
-          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(cost)+'</td>'+
+          '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(cost)+
+          (launchNote?'<small style="display:block;color:#57675e;">'+clean(launchNote)+'</small>':'')+'</td>'+
           '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(inventoryCost)+
           '<small style="display:block;color:#57675e;">'+clean(inventoryNote)+'</small></td>'+
           '<td style="text-align:right;padding:.55rem;border-top:1px solid #e1e9e4;">'+clean(rub(item.period_revenue))+'</td>'+
