@@ -14,7 +14,11 @@ function fixture(){
     CREATE TABLE partner_payout_items(order_id INTEGER,commission_amount REAL);
     CREATE TABLE owner_payout_items(order_id INTEGER,commission_amount REAL);
     CREATE TABLE product_variants(id INTEGER PRIMARY KEY,price REAL,cost_price REAL);
-    CREATE TABLE order_items(order_id INTEGER,variant_id INTEGER,qty INTEGER,price REAL);
+    CREATE TABLE order_items(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER,variant_id INTEGER,qty INTEGER,price REAL,
+      name TEXT DEFAULT 'Товар',weight TEXT DEFAULT '1 шт',is_custom INTEGER DEFAULT 0
+    );
     INSERT INTO partners VALUES(1,0.15);
     INSERT INTO salon_owners VALUES(2,'a',0.2,1);
     INSERT INTO product_variants VALUES(1,250,100),(2,300,120),(3,250,NULL);
