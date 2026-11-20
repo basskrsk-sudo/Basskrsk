@@ -23,7 +23,7 @@ const { checkAndPayManagerBonus } = require('./bonus-logic');
 const { sendUnpaidOrderAlert, wakeUnpaidOrderAlertScheduler } = require('./unpaid-order-alerts');
 const { priceCatalogCart, calculateDeliveryFee, buildReceiptItems } = require('./order-pricing');
 const {
-  FIRST_PURCHASE_DISCOUNT_PERCENT,
+  getFirstPurchasePromoPolicy,
   validateFirstPurchasePromo,
   claimFirstPurchasePromo,
   releaseFirstPurchasePromoClaim,
@@ -348,6 +348,12 @@ function startReservationCleanup() {
 
 function registerPaymentRoutes(router) {
   startReservationCleanup();
+  router.get('/api/first-purchase-promo/policy', (req, res) => {
+    const policy = getFirstPurchasePromoPolicy();
+    sendJson(res, 200, {discount_percent: policy.discountPercent,
+      effective_on:policy.effectiveOn,timezone:policy.timezone,
+      changed:policy.changed});
+  });
   router.get('/api/first-purchase-promo/validate', (req, res, ctx) => {
     const result = validateFirstPurchasePromo(ctx.query.code, ctx.query.phone, ctx.query.point_id);
     if (!result.valid) return sendJson(res, 200, result);
@@ -357,6 +363,7 @@ function registerPaymentRoutes(router) {
       partner_name: result.partnerName,
       point_name: result.pointName,
       discount_percent: result.discountPercent,
+      notice: result.notice,
     });
   });
 
@@ -401,7 +408,9 @@ function registerPaymentRoutes(router) {
           code: 'FIRST_PURCHASE_PROMO_INVALID',
         });
       }
-      promoDiscount = Math.round(pricedCart.subtotal * FIRST_PURCHASE_DISCOUNT_PERCENT / 100);
+      // Use this validation's authoritative rate, not a hard-coded 20%.
+      // The cutoff is server time, independent of phone timezone.
+      promoDiscount = Math.round(pricedCart.subtotal * promoValidation.discountPercent / 100);
     }
     const goodsAfterPromo = pricedCart.subtotal - promoDiscount;
     // Довоз недостающего веса в точку больше не предлагается. Не доверяем

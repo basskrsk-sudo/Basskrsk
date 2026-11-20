@@ -2,7 +2,11 @@
 
 const db = require('./db');
 
-const FIRST_PURCHASE_DISCOUNT_PERCENT = 20;
+const {
+  getFirstPurchasePromoPolicy,
+  lookupStoredFirstPurchasePromoCode,
+  firstPurchasePromoNotice,
+} = require('./first-purchase-promo-policy');
 
 function normalizePromoCode(value) {
   return String(value || '').trim().toUpperCase();
@@ -20,20 +24,24 @@ function hasPaidOrderForPhone(phone) {
   return rows.some((row) => normalizePromoPhone(row.customer_phone) === normalized);
 }
 
-function validateFirstPurchasePromo(code, phone, pointId = null) {
+function validateFirstPurchasePromo(code, phone, pointId = null, now = Date.now()) {
   const promoCode = normalizePromoCode(code);
+  // Read-only alias: after 1 December both HV20 and HV15 point/partner codes
+  // resolve to the same original code stored in SQLite. Old QR labels survive.
+  const storedCode = lookupStoredFirstPurchasePromoCode(promoCode, now);
+  const policy = getFirstPurchasePromoPolicy(now);
   const normalizedPhone = normalizePromoPhone(phone);
   if (!promoCode) return { valid: false, error: 'Введите промокод на первую покупку' };
   if (!normalizedPhone) return { valid: false, error: 'Сначала укажите корректный номер телефона' };
 
-  const point = db.prepare('SELECT id, name, first_purchase_promo_code FROM points WHERE UPPER(first_purchase_promo_code) = ? AND active = 1').get(promoCode);
-  const alias = point ? null : db.prepare('SELECT p.id, p.name, p.first_purchase_promo_code FROM first_purchase_point_promo_aliases a JOIN points p ON p.id=a.point_id WHERE UPPER(a.promo_code)=? AND p.active=1').get(promoCode);
+  const point = db.prepare('SELECT id, name, first_purchase_promo_code FROM points WHERE UPPER(first_purchase_promo_code) = ? AND active = 1').get(storedCode);
+  const alias = point ? null : db.prepare('SELECT p.id, p.name, p.first_purchase_promo_code FROM first_purchase_point_promo_aliases a JOIN points p ON p.id=a.point_id WHERE UPPER(a.promo_code)=? AND p.active=1').get(storedCode);
   const salon = point || alias;
   const partner = salon ? null : db.prepare(`
     SELECT id, full_name, first_purchase_promo_code
     FROM partners
     WHERE UPPER(first_purchase_promo_code) = ? AND active = 1
-  `).get(promoCode);
+  `).get(storedCode);
   if (!salon && !partner) return { valid: false, error: 'Промокод не найден или неактивен' };
   if (salon && (!pointId || String(salon.id) !== String(pointId))) return { valid: false, error: 'Промокод действует при покупке в указанном салоне' };
   if (hasPaidOrderForPhone(normalizedPhone)) {
@@ -44,12 +52,14 @@ function validateFirstPurchasePromo(code, phone, pointId = null) {
 
   return {
     valid: true,
-    promoCode: salon ? promoCode : partner.first_purchase_promo_code,
+    // Keep exactly the code the buyer entered, not a hidden rewrite.
+    promoCode,
     partnerId: partner ? partner.id : null,
     partnerName: partner ? partner.full_name : null,
     pointId: salon ? salon.id : null,
     pointName: salon ? salon.name : null,
-    discountPercent: FIRST_PURCHASE_DISCOUNT_PERCENT,
+    discountPercent: policy.discountPercent,
+    notice: firstPurchasePromoNotice(promoCode, now),
     normalizedPhone,
   };
 }
@@ -92,7 +102,7 @@ function releaseFirstPurchasePromoClaim(orderId) {
 }
 
 module.exports = {
-  FIRST_PURCHASE_DISCOUNT_PERCENT,
+  getFirstPurchasePromoPolicy,
   normalizePromoCode,
   normalizePromoPhone,
   validateFirstPurchasePromo,
