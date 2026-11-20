@@ -278,8 +278,19 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
   const marginBeforeTax=(Number(contribution.contribution_margin_percent||0)+
     Number(assumptions.tax_percent||0))/100;
   const marginAfterTax=marginBeforeTax-POINT_SALES_TAX_RATE;
+  // The launch-estimate payback fields must use the same 7%-tax-adjusted
+  // contribution as the actual-period payback; otherwise the API returns
+  // contradictory 6% and 7% results for one point.
+  const modelOrderRevenue=Number(contribution.revenue_per_order ?? assumptions.average_order_value ?? 0);
+  const modelMonthlyRevenue=Number(contribution.monthly_revenue_per_point ??
+    modelOrderRevenue*Number(assumptions.monthly_orders_per_point||0));
+  const afterTaxContribution={
+    ...contribution,
+    contribution_per_order:roundMoney(modelOrderRevenue*marginAfterTax),
+    monthly_contribution_per_point:roundMoney(modelMonthlyRevenue*marginAfterTax),
+  };
   const points=listPointEquipment(database).map(row=>{
-    const base=estimatePointLaunchCost(row,assumptions,contribution,
+    const base=estimatePointLaunchCost(row,assumptions,afterTaxContribution,
       initialGoodsByPoint.get(row.point_id),bonusByPoint.get(row.point_id));
     const actual=sales.get(row.point_id)||{revenue:0,orders:0,tax:0};
     const monthlyRevenue=days?actual.revenue/days*30.4375:null;
