@@ -234,6 +234,8 @@ on:
       - server/routes-max-admin.test.js
       - public/max-admin.js
       - public/admin-navigation.js
+      - public/admin-finance.js
+      - server/admin-finance-ui.test.js
       - server/admin-essential-metrics-ui.test.js
       - server/salon-card-scroll-ui.test.js
       - public/admin-point.js
@@ -576,6 +578,8 @@ jobs:
           node --check server/routes-max-admin.test.js
           node --check public/max-admin.js
           node --check public/admin-navigation.js
+          node --check public/admin-finance.js
+          node --check server/admin-finance-ui.test.js
           node --check server/admin-essential-metrics-ui.test.js
           node --check server/salon-card-scroll-ui.test.js
           node --check public/admin-point.js
@@ -703,6 +707,8 @@ jobs:
         run: node --test server/warehouse-list-query.test.js
       - name: Verify exact economics totals after streaming paid orders
         run: node --test server/economics-dashboard-performance.test.js
+      - name: Verify compact Finance tabs, lazy fetches and archive compatibility
+        run: node --test server/admin-finance-ui.test.js
       - name: Verify simplified admin business metrics
         run: node --test server/admin-essential-metrics-ui.test.js server/salon-card-scroll-ui.test.js
       - name: Verify restart-safe daily SQLite backup scheduling
