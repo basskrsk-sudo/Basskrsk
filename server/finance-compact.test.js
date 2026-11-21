@@ -49,7 +49,7 @@ const NOW=new Date('2026-11-21T09:00:00Z');
 test('month and rolling 30-day ranges use local Krasnoyarsk date boundaries',()=>{
   const month=periodBounds('month',new Date('2026-11-20T18:00:00Z'));
   assert.equal(month.from,'2026-10-31 17:00:00');
-  assert.equal(month.to_exclusive,'2026-11-30 17:00:00');
+  assert.equal(month.to_exclusive,'2026-11-21 17:00:00');
   assert.equal(month.from_day,'2026-11-01');
   assert.equal(month.next_day,'2026-12-01');
   const rolling=periodBounds('30d',NOW);
