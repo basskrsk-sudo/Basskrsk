@@ -15,6 +15,7 @@ const { snapshotApiPerformance } = require('./api-performance');
 const { sampleCpuThrottling, snapshotOperations, snapshotSlowSyncOperations } = require('./runtime-diagnostics');
 const { eventLoopStallProfiler } = require('./event-loop-stall-profiler');
 const { createHealthHistory } = require('./health-history');
+const { createHealthWriteQueue } = require('./health-write-queue');
 // Backup module is loaded lazily to avoid initializing its scheduler during
 // lightweight public readiness checks. Sampling never reads its SQLite state.
 function backupStatus(includeSchedule=false){
@@ -40,6 +41,10 @@ const TEMP_COMPARISON_FRESH_MS = 2 * 60 * 1000;
 // added to the existing one-minute health sample, with an extra row on spikes.
 const healthHistory=createHealthHistory({maxSamples:288,minSpacingMs:5*60*1000});
 const ALERT_COOLDOWN_MS = 20 * 60 * 1000;
+const LOOP_ALERT_COOLDOWN_MS = 60 * 60 * 1000;
+function alertCooldownMs(type) {
+  return type === 'event_loop' ? LOOP_ALERT_COOLDOWN_MS : ALERT_COOLDOWN_MS;
+}
 const MAX_RECENT_EVENTS = 35;
 const WARNING_RSS_RATIO = 0.85;
 const WARNING_DISK_BYTES = 100 * 1024 * 1024;
@@ -79,6 +84,8 @@ db.exec("CREATE TABLE IF NOT EXISTS site_health_heartbeat (" +
   "last_seen_at TEXT NOT NULL,boot_id TEXT NOT NULL)");
 
 const bootId = String(BOOTED_AT) + '-' + process.pid;
+const healthWriter = createHealthWriteQueue({source:db.DB_PATH});
+function flushMonitoringWrites() { return healthWriter.flush(); }
 function limitMemory() {
   const defined = Number(process.env.CONTAINER_MEMORY_LIMIT_MB || 0);
   if (Number.isFinite(defined) && defined > 0) return Math.round(defined * 1024 * 1024);
@@ -102,10 +109,7 @@ function appendEvent(type, severity, detail) {
   // All keys/details are server-created, bounded strings. No HTTP input is saved.
   if (!['startup','restart_gap','recovered','database','storage','memory','disk','event_loop'].includes(type)) return;
   if (!['info','warning','critical'].includes(severity)) return;
-  try {
-    db.prepare('INSERT INTO site_health_events(event_type,severity,detail) VALUES(?,?,?)')
-      .run(type,severity,String(detail).slice(0,160));
-  } catch (e) { console.warn('[health] event persist failed:', e.code || 'unknown'); }
+  healthWriter.appendEvent(type,severity,String(detail).slice(0,160));
 }
 // Persistent-storage readiness is intentionally asynchronous: a slow /data
 // mount must never freeze HTTP requests, Telegram polling or payments.
@@ -206,7 +210,7 @@ async function metrics() {
 }
 async function alert(type, severity, detail) {
   const now = Date.now();
-  if (now - (lastAlerts.get(type) || 0) < ALERT_COOLDOWN_MS) return;
+  if (now - (lastAlerts.get(type) || 0) < alertCooldownMs(type)) return;
   lastAlerts.set(type,now);
   const label = severity==='critical'?'🔴':'🟡';
   // Does not work while the whole server is down. GitHub Actions is the
@@ -387,21 +391,16 @@ async function sample() {
         : '')+
       describeIoSpike(lastSample.io_probe));
     if (shouldWriteHeartbeat(now,lastHeartbeatAt)) {
-      try {
-        db.prepare('INSERT INTO site_health_heartbeat(id,last_seen_at,boot_id) VALUES(1,?,?) '+
-          'ON CONFLICT(id) DO UPDATE SET last_seen_at=excluded.last_seen_at,boot_id=excluded.boot_id')
-          .run(new Date(now).toISOString(),bootId);
-        // Advance only after a successful write; a failed disk write retries
-        // on the next one-minute sample without spawning additional timers.
-        lastHeartbeatAt=now;
-      } catch (e) { console.warn('[health] heartbeat unavailable:',e.code||'unknown'); }
+      // A stalled persistent volume must never synchronously freeze checkout
+      // just because the monitoring heartbeat is due.
+      healthWriter.updateHeartbeat(new Date(now).toISOString(),bootId);
+      lastHeartbeatAt=now;
     }
     // Limit history to 90 days. Pruning once per UTC day avoids churn.
     const day = new Date(now).toISOString().slice(0,10);
     if (day !== lastPruneDay) {
       lastPruneDay = day;
-      try { db.prepare("DELETE FROM site_health_events WHERE created_at < datetime('now','-90 days')").run(); }
-      catch (_) {}
+      healthWriter.pruneOldEvents();
     }
   } finally { sampleInFlight = false; }
 }
@@ -442,6 +441,8 @@ function stopHealthWatcher() {
   watcher=null;
   loopHistogram.disable();
   eventLoopStallProfiler.stop();
+  void healthWriter.flush().catch(error =>
+    console.warn('[health] diagnostics flush failed:',error.code || 'unknown'));
 }
 function registerSiteHealthRoutes(router) {
   router.get('/api/live',(req,res)=>{
@@ -467,4 +468,5 @@ module.exports={registerSiteHealthRoutes,healthProbe,metrics,recentEvents,
   appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,
   TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike,
   shouldWriteHeartbeat,isRestartGap,HEARTBEAT_INTERVAL_MS,RESTART_GAP_THRESHOLD_MS,
-  shouldProbePersistentStorage,PERSISTENT_PROBE_INTERVAL_MS};
+  shouldProbePersistentStorage,PERSISTENT_PROBE_INTERVAL_MS,
+  flushMonitoringWrites,alertCooldownMs};

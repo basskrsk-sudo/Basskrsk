@@ -14,7 +14,8 @@ const {registerSiteHealthRoutes,healthProbe,metrics,recentEvents,startHealthWatc
   appendEvent,nextLoopState,shouldProbeTemporaryStorage,TEMP_PROBE_INTERVAL_MS,
   TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike,
   shouldWriteHeartbeat,isRestartGap,HEARTBEAT_INTERVAL_MS,RESTART_GAP_THRESHOLD_MS,
-  shouldProbePersistentStorage,PERSISTENT_PROBE_INTERVAL_MS}=require('./site-health');
+  shouldProbePersistentStorage,PERSISTENT_PROBE_INTERVAL_MS,
+  flushMonitoringWrites,alertCooldownMs}=require('./site-health');
 const routes=new Map(),router={get:(name,handler)=>routes.set(name,handler)};
 registerSiteHealthRoutes(router);
 async function call(pathname,role,id){
@@ -82,6 +83,7 @@ test('only active admin can inspect process metrics and persistent restart log',
   }
   startHealthWatcher();
   appendEvent('restart_gap','warning','Обнаружен перерыв наблюдения');
+  await flushMonitoringWrites();
   const r=await call('/api/admin/system-health','admin',5991);
   assert.equal(r.code,200);
   assert.ok(['ok','degraded'].includes(r.data.status));
@@ -255,4 +257,41 @@ test('persistent storage write probes back off for five minutes but detect failu
   } finally {
     fs.promises.open=original;
   }
+});
+
+test('monitoring writes are delegated to a coalesced worker, not synchronous payment-thread SQL',async()=>{
+  const {EventEmitter}=require('node:events');
+  const {createHealthWriteQueue,MAX_PENDING_EVENTS}=require('./health-write-queue');
+  let workers=0,latestBatch=null;
+  class FakeWorker extends EventEmitter {
+    constructor(_path,opts){
+      super();
+      workers++;
+      latestBatch=opts.workerData;
+      setImmediate(()=>this.emit('message',{ok:true}));
+    }
+    unref(){}
+    terminate(){return Promise.resolve(0);}
+  }
+  const queue=createHealthWriteQueue({source:db.DB_PATH,WorkerClass:FakeWorker,debounceMs:1000});
+  for(let i=0;i<MAX_PENDING_EVENTS+7;i++)
+    queue.appendEvent('event_loop','warning','slow '+i);
+  queue.updateHeartbeat(new Date().toISOString(),'test-boot');
+  queue.pruneOldEvents();
+  assert.equal(workers,0,'enqueue must never synchronously access a SQLite worker');
+  await queue.flush();
+  assert.equal(workers,1,'heartbeat, pruning and events must share one diagnostic transaction');
+  assert.equal(latestBatch.events.length,MAX_PENDING_EVENTS,'queue must remain bounded during outage');
+  assert.equal(latestBatch.events[0].detail,'slow 7');
+  assert.equal(latestBatch.heartbeat.bootId,'test-boot');
+  assert.equal(latestBatch.prune,true);
+  assert.equal(alertCooldownMs('event_loop'),60*60000,'repeated stalls are grouped hourly');
+  assert.equal(alertCooldownMs('database'),20*60000,'critical faults retain urgent warnings');
+});
+test('monitoring event and heartbeat actually persist via worker',async()=>{
+  appendEvent('event_loop','warning','health-worker-persist-test');
+  await flushMonitoringWrites();
+  const rows=db.prepare("SELECT event_type,detail FROM site_health_events WHERE detail=?").all('health-worker-persist-test');
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].event_type,'event_loop');
 });
