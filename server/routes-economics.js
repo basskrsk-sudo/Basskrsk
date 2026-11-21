@@ -14,7 +14,10 @@ const { listExpenseDocuments, cleanupAfterDeletedExpense } = require('./expense-
 const { requireAuth, requireSuperAdmin } = require('./routes-auth');
 const { localDate } = require('./task-reminders');
 const { trackSync } = require('./runtime-diagnostics');
-const { buildEconomicsDashboard } = require('./economics-dashboard');
+const { createCachedEconomicsDashboard } = require('./economics-dashboard');
+// At most six small admin-only snapshots. Any SQLite write invalidates
+// the cache immediately; no stale financial data after an order/refund.
+const getCachedEconomicsDashboard=createCachedEconomicsDashboard(db);
 const {
   calculateUnitEconomics,
   getUnitEconomicsSettings,
@@ -70,7 +73,7 @@ function registerEconomicsRoutes(router) {
     if (!payload) return;
 
     sendJson(res, 200, trackSync('economics_dashboard_build', () =>
-      buildEconomicsDashboard(db, ctx.query || {})));
+      getCachedEconomicsDashboard(ctx.query || {})));
   });
 
   // GET /api/economics/expenses?from=&to=&city= — список расходов за период (для таблицы в админке)

@@ -2,6 +2,7 @@
 // Stream paid orders once. Keep original JS arithmetic and ONE final rounding
 // per role; SQL SUM or joins to manager_points can alter monetary results.
 const {trackSync}=require('./runtime-diagnostics');
+const {createSqliteAnalyticsCache}=require('./analytics-cache');
 const TAX_RATE=0.06,ACQUIRING_FEE_RATE=0.02;
 function parseDateParam(value,fallback){
   if(!value)return fallback;
@@ -68,4 +69,21 @@ function buildEconomicsDashboard(database,query={}){
     rates_used:{tax_rate:TAX_RATE,acquiring_fee_rate:ACQUIRING_FEE_RATE},
   };
 }
-module.exports={buildEconomicsDashboard};
+// The administrator can refresh the same period/city repeatedly without
+// re-reading every paid order from /data. Cache only derived read-only
+// economic snapshots; checkout/stock/refund workflows always query live.
+const ECONOMICS_CACHE_TTL_MS=15*1000;
+function createCachedEconomicsDashboard(database,{ttlMs=ECONOMICS_CACHE_TTL_MS,maxEntries=6,clock=Date.now}={}){
+  const cache=createSqliteAnalyticsCache(database,{ttlMs,maxEntries,clock});
+  return function getCachedEconomicsDashboard(query={}){
+    // Different user filters must never share a cached economic result.
+    // Normalization also deduplicates equivalent ISO and short date filters.
+    const from=parseDateParam(query.from,'2000-01-01T00:00:00.000Z');
+    const to=parseDateParam(query.to,'2100-01-01T00:00:00.000Z');
+    const city=query.city||null;
+    const key=JSON.stringify([from,to,city]);
+    return cache.get(key,()=>buildEconomicsDashboard(database,{from,to,city}));
+  };
+}
+module.exports={buildEconomicsDashboard,createCachedEconomicsDashboard,
+  ECONOMICS_CACHE_TTL_MS};
