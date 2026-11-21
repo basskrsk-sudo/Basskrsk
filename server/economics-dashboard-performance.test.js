@@ -133,6 +133,37 @@ test('single-pass metrics exactly equal legacy financial results for all periods
   }
   assert.ok(buildEconomicsDashboard(db,{}).orders_count>350);
 });
+
+test('economics dashboard caches identical filters and invalidates on financial writes',()=>{
+  const {createCachedEconomicsDashboard,ECONOMICS_CACHE_TTL_MS}=
+    require('./economics-dashboard');
+  let time=1000;
+  const load=createCachedEconomicsDashboard(db,{
+    ttlMs:ECONOMICS_CACHE_TTL_MS,maxEntries:3,clock:()=>time,
+  });
+  const period={from:'2026-11-01',to:'2026-11-30',city:ci1};
+  const first=load(period);
+  assert.strictEqual(load({...period}),first,
+    'an unchanged period/city must skip all paid-order scans');
+  assert.strictEqual(load({from:'2026-11-01T00:00:00Z',
+    to:'2026-11-30T00:00:00Z',city:ci1}),first,
+    'equivalent date inputs share a single result');
+  const another=load({...period,city:ci2});
+  assert.notStrictEqual(another,first,'two cities must not share financial totals');
+  assert.deepEqual(another,oldDashboard({...period,city:ci2}));
+  // A recorded expense is a transaction that must immediately appear
+  // in a refreshed dashboard, even while the 15-second TTL remains valid.
+  db.prepare("UPDATE expenses SET amount=amount+1 WHERE city_id=?")
+    .run(ci1);
+  const changed=load(period);
+  assert.notStrictEqual(changed,first);
+  assert.deepEqual(changed,oldDashboard(period));
+  assert.strictEqual(load(period),changed);
+  time+=ECONOMICS_CACHE_TTL_MS+1;
+  assert.notStrictEqual(load(period),changed,
+    'time expiry refreshes a snapshot even without subsequent writes');
+});
+
 test('paid orders are streamed without creating a large in-memory list',()=>{
   let streaming=0;
   const wrapper={prepare(sql){
