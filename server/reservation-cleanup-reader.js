@@ -81,7 +81,8 @@ function createReservationDeadlineReader({
           ()=>finish(new Error('Reservation deadline reader termination failed'))
         );
       },timeoutMs);
-      timeout.unref?.();
+      // Keep the timeout referenced until the worker replies or terminates.
+      // Otherwise a stalled worker or test stub may leave an unsettled Promise.
       worker.once('message',message=>{
         if(message?.ok===true && (message.expiry===null || typeof message.expiry==='string'))
           finish(null,message.expiry);
