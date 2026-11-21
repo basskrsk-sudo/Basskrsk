@@ -191,8 +191,13 @@ function optedInSaleSubscribers(order) {
   }
   for (const role of ['admin','founder']) {
     const table = role === 'admin' ? 'admins' : 'business_founders';
-    const accounts = db.prepare('SELECT id,telegram_chat_id FROM '+table+' WHERE active=1 AND telegram_chat_id IS NOT NULL').all();
+    const accounts = db.prepare('SELECT id,telegram_chat_id'+
+      (role==='admin'?',role':'')+' FROM '+table+
+      ' WHERE active=1 AND telegram_chat_id IS NOT NULL').all();
     for (const account of accounts) {
+      // A superadmin receives the private detailed profit notification.
+      // Do not send the generic subscriber notice to the same account.
+      if(role==='admin'&&account.role==='super')continue;
       if(preference(role,account.id,'sales')) result.push({role,account});
     }
   }

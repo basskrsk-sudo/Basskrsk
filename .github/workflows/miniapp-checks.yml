@@ -28,6 +28,10 @@ on:
       - server/payment-return-ui.test.js
       - server/routes-orders.js
       - server/admin-orders-batch.test.js
+      - server/sale-profit-estimate.js
+      - server/superadmin-sale-profit.js
+      - server/sale-profit-estimate.test.js
+      - server/admin-sale-profit-ui.test.js
       - server/admin-sales-summary.test.js
       - server/telegram-formatting.js
       - public/hvost-pomoshchi.html
@@ -424,6 +428,10 @@ jobs:
           node --check server/order-display-number.js
           node --check server/order-display-number.test.js
           node --check server/admin-orders-batch.test.js
+          node --check server/sale-profit-estimate.js
+          node --check server/superadmin-sale-profit.js
+          node --check server/sale-profit-estimate.test.js
+          node --check server/admin-sale-profit-ui.test.js
           node --check server/admin-sales-summary.test.js
           node --check server/order-recovery.js
           node --check server/order-recovery.test.js
@@ -735,6 +743,8 @@ jobs:
         run: node --test server/customer-phone-lookup.test.js
       - name: Verify indexed operations-center queries
         run: node --test server/operations-center-query.test.js
+      - name: Verify private superadmin profit and paid-sale detail
+        run: node --test server/sale-profit-estimate.test.js server/admin-sale-profit-ui.test.js
       - name: Verify admin orders load items in one indexed batch
         run: node --test server/admin-orders-batch.test.js
       - name: Verify exact SQL aggregates for admin sales dashboard
