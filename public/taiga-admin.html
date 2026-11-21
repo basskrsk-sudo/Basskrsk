@@ -632,7 +632,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   <button class="nav-item" data-group="inventory" onclick="showSection('products')"><span class="nav-dot"></span> Товары и склад</button>
   <button class="nav-item" data-group="sales" onclick="showSection('orders')"><span class="nav-dot"></span> Продажи</button>
   <button class="nav-item" data-group="promotion" onclick="showSection('campaigns')"><span class="nav-dot"></span> Маркетинг <span id="reviews-pending-badge" style="display:none;background:var(--amber);color:#fff;border-radius:50px;font-size:.68rem;padding:.05rem .45rem;margin-left:.3rem;"></span></button>
-  <button class="nav-item" data-group="finance" onclick="showSection('report-center')"><span class="nav-dot"></span> Финансы и аналитика</button>
+  <button class="nav-item" data-group="finance" onclick="showSection('finance')"><span class="nav-dot"></span> Финансы</button>
   <button class="nav-item" data-group="team" onclick="showSection('tasks')"><span class="nav-dot"></span> Команда</button>
   <button class="nav-item" data-group="system" onclick="showSection('system-health')"><span class="nav-dot"></span> Система и интеграции</button>
   <div class="sidebar-footer">
@@ -694,6 +694,13 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <input type="file" id="restore-backup-file" accept=".db,application/x-sqlite3,application/octet-stream" style="display:none;" onchange="restoreBackupNow(this)">
           <button id="restore-backup-btn" class="row-btn" style="display:none;border-color:#9B2335;color:#9B2335;" onclick="document.getElementById('restore-backup-file').click()">↥ Восстановить из файла</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Lightweight finance view. Heavy reports are still available from Archive. -->
+    <div id="sec-finance" style="display:none;">
+      <div id="admin-finance-root">
+        <div class="card">Открываем финансы…</div>
       </div>
     </div>
 
@@ -898,7 +905,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       <!-- Четыре ключевые метрики. -->
       <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin:1rem 0 .65rem;">
         <h2 style="font-size:1.12rem;font-weight:700;margin:0;">Ключевые показатели</h2>
-        <button type="button" class="row-btn" onclick="showSection('economics')">Прибыль и расходы</button>
+        <button type="button" class="row-btn" onclick="showSection('finance')">Финансы</button>
       </div>
       <div class="kpi-grid">
         <div class="kpi-card">
@@ -2932,7 +2939,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="max-connect.js?v=2"></script>
 <script src="max-admin.js?v=3"></script>
 <script src="partner-network-map.js?v=10"></script>
-<script src="admin-navigation.js?v=4"></script>
+<script src="admin-navigation.js?v=5"></script>
 <script src="admin-point.js?v=2"></script>
 <script src="/admin-point-equipment.js?v=20261119"></script>
 <script src="admin-report-center.js?v=1"></script>
