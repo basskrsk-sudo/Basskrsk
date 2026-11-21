@@ -141,7 +141,7 @@ function loadAdminFinanceModule(){
   if(!adminFinanceModulePromise){
     adminFinanceModulePromise=new Promise(function(resolve,reject){
       const script=document.createElement('script');
-      script.src='/admin-finance.js?v=20261121';
+      script.src='/admin-finance.js?v=20261121-calendar-years';
       script.async=true;
       script.onload=function(){
         if(window.HvostAdminFinance)resolve(window.HvostAdminFinance);
