@@ -141,7 +141,7 @@ test('admin UI has exactly 8 primary menu items and modules without breaking pre
     html.indexOf('<div class="sidebar-footer">'));
   assert.equal((menu.match(/class="nav-item/g)||[]).length,8);
   const names=['dashboard','points','products','orders','campaigns',
-    'report-center','tasks','system-health'];
+    'finance','tasks','system-health'];
   for(const name of names){
     assert.match(menu,new RegExp("showSection\\('"+name+"'\\)"));
   }
