@@ -54,6 +54,11 @@ test('new Finance is default nav; historical report, expense and unit-economics 
   assert.match(nav,/await loadAdminFinanceModule\(\)/);
   assert.doesNotMatch(admin,/<script src="\/admin-finance\.js/,'must not eagerly load finance JS at startup');
   assert.equal((menu.match(/class="nav-item/g)||[]).length,8);
+  assert.match(nav,/loadDeferredFinanceScript/);
+  assert.doesNotMatch(admin,/<script[^>]+src="[^"]*admin-report-center\.js/);
+  assert.doesNotMatch(admin,/<script[^>]+src="[^"]*week-over-week\.js/);
+  assert.match(nav,/await loadDeferredFinanceScript\('report-center'\)/);
+  assert.match(nav,/await loadDeferredFinanceScript\('week-comparison'\)/);
 });
 test('UI only loads summary initially; expenses and payouts are genuinely lazy',async()=>{
  const a=start();
