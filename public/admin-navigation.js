@@ -10,7 +10,7 @@ const titles={
   notifications:'Настройки уведомлений',
   guides:'Инструкции',dashboard:'Операционный центр',
   tasks:'Контроль поручений',
-  economics:'Экономика проекта','business-expenses':'Траты бизнеса',
+  finance:'Финансы',economics:'Экономика проекта','business-expenses':'Траты бизнеса',
   'week-comparison':'Неделя к неделе','weekly-reports':'Отчёт ГД',
   'payout-reports':'Отчёты партнёрам','report-center':'Центр отчётности',
   orders:'Заказы',customers:'Покупатели', stock:'Остатки на точках',
@@ -32,7 +32,7 @@ const sectionGroups={
   products:'inventory',stock:'inventory',warehouse:'inventory',restock:'inventory',
   orders:'sales',customers:'sales',
   campaigns:'promotion',news:'promotion',reviews:'promotion',winback:'promotion',
-  'report-center':'finance',economics:'finance','business-expenses':'finance',
+  finance:'finance','report-center':'finance',economics:'finance','business-expenses':'finance',
   'payout-reports':'finance','week-comparison':'finance','weekly-reports':'finance',
   'qr-analytics':'finance',
   tasks:'team',launch:'team',
@@ -50,8 +50,8 @@ const contextTabs={
   sales:[['orders','Заказы'],['customers','Покупатели']],
   promotion:[['campaigns','Акции и клуб'],['news','Новости'],
     ['winback','Возврат клиентов'],['reviews','Отзывы']],
-  finance:[['report-center','Центр отчётов'],['economics','Экономика'],
-    ['business-expenses','Расходы']],
+  // Three daily finance tabs live inside the finance section.
+  finance:[['finance','Финансы']],
   team:[['tasks','Поручения'],['launch','План запуска']],
   system:[['system-health','Мониторинг'],['notifications','Уведомления'],['telegram-connections','Telegram'],
     ['max','MAX'],['backup','Резервные копии'],['admins','Администраторы',true],
@@ -101,6 +101,28 @@ window.addEventListener('resize', function() {
 });
 
 
+let adminFinanceModulePromise=null;
+function loadAdminFinanceModule(){
+  if(window.HvostAdminFinance)return Promise.resolve(window.HvostAdminFinance);
+  if(!adminFinanceModulePromise){
+    adminFinanceModulePromise=new Promise(function(resolve,reject){
+      const script=document.createElement('script');
+      script.src='/admin-finance.js?v=20261121';
+      script.async=true;
+      script.onload=function(){
+        if(window.HvostAdminFinance)resolve(window.HvostAdminFinance);
+        else reject(new Error('Финансовый модуль не загрузился'));
+      };
+      script.onerror=function(){
+        adminFinanceModulePromise=null;
+        reject(new Error('Не удалось загрузить финансовый модуль'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return adminFinanceModulePromise;
+}
+
 async function showSection(id) {
   // Old links to the removed BSC dashboard return to the business overview.
   if (!sections.includes(id)) id = 'dashboard';
@@ -136,6 +158,17 @@ async function showSection(id) {
   }
   if (id === 'dashboard')   { await loadAdminSalesSummary(); renderDashboard(); }
   if (id === 'tasks')       await loadTaskLinks();
+  if (id === 'finance') {
+    const root=document.getElementById('admin-finance-root');
+    if(root){
+      try{
+        const module=await loadAdminFinanceModule();
+        await module.mount({root,authFetch:authFetch,navigate:showSection});
+      }catch(error){
+        root.textContent='Не удалось открыть финансы: '+(error.message||'Ошибка загрузки');
+      }
+    }
+  }
   if (id === 'economics')   await renderEconomics();
   if (id === 'business-expenses') await renderBusinessExpenses();
   if (id === 'week-comparison') await renderWeekComparison();

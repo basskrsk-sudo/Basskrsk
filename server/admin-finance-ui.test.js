@@ -1,0 +1,87 @@
+'use strict';
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+const read=name=>fs.readFileSync(path.join(__dirname,'..','public',name),'utf8');
+const script=read('admin-finance.js');
+const nav=read('admin-navigation.js');
+const admin=read('taiga-admin.html');
+function start(){
+  const window={};
+  const target={innerHTML:''};
+  const listeners={};
+  const root={dataset:{},innerHTML:'',querySelector:()=>target,
+    contains:()=>true,addEventListener:(name,fn)=>{listeners[name]=fn;}};
+  vm.runInNewContext(script,{window,Intl,Number,Promise});
+  const urls=[],destinations=[];
+  const summary={period:{from_day:'2026-11-01',to_day:'2026-11-21'},
+    revenue:250,expenses:90,orders_count:1,sales_less_recorded_spending:160,
+    point_rows:[{point_name:'Салон <script>alert(1)</script>',
+      point_id:'a',orders_count:1,revenue:250}],
+    disclaimer:'Не является бухгалтерской прибылью'};
+  const expenses={expenses:[{id:1,expense_date:'2026-11-03',category:'Корм',
+    investor_name:'Лакомых Алексей',amount:90}],page:1,total_count:1,
+    total_amount:90,has_next:false};
+  const payouts={pending_total:50,paid_total:20,review_total:0,
+    next_scheduled_day_of_month:25,
+    roles:{partner:{pending:50,paid_total:20},
+      owner:{pending:0,paid_total:0},manager:{pending:0,paid_total:0}},
+    disclaimer:'Предварительный ориентир'};
+  const authFetch=async url=>{
+    urls.push(url);
+    const data=url.includes('/payouts')?payouts:url.includes('/expenses')?expenses:summary;
+    return {ok:true,json:async()=>data};
+  };
+  const click=async dataset=>{
+    listeners.click({target:{closest:()=>({dataset})}});
+    await new Promise(resolve=>setImmediate(resolve));
+  };
+  return {app:window.HvostAdminFinance,root,target,urls,destinations,
+    authFetch,click,listeners};
+}
+test('new Finance is default nav; historical report, expense and unit-economics pages remain',()=>{
+  const menu=admin.slice(admin.indexOf('<aside class="sidebar"'),admin.indexOf('<div class="sidebar-footer">'));
+  assert.match(menu,/showSection\('finance'\)/);
+  assert.doesNotMatch(menu,/Финансы и аналитика/);
+  for(const section of ['finance','report-center','economics','business-expenses',
+    'payout-reports','weekly-reports','week-comparison','qr-analytics']){
+    assert.match(admin,new RegExp('id="sec-'+section+'"'));
+  }
+  assert.match(nav,/adminFinanceModulePromise/);
+  assert.match(nav,/\/admin-finance\.js\?v=/);
+  assert.match(nav,/await loadAdminFinanceModule\(\)/);
+  assert.doesNotMatch(admin,/<script src="\/admin-finance\.js/,'must not eagerly load finance JS at startup');
+  assert.equal((menu.match(/class="nav-item/g)||[]).length,8);
+});
+test('UI only loads summary initially; expenses and payouts are genuinely lazy',async()=>{
+ const a=start();
+ await a.app.mount({root:a.root,authFetch:a.authFetch,navigate:id=>a.destinations.push(id)});
+ assert.equal(a.urls.length,1);
+ assert.match(a.urls[0],/\/api\/admin\/finance\/summary\?period=month/);
+ assert.match(a.root.innerHTML,/Сводка/);
+ assert.match(a.root.innerHTML,/Траты/);
+ assert.match(a.root.innerHTML,/Выплаты/);
+ assert.match(a.target.innerHTML,/250 ₽/);
+ assert.doesNotMatch(a.target.innerHTML,/<script>alert\(1\)<\/script>/);
+ assert.match(a.target.innerHTML,/&lt;script&gt;/);
+ await a.click({financeTab:'expenses'});
+ assert.equal(a.urls.length,2);
+ assert.match(a.urls[1],/\/api\/admin\/finance\/expenses/);
+ assert.match(a.target.innerHTML,/20 записей/);
+ await a.click({financeTab:'payouts'});
+ assert.equal(a.urls.length,3);
+ assert.match(a.urls[2],/\/api\/admin\/finance\/payouts/);
+ assert.match(a.target.innerHTML,/Предварительная оценка/);
+ await a.click({financeAction:'report-center'});
+ assert.equal(a.destinations[0],'report-center');
+});
+test('repeated mount binds at most one set of listeners and escapes XSS',async()=>{
+ const a=start();
+ const settings={root:a.root,authFetch:a.authFetch,navigate:id=>a.destinations.push(id)};
+ await a.app.mount(settings);await a.app.mount(settings);
+ assert.equal(Object.keys(a.listeners).length,2);
+ assert.equal(a.app.escapeHtml('<b>&"'), '&lt;b&gt;&amp;&quot;');
+ assert.equal(a.app.formatMoney(null),'—');
+});
