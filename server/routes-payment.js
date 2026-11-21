@@ -17,6 +17,7 @@ const { matchesQrPaymentRetry } = require('./qr-payment-retry');
 const { storedQrPaymentArgs } = require('./qr-payment-recovery');
 const { sendTelegram, buildOrderMessage } = require('./telegram');
 const { sendPaidOrderNotifications } = require('./order-notifications');
+const { sendSuperadminSaleProfit } = require('./superadmin-sale-profit');
 const { sendJson } = require('./http-utils');
 const { requireAuth, tryAuth } = require('./routes-auth');
 const { recordCustomerOrder, normalizePhone } = require('./routes-customers');
@@ -230,8 +231,9 @@ async function runPaidOrderSideEffects(order, items, demo = false) {
       text: (demo ? '[ДЕМО-РЕЖИМ]\n\n' : '') + buildOrderMessage(order, items).replace(/<\/?b>/g, ''),
     }),
     sendPaidOrderNotifications(order, items),
+    sendSuperadminSaleProfit(db, order, {demo}),
   ]);
-  ['служебный Telegram', 'email', 'персональный Telegram'].forEach((channel, index) => {
+  ['служебный Telegram', 'email', 'персональный Telegram', 'личный расчёт суперадмину'].forEach((channel, index) => {
     const result = notificationResults[index];
     if (result.status === 'rejected') {
       console.error('[paid-order] Канал «' + channel + '» завершился ошибкой:', result.reason && result.reason.message);

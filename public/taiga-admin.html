@@ -1292,6 +1292,16 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
       </div>
     </div>
 
+    <div id="order-profit-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:112;padding:1rem;">
+      <div style="background:var(--card,#fff);border-radius:14px;padding:1.3rem;width:min(780px,100%);max-height:90vh;overflow-y:auto;" role="dialog" aria-modal="true" aria-label="Расчёт прибыли по заказу">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.8rem;">
+          <h3 style="margin:0;">Прибыль по продаже · только суперадмин</h3>
+          <button type="button" class="row-btn" onclick="closeOrderProfit()">Закрыть</button>
+        </div>
+        <div id="order-profit-content" aria-live="polite">Загружаем расчёт…</div>
+      </div>
+    </div>
+
     <div id="order-recovery-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.5);align-items:center;justify-content:center;z-index:110;padding:1rem;">
       <form id="order-recovery-form" onsubmit="submitOrderRecovery(event)" style="background:#fff;border-radius:14px;padding:1.3rem;width:min(720px,100%);max-height:90vh;overflow:auto;">
         <div style="display:flex;justify-content:space-between;gap:1rem;"><h3>Восстановить оплаченную продажу</h3><button type="button" class="row-btn" onclick="document.getElementById('order-recovery-modal').style.display='none'">Закрыть</button></div>
@@ -4753,10 +4763,12 @@ function renderOrders() {
           ? '<button class="row-btn danger" onclick="deleteRefundedTestOrder(' + o.id + ', \'' + o.order_code + '\')">✕ Удалить тестовый</button>'
           : '')
       : '<button class="row-btn danger" onclick="deleteOrder(' + o.id + ', \'' + o.order_code + '\')">✕ Удалить</button>';
+    const profitButton = o.status === 'paid' && currentAdminRole === 'super'
+      ? '<button class="row-btn" onclick="openOrderProfit(' + Number(o.id) + ')">Прибыль</button> ' : '';
     const actionCell = (o.status === 'paid' && !isRefunded && currentAdminRole === 'super')
-      ? '<button class="row-btn" onclick="openOrderPartnerModal(' + o.id + ')">Грумер</button> ' +
+      ? profitButton+'<button class="row-btn" onclick="openOrderPartnerModal(' + o.id + ')">Грумер</button> ' +
         '<button class="row-btn" onclick="openRefundModal(' + o.id + ')">Возврат</button> ' + deleteBtn
-      : deleteBtn;
+      : profitButton+deleteBtn;
     const isPartnerSelfOrder = !!o.is_partner_self_order;
     const isAdvisorSelfChoice = !o.partner_id && o.commission_rate === 0;
     const selfBadge = isPartnerSelfOrder
@@ -4782,6 +4794,64 @@ function renderOrders() {
       '<td>' + statusCell + '</td>' +
       '<td class="r">' + actionCell + '</td></tr>';
   }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Заказов с выбранным статусом нет</td></tr>';
+}
+
+function closeOrderProfit(){
+  const modal=document.getElementById('order-profit-modal');
+  if(modal)modal.style.display='none';
+}
+async function openOrderProfit(orderId){
+  if(currentAdminRole!=='super')return;
+  const modal=document.getElementById('order-profit-modal');
+  const view=document.getElementById('order-profit-content');
+  if(!modal||!view)return;
+  modal.style.display='flex';
+  view.textContent='Загружаем расчёт…';
+  const escape=escapeOrderCell;
+  const rub=value=>Number(value||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+' ₽';
+  try{
+    const response=await authFetch('/api/orders/'+Number(orderId)+'/profit');
+    const body=await response.json();
+    if(!response.ok)throw new Error(body.error||'Ошибка расчёта');
+    if(modal.style.display==='none')return;
+    const x=body.sale;
+    const rows=[
+      ['Выручка после возвратов',x.revenue,false],
+      ['Себестоимость товара',x.cogs_est,true],
+      ['Вознаграждение грумера',x.partner_commission,true],
+      ['Вознаграждение владельца салона',x.salon_commission,true],
+      ['Вознаграждение менеджера ('+x.manager_rate_percent+'%)',x.manager_est,true],
+      ['Налог ('+x.tax_rate_percent+'%)',x.tax_est,true],
+      ['Эквайринг ('+x.acquiring_rate_percent+'%)',x.acquiring_est,true],
+      ['Логистика ('+x.logistics_rate_percent+'%)',x.logistics_est,true],
+    ];
+    const renderRows=arr=>arr.map(item=>
+      '<tr><td>'+escape(item[0])+'</td><td class="r">'+
+      (item[2]?'−':'')+escape(rub(item[1]))+'</td></tr>').join('');
+    const goods=(x.items||[]).map(item=>
+      '<tr><td>'+escape(item.name)+(item.weight?' ('+escape(item.weight)+')':'')+
+      '</td><td class="r">'+escape(item.qty)+'</td>'+
+      '<td class="r">'+escape(rub(item.price*item.qty))+'</td>'+
+      '<td class="r">'+escape(rub(item.net_cost))+(item.cost_estimated?' *':'')+'</td></tr>').join('');
+    const split=x.founder_split_available
+      ?x.founder_shares.map(s=>'<tr><td>'+escape(s.name)+' ('+escape(s.share_percent)+
+        '%)</td><td class="r">'+escape(rub(s.profit_est))+'</td></tr>').join('')
+      :'<tr><td colspan="2">Доли собственников не составляют 100%, расчёт распределения недоступен.</td></tr>';
+    view.innerHTML='<div style="font-size:.82rem;color:var(--muted);margin-bottom:.8rem;">Заказ '+
+      escape(x.order_number)+' · '+escape(x.point_name)+'</div>'+
+      '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Товар</th><th>Шт.</th>'+
+      '<th class="r">Цена</th><th class="r">Себест.</th></tr></thead><tbody>'+
+      (goods||'<tr><td colspan="4">Позиции отсутствуют — себестоимость оценена.</td></tr>')+
+      '</tbody></table></div><div style="overflow-x:auto;margin-top:.6rem"><table class="tbl"><tbody>'+
+      renderRows(rows)+'</tbody></table></div>'+
+      '<div style="font-size:1.1rem;font-weight:800;margin:.9rem 0;">Расчётная прибыль собственников: '+
+      escape(rub(x.founder_profit_est))+'</div>'+
+      '<table class="tbl"><tbody>'+split+'</tbody></table>'+
+      '<p style="font-size:.77rem;color:var(--muted);line-height:1.5;margin-top:.8rem;">'+
+      escape(x.assumptions_note)+'</p>';
+  }catch(error){
+    view.textContent='Не удалось показать расчёт: '+(error.message||'Ошибка сети');
+  }
 }
 
 let recoveryCatalog = [], recoveryPoints = [], recoveryPartners = [];

@@ -8,6 +8,7 @@
 
 const db = require('./db');
 const { sendJson } = require('./http-utils');
+const { loadSaleProfitEstimate } = require('./sale-profit-estimate');
 const { requireAuth, requireSuperAdmin } = require('./routes-auth');
 const yookassa = require('./yookassa');
 const { initializeRecovery, verifyRecoveryPayment, recoverOrder } = require('./order-recovery');
@@ -139,6 +140,30 @@ function registerOrderRoutes(router) {
     if (!order) return sendJson(res, 404, { error: 'Заказ не найден' });
     const items = db.prepare('SELECT variant_id, name, weight, price, qty, is_custom FROM order_items WHERE order_id = ?').all(order.id);
     sendJson(res, 200, { order: { ...order, items } });
+  });
+
+  // Private owner-profit drilldown, only when a superadmin explicitly opens
+  // a paid order. Never aggregate all 500 orders during the order list fetch.
+  router.get('/api/orders/:id/profit', (req, res, ctx) => {
+    const payload = requireSuperAdmin(req, res, ctx);
+    if (!payload) return;
+    const permitted = db.prepare(
+      "SELECT id FROM admins WHERE id=? AND role='super' AND active=1"
+    ).get(payload.id);
+    if (!permitted) return sendJson(res, 403, { error:'Доступ отключён' });
+    const orderId = Number(ctx.params.id);
+    if (!Number.isSafeInteger(orderId) || orderId < 1)
+      return sendJson(res, 400, { error:'Неверный номер заказа' });
+    const order = db.prepare("SELECT * FROM orders WHERE id=? AND status='paid'").get(orderId);
+    if (!order) return sendJson(res, 404, { error:'Оплаченный заказ не найден' });
+    try {
+      const sale = loadSaleProfitEstimate(db, order);
+      res.setHeader('Cache-Control','private, no-store');
+      sendJson(res, 200, { sale });
+    } catch(error) {
+      console.error('[sale-profit] Не удалось рассчитать заказ:',error.message);
+      sendJson(res, 500, { error:'Не удалось получить расчётную прибыль заказа' });
+    }
   });
 
   // PUT /api/orders/:id/partner — исправление атрибуции уже оплаченного
