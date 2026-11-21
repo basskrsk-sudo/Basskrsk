@@ -58,7 +58,7 @@ test('one real paid order gives costs and 45/35/20 private shares to a cent',()=
 test('fallback cost is clearly labeled; refund updates profit and allocations',()=>{
  const db=fixture();
  try{
-  db.exec("INSERT INTO order_items VALUES(2,2,'Игрушка','1 шт',1,300,0,2)");
+  db.exec("INSERT INTO order_items VALUES(2,1,'Игрушка','1 шт',1,300,0,2)");
   const s=loadSaleProfitEstimate(db,{...order(),total:550,refunded_amount:100,
     refund_status:'partially_refunded'},assumptions);
   assert.equal(s.refund_amount,100);
