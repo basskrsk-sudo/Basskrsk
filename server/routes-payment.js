@@ -7,7 +7,7 @@
 
 const db = require('./db');
 const { trackAsync } = require('./runtime-diagnostics');
-const { readExpiredReservationsBatch } = require('./reservation-cleanup-reader');
+const { readExpiredReservationsBatch, readEarliestReservationExpiry } = require('./reservation-cleanup-reader');
 const { createReservationCleanupScheduler } = require('./reservation-cleanup-scheduler');
 const { createSingleFlightJob } = require('./single-flight-job');
 const { assignDisplayNumber } = require('./order-display-number');
@@ -393,10 +393,11 @@ const runReservationCleanup = createSingleFlightJob(
   (error) => console.warn('[reservations] Фоновая сверка не удалась:', error.message)
 );
 
-// Wake near the earliest stored reservation deadline. When the queue is
-// empty, avoid needless SQLite worker scans and payment API calls.
+// Deadline selection runs in a read-only worker, so QR checkout never
+// synchronously waits for a slow persistent storage MIN query.
 const reservationCleanupScheduler = createReservationCleanupScheduler({
   run: () => runReservationCleanup(),
+  readExpiry: () => readEarliestReservationExpiry(db.DB_PATH),
 });
 function startReservationCleanup() {
   reservationCleanupScheduler.start();

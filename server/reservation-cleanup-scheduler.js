@@ -24,29 +24,30 @@ function parseReservationExpiry(expiry) {
   return Date.parse(String(expiry).replace(' ', 'T') + 'Z');
 }
 
-function hasOverdueReservation(nowMs = Date.now(), database = require('./db')) {
-  const expiry = earliestActiveReservationExpiry(database);
-  if (!expiry) return false;
-  const expiresAt = parseReservationExpiry(expiry);
-  // An unreadable legacy deadline is safer to reconcile than to ignore.
-  return !Number.isFinite(expiresAt) || expiresAt <= nowMs;
+function isReservationExpiryOverdue(expiry,nowMs=Date.now()){
+  if(!expiry)return false;
+  const expiresAt=parseReservationExpiry(expiry);
+  // Legacy invalid deadlines must follow safe YooKassa reconciliation.
+  return !Number.isFinite(expiresAt)||expiresAt<=nowMs;
 }
-
-function nextReservationCleanupDelay(nowMs = Date.now(), database = require('./db')) {
-  const expiry = earliestActiveReservationExpiry(database);
-  if (!expiry) return IDLE_RECHECK_MS;
-  const expiresAt = parseReservationExpiry(expiry);
-  if (!Number.isFinite(expiresAt)) return OVERDUE_RETRY_MS;
-  // An overdue payment must be checked with YooKassa. If it cannot be safely
-  // cancelled, retry later rather than burning API requests every second.
-  if (expiresAt <= nowMs) return OVERDUE_RETRY_MS;
-  return Math.max(1000, Math.min(IDLE_RECHECK_MS,
-    expiresAt - nowMs + EXPIRY_CUSHION_MS));
+function nextReservationCleanupDelayFromExpiry(expiry,nowMs=Date.now()){
+  if(!expiry)return IDLE_RECHECK_MS;
+  const expiresAt=parseReservationExpiry(expiry);
+  if(!Number.isFinite(expiresAt)||expiresAt<=nowMs)return OVERDUE_RETRY_MS;
+  return Math.max(1000,Math.min(IDLE_RECHECK_MS,
+    expiresAt-nowMs+EXPIRY_CUSHION_MS));
+}
+function hasOverdueReservation(nowMs=Date.now(),database=require('./db')){
+  return isReservationExpiryOverdue(earliestActiveReservationExpiry(database),nowMs);
+}
+function nextReservationCleanupDelay(nowMs=Date.now(),database=require('./db')){
+  return nextReservationCleanupDelayFromExpiry(earliestActiveReservationExpiry(database),nowMs);
 }
 
 function createReservationCleanupScheduler({
   database = require('./db'),
   run,
+  readExpiry = null,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
   now = Date.now,
@@ -55,6 +56,7 @@ function createReservationCleanupScheduler({
   if (typeof run !== 'function') throw new TypeError('Reservation cleanup job is required');
   let started = false;
   let running = false;
+  let wakeRequested = false;
   let timer = null;
   let dueAt = Infinity;
 
@@ -80,20 +82,38 @@ function createReservationCleanupScheduler({
       return OVERDUE_RETRY_MS;
     }
   }
-  async function tick() {
-    if (!started || running) return;
-    running = true;
-    try {
-      // A healthy empty store otherwise spawned a fresh SQLite reader worker
-      // at boot and every five minutes without a single expired reservation.
-      // Keep the worker for overdue or unparseable deadlines only.
-      if (hasOverdueReservation(now(), database)) await run();
-    } catch (error) {
+  async function tick(){
+    if(!started)return;
+    if(running){wakeRequested=true;return;}
+    running=true;
+    let expiry=null,ran=false,failed=false;
+    try{
+      if(readExpiry){
+        // Read-only SQLite worker: even if /data stalls, checkout still runs.
+        expiry=await readExpiry();
+        if(!started)return;
+        if(isReservationExpiryOverdue(expiry,now())){
+          ran=true;
+          await run();
+        }
+      }else if(hasOverdueReservation(now(),database)){
+        ran=true;
+        await run();
+      }
+    }catch(error){
+      failed=true;
       onError(error);
-    } finally {
-      running = false;
-      // Includes any new checkout started while the preceding scan was busy.
-      if (started) schedule(calculateDelay());
+    }finally{
+      running=false;
+      if(!started)return;
+      const wake=wakeRequested;
+      wakeRequested=false;
+      if(readExpiry){
+        // A reservation created while the worker was busy takes priority.
+        // Reconciliation itself never releases stock without YooKassa.
+        schedule(wake?0:(failed||ran?OVERDUE_RETRY_MS:
+          nextReservationCleanupDelayFromExpiry(expiry,now())));
+      }else schedule(calculateDelay());
     }
   }
   return {
@@ -102,12 +122,17 @@ function createReservationCleanupScheduler({
       started = true;
       schedule(FIRST_RUN_MS); // Restore overdue reservations after a restart.
     },
-    wake() {
-      if (started && !running) schedule(calculateDelay());
-      // A running scan always replans at completion.
+    wake(){
+      if(!started)return;
+      if(readExpiry){
+        // No synchronous SQLite query on the customer's payment request.
+        if(running)wakeRequested=true;
+        else schedule(0);
+      }else if(!running)schedule(calculateDelay());
     },
     stop() {
       started = false;
+      wakeRequested = false;
       if (timer) clearTimer(timer);
       timer = null;
       dueAt = Infinity;
@@ -120,7 +145,7 @@ module.exports = {
   OVERDUE_RETRY_MS,
   FIRST_RUN_MS,
   EXPIRY_CUSHION_MS,
-  nextReservationCleanupDelay,
-  hasOverdueReservation,
+  nextReservationCleanupDelay, nextReservationCleanupDelayFromExpiry,
+  hasOverdueReservation, isReservationExpiryOverdue,
   createReservationCleanupScheduler,
 };

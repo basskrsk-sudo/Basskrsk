@@ -10,11 +10,17 @@ try {
   database = new DatabaseSync(workerData.source, { readOnly: true });
   // SQLite lock waits belong to this thread, not the checkout event loop.
   database.exec('PRAGMA busy_timeout = 3000');
-  const rows = database.prepare(EXPIRED_RESERVATIONS_BATCH_SQL)
-    .all(workerData.afterId, workerData.limit);
+const result=workerData.deadlineOnly===true
+    ? {expiry:database.prepare(
+      "SELECT MIN(reservation_expires_at) AS expiry FROM orders " +
+      "WHERE reservation_status='active' AND status='pending' " +
+      "AND reservation_expires_at IS NOT NULL"
+    ).get()?.expiry ?? null}
+    : {rows:database.prepare(EXPIRED_RESERVATIONS_BATCH_SQL)
+      .all(workerData.afterId,workerData.limit)};
   database.close();
-  database = null;
-  parentPort.postMessage({ ok: true, rows });
+  database=null;
+  parentPort.postMessage({ok:true,...result});
 } catch (error) {
   try { database?.close(); } catch (_) {}
   // Never expose SQL text, payment identifiers or filesystem paths.
