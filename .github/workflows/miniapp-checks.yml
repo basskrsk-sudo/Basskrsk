@@ -652,6 +652,8 @@ jobs:
           node --check server/partner-phone-lookup.test.js
           node --check server/routes-partners.js
           node --check server/routes-owners.js
+          node --check server/owners-registry-summary.js
+          node --check server/owners-registry-summary.test.js
           node --check server/owner-dashboard-aggregate.js
           node --check server/owner-dashboard-aggregate.test.js
           node --check server/miniapp-role-data-audit.test.js
@@ -747,6 +749,8 @@ jobs:
         run: node --test server/order-pricing-batch.test.js
       - name: Verify indexed, unambiguous customer phone lookup
         run: node --test server/customer-phone-lookup.test.js
+      - name: Verify owner registry single SQL payout summary
+        run: node --test server/owners-registry-summary.test.js
       - name: Verify owner dashboard bounded SQL aggregation and payout arithmetic
         run: node --test server/owner-dashboard-aggregate.test.js
       - name: Verify indexed operations-center queries

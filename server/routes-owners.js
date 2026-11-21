@@ -14,12 +14,12 @@ const { sendJson } = require('./http-utils');
 const { requireAuth, requireActiveAdmin } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
+const { readOwnersRegistry } = require('./owners-registry-summary');
 const { trackSync } = require('./runtime-diagnostics');
 const { loadOwnerDashboardSales } = require('./owner-dashboard-aggregate');
 const { normalizeProfile, isLoginAvailable, logProfileCorrection, ProfileCorrectionError } = require('./profile-corrections');
 const {
   createOwnerPayout,
-  getOwnerUnpaidSummary,
   listAllOwnerPayouts,
   listOwnerPayouts,
 } = require('./owner-payouts');
@@ -120,39 +120,9 @@ function registerOwnerRoutes(router) {
   router.get('/api/salon-owners', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    const rows = db.prepare(`
-      SELECT
-        so.*,
-        p.name AS point_name,
-        gp.full_name AS groomer_partner_name,
-        COUNT(o.id) AS paid_orders_count,
-        COALESCE(SUM(o.total), 0) AS paid_revenue,
-        COALESCE(SUM(
-          CASE
-            WHEN o.created_at >= datetime('now', 'start of month') THEN o.total
-            ELSE 0
-          END
-        ), 0) AS month_paid_revenue
-      FROM salon_owners so
-      LEFT JOIN points p ON p.id = so.point_id
-      LEFT JOIN partners gp ON gp.id = so.groomer_partner_id
-      LEFT JOIN orders o ON o.point_id = so.point_id AND o.status = 'paid'
-      GROUP BY so.id
-      ORDER BY so.id DESC
-    `).all();
-    const owners = rows.map((row) => {
-      const commissionRate = Number(row.commission_rate || 0);
-      const unpaid = getOwnerUnpaidSummary(row.id);
-      return safeOwner({
-        ...row,
-        paid_orders_count: Number(row.paid_orders_count || 0),
-        paid_revenue: Number(row.paid_revenue || 0),
-        accrued_earnings: Math.round(Number(row.paid_revenue || 0) * commissionRate),
-        month_earnings: Math.round(Number(row.month_paid_revenue || 0) * commissionRate),
-        current_earnings: unpaid.amount,
-        unpaid_orders_count: unpaid.orders_count,
-      });
-    });
+    // Single aggregated, read-only query: no one-SQL-query-per-owner and
+    // no materialized unpaid order history in the Node.js HTTP loop.
+    const owners = readOwnersRegistry(db).map(safeOwner);
     sendJson(res, 200, { owners });
   });
 
