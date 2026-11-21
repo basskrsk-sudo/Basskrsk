@@ -1671,6 +1671,9 @@
             'Запущен '+number(Math.floor((health.uptime_seconds||0)/60))+' мин. назад')+
           stat('SQLite',health.checks && health.checks.database==='ok'?'Работает':'Ошибка',
             'Проверка доступности БД')+
+          stat('Журнал рабочей SQLite',health.database_journal_mode==='wal'?'WAL':
+            health.database_journal_mode==='delete'?'DELETE':'—',
+            'Режим на Amvera при запуске, не режим бэкапа')+
           stat('Хранилище',health.checks && health.checks.storage==='ok'?'Работает':'Ошибка',
             'Возможность записи /data')+
           stat('Память',health.memory ? number(health.memory.rss_mb)+' МБ':'—',
