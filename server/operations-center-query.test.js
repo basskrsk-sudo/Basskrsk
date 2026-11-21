@@ -4,7 +4,7 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const work=fs.mkdtempSync(path.join(os.tmpdir(),'hm-ops-last-sale-'));
 process.env.DATA_DIR=work;
 const db=require('./db');
-const {SILENT_POINTS_SQL,STOCK_ALERTS_SQL,registerOperationsRoutes}=require('./routes-operations');
+const {SILENT_POINTS_SQL,STOCK_ALERTS_SQL,SILENT_POINTS_PREVIEW_SQL,STOCK_ALERTS_PREVIEW_SQL,registerOperationsRoutes,buildOperationsCenter}=require('./routes-operations');
 const {signToken}=require('./auth');
 const {snapshotOperations}=require('./runtime-diagnostics');
 function point(id,active=1){
@@ -128,6 +128,48 @@ test('paid orders and order items are read once via existing indexes',()=>{
   assert.doesNotMatch(STOCK_ALERTS_SQL,/EXISTS\s*\(/);
   const source=fs.readFileSync(path.join(__dirname,'routes-operations.js'),'utf8');
   assert.match(source,/trackSync\('operations_stock_alerts'/);
+});
+
+
+test('operational previews return five rows while preserving full counts',()=>{
+  // A surge of failed payments or stock alerts must not materialize every
+  // historical issue in the single-threaded Node HTTP process.
+  for(let i=100;i<112;i++)order('ops-old','failed','-4 hours',i);
+  for(let i=100;i<109;i++)point('ops-silent-preview-'+i);
+  for(let i=100;i<109;i++){
+    const variant=makeVariant('preview-'+i);
+    stock('ops-old',variant,i%2===0?1:2);
+  }
+  const preview=buildOperationsCenter();
+  const payments=preview.issues.find(issue=>issue.key==='payments');
+  assert.ok(payments);
+  const paymentCount=db.prepare(
+    "SELECT COUNT(*) AS n FROM orders WHERE "+
+    "(status='pending' AND created_at<=datetime('now','-3 minutes') "+
+    "AND created_at>=datetime('now','-1 day')) "+
+    "OR (status='failed' AND created_at>=datetime('now','-1 day'))"
+  ).get().n;
+  assert.equal(payments.count,paymentCount);
+  assert.equal(payments.details.length,5);
+
+  const originalStock=db.prepare(STOCK_ALERTS_SQL).all();
+  const previewStock=db.prepare(STOCK_ALERTS_PREVIEW_SQL).all();
+  const stockIssue=preview.issues.find(issue=>issue.key==='stock');
+  assert.equal(previewStock.length,5);
+  assert.equal(Number(previewStock[0].total_count),originalStock.length);
+  assert.equal(Number(previewStock[0].out_count),
+    originalStock.filter(row=>row.is_out).length);
+  assert.equal(stockIssue.count,originalStock.length);
+  assert.equal(stockIssue.details.length,5);
+
+  const originalSilent=db.prepare(SILENT_POINTS_SQL).all();
+  const previewSilent=db.prepare(SILENT_POINTS_PREVIEW_SQL).all();
+  const silentIssue=preview.issues.find(issue=>issue.key==='silent_points');
+  assert.equal(previewSilent.length,5);
+  assert.equal(Number(previewSilent[0].total_count),originalSilent.length);
+  assert.equal(silentIssue.count,originalSilent.length);
+  assert.equal(silentIssue.details.length,5);
+  assert.ok(preview.summary.total>=payments.count+stockIssue.count+silentIssue.count);
 });
 
 test.after(()=>{try{db.close();}catch(_){}fs.rmSync(work,{recursive:true,force:true});});

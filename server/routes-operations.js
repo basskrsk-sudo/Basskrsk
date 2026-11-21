@@ -61,6 +61,18 @@ const STOCK_ALERTS_SQL = `
   ORDER BY is_out DESC, s.qty, pt.name, pr.name
 `;
 
+// SQL window totals count the full result before LIMIT; Node only allocates
+// the five lines actually shown in the admin's action card.
+const SILENT_POINTS_PREVIEW_SQL = `
+  SELECT v.*,COUNT(*) OVER() AS total_count FROM (${SILENT_POINTS_SQL}) v
+  ORDER BY CASE WHEN v.last_sale IS NULL THEN 0 ELSE 1 END,v.last_sale LIMIT 5
+`;
+const STOCK_ALERTS_PREVIEW_SQL = `
+  SELECT v.*,COUNT(*) OVER() AS total_count,SUM(v.is_out) OVER() AS out_count
+  FROM (${STOCK_ALERTS_SQL}) v
+  ORDER BY v.is_out DESC,v.qty,v.point_name,v.product_name LIMIT 5
+`;
+
 function buildOperationsCenter() {
   const issues = [];
 
@@ -68,7 +80,8 @@ function buildOperationsCenter() {
   // должны годами висеть красным на главной. Pending считаем проблемой через
   // 3 минуты — тот же порог используется срочным Telegram-оповещением.
   const paymentRows = db.prepare(`
-    SELECT id, order_code, customer_phone, pickup_point, total, status, created_at
+    SELECT id, order_code, customer_phone, pickup_point, total, status, created_at,
+      COUNT(*) OVER() AS total_count
     FROM orders
     WHERE (
       status = 'pending'
@@ -79,13 +92,14 @@ function buildOperationsCenter() {
       AND created_at >= datetime('now', '-1 day')
     )
     ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, created_at DESC
+    LIMIT 5
   `).all();
   addIssue(issues, {
     key: 'payments', severity: 'critical', icon: '💳', title: 'Проблемы с оплатой',
-    count: paymentRows.length,
+    count: Number(paymentRows[0]?.total_count || 0),
     summary: 'Неоплаченные и неуспешные заказы за последние 24 часа',
     section: 'orders', action_label: 'Открыть заказы',
-    details: paymentRows.slice(0, 5).map((row) => ({
+    details: paymentRows.map((row) => ({
       title: row.order_code + ' · ' + money(row.total).toLocaleString('ru-RU') + ' ₽',
       meta: row.customer_phone + ' · ' + row.pickup_point,
       badge: row.status === 'pending' ? 'Ожидает оплату' : 'Ошибка оплаты',
@@ -95,30 +109,31 @@ function buildOperationsCenter() {
   // Нулевой остаток показываем только по товарам, которые реально продавались
   // на этой точке за 30 дней. Иначе каждая ещё не заполненная матрица создала
   // бы десятки ложных тревог. Остаток 1–2 единицы всегда требует внимания.
-  const stockRows = trackSync('operations_stock_alerts', () => db.prepare(STOCK_ALERTS_SQL).all());
-  const outCount = stockRows.filter((row) => row.is_out).length;
+  const stockRows = trackSync('operations_stock_alerts', () => db.prepare(STOCK_ALERTS_PREVIEW_SQL).all());
+  const stockCount = Number(stockRows[0]?.total_count || 0);
+  const outCount = Number(stockRows[0]?.out_count || 0);
   addIssue(issues, {
     key: 'stock', severity: outCount ? 'critical' : 'warning', icon: '📦',
     title: outCount ? 'Товар закончился или заканчивается' : 'Товар заканчивается',
-    count: stockRows.length,
+    count: stockCount,
     summary: outCount
-      ? 'Нет в наличии: ' + outCount + ' поз.; остаток 1–2 шт.: ' + (stockRows.length - outCount)
+      ? 'Нет в наличии: ' + outCount + ' поз.; остаток 1–2 шт.: ' + (stockCount - outCount)
       : 'На точках осталось по 1–2 единицы товара',
     section: 'stock', action_label: 'Открыть остатки',
-    details: stockRows.slice(0, 5).map((row) => ({
+    details: stockRows.map((row) => ({
       title: row.product_name + ' · ' + row.weight,
       meta: row.point_name,
       badge: row.qty <= 0 ? 'Нет в наличии' : 'Осталось ' + row.qty,
     })),
   });
 
-  const noSalesRows = db.prepare(SILENT_POINTS_SQL).all();
+  const noSalesRows = db.prepare(SILENT_POINTS_PREVIEW_SQL).all();
   addIssue(issues, {
     key: 'silent_points', severity: 'warning', icon: '📉', title: 'Точки без продаж',
-    count: noSalesRows.length,
+    count: Number(noSalesRows[0]?.total_count || 0),
     summary: 'Нет оплаченных заказов более 7 дней',
     section: 'points', action_label: 'Открыть точки',
-    details: noSalesRows.slice(0, 5).map((row) => ({
+    details: noSalesRows.map((row) => ({
       title: row.name,
       meta: row.addr,
       badge: row.last_sale ? 'Последняя: ' + row.last_sale.slice(0, 10) : 'Продаж ещё не было',
@@ -140,7 +155,9 @@ function buildOperationsCenter() {
 
   const taskRows = db.prepare(`
     SELECT t.id, t.title, t.status, t.priority, t.due_date, a.full_name AS assignee_name,
-           CASE WHEN t.due_date IS NOT NULL AND t.due_date < date('now') THEN 1 ELSE 0 END AS overdue
+           CASE WHEN t.due_date IS NOT NULL AND t.due_date < date('now') THEN 1 ELSE 0 END AS overdue,
+           COUNT(*) OVER() AS total_count,
+           SUM(CASE WHEN t.due_date IS NOT NULL AND t.due_date < date('now') THEN 1 ELSE 0 END) OVER() AS overdue_count
     FROM meeting_tasks t
     LEFT JOIN task_assignees a ON a.id = t.assignee_id
     WHERE t.status NOT IN ('done', 'cancelled')
@@ -148,14 +165,16 @@ function buildOperationsCenter() {
            OR (t.due_date IS NOT NULL AND t.due_date < date('now')))
     ORDER BY overdue DESC, CASE t.status WHEN 'blocked' THEN 0 ELSE 1 END,
              CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 ELSE 2 END, t.due_date
+    LIMIT 5
   `).all();
-  const overdueCount = taskRows.filter((row) => row.overdue).length;
+  const taskCount = Number(taskRows[0]?.total_count || 0);
+  const overdueCount = Number(taskRows[0]?.overdue_count || 0);
   addIssue(issues, {
     key: 'tasks', severity: overdueCount ? 'critical' : 'warning', icon: '✅',
-    title: 'Поручения требуют решения', count: taskRows.length,
-    summary: 'Просрочено: ' + overdueCount + ' · без ответственного или заблокировано: ' + (taskRows.length - overdueCount),
+    title: 'Поручения требуют решения', count: taskCount,
+    summary: 'Просрочено: ' + overdueCount + ' · без ответственного или заблокировано: ' + (taskCount - overdueCount),
     section: 'tasks', action_label: 'Открыть поручения',
-    details: taskRows.slice(0, 5).map((row) => ({
+    details: taskRows.map((row) => ({
       title: row.title,
       meta: row.assignee_name || 'Ответственный не назначен',
       badge: row.overdue ? 'Просрочено: ' + row.due_date : (row.status === 'blocked' ? 'Заблокировано' : 'Без ответственного'),
@@ -164,19 +183,21 @@ function buildOperationsCenter() {
 
   const movementRows = db.prepare(`
     SELECT sm.id, sm.reported_at, p.name AS point_name, m.full_name AS manager_name,
-           (SELECT COALESCE(SUM(qty), 0) FROM stock_movement_items WHERE movement_id = sm.id) AS total_qty
+           (SELECT COALESCE(SUM(qty), 0) FROM stock_movement_items WHERE movement_id = sm.id) AS total_qty,
+           COUNT(*) OVER() AS total_count
     FROM stock_movements sm
     JOIN points p ON p.id = sm.point_id
     JOIN managers m ON m.id = sm.manager_id
     WHERE sm.status = 'pending'
     ORDER BY sm.reported_at
+    LIMIT 5
   `).all();
   addIssue(issues, {
     key: 'movements', severity: 'warning', icon: '🚚', title: 'Перемещения на согласовании',
-    count: movementRows.length,
+    count: Number(movementRows[0]?.total_count || 0),
     summary: 'Остатки изменятся только после подтверждения администратора',
     section: 'restock', action_label: 'Проверить перемещения',
-    details: movementRows.slice(0, 5).map((row) => ({
+    details: movementRows.map((row) => ({
       title: row.point_name + ' · ' + row.total_qty + ' шт.',
       meta: row.manager_name,
       badge: row.reported_at.slice(0, 16),
@@ -259,6 +280,7 @@ function buildOperationsCenter() {
   });
 
   const notificationRows = db.prepare(`
+    SELECT source,channel,error,created_at,COUNT(*) OVER() AS total_count FROM (
     SELECT 'Оплата' AS source, 'Telegram' AS channel, error, created_at
     FROM unpaid_order_alert_log WHERE status = 'failed' AND created_at >= datetime('now', '-7 days')
     UNION ALL
@@ -270,14 +292,14 @@ function buildOperationsCenter() {
     UNION ALL
     SELECT 'Поручение', channel, error, created_at
     FROM task_reminder_log WHERE status = 'failed' AND created_at >= datetime('now', '-7 days')
-    ORDER BY created_at DESC
+    ) failures ORDER BY created_at DESC LIMIT 5
   `).all();
   addIssue(issues, {
     key: 'notifications', severity: 'warning', icon: '🔔', title: 'Ошибки уведомлений',
-    count: notificationRows.length,
+    count: Number(notificationRows[0]?.total_count || 0),
     summary: 'Не доставлены сообщения Telegram или MAX за 7 дней',
     section: 'tasks', action_label: 'Проверить подключения',
-    details: notificationRows.slice(0, 5).map((row) => ({
+    details: notificationRows.map((row) => ({
       title: row.source + ' · ' + String(row.channel).toUpperCase(),
       meta: row.error || 'Причина не указана',
       badge: row.created_at.slice(0, 16),
@@ -306,4 +328,5 @@ function registerOperationsRoutes(router) {
 }
 
 module.exports = { buildOperationsCenter, getCachedOperationsCenter,
-  registerOperationsRoutes, SILENT_POINTS_SQL, STOCK_ALERTS_SQL };
+  registerOperationsRoutes, SILENT_POINTS_SQL, STOCK_ALERTS_SQL,
+  SILENT_POINTS_PREVIEW_SQL, STOCK_ALERTS_PREVIEW_SQL };
