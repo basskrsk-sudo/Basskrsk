@@ -7,6 +7,7 @@ const db = require('./db');
 const {visibleOrderNumber} = require('./order-display-number');
 const { trackSync, trackAsync } = require('./runtime-diagnostics');
 const { sendToChat } = require('./telegram');
+const { readPendingOrderBackgroundRows } = require('./unpaid-order-background-read');
 const { connectedChatId, findManagerAndPoint } = require('./order-notifications');
 
 // The operational SLA is fixed: an old Amvera environment override must
@@ -256,7 +257,14 @@ function pendingOrderIds(options = {}) {
   // One indexed join reads only 30-minute pending reservation IDs and their
   // delivery ledgers. Avoid the previous N * (admins + manager) SQL lookups.
   // Full customer contacts and item descriptions remain outside this scan.
-  const rows = trackSync('unpaid_order_sql', () => db.prepare(
+  const rows = Array.isArray(options.prefetchedRows)
+    ? options.prefetchedRows.filter(row => {
+      const createdMs = Date.parse(String(row.created_at || '').replace(' ', 'T') + 'Z');
+      return !Number.isFinite(createdMs) ||
+        createdMs <= (Number.isFinite(options.nowMs) ? options.nowMs : Date.now()) -
+          ALERT_DELAY_MINUTES * 60 * 1000;
+    })
+    : trackSync('unpaid_order_sql', () => db.prepare(
     "SELECT o.id, o.point_id, ml.order_id AS manager_logged, " +
     "al.target_chat_id AS admin_chat_id, al.status AS admin_status, " +
     "al.created_at<=datetime('now','-30 seconds') AS admin_retry_due " +
@@ -315,7 +323,7 @@ function pendingOrderIds(options = {}) {
 
 async function runUnpaidOrderAlertCheck(options = {}) {
   const results = [];
-  for (const orderId of pendingOrderIds(options)) {
+  for (const orderId of (Array.isArray(options.selectedIds) ? options.selectedIds : pendingOrderIds(options))) {
     const result = await sendUnpaidOrderAlert(orderId, 'pending', null, options);
     if (!result.skipped) results.push({ order_id: orderId, ...result });
   }
@@ -390,9 +398,36 @@ function nextUnpaidAlertDelay(nowMs = Date.now(), database = db) {
   return notYetRouted ? Math.min(delay, UNROUTABLE_INTERVAL_MS) : delay;
 }
 
+// Only an in-process pure scheduling calculation; the slow SQLite scan itself
+// is performed on a read-only worker. The snapshot is intentionally calculated
+// BEFORE sending notifications: one extra 15s reconciliation after a successful
+// send is preferable to missing a recipient added during that send.
+function nextUnpaidAlertDelayFromRows(nowMs, rows, dueIds = []) {
+  let delay = IDLE_INTERVAL_MS;
+  let unrouteable = false;
+  for (const row of rows) {
+    const createdMs = Date.parse(String(row.created_at || '').replace(' ', 'T') + 'Z');
+    if (!Number.isFinite(createdMs)) return POLL_INTERVAL_MS;
+    const alertAt = createdMs + ALERT_DELAY_MINUTES * 60 * 1000;
+    if (alertAt > nowMs) {
+      delay = Math.min(delay, Math.max(1000, alertAt - nowMs + 1000));
+      continue;
+    }
+    if (row.manager_logged == null && row.admin_chat_id == null) unrouteable = true;
+    if (row.admin_status === 'failed' && row.admin_created_at) {
+      const failedMs = Date.parse(String(row.admin_created_at).replace(' ', 'T') + 'Z');
+      if (!Number.isFinite(failedMs)) return POLL_INTERVAL_MS;
+      delay = Math.min(delay, Math.max(1000, failedMs + RETRY_SECONDS * 1000 - nowMs + 1000));
+    }
+  }
+  if (dueIds.length) return Math.min(delay, POLL_INTERVAL_MS);
+  return unrouteable ? Math.min(delay, UNROUTABLE_INTERVAL_MS) : delay;
+}
+
 function createUnpaidAlertScheduler({
   database = db,
   scan = () => trackAsync('unpaid_order_scan', () => runUnpaidOrderAlertCheck()),
+  backgroundRead = null,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
   now = Date.now,
@@ -418,8 +453,18 @@ function createUnpaidAlertScheduler({
     running = true;
     let delay = POLL_INTERVAL_MS;
     try {
-      await scan();
-      delay = nextUnpaidAlertDelay(now(), database);
+      if (backgroundRead) {
+        // Neither the due-order join nor the deadline query may block HTTP
+        // checkout, even when the persistent Amvera volume stalls.
+        const rows = await backgroundRead();
+        if (!Array.isArray(rows)) throw new TypeError('Invalid background unpaid-order snapshot');
+        const dueIds = pendingOrderIds({ prefetchedRows: rows, nowMs: now() });
+        await trackAsync('unpaid_order_scan', () => runUnpaidOrderAlertCheck({ selectedIds: dueIds }));
+        delay = nextUnpaidAlertDelayFromRows(now(), rows, dueIds);
+      } else {
+        await scan();
+        delay = nextUnpaidAlertDelay(now(), database);
+      }
     } catch (error) {
       console.warn('Неоплаченные заказы: ошибка проверки:', error.message);
     } finally {
@@ -448,7 +493,10 @@ function createUnpaidAlertScheduler({
     },
   };
 }
-const unpaidAlertScheduler = createUnpaidAlertScheduler();
+// The payment handler still wakes this scheduler immediately on reservation.
+const unpaidAlertScheduler = createUnpaidAlertScheduler({
+  backgroundRead: () => readPendingOrderBackgroundRows(db.DB_PATH),
+});
 function scheduleUnpaidOrderAlerts() {
   unpaidAlertScheduler.start();
 }
@@ -462,7 +510,7 @@ function stopUnpaidOrderAlerts() {
 module.exports = {
   ALERT_DELAY_MINUTES,
   POLL_INTERVAL_MS,
-  IDLE_INTERVAL_MS, UNROUTABLE_INTERVAL_MS, nextUnpaidAlertDelay, createUnpaidAlertScheduler,
+  IDLE_INTERVAL_MS, UNROUTABLE_INTERVAL_MS, nextUnpaidAlertDelay, nextUnpaidAlertDelayFromRows, createUnpaidAlertScheduler,
   wakeUnpaidOrderAlertScheduler,
   buildUnpaidOrderMessage,
   responsibleManagerChat,

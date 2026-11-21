@@ -521,3 +521,40 @@ test('failed admin alert wakes at retry deadline without replaying sent messages
     else process.env.TG_CHAT_ID=previousChat;
   }
 });
+
+
+test('read-only background unpaid-order scan returns routing columns without customer details', async () => {
+  const { readPendingOrderBackgroundRows } = require('./unpaid-order-background-read');
+  const due = order('TG-BG-READER-DUE',null,'-2 minutes');
+  const future = order('TG-BG-READER-FRESH',null,'-10 seconds');
+  const completed = order('TG-BG-READER-PAID',null,'-2 minutes','paid');
+  try {
+    const rows = await readPendingOrderBackgroundRows(db.DB_PATH);
+    assert.ok(rows.some(row => row.id === due));
+    assert.ok(rows.some(row => row.id === future));
+    assert.ok(!rows.some(row => row.id === completed));
+    const row = rows.find(row => row.id === due);
+    assert.deepEqual(Object.keys(row).sort(), [
+      'admin_chat_id','admin_created_at','admin_retry_due','admin_status',
+      'created_at','id','manager_logged','point_id'
+    ]);
+    assert.ok(!Object.hasOwn(row, 'customer_phone'));
+  } finally {
+    for (const id of [due,future,completed])
+      db.prepare('DELETE FROM orders WHERE id=?').run(id);
+  }
+});
+
+test('worker snapshot schedules overdue unrouteable orders without hot polling', () => {
+  const { nextUnpaidAlertDelayFromRows } = require('./unpaid-order-alerts');
+  const now = Date.now();
+  const createdAt = ms => new Date(ms).toISOString().slice(0,19).replace('T',' ');
+  const fresh = [{ created_at: createdAt(now-10000), manager_logged:null, admin_chat_id:null }];
+  const overdue = [{ created_at: createdAt(now-120000), manager_logged:null, admin_chat_id:null }];
+  const routed = [{ created_at: createdAt(now-120000), manager_logged:1, admin_chat_id:null }];
+  assert.ok(nextUnpaidAlertDelayFromRows(now, fresh, []) >= 49000);
+  assert.ok(nextUnpaidAlertDelayFromRows(now, fresh, []) <= 52000);
+  assert.equal(nextUnpaidAlertDelayFromRows(now, overdue, []), UNROUTABLE_INTERVAL_MS);
+  assert.equal(nextUnpaidAlertDelayFromRows(now, overdue, [17]), POLL_INTERVAL_MS);
+  assert.equal(nextUnpaidAlertDelayFromRows(now, routed, []), IDLE_INTERVAL_MS);
+});
