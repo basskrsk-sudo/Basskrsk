@@ -100,4 +100,26 @@ function buildPayoutSnapshot(database){
     next_scheduled_day_of_month:25,
     disclaimer:'Предварительный ориентир начислений; возвраты вынесены на проверку, отдельные бонусы и ручные корректировки здесь не включены. Итоговые суммы сверяйте в карточках получателей и платёжных реестрах.'};
 }
-module.exports={periodBounds,buildFinanceSummary,buildPayoutSnapshot};
+function queryExpenses(database,{period='month',page=1,investor='',now=new Date()}={}){
+  const b=periodBounds(period,now);
+  if(!Number.isSafeInteger(page)||page<1||page>500)
+    throw new RangeError('Неверная страница');
+  const person=String(investor||'').trim().slice(0,120);
+  const where='expense_date>=? AND expense_date<?'+(person?' AND investor_name=?':'');
+  const args=[b.from_day,b.next_day,...person?[person]:[]];
+  const totals=database.prepare(
+    'SELECT COUNT(*) AS count,COALESCE(SUM(amount),0) AS amount '+
+    'FROM expenses WHERE '+where
+  ).get(...args);
+  const rows=database.prepare(
+    'SELECT id,expense_date,category,amount,investor_name,note,city_id '+
+    'FROM expenses WHERE '+where+' ORDER BY expense_date DESC,id DESC LIMIT 20 OFFSET ?'
+  ).all(...args,(page-1)*20);
+  // Do not preload proof documents, or the full historic expense ledger.
+  // Older admin detail screen can open individual expenses on demand.
+  return {period:b,page,page_size:20,total_count:Number(totals.count)||0,
+    total_amount:Number(totals.amount)||0,
+    has_next:page*20<Number(totals.count),
+    expenses:rows};
+}
+module.exports={periodBounds,buildFinanceSummary,buildPayoutSnapshot,queryExpenses};
