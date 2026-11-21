@@ -101,6 +101,40 @@ window.addEventListener('resize', function() {
 });
 
 
+// Advanced reports are rare. Defer parsing old reporting/weekly-chart
+// scripts until a user explicitly opens their archived screen.
+const archivedFinanceScripts={};
+function loadDeferredFinanceScript(section){
+  const config=section==='report-center'
+    ?{src:'/admin-report-center.js?v=2',ready:function(){return typeof loadReportCenter==='function';}}
+    :section==='week-comparison'
+      ?{src:'/week-over-week.js?v=2',ready:function(){return typeof renderWeekComparison==='function';}}
+      :null;
+  if(!config)return Promise.reject(new Error('Неизвестный архив отчётов'));
+  if(config.ready())return Promise.resolve();
+  if(!archivedFinanceScripts[section]){
+    archivedFinanceScripts[section]=new Promise(function(resolve,reject){
+      const script=document.createElement('script');
+      script.src=config.src;
+      script.async=true;
+      script.onload=function(){
+        if(config.ready())resolve();
+        else {
+          delete archivedFinanceScripts[section];
+          reject(new Error('Архивный отчёт не загрузился'));
+        }
+      };
+      script.onerror=function(){
+        delete archivedFinanceScripts[section];
+        if(script.remove)script.remove();
+        reject(new Error('Ошибка загрузки архивного отчёта'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return archivedFinanceScripts[section];
+}
+
 let adminFinanceModulePromise=null;
 function loadAdminFinanceModule(){
   if(window.HvostAdminFinance)return Promise.resolve(window.HvostAdminFinance);
@@ -171,7 +205,10 @@ async function showSection(id) {
   }
   if (id === 'economics')   await renderEconomics();
   if (id === 'business-expenses') await renderBusinessExpenses();
-  if (id === 'week-comparison') await renderWeekComparison();
+  if (id === 'week-comparison') {
+    try { await loadDeferredFinanceScript('week-comparison'); await renderWeekComparison(); }
+    catch(error){ alert(error.message||'Не удалось открыть сравнение недель'); }
+  }
   if (id === 'weekly-reports') await renderWeeklyReports();
   if (id === 'payout-reports') await openPayoutReports('partner');
   if (id === 'orders')      { await loadOrders(); renderOrders(); }
@@ -203,7 +240,10 @@ async function showSection(id) {
   if (id === 'admins')      await renderAdmins();
   if (id === 'telegram-connections') await loadTelegramConnections();
   if (id === 'max') await loadMaxAdmin();
-  if (id === 'report-center') await loadReportCenter();
+  if (id === 'report-center') {
+    try { await loadDeferredFinanceScript('report-center'); await loadReportCenter(); }
+    catch(error){ alert(error.message||'Не удалось открыть архив отчётов'); }
+  }
   if (id === 'campaigns') {
     const link=document.getElementById('partner-club-admin-link');
     if(link)link.style.display=currentAdminRole==='super'?'flex':'none';

@@ -149,10 +149,16 @@ test('admin UI has exactly 8 primary menu items and modules without breaking pre
     'telegram-connections','payout-reports','weekly-reports','point']){
     assert.ok(html.includes('id="sec-'+section+'"'),section+' preserved');
   }
-  for(const file of ['admin-navigation.js','admin-point.js','admin-report-center.js']){
+  for(const file of ['admin-navigation.js','admin-point.js']){
     assert.ok(html.includes('src="'+file),file+' is loaded');
     const source=fs.readFileSync(path.join(root,file),'utf8');
     assert.doesNotThrow(()=>new Function(source),file+' syntax');
+  }
+  const navigation=fs.readFileSync(path.join(root,'admin-navigation.js'),'utf8');
+  for(const file of ['admin-report-center.js','week-over-week.js']){
+    assert.doesNotMatch(html,new RegExp('<script[^>]+src="[^"]*'+file+''));
+    assert.ok(navigation.includes(file),file+' must be lazy loaded on archive navigation');
+    assert.doesNotThrow(()=>new Function(fs.readFileSync(path.join(root,file),'utf8')));
   }
   const inline=[...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/gi)]
     .map(m=>m[1]).sort((a,b)=>b.length-a.length)[0];
