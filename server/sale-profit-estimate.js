@@ -33,7 +33,10 @@ function loadSaleProfitEstimate(database,order,assumptions=null){
     'SELECT full_name,share_percent FROM business_founders ORDER BY id'
   ).all();
   const total=num(order.total);
-  const net=order.refund_status==='refunded'?0:Math.max(0,total-num(order.refunded_amount));
+  // The refund API marks partial refunds as 'refunded' too. Trust the
+  // actual refunded amount; preserve zero revenue for old rows with no amount.
+  const legacyFullRefund=order.refund_status==='refunded'&&num(order.refunded_amount)<=0;
+  const net=legacyFullRefund?0:Math.max(0,total-num(order.refunded_amount));
   const factor=total>0?Math.min(1,net/total):0;
   let fallbackQty=0,rawCost=0;
   const lines=items.map(i=>{

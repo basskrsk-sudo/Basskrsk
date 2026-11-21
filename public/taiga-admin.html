@@ -4796,12 +4796,15 @@ function renderOrders() {
   }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Заказов с выбранным статусом нет</td></tr>';
 }
 
+let orderProfitRequestSeq=0;
 function closeOrderProfit(){
+  orderProfitRequestSeq++;
   const modal=document.getElementById('order-profit-modal');
   if(modal)modal.style.display='none';
 }
 async function openOrderProfit(orderId){
   if(currentAdminRole!=='super')return;
+  const requestSeq=++orderProfitRequestSeq;
   const modal=document.getElementById('order-profit-modal');
   const view=document.getElementById('order-profit-content');
   if(!modal||!view)return;
@@ -4813,13 +4816,17 @@ async function openOrderProfit(orderId){
     const response=await authFetch('/api/orders/'+Number(orderId)+'/profit');
     const body=await response.json();
     if(!response.ok)throw new Error(body.error||'Ошибка расчёта');
-    if(modal.style.display==='none')return;
+    if(modal.style.display==='none'||requestSeq!==orderProfitRequestSeq)return;
     const x=body.sale;
     const rows=[
+      ...(x.refund_amount>0?[
+        ['Сумма первоначальной оплаты',x.original_total,false],
+        ['Возвращено покупателю',x.refund_amount,true],
+      ]:[]),
       ['Выручка после возвратов',x.revenue,false],
       ['Себестоимость товара',x.cogs_est,true],
-      ['Вознаграждение грумера',x.partner_commission,true],
-      ['Вознаграждение владельца салона',x.salon_commission,true],
+      ['Вознаграждение грумера ('+x.partner_rate_percent+'%)',x.partner_commission,true],
+      ['Вознаграждение владельца салона ('+x.salon_rate_percent+'%)',x.salon_commission,true],
       ['Вознаграждение менеджера ('+x.manager_rate_percent+'%)',x.manager_est,true],
       ['Налог ('+x.tax_rate_percent+'%)',x.tax_est,true],
       ['Эквайринг ('+x.acquiring_rate_percent+'%)',x.acquiring_est,true],
@@ -4850,6 +4857,7 @@ async function openOrderProfit(orderId){
       '<p style="font-size:.77rem;color:var(--muted);line-height:1.5;margin-top:.8rem;">'+
       escape(x.assumptions_note)+'</p>';
   }catch(error){
+    if(modal.style.display==='none'||requestSeq!==orderProfitRequestSeq)return;
     view.textContent='Не удалось показать расчёт: '+(error.message||'Ошибка сети');
   }
 }

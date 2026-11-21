@@ -32,7 +32,9 @@ function periodBounds(period='month',now=new Date()){
     to_day:localDate(until-DAY_MS),
     next_day:localDate(until),timezone:'Asia/Krasnoyarsk'};
 }
-const NET="CASE WHEN o.refund_status='refunded' THEN 0 "+
+// Partial refunds are also stored as refund_status='refunded' by the
+// refund API. Preserve legacy full-refund rows with unknown/zero amount.
+const NET="CASE WHEN o.refund_status='refunded' AND COALESCE(o.refunded_amount,0)<=0 THEN 0 "+
   "ELSE MAX(0,COALESCE(o.total,0)-COALESCE(o.refunded_amount,0)) END";
 function buildFinanceSummary(database,{period='month',now=new Date()}={}){
   const range=periodBounds(period,now);

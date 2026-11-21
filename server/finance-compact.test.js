@@ -35,7 +35,7 @@ function fixture(){
       "(4,'a','paid','2026-11-20 23:30:00',100,'refunded',100,1,0.15),"+
       "(5,'old','paid','2026-11-10 12:00:00',100,'none',0,NULL,0),"+
       "(6,'a','paid','2026-10-01 12:00:00',500,'none',0,1,0.2),"+
-      "(7,'b','paid','2026-11-14 12:00:00',500,'partial',100,NULL,0);"+
+      "(7,'b','paid','2026-11-14 12:00:00',500,'refunded',100,NULL,0);"+
     "INSERT INTO expenses VALUES(1,'2026-11-03',100,'Упаковка','Лакомых Алексей','Первая закупка','krsk'),"+
       "(2,'2026-11-21',20,'Транспорт','Лакомых Алексей',NULL,'krsk'),"+
       "(3,'2026-10-01',999,'Оборудование','Соколов Виталий',NULL,'krsk');"+
@@ -131,6 +131,13 @@ test('summary subtracts refunds and excludes failed orders without dropping arch
     [['a',610,2],['b',400,1]]);
   assert.equal(result.active_points,2);
   assert.match(result.disclaimer,/не является чистой прибылью|Не является чистой прибылью/);
+ }finally{db.close();}
+});
+test('legacy full-refund record with missing amount remains zero revenue',()=>{
+ const db=fixture();
+ try{
+  db.exec("UPDATE orders SET refunded_amount=NULL WHERE id=4");
+  assert.equal(buildFinanceSummary(db,{now:NOW}).revenue,1110);
  }finally{db.close();}
 });
 test('payouts are only provisional; paid payouts remain separated and refunded orders held',()=>{
