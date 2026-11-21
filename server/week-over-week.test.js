@@ -166,7 +166,7 @@ test('HTTP route is strictly admin-only, rejects malicious filters and never mut
   assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_expenses_date_city_weekly'").get());
 });
 
-test('admin week comparison tab is reachable and rendered through separate script',()=>{
+test('admin week comparison tab is reachable and archived script is loaded lazily',()=>{
   const html=fs.readFileSync(path.join(__dirname,'../public/taiga-admin.html'),'utf8');
   const js=fs.readFileSync(path.join(__dirname,'../public/week-over-week.js'),'utf8');
   assert.match(html,/id="sec-week-comparison"/);
@@ -174,8 +174,9 @@ test('admin week comparison tab is reachable and rendered through separate scrip
    const navigation=fs.readFileSync(path.join(__dirname,'../public/admin-navigation.js'),'utf8');
    assert.match(reports,/type:'weekcompare'/);
    assert.match(reports,/target:'week-comparison'/);
-  assert.match(navigation,/id === 'week-comparison'\) await renderWeekComparison/);
-  assert.match(html,/<script src="\/week-over-week.js"><\/script>/);
+  assert.match(navigation,/await loadDeferredFinanceScript\('week-comparison'\)/);
+  assert.match(navigation,/\/week-over-week\.js\?v=/);
+  assert.doesNotMatch(html,/<script[^>]+src="[^"]*week-over-week\.js/);
   assert.match(js,/authFetch\('\/api\/weekly-reports\/comparison/);
   assert.match(js,/function renderWeekComparison\(\)/);
   assert.match(js,/function changeWeekComparison\(delta\)/);
