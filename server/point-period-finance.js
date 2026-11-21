@@ -20,17 +20,35 @@ const empty = () => ({
   commission_refund_review_orders:0,
 });
 
+function loadCommissionRateMaps(database){
+  const partnerRates=new Map(database.prepare(
+    'SELECT id,commission_rate FROM partners'
+  ).all().map(r=>[Number(r.id),number(r.commission_rate)]));
+  const ownerRates=new Map();
+  // Newest active owner is the expected recipient of pending commission.
+  for(const row of database.prepare(
+    'SELECT point_id,commission_rate FROM salon_owners WHERE active=1 AND point_id IS NOT NULL ORDER BY id DESC'
+  ).all()){
+    if(!ownerRates.has(row.point_id))ownerRates.set(row.point_id,number(row.commission_rate));
+  }
+  return {partnerRates,ownerRates};
+}
+
 function loadPointPayoutProfit(database,orders,assumptions,period=null,options={}) {
   const includeOrderDetails=options.includeOrderDetails===true;
-  // On-demand drilldown selects only 20 orders; never reread a full
-  // year of payout items or order lines when one salon is opened.
-  const selectedIds=includeOrderDetails
+  const boundedSummary=options.boundedSummary===true;
+  // Drilldown uses only the 20 selected sales. The new summary path accepts
+  // up to 200 selected IDs per page; it never fetches year-long payout/cost
+  // maps in one request. Legacy callers retain their existing behavior.
+  const selectedIds=(includeOrderDetails||boundedSummary)
     ?orders.map(o=>Number(o.id)).filter(Number.isSafeInteger):[];
-  if(includeOrderDetails&&!selectedIds.length)return new Map();
-  const where=includeOrderDetails
+  if((includeOrderDetails||boundedSummary)&&!selectedIds.length)return new Map();
+  if(boundedSummary&&selectedIds.length>200)
+    throw new RangeError('Point finance batch exceeds 200 paid orders');
+  const where=(includeOrderDetails||boundedSummary)
     ?' AND o.id IN ('+selectedIds.map(()=>'?').join(',')+')'
     :(period?.from && period?.to ? " AND o.created_at>=? AND o.created_at<?":'');
-  const args=includeOrderDetails?selectedIds:
+  const args=(includeOrderDetails||boundedSummary)?selectedIds:
     (where?[period.from,period.to]:[]);
   const fetchPaid=(table)=>{
     const data=database.prepare(
@@ -42,17 +60,7 @@ function loadPointPayoutProfit(database,orders,assumptions,period=null,options={
   };
   const partnerPaid=fetchPaid('partner_payout_items');
   const ownerPaid=fetchPaid('owner_payout_items');
-  const partnerRates=new Map(database.prepare(
-    'SELECT id,commission_rate FROM partners'
-  ).all().map(r=>[Number(r.id),number(r.commission_rate)]));
-  const ownerRates=new Map();
-  // Latest active owner is the intended recipient when there is no payout.
-  // A paid payout record always takes precedence over current recipient data.
-  for(const row of database.prepare(
-    'SELECT point_id,commission_rate FROM salon_owners WHERE active=1 AND point_id IS NOT NULL ORDER BY id DESC'
-  ).all()){
-    if(!ownerRates.has(row.point_id))ownerRates.set(row.point_id,number(row.commission_rate));
-  }
+  const {partnerRates,ownerRates}=options.rateMaps||loadCommissionRateMaps(database);
   const costs=new Map(database.prepare(
     `SELECT o.id AS order_id,
        SUM(oi.qty * CASE
@@ -198,6 +206,9 @@ function loadPointPayoutProfit(database,orders,assumptions,period=null,options={
     row.profit_other_costs_est+=net*(otherRate-managerRate);
     results.set(order.point_id,row);
   }
+  return options.rawResults===true?results:finalizePointProfit(results);
+}
+function finalizePointProfit(results) {
   for(const [pointId,raw] of results){
     for(const key of Object.keys(raw))if(key!=='profit_missing_item_orders'&&
       key!=='profit_fallback_item_qty'&&key!=='commission_refund_review_orders'&&
@@ -211,4 +222,29 @@ function loadPointPayoutProfit(database,orders,assumptions,period=null,options={
   }
   return results;
 }
-module.exports={loadPointPayoutProfit};
+
+// Accumulate raw per-sale amounts across bounded pages, and only round once
+// per point. This preserves the old annual/full-period arithmetic exactly.
+function createPointPayoutProfitAccumulator(database,assumptions){
+  const rateMaps=loadCommissionRateMaps(database);
+  const totals=new Map();
+  return {
+    addPage(page){
+      if(!Array.isArray(page)||page.length>200)
+        throw new RangeError('Expected an array of at most 200 orders');
+      if(!page.length)return;
+      const part=loadPointPayoutProfit(database,page,assumptions,null,
+        {boundedSummary:true,rateMaps,rawResults:true});
+      for(const [pointId,row] of part){
+        const total=totals.get(pointId)||empty();
+        for(const key of Object.keys(total)){
+          if(key==='founder_profit_est')continue;
+          total[key]+=row[key];
+        }
+        totals.set(pointId,total);
+      }
+    },
+    finish(){ return finalizePointProfit(totals); },
+  };
+}
+module.exports={loadPointPayoutProfit,createPointPayoutProfitAccumulator};

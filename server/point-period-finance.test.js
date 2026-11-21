@@ -2,7 +2,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {DatabaseSync}=require('node:sqlite');
-const {loadPointPayoutProfit}=require('./point-period-finance');
+const {loadPointPayoutProfit,createPointPayoutProfitAccumulator}=require('./point-period-finance');
 
 function fixture(){
   const db=new DatabaseSync(':memory:');
@@ -167,4 +167,25 @@ test('drilldown restricts payout, items and calculation to selected order IDs',(
     assert.equal(loadPointPayoutProfit(db,[],assumptions,period,
       {includeOrderDetails:true}).size,0);
   }finally{db.close()}
+});
+
+test('bounded page accumulator exactly matches full period finances and payout reconciliation',()=>{
+  const db=fixture();
+  try{
+    db.exec("INSERT INTO orders VALUES(6,'b',1,NULL,125,'paid','2026-11-06 00:00:00','none',NULL)");
+    db.exec("INSERT INTO orders VALUES(7,'a',1,NULL,350,'paid','2026-11-07 00:00:00','refunded',75)");
+    db.exec("INSERT INTO orders VALUES(8,'b',NULL,NULL,400,'paid','2026-11-08 00:00:00','refunded',400)");
+    db.exec("INSERT INTO order_items(order_id,variant_id,qty,price) VALUES(7,2,1,350)");
+    const all=orders(db);
+    const original=loadPointPayoutProfit(db,all,assumptions,period);
+    for(const pageSize of [1,2,3,7,200]){
+      const accumulator=createPointPayoutProfitAccumulator(db,assumptions);
+      for(let i=0;i<all.length;i+=pageSize)
+        accumulator.addPage(all.slice(i,i+pageSize));
+      assert.deepEqual(accumulator.finish(),original,
+        'page size must not change payment deductions, tax, cogs or profit');
+    }
+    assert.throws(()=>createPointPayoutProfitAccumulator(db,assumptions)
+      .addPage(new Array(201).fill(all[0])),/at most 200/);
+  }finally{db.close();}
 });

@@ -631,6 +631,9 @@ jobs:
           node --check server/expense-bot-files.test.js
           node --check public/expense-evidence.js
           node --check server/routes-business-founders.js
+          node --check server/founder-sales-batches.js
+          node --check server/founder-sales-summary.js
+          node --check server/founder-sales-batches.test.js
           node --check server/net-paid-revenue.js
           node --check server/net-paid-revenue.test.js
           node --check server/routes-auth.js
@@ -755,6 +758,8 @@ jobs:
         run: node --test server/owners-registry-summary.test.js
       - name: Verify shared partial refund net revenue across SQL and JavaScript
         run: node --test server/net-paid-revenue.test.js
+      - name: Verify 200-order keyset batches for founder period analysis
+        run: node --test server/founder-sales-batches.test.js
       - name: Verify owner dashboard bounded SQL aggregation and payout arithmetic
         run: node --test server/owner-dashboard-aggregate.test.js
       - name: Verify indexed operations-center queries
