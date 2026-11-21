@@ -8,13 +8,13 @@ const read=name=>fs.readFileSync(path.join(__dirname,'..','public',name),'utf8')
 const script=read('admin-finance.js');
 const nav=read('admin-navigation.js');
 const admin=read('taiga-admin.html');
-function start(){
+function start({DateClass=Date}={}){
   const window={};
   const target={innerHTML:''};
   const listeners={};
   const root={dataset:{},innerHTML:'',querySelector:()=>target,
     contains:()=>true,addEventListener:(name,fn)=>{listeners[name]=fn;}};
-  vm.runInNewContext(script,{window,Intl,Number,Promise});
+  vm.runInNewContext(script,{window,Intl,Number,Promise,Date:DateClass});
   const urls=[],destinations=[];
   const summary={period:{from_day:'2026-11-01',to_day:'2026-11-21'},
     revenue:250,expenses:90,orders_count:1,sales_less_recorded_spending:160,
@@ -68,6 +68,9 @@ test('UI only loads summary initially; expenses and payouts are genuinely lazy',
  assert.match(a.root.innerHTML,/Сводка/);
  assert.match(a.root.innerHTML,/Траты/);
  assert.match(a.root.innerHTML,/Выплаты/);
+ assert.match(a.root.innerHTML,/2026 год/);
+ assert.match(a.root.innerHTML,/За всё время/);
+ assert.doesNotMatch(a.root.innerHTML,/365 дней|Последние 12 месяцев/);
  assert.match(a.target.innerHTML,/250 ₽/);
  assert.doesNotMatch(a.target.innerHTML,/<script>alert\(1\)<\/script>/);
  assert.match(a.target.innerHTML,/&lt;script&gt;/);
@@ -89,4 +92,26 @@ test('repeated mount binds at most one set of listeners and escapes XSS',async()
  assert.equal(Object.keys(a.listeners).length,2);
  assert.equal(a.app.escapeHtml('<b>&"'), '&lt;b&gt;&amp;&quot;');
  assert.equal(a.app.formatMoney(null),'—');
+});
+
+test('Finance provides calendar 2026, every subsequent year, and all-time',async()=>{
+ const a=start();
+ await a.app.mount({root:a.root,authFetch:a.authFetch,navigate:id=>a.destinations.push(id)});
+ await a.click({financePeriod:'2026'});
+ assert.match(a.urls.at(-1),/\/api\/admin\/finance\/summary\?period=2026$/);
+ await a.click({financePeriod:'all'});
+ assert.match(a.urls.at(-1),/\/api\/admin\/finance\/summary\?period=all$/);
+ await a.click({financeTab:'expenses'});
+ assert.match(a.urls.at(-1),/\/api\/admin\/finance\/expenses\?period=all&page=1/);
+ await a.click({financePeriod:'2026'});
+ assert.match(a.urls.at(-1),/\/api\/admin\/finance\/expenses\?period=2026&page=1/);
+ class NextYear extends Date{
+   static now(){return Date.parse('2027-04-10T08:00:00Z');}
+ }
+ const b=start({DateClass:NextYear});
+ await b.app.mount({root:b.root,authFetch:b.authFetch,navigate:id=>b.destinations.push(id)});
+ assert.match(b.root.innerHTML,/2027 год/);
+ assert.match(b.root.innerHTML,/2026 год/);
+ await b.click({financePeriod:'2027'});
+ assert.match(b.urls.at(-1),/\/api\/admin\/finance\/summary\?period=2027$/);
 });

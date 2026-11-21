@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
-const {periodBounds,buildFinanceSummary,buildPayoutSnapshot,queryExpenses}=require('./finance-compact');
+const {isFinancePeriod,periodBounds,buildFinanceSummary,buildPayoutSnapshot,queryExpenses}=require('./finance-compact');
 function fixture(){
   const db=new DatabaseSync(':memory:');
   db.exec(
@@ -55,7 +55,69 @@ test('month and rolling 30-day ranges use local Krasnoyarsk date boundaries',()=
   const rolling=periodBounds('30d',NOW);
   assert.equal(rolling.to_day,'2026-11-21');
   assert.equal(rolling.from_day,'2026-10-23');
+  assert.equal(isFinancePeriod('2026',NOW),true);
+  assert.equal(isFinancePeriod('2025',NOW),false);
+  assert.equal(isFinancePeriod('2027',NOW),false);
+  assert.equal(isFinancePeriod('all',NOW),true);
   assert.throws(()=>periodBounds('year',NOW),RangeError);
+  assert.throws(()=>periodBounds('2027',NOW),RangeError);
+  const currentYear=periodBounds('2026',NOW);
+  assert.equal(currentYear.from,'2025-12-31 17:00:00');
+  assert.equal(currentYear.from_day,'2026-01-01');
+  assert.equal(currentYear.to_exclusive,'2026-11-21 17:00:00');
+  assert.equal(currentYear.to_day,'2026-11-21');
+  const historicalYear=periodBounds('2026',new Date('2027-03-14T11:00:00Z'));
+  assert.equal(historicalYear.from_day,'2026-01-01');
+  assert.equal(historicalYear.next_day,'2027-01-01');
+  assert.equal(historicalYear.to_day,'2026-12-31');
+  const followingYear=periodBounds('2027',new Date('2027-03-14T11:00:00Z'));
+  assert.equal(followingYear.from_day,'2027-01-01');
+  assert.equal(followingYear.to_day,'2027-03-14');
+  const all=periodBounds('all',NOW);
+  assert.equal(all.from,null);
+  assert.equal(all.from_day,null);
+  assert.equal(all.to_day,'2026-11-21');
+});
+test('calendar 2026 differs from rolling 12 months and all-time',()=>{
+ const db=fixture();
+ try{
+  db.exec(
+    "INSERT INTO orders VALUES"+
+    "(8,'b','paid','2025-12-31 16:59:59',250,'none',0,NULL,0),"+
+    "(9,'b','paid','2025-12-31 17:00:00',90,'none',0,NULL,0),"+
+    "(10,'b','paid','2027-01-01 00:00:00',100,'none',0,NULL,0),"+
+    "(11,'b','paid','2026-12-31 16:59:59',30,'none',0,NULL,0);"+
+    "INSERT INTO expenses VALUES"+
+    "(4,'2025-12-31',40,'Транспорт','Соколов Виталий',NULL,'krsk'),"+
+    "(5,'2026-01-01',30,'Транспорт','Соколов Виталий',NULL,'krsk'),"+
+    "(6,'2027-01-01',70,'Транспорт','Соколов Виталий',NULL,'krsk');"
+  );
+  const current=buildFinanceSummary(db,{period:'2026',now:NOW});
+  const all=buildFinanceSummary(db,{period:'all',now:NOW});
+  assert.equal(current.revenue,1700,'2026 begins at Jan 1, excludes 2025 sales');
+  assert.equal(current.orders_count,6);
+  assert.equal(current.expenses,1149);
+  assert.equal(all.revenue,1950,'all-time includes December 2025');
+  assert.equal(all.expenses,1189);
+  assert.equal(buildFinanceSummary(db,{period:'month',now:NOW}).revenue,1110);
+  const yearExpenses=queryExpenses(db,{period:'2026',now:NOW,investor:'Соколов Виталий'});
+  assert.equal(yearExpenses.total_count,2);
+  assert.equal(yearExpenses.total_amount,1029);
+  const allExpenses=queryExpenses(db,{period:'all',now:NOW,investor:'Соколов Виталий'});
+  assert.equal(allExpenses.total_count,3);
+  assert.equal(allExpenses.total_amount,1069);
+  const nextYear=new Date('2027-03-14T11:00:00Z');
+  const past=buildFinanceSummary(db,{period:'2026',now:nextYear});
+  const future=buildFinanceSummary(db,{period:'2027',now:nextYear});
+  assert.equal(past.revenue,1730,'completed 2026 includes Dec 31 2026');
+  assert.equal(future.revenue,100,'2027 excludes all 2026 revenue');
+  assert.equal(queryExpenses(db,{period:'2027',now:nextYear}).total_amount,70);
+ }finally{db.close();}
+});
+test('2028 leap day belongs only to calendar 2028',()=>{
+ const b=periodBounds('2028',new Date('2029-03-01T12:00:00Z'));
+ assert.equal(b.from_day,'2028-01-01');
+ assert.equal(b.to_day,'2028-12-31');
 });
 test('summary subtracts refunds and excludes failed orders without dropping archived revenue',()=>{
  const db=fixture();

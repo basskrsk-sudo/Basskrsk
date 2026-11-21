@@ -35,6 +35,13 @@
       return '<button type="button" class="row-btn" data-finance-period="'+key+'"'+
         (state.period===key?' style="background:var(--forest);color:#fff;"':'')+'>'+label+'</button>';
     };
+    // Offer individual calendar years from launch, including each new year
+    // without future code changes. Match server's Asia/Krasnoyarsk calendar.
+    const currentYear=new Date(Date.now()+7*60*60*1000).getUTCFullYear();
+    const years=[];
+    for(let year=currentYear;year>=2026;year--){
+      years.push(period(String(year),year+' год'));
+    }
     return '<div class="card" style="margin-bottom:1rem;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.75rem;">'+
       '<div><div class="card-title" style="margin:0">Финансы ХвостМаркета</div>'+
       '<p style="color:var(--muted);font-size:.78rem;line-height:1.5;margin:.4rem 0 0">'+
@@ -46,7 +53,8 @@
       choice('summary','Сводка')+choice('expenses','Траты')+choice('payouts','Выплаты')+'</div>'+
       (state.tab!=='payouts'?'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.85rem;align-items:center">'+
         '<span style="font-size:.79rem;color:var(--muted);margin-right:.3rem">Период:</span>'+
-        period('month','С начала месяца')+period('30d','Последние 30 дней')+'</div>':'')+
+        period('month','С начала месяца')+period('30d','Последние 30 дней')+
+        years.join('')+period('all','За всё время')+'</div>':'')+
       '<div data-finance-content role="tabpanel" aria-live="polite" style="min-height:90px;">Загружаем…</div>';
   }
   function showSummary(data){
@@ -65,7 +73,7 @@
       '</div>'+
       '<div class="card"><div class="card-title" style="display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap;">'+
       '<span>Продажи по точкам</span><button type="button" class="row-btn" data-finance-action="points">Открыть точки</button></div>'+
-      '<p style="font-size:.77rem;color:var(--muted)">Даты: '+text(p.from_day)+' — '+text(p.to_day)+
+      '<p style="font-size:.77rem;color:var(--muted)">Даты: '+text(p.from_day||'с начала учёта')+' — '+text(p.to_day)+
       ' (Красноярск). Неактивные точки учтены в общей выручке, но не включены в таблицу.</p>'+
       '<div style="overflow-x:auto"><table class="tbl"><thead><tr>'+
       '<th>Точка</th><th class="r">Заказов</th><th class="r">Выручка</th>'+
