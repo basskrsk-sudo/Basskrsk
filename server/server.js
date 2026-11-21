@@ -6,6 +6,9 @@
 // db.js. Загруженный файл проверяется на предыдущем запуске, после чего
 // сервер перезапускается и устанавливает его до открытия SQLite-соединения.
 require('./database-restore').applyPendingDatabaseRestore();
+// Inert unless an operator explicitly schedules an offline journal change.
+// Must run before any module opens the live database or starts HTTP.
+require('./sqlite-journal-maintenance').maybeMigrateJournalAtBoot();
 
 const http = require('node:http');
 const { performance } = require('node:perf_hooks');
