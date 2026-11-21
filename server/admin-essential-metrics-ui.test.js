@@ -68,7 +68,7 @@ test('main dashboard has four and only four metrics and a revenue trend',()=>{
   assert.equal((dashboard.match(/class="kpi-card"/g)||[]).length,4);
   assert.match(dashboard,/Ключевые показатели/);
   assert.match(dashboard,/id="chartRev"/);
-  assert.match(dashboard,/showSection\('economics'\)/);
+  assert.match(dashboard,/showSection\('finance'\)/);
   assert.match(html,/id="sec-economics"/);
   assert.match(html,/id="sec-report-center"/);
   assert.match(html,/id="sec-weekly-reports"/);
@@ -117,6 +117,6 @@ test('script and eight navigation sections remain valid',()=>{
   assert.doesNotThrow(()=>new vm.Script(nav,{filename:'admin-navigation.js'}));
   assert.equal((html.match(/class="nav-item(?: active)?"/g)||[]).length,8);
   for(const section of ['dashboard','points','products','orders','campaigns',
-    'report-center','tasks','system-health'])
+    'finance','tasks','system-health'])
     assert.match(html,new RegExp("showSection\\('"+section+"'\\)"));
 });
