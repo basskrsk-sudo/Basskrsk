@@ -18,6 +18,8 @@ const { getUnitEconomicsSettings,calculateUnitEconomics } = require('./unit-econ
 const { buildPointEquipmentEconomics } = require('./point-equipment');
 const { loadPointPayoutProfit } = require('./point-period-finance');
 const { netPaidRevenue, NET_PAID_REVENUE_SQL } = require('./net-paid-revenue');
+const { collectCurrentFounderSales } = require('./founder-sales-summary');
+const { trackSync } = require('./runtime-diagnostics');
 
 const CAPITAL_PLAN_RUB = 1000000;
 const TAX_ESTIMATE_RATE = 0.07; // Founder management estimate: per net paid sale.
@@ -53,12 +55,6 @@ function percentChange(current, previous) {
 }
 // Shared with point economics: partially refunded orders remain net-positive.
 function netOrderAmount(order) { return netPaidRevenue(order); }
-function ordersInRange(start, end) {
-  return db.prepare(
-    'SELECT id, point_id, partner_id, total, commission_rate, refund_status, refunded_amount, created_at ' +
-    'FROM orders WHERE status = ? AND created_at >= ? AND created_at < ?'
-  ).all('paid', start, end);
-}
 function summarizeOrders(orders) {
   const revenue = Math.round(orders.reduce((s, o) => s + netOrderAmount(o), 0));
   const paidCount = orders.filter(o => netOrderAmount(o) > 0).length;
@@ -91,48 +87,53 @@ function mapOfRates() {
   ).all().forEach(row => { if (!owner.has(row.point_id)) owner.set(row.point_id, safeNumber(row.commission_rate)); });
   return { manager, owner };
 }
-function estimatedEconomics(orders, startDate, endDate) {
-  const rates = mapOfRates();
-  let partner = 0, manager = 0, owner = 0;
-  let missingPartnerRates = 0;
-  orders.forEach(o => {
-    const amount = netOrderAmount(o);
-    if (amount <= 0) return;
-    if (o.commission_rate == null) missingPartnerRates++;
-    else partner += amount * safeNumber(o.commission_rate);
-    manager += amount * (rates.manager.get(o.point_id) || 0);
-    owner += amount * (rates.owner.get(o.point_id) || 0);
-  });
+
+function estimatedEconomicsFromTotals(totals,startDate,endDate) {
   const manualRows = db.prepare(
     'SELECT category, SUM(amount) AS total FROM expenses ' +
     'WHERE expense_date BETWEEN ? AND ? GROUP BY category ORDER BY total DESC'
   ).all(startDate, endDate);
-  const manual = Math.round(manualRows.reduce((s, e) => s + safeNumber(e.total), 0));
-  const revenue = summarizeOrders(orders).revenue;
-  // Tax each paid order separately. Refunds reduce that order's tax base,
-  // and a fully refunded order has no modeled tax. Do not calculate a
-  // second tax from the summary of all orders.
-  const tax = Math.round(orders.reduce((sum,order) =>
-    sum + Math.round(netOrderAmount(order)*TAX_ESTIMATE_RATE*100)/100,0)*100)/100;
-  const acquiring = Math.round(revenue * ACQUIRING_ESTIMATE_RATE);
-  const partnerCommission = Math.round(partner);
-  const managerCommission = Math.round(manager);
-  const ownerCommission = Math.round(owner);
-  const total = manual + tax + acquiring + partnerCommission + managerCommission + ownerCommission;
+  const manual = Math.round(manualRows.reduce((s,e)=>s+safeNumber(e.total),0));
+  const revenue=Math.round(totals.revenue);
+  // Tax is still rounded for each paid order before these totals are added.
+  const tax=Math.round(totals.tax*100)/100;
+  const acquiring = Math.round(revenue*ACQUIRING_ESTIMATE_RATE);
+  const partnerCommission=Math.round(totals.partner);
+  const managerCommission=Math.round(totals.manager);
+  const ownerCommission=Math.round(totals.owner);
+  const total=manual+tax+acquiring+partnerCommission+managerCommission+ownerCommission;
   return {
     revenue,
-    manual_expenses: manual,
-    expenses_by_category: manualRows.map(row => ({ name: row.category, amount: safeNumber(row.total) })),
-    partner_commission_est: partnerCommission,
-    manager_commission_est: managerCommission,
-    salon_owner_commission_est: ownerCommission,
-    tax_est: tax,
-    acquiring_est: acquiring,
-    estimated_result: revenue - total,
-    estimated_margin_percent: revenue ? Math.round((revenue - total) / revenue * 1000) / 10 : 0,
-    incomplete_commission_orders: missingPartnerRates,
-    disclaimer: 'Расчётная оценка по учтённым расходам и приблизительным ставкам, НЕ бухгалтерская прибыль и НЕ остаток денежных средств. Закупка товара может относиться к будущим продажам; ручные расходы и комиссии могут пересекаться.',
+    manual_expenses:manual,
+    expenses_by_category:manualRows.map(row=>({name:row.category,amount:safeNumber(row.total)})),
+    partner_commission_est:partnerCommission,
+    manager_commission_est:managerCommission,
+    salon_owner_commission_est:ownerCommission,
+    tax_est:tax,
+    acquiring_est:acquiring,
+    estimated_result:revenue-total,
+    estimated_margin_percent:revenue?Math.round((revenue-total)/revenue*1000)/10:0,
+    incomplete_commission_orders:totals.missingPartnerRates,
+    disclaimer:'Расчётная оценка по учтённым расходам и приблизительным ставкам, НЕ бухгалтерская прибыль и НЕ остаток денежных средств. Закупка товара может относиться к будущим продажам; ручные расходы и комиссии могут пересекаться.',
   };
+}
+// Keep this legacy entry point for tests and explicit, small on-demand analyses.
+// The founder dashboard uses collectCurrentFounderSales instead of this array.
+function estimatedEconomics(orders,startDate,endDate){
+  const rates=mapOfRates();
+  const totals={revenue:0,partner:0,manager:0,owner:0,
+    missingPartnerRates:0,tax:0};
+  orders.forEach(order=>{
+    const net=netOrderAmount(order);
+    totals.revenue+=net;
+    totals.tax+=Math.round(net*TAX_ESTIMATE_RATE*100)/100;
+    if(net<=0)return;
+    if(order.commission_rate==null)totals.missingPartnerRates++;
+    else totals.partner+=net*safeNumber(order.commission_rate);
+    totals.manager+=net*(rates.manager.get(order.point_id)||0);
+    totals.owner+=net*(rates.owner.get(order.point_id)||0);
+  });
+  return estimatedEconomicsFromTotals(totals,startDate,endDate);
 }
 function monthHistory(now) {
   const local = new Date(now.getTime() + ZONE_SHIFT);
@@ -284,15 +285,19 @@ function founderScorecard() {
 function collectFounderDashboard(founder, period='30d', now=new Date()) {
   const date=nowDate(now);
   const bounds=periodBounds(period,date);
-  const current=ordersInRange(bounds.from,bounds.to);
-  const cur=summarizeOrders(current);
+  const pointSettings=getUnitEconomicsSettings();
+  const streamed=trackSync('founder_paid_sales_batches',()=>
+    collectCurrentFounderSales(db,bounds,pointSettings.assumptions,mapOfRates()));
+  const cur=streamed.sales;
   const prev=summarizePreviousPeriod(bounds.previous_from,bounds.previous_to);
   const pointRows=pointRanking(bounds.from);
   const operations=getCachedOperationsCenter();
-  const pointSettings=getUnitEconomicsSettings();
   const pointContribution=calculateUnitEconomics(pointSettings.assumptions);
   const pointEconomics=buildPointEquipmentEconomics(db,pointSettings.assumptions,
-    pointContribution,current,bounds);
+    pointContribution,[],bounds,{
+      salesByPoint:streamed.pointSales,
+      financeByPoint:streamed.pointFinance,
+    });
   const soldPointRows=pointRows.filter(p=>p.orders>0);
   const silentPointRows=pointRows.filter(p=>p.orders===0);
   return {
@@ -305,7 +310,7 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
       orders_change_percent:percentChange(cur.orders,prev.orders),
       last_six_months:monthHistory(date),
     },
-    finance:estimatedEconomics(current,bounds.date_from,bounds.date_to),
+    finance:estimatedEconomicsFromTotals(streamed.financeTotals,bounds.date_from,bounds.date_to),
     point_economics:pointEconomics,
     network:{
       active_points:pointRows.length,

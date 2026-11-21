@@ -13,8 +13,10 @@ const {
  FOUNDER_SLOTS,activeFounder,getFounder,configureFounder,
 }=require('./business-founders');
 const {registerBusinessFounderRoutes,collectFounderDashboard,getCachedFounderDashboard,
-  summarizeOrders,summarizePreviousPeriod,periodBounds}=require('./routes-business-founders');
+  summarizeOrders,summarizePreviousPeriod,periodBounds,estimatedEconomics}=require('./routes-business-founders');
 const {getCachedOperationsCenter}=require('./routes-operations');
+const {getUnitEconomicsSettings,calculateUnitEconomics}=require('./unit-economics');
+const {buildPointEquipmentEconomics}=require('./point-equipment');
 const {recordVerifiedTelegramContact,availableTelegramAccounts,issueTelegramAccountSession}=require('./miniapp-phone-identity');
 
 function admin(role='super', active=1){
@@ -233,6 +235,50 @@ test('founder counts ALL silent active salons, even past the previous 50-point r
  assert.ok(dashboard.network.silent_points_count>=60);
  assert.equal(dashboard.network.silent_points.length,7,'only list preview is capped');
  assert.equal(dashboard.network.silent_points.some(p=>p.name==='Удалённая тестовая точка'),false);
+});
+
+test('large founder period uses bounded batches and matches legacy revenue and profit',()=>{
+  db.exec('SAVEPOINT founder_batched_sales_equivalence');
+  try{
+    const add=db.prepare(
+      'INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,'+
+      'subtotal,total,payment_method,status,commission_rate,refund_status,refunded_amount,created_at) '+
+      'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
+    const total=587;
+    for(let i=0;i<total;i++){
+      const price=100+(i%17)*13;
+      const returned=i%13===0?price:i%7===0?Math.round(price/5):null;
+      add.run('FOUNDER-BATCH-'+i,'Test','70000000000','БаркЛай',
+        i%5===0?'test-silent':'test-bark',
+        price,price,'sbp','paid',i%11===0?null:0.15,
+        returned===null?'none':'refunded',returned,
+        '2026-10-31 '+String(Math.floor(i/60)%24).padStart(2,'0')+':'+
+        String(i%5).padStart(2,'0')+':00');
+    }
+    const now=new Date('2026-11-01T12:00:00Z');
+    const bounds=periodBounds('30d',now);
+    const orders=db.prepare(
+      'SELECT id,point_id,partner_id,total,commission_rate,refund_status,refunded_amount,created_at '+
+      'FROM orders WHERE status=? AND created_at>=? AND created_at<?'
+    ).all('paid',bounds.from,bounds.to);
+    const legacySales=summarizeOrders(orders);
+    const legacyFinance=estimatedEconomics(orders,bounds.date_from,bounds.date_to);
+    const assumptions=getUnitEconomicsSettings().assumptions;
+    const legacyPoints=buildPointEquipmentEconomics(db,assumptions,
+      calculateUnitEconomics(assumptions),orders,bounds);
+    const batched=collectFounderDashboard(getFounder(1),'30d',now);
+    assert.deepEqual(
+      {revenue:batched.sales.revenue,orders:batched.sales.orders,avg_check:batched.sales.avg_check},
+      legacySales);
+    assert.deepEqual(batched.finance,legacyFinance);
+    assert.deepEqual(batched.point_economics,legacyPoints,
+      'payout ledgers, missing COGS estimates, refunds and per-order tax must match');
+    assert.ok(batched.point_economics.summary.total_points>=2);
+    assert.equal(batched.point_economics.summary.profit_missing_item_orders>500,true);
+    assert.ok(batched.sales.orders>400);
+  }finally{
+    db.exec('ROLLBACK TO founder_batched_sales_equivalence; RELEASE founder_batched_sales_equivalence');
+  }
 });
 
 test('deactivating owner denies previously signed sessions and prevents Telegram login',()=>{

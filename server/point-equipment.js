@@ -239,33 +239,33 @@ function loadPointInventoryValuation(database){
     GROUP BY s.point_id
   `).all().map(row=>[row.point_id,row]));
 }
-function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[],period=null){
+function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[],period=null,precomputed=null){
   const inventoryByPoint=loadPointInventoryValuation(database);
   const initialGoodsByPoint=loadInitialGoodsValuation(database);
   const bonusByPoint=loadPointLaunchBonusAllocations(database,assumptions);
-  const financeByPoint=loadPointPayoutProfit(database,orders,assumptions,period);
-  const sales=new Map();
-  // Reuse already fetched anonymized paid orders for founder dashboards.
-  // Tax each paid sale separately (to kopecks) on its net amount after refunds.
-  // A full refund contributes zero revenue and zero tax.
-  for(const order of orders){
-    if(!order.point_id)continue;
-    const item=sales.get(order.point_id)||{revenue:0,orders:0,tax:0};
-    if(order.net_revenue!==undefined){
-      // For aggregated historical inputs individual-sale rounding cannot be
-      // reconstructed; use the grouped total as an explicit approximation.
-      const amount=Math.max(0,Number(order.net_revenue||0));
-      item.revenue+=amount;
-      item.tax+=roundMoney(amount*POINT_SALES_TAX_RATE);
-      item.orders+=Number(order.net_orders||0);
-    }else{
-      const amount=netPaidRevenue(order);
-      if(amount<=0)continue;
-      item.revenue+=amount;
-      item.tax+=roundMoney(amount*POINT_SALES_TAX_RATE);
-      item.orders+=1;
+  const financeByPoint=precomputed?.financeByPoint ??
+    loadPointPayoutProfit(database,orders,assumptions,period);
+  const sales=precomputed?.salesByPoint ?? new Map();
+  // Existing array callers continue to use the per-order calculation. Founder
+  // dashboards pass a bounded stream's already accumulated point totals.
+  if(!precomputed?.salesByPoint){
+    for(const order of orders){
+      if(!order.point_id)continue;
+      const item=sales.get(order.point_id)||{revenue:0,orders:0,tax:0};
+      if(order.net_revenue!==undefined){
+        const amount=Math.max(0,Number(order.net_revenue||0));
+        item.revenue+=amount;
+        item.tax+=roundMoney(amount*POINT_SALES_TAX_RATE);
+        item.orders+=Number(order.net_orders||0);
+      }else{
+        const amount=netPaidRevenue(order);
+        if(amount<=0)continue;
+        item.revenue+=amount;
+        item.tax+=roundMoney(amount*POINT_SALES_TAX_RATE);
+        item.orders+=1;
+      }
+      sales.set(order.point_id,item);
     }
-    sales.set(order.point_id,item);
   }
   const dateStart=period&&period.from?Date.parse(period.from.replace(' ','T')+'Z'):NaN;
   const dateEnd=period&&period.to?Date.parse(period.to.replace(' ','T')+'Z'):NaN;
