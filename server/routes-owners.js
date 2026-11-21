@@ -14,6 +14,8 @@ const { sendJson } = require('./http-utils');
 const { requireAuth, requireActiveAdmin } = require('./routes-auth');
 const { sendTelegram } = require('./telegram');
 const { logManagerAction } = require('./audit-log');
+const { trackSync } = require('./runtime-diagnostics');
+const { loadOwnerDashboardSales } = require('./owner-dashboard-aggregate');
 const { normalizeProfile, isLoginAvailable, logProfileCorrection, ProfileCorrectionError } = require('./profile-corrections');
 const {
   createOwnerPayout,
@@ -339,55 +341,23 @@ function registerOwnerRoutes(router) {
     const point = db.prepare('SELECT * FROM points WHERE id = ? AND active = 1').get(owner.point_id);
     if (!point) return sendJson(res, 200, { noPoint: true, message: 'Назначенная вам точка удалена или отключена — обратитесь к администратору.' });
 
-    const orders = db.prepare(`
-      SELECT id,
-        CASE WHEN refund_status = 'refunded' AND refunded_amount IS NULL THEN 0
-          ELSE MAX(0,total - COALESCE(refunded_amount,0)) END AS total,
-        partner_id, commission_rate, is_partner_self_order, payment_method, created_at
-      FROM orders WHERE point_id = ? AND status = 'paid'
-        AND CASE WHEN refund_status = 'refunded' AND refunded_amount IS NULL THEN 0
-          ELSE MAX(0,total - COALESCE(refunded_amount,0)) END > 0
-      ORDER BY created_at DESC
-    `).all(owner.point_id);
-
-    const totalRevenue = orders.reduce((s, o) => s + o.total, 0);
-    const totalOrders = orders.length;
-
-    // Текущий календарный месяц (UTC, как и хранятся даты в SQLite datetime('now'))
+    // The original dashboard materialized every historical paid order, then
+    // scanned it once per groomer. Four indexed/aggregated reads now return
+    // only totals, one row per groomer, and the last 20 orders. Live stock,
+    // payout transactions and payment callbacks are unaffected.
     const now = new Date();
-    const monthStartIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 19).replace('T', ' ');
-    const thisMonthOrders = orders.filter((o) => o.created_at >= monthStartIso);
-    const thisMonthRevenue = thisMonthOrders.reduce((s, o) => s + o.total, 0);
+    const monthStartIso = new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1))
+      .toISOString().slice(0,19).replace('T',' ');
+    const analytics = trackSync('owner_dashboard_aggregate',() =>
+      loadOwnerDashboardSales(db,owner.point_id,owner.id,monthStartIso));
+    const {totals,groomers,unassigned_orders_count,recent_orders,unpaid} = analytics;
 
-    // Разбивка по грумерам этой точки — включая неактивных (могли работать
-    // раньше и оставить след в статистике), но помечаем активность отдельно.
-    const partners = db.prepare('SELECT id, full_name, commission_rate, active FROM partners WHERE point_id = ?').all(owner.point_id);
-    const groomers = partners.map((p) => {
-      const pOrders = orders.filter((o) => o.partner_id === p.id);
-      const revenue = pOrders.reduce((s, o) => s + o.total, 0);
-      const commissionEarned = pOrders.reduce((s, o) => s + o.total * (o.commission_rate ?? p.commission_rate), 0);
-      return {
-        id: p.id,
-        full_name: p.full_name,
-        active: !!p.active,
-        tier_percent: Math.round(p.commission_rate * 100),
-        orders_count: pOrders.length,
-        revenue,
-        commission_earned: Math.round(commissionEarned),
-      };
-    }).sort((a, b) => b.revenue - a.revenue);
-
-    const unassignedOrdersCount = orders.filter((o) => !o.partner_id).length;
-
-    // Заработок самого владельца — фиксированные 5% с выручки точки,
-    // отдельная выплата поверх комиссий грумера и менеджера (не за их счёт).
-    const ownerUnpaid = getOwnerUnpaidSummary(owner.id);
     const ownerEarnings = {
       tier_percent: Math.round(owner.commission_rate * 100),
-      total: Math.round(totalRevenue * owner.commission_rate),
-      this_month: Math.round(thisMonthRevenue * owner.commission_rate),
-      unpaid: ownerUnpaid.amount,
-      unpaid_orders_count: ownerUnpaid.orders_count,
+      total: Math.round(totals.revenue * owner.commission_rate),
+      this_month: Math.round(totals.this_month_revenue * owner.commission_rate),
+      unpaid: unpaid.amount,
+      unpaid_orders_count: unpaid.orders_count,
     };
 
     // Менеджер, курирующий эту точку (если назначен)
@@ -409,14 +379,8 @@ function registerOwnerRoutes(router) {
       full_name: mgrPoint.full_name,
       phone: mgrPoint.phone,
       tier_percent: Math.round(mgrPoint.commission_rate * 100),
-      commission_earned: Math.round(orders.reduce((s, o) => s + o.total * mgrPoint.commission_rate, 0)),
+      commission_earned: Math.round(totals.revenue * mgrPoint.commission_rate),
     } : null;
-
-    // Последние 20 заказов точки — для быстрого просмотра без захода в админку
-    const recentOrders = orders.slice(0, 20).map((o) => ({
-      id: o.id, total: o.total, payment_method: o.payment_method, created_at: o.created_at,
-      is_self_order: !!o.is_partner_self_order,
-    }));
 
     // Реферальные бонусы — сколько владелец заработал, приведя новых грумеров
     // по своему промокоду (аналогично реферальной программе у грумеров).
@@ -431,19 +395,13 @@ function registerOwnerRoutes(router) {
       point: { id: point.id, name: point.name, addr: point.addr, city_id: point.city_id },
       owner_code: owner.owner_code,
       referrals:referralProgram.referralSummary('owner',owner.id),
-      totals: {
-        revenue: totalRevenue,
-        orders: totalOrders,
-        avg_order: totalOrders ? Math.round(totalRevenue / totalOrders) : 0,
-        this_month_revenue: thisMonthRevenue,
-        this_month_orders: thisMonthOrders.length,
-      },
+      totals,
       owner_earnings: ownerEarnings,
       payouts: listOwnerPayouts(owner.id, 100),
       groomers,
-      unassigned_orders_count: unassignedOrdersCount,
+      unassigned_orders_count,
       manager,
-      recent_orders: recentOrders,
+      recent_orders,
       referral_bonuses: { rows: referralRows, total: referralTotal },
     });
   });
