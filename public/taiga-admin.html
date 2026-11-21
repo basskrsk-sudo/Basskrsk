@@ -4566,6 +4566,9 @@ async function renderSystemHealth() {
     const values=[
       ['Сервер Node.js',info.status==='ok'?'🟢 Работает':'🔴 Требует внимания','Работает '+n(Math.floor((info.uptime_seconds||0)/60))+' мин.'],
       ['База SQLite',info.checks?.database==='ok'?'✅ Работает':'❌ Ошибка',''],
+      ['Режим SQLite на Amvera',info.database_journal_mode==='wal'?'WAL':
+        info.database_journal_mode==='delete'?'DELETE':'—',
+        'Режим рабочей БД при запуске приложения, не скачанного бэкапа'],
       ['Хранилище /data',info.checks?.storage==='ok'?'✅ Работает':'❌ Ошибка',''],
       ['Память',n(info.memory?.rss_mb)+' МБ',info.memory?.limit_mb?'Лимит: '+n(info.memory.limit_mb)+' МБ':'Лимит неизвестен'],
       ['Место на диске',info.storage_free_mb==null?'—':n(info.storage_free_mb)+' МБ',''],
