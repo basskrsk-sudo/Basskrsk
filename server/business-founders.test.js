@@ -167,6 +167,33 @@ test('read-only founder and admin analytics are revision-aware, identity-scoped,
  assert.notStrictEqual(getCachedOperationsCenter(),operations);
  assert.ok(changed.capital.personal_expenses_recorded>=snapshot.capital.personal_expenses_recorded+17);
 });
+test('network metrics are shared across founders but capital and tasks stay private',()=>{
+ const first=getFounder(1),second=getFounder(2);
+ const fixedNow=new Date('2026-11-01T12:00:00Z');
+ const a=collectFounderDashboard(first,'30d',fixedNow);
+ const b=collectFounderDashboard(second,'30d',fixedNow);
+ assert.notEqual(a.founder.id,b.founder.id);
+ assert.strictEqual(a.sales,b.sales,'common network revenue is computed only once');
+ assert.strictEqual(a.point_economics,b.point_economics);
+ assert.strictEqual(a.strategy,b.strategy);
+ assert.strictEqual(a.operations,b.operations);
+ assert.notStrictEqual(a.capital,b.capital,'personal capital must not be cached across accounts');
+ assert.notStrictEqual(a.tasks,b.tasks,'task assignments remain account-specific');
+ assert.equal(a.capital.my_planned_share,450000);
+ assert.equal(b.capital.my_planned_share,350000);
+ assert.ok(a.capital.personal_expenses.every(x=>!x.investor_name||x.investor_name===first.full_name));
+ assert.ok(b.capital.personal_expenses.every(x=>!x.investor_name||x.investor_name===second.full_name));
+ db.exec('SAVEPOINT shared_founder_revision');
+ try {
+   db.prepare('INSERT INTO expenses(expense_date,category,amount,investor_name) VALUES(?,?,?,?)')
+     .run('2026-10-31','Cache version test',11,first.full_name);
+   const after=collectFounderDashboard(first,'30d',fixedNow);
+   assert.notStrictEqual(after.point_economics,a.point_economics,
+     'any SQLite write invalidates shared read-only analytics');
+   assert.ok(after.capital.personal_expenses_recorded>=a.capital.personal_expenses_recorded+11);
+ }finally{db.exec('ROLLBACK TO shared_founder_revision; RELEASE shared_founder_revision');}
+});
+
 test('previous-period aggregation uses SQL without streaming full order history',()=>{
  const from='2026-10-01 00:00:00',to='2026-11-01 00:00:00';
  const expected=summarizeOrders(db.prepare(

@@ -13,6 +13,10 @@ const { createSqliteAnalyticsCache } = require('./analytics-cache');
 // Different founders never share personal capital or expense statements.
 // Permission checks happen BEFORE consulting this short-lived read-only cache.
 const founderDashboardCache = createSqliteAnalyticsCache(db, { ttlMs: 8000, maxEntries: 12 });
+// Common operating metrics are independent of founder identity; share one
+// short-lived read-only snapshot across accounts. Personal finance, documents
+// and tasks must NEVER enter this shared cache.
+const founderNetworkCache = createSqliteAnalyticsCache(db, { ttlMs: 8000, maxEntries: 8 });
 const { getCachedWeeklyBsc } = require('./weekly-report');
 const { getUnitEconomicsSettings,calculateUnitEconomics } = require('./unit-economics');
 const { buildPointEquipmentEconomics } = require('./point-equipment');
@@ -282,9 +286,7 @@ function founderScorecard() {
     return null;
   }
 }
-function collectFounderDashboard(founder, period='30d', now=new Date()) {
-  const date=nowDate(now);
-  const bounds=periodBounds(period,date);
+function collectSharedFounderNetwork(bounds,date){
   const pointSettings=getUnitEconomicsSettings();
   const streamed=trackSync('founder_paid_sales_batches',()=>
     collectCurrentFounderSales(db,bounds,pointSettings.assumptions,mapOfRates()));
@@ -300,10 +302,10 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
     });
   const soldPointRows=pointRows.filter(p=>p.orders>0);
   const silentPointRows=pointRows.filter(p=>p.orders===0);
+  // Only public company / network estimates live here. No founder row,
+  // expense receipts, login, salary, personal capital or personal tasks.
   return {
-    updated_at:date.toISOString(),
-    founder:safeFounder(founder),
-    period:bounds,
+    bounds,
     sales:{
       ...cur,previous:prev,
       revenue_change_percent:percentChange(cur.revenue,prev.revenue),
@@ -321,13 +323,38 @@ function collectFounderDashboard(founder, period='30d', now=new Date()) {
     },
     strategy:strategicReadiness(date),
     bsc:founderScorecard(),
-    capital:investmentSummary(founder),
     operations:{
       summary:operations.summary,
       issues:(operations.issues||[]).slice(0,8).map(i=>({
         key:i.key,title:i.title,severity:i.severity,count:i.count,summary:i.summary,
       })),
     },
+  };
+}
+function collectFounderDashboard(founder,period='30d',now=new Date()){
+  const date=nowDate(now);
+  const bounds=periodBounds(period,date);
+  // Most staff open their dashboard within seconds of each other. An 8-second
+  // bucket matches the existing dashboard cache TTL, while SQLite revision
+  // invalidation makes new sales/expenses visible immediately.
+  // Include bounds.from's date so month/year rollovers don't reuse old data.
+  const cacheKey=bounds.key+':'+bounds.from.slice(0,10)+':'+
+    Math.floor(date.getTime()/8000);
+  const shared=founderNetworkCache.get(cacheKey,()=>
+    collectSharedFounderNetwork(bounds,date));
+  return {
+    updated_at:shared.bounds.created_utc,
+    founder:safeFounder(founder),
+    period:shared.bounds,
+    sales:shared.sales,
+    finance:shared.finance,
+    point_economics:shared.point_economics,
+    network:shared.network,
+    strategy:shared.strategy,
+    bsc:shared.bsc,
+    // Identity-scoped records and task assignment are always read separately.
+    capital:investmentSummary(founder),
+    operations:shared.operations,
     tasks:founderTasks(founder),
   };
 }
