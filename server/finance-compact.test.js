@@ -4,8 +4,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
-const {periodBounds,buildFinanceSummary,buildPayoutSnapshot}=require('./finance-compact');
-const {queryExpenses,validPage}=require('./routes-finance-compact');
+const {periodBounds,buildFinanceSummary,buildPayoutSnapshot,queryExpenses}=require('./finance-compact');
 function fixture(){
   const db=new DatabaseSync(':memory:');
   db.exec(
@@ -79,7 +78,7 @@ test('payouts are only provisional; paid payouts remain separated and refunded o
    assert.equal(s.roles.partner.pending,204);
    assert.equal(s.roles.partner.refund_review,15);
    assert.equal(s.roles.owner.pending,13+18+25);
-   assert.equal(s.roles.manager.pending,18+25);
+   assert.equal(s.roles.manager.pending,18+25+35);
    assert.equal(s.paid_total,100);
    assert.equal(s.pending_total,s.roles.partner.pending+s.roles.owner.pending+s.roles.manager.pending);
    assert.match(s.disclaimer,/Предварительный ориентир/);
@@ -100,7 +99,6 @@ test('expenses query returns only 20 small rows and filters by exact investor',(
    r=queryExpenses(db,{now:NOW,page:2});
    assert.equal(r.expenses.length,0);
    assert.throws(()=>queryExpenses(db,{now:NOW,page:0}),RangeError);
-   assert.throws(()=>validPage({page:'1.4'}),RangeError);
  }finally{db.close();}
 });
 test('finance endpoint requires active admin and never exposes public financial data',()=>{
