@@ -139,7 +139,19 @@ function getExpenses(period) {
   }));
 }
 
-function collectMetrics(start, end, periodForExpenses) {
+function weeklyCommissionRates() {
+  // Both compared weeks use the same current partner/owner rate tables.
+  // Read the two small maps once per management report, not once per week.
+  return {
+    managerRates:new Map(db.prepare(
+      'SELECT point_id, commission_rate FROM manager_points WHERE point_id IS NOT NULL'
+    ).all().map(row=>[String(row.point_id),Number(row.commission_rate||0)])),
+    ownerRates:new Map(db.prepare(
+      'SELECT point_id, commission_rate FROM salon_owners WHERE point_id IS NOT NULL AND active = 1'
+    ).all().map(row=>[String(row.point_id),Number(row.commission_rate||0)])),
+  };
+}
+function collectMetrics(start, end, periodForExpenses, commissionRates) {
   const orders = getOrders(start, end);
   const paidOrders = orders.filter((order) => order.status === 'paid');
   const revenue = paidOrders.reduce((total, order) => total + effectiveRevenue(order), 0);
@@ -154,12 +166,7 @@ function collectMetrics(start, end, periodForExpenses) {
   const partnerCommission = Math.round(paidOrders.reduce(
     (total, order) => total + effectiveRevenue(order) * Number(order.commission_rate || 0), 0
   ));
-  const managerRates = new Map(db.prepare(
-    'SELECT point_id, commission_rate FROM manager_points WHERE point_id IS NOT NULL'
-  ).all().map((row) => [String(row.point_id), Number(row.commission_rate || 0)]));
-  const ownerRates = new Map(db.prepare(
-    'SELECT point_id, commission_rate FROM salon_owners WHERE point_id IS NOT NULL AND active = 1'
-  ).all().map((row) => [String(row.point_id), Number(row.commission_rate || 0)]));
+  const {managerRates,ownerRates}=commissionRates||weeklyCommissionRates();
   const managerCommission = Math.round(paidOrders.reduce(
     (total, order) => total + effectiveRevenue(order) * Number(managerRates.get(String(order.point_id)) || 0), 0
   ));
@@ -398,11 +405,12 @@ function buildAlerts(report) {
 
 function collectWeeklyReportForPeriod(period) {
  return trackSync('weekly_report_build', () => {
-  const current = collectMetrics(period.start_utc, period.end_utc_exclusive, period);
+  const rates=weeklyCommissionRates();
+  const current = collectMetrics(period.start_utc, period.end_utc_exclusive, period,rates);
   const previous = collectMetrics(period.previous_start_utc, period.previous_end_utc_exclusive, {
     start_local: period.previous_start_local,
     end_local: period.previous_end_local,
-  });
+  },rates);
   const points = buildPoints(current, previous);
   const products = buildProducts(period, { start: period.previous_start_utc, end: period.previous_end_utc_exclusive });
   const report = {
@@ -430,11 +438,12 @@ function collectWeeklyReportForPeriod(period) {
 // and PDF-only alerts every time an owner opens a dashboard.
 function collectWeeklyBscReport(now = new Date()) {
   const period = previousCompletedWeek(now);
-  const current = collectMetrics(period.start_utc, period.end_utc_exclusive, period);
+  const rates=weeklyCommissionRates();
+  const current = collectMetrics(period.start_utc, period.end_utc_exclusive, period,rates);
   const previous = collectMetrics(period.previous_start_utc, period.previous_end_utc_exclusive, {
     start_local: period.previous_start_local,
     end_local: period.previous_end_local,
-  });
+  },rates);
   const points = buildPoints(current, previous);
   const customers = buildCustomers(current, period);
   const pending = db.prepare(
