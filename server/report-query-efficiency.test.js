@@ -128,6 +128,24 @@ test('point summary remains batch-based when the number of points grows', () => 
   assert.doesNotMatch(section,/current\.paidOrders\.filter\(/,'no full-order scan per point');
 });
 
+test('both comparison weeks share one read of unchanged commission tables',()=>{
+  const source=fs.readFileSync(path.join(__dirname,'weekly-report.js'),'utf8');
+  const helper=source.split('function weeklyCommissionRates() {')[1]
+    .split('function collectMetrics(')[0];
+  assert.equal((helper.match(/FROM manager_points/g)||[]).length,1);
+  assert.equal((helper.match(/FROM salon_owners/g)||[]).length,1);
+  const body=source.split('function collectMetrics(')[1].split('function buildPoints(')[0];
+  assert.match(body,/commissionRates\|\|weeklyCommissionRates\(\)/);
+  assert.doesNotMatch(body,/FROM manager_points|FROM salon_owners/,
+    'do not reread static commission maps inside each week');
+  for(const fn of ['collectWeeklyReportForPeriod(period)','collectWeeklyBscReport(now = new Date())']){
+    const part=source.split('function '+fn+' {')[1].split('function ')[0];
+    assert.match(part,/const rates=weeklyCommissionRates\(\)/);
+    assert.equal((part.match(/\},rates\)/g)||[]).length,1,'previous week reuses rates');
+    assert.equal((part.match(/period,rates\)/g)||[]).length,1,'current week reuses rates');
+  }
+});
+
 test('founder dashboard and weekly reports use the shared lightweight BSC dataset', () => {
   const weekly=fs.readFileSync(path.join(__dirname,'weekly-report.js'),'utf8');
   const founderRoute=fs.readFileSync(path.join(__dirname,'routes-business-founders.js'),'utf8');
