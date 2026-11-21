@@ -15,6 +15,7 @@ const { snapshotApiPerformance } = require('./api-performance');
 const { sampleCpuThrottling, snapshotOperations, snapshotSlowSyncOperations } = require('./runtime-diagnostics');
 const { eventLoopStallProfiler } = require('./event-loop-stall-profiler');
 const { createHealthHistory } = require('./health-history');
+const { correlateBackupWithHealth } = require('./backup-load-correlation');
 const { createHealthWriteQueue } = require('./health-write-queue');
 // Backup module is loaded lazily to avoid initializing its scheduler during
 // lightweight public readiness checks. Sampling never reads its SQLite state.
@@ -462,6 +463,10 @@ function registerSiteHealthRoutes(router) {
     const payload=await metrics();
     try {payload.events=recentEvents();}
     catch (_) {payload.events=[];}
+    // Correlate existing RAM history and persisted warnings with backup times.
+    // No new database scans, timers or writes are needed.
+    payload.backup_correlation=correlateBackupWithHealth(
+      payload.backup,payload.events,payload.health_history,{now:payload.timestamp});
     sendJson(res,200,payload);
   });
 }

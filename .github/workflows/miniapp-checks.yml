@@ -459,6 +459,8 @@ jobs:
           node --check server/routes-weekly-reports.js
           node --check public/week-over-week.js
           node --check server/site-health.js
+          node --check server/backup-load-correlation.js
+          node --check server/backup-load-correlation.test.js
           node --check server/runtime-diagnostics.js
           node --check server/runtime-diagnostics.test.js
           node --check server/event-loop-stall-profiler.js
@@ -729,6 +731,8 @@ jobs:
         run: node --test server/admin-finance-ui.test.js
       - name: Verify simplified admin business metrics
         run: node --test server/admin-essential-metrics-ui.test.js server/salon-card-scroll-ui.test.js
+      - name: Compare night-time backup windows against existing monitoring without new scans
+        run: node --test server/backup-load-correlation.test.js server/site-health-ui.test.js
       - name: Verify restart-safe daily SQLite backup scheduling
         run: node --test server/backup-schedule.test.js
       - name: Verify indexed groomer phone checks for Gold loyalty

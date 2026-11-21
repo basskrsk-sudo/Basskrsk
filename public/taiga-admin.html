@@ -4607,7 +4607,21 @@ async function renderSystemHealth() {
         'Отправка: '+(backup.email_ms==null?'—':n(backup.email_ms)+' мс')],
       ['Последний бэкап',backup.duration_ms==null?'—':n(backup.duration_ms)+' мс',
         'Объём: '+(backup.size_kb==null?'—':n(backup.size_kb)+' КБ')],
+      ['Время бэкапа (UTC)',backup.started_at||'—',
+        'Завершение: '+(backup.finished_at||'неизвестно')],
+      ['Следующая копия (UTC)',backup.next_due_at||'—',
+        'Планируется по времени последней успешной отправки'],
     );
+    const overlap=info.backup_correlation||{};
+    const overlapLabel=overlap.status==='coincident'?'⚠️ Есть совпадение по времени':
+      overlap.status==='not_observed'?'Совпадений не обнаружено':'Недостаточно данных';
+    const overlapDetails=overlap.status==='coincident'
+      ?'Предупреждений: '+n(overlap.events_count)+', пиков измерений: '+n(overlap.spike_samples)+
+        '. Совпадение по времени не доказывает, что бэкап стал причиной.'
+      :overlap.status==='not_observed'
+        ?'В доступных измерениях возле последней копии пиков не обнаружено.'
+        :'Мониторинг мог перезапуститься; данные последней копии либо замеры недоступны.';
+    values.push(['Нагрузка во время бэкапа',overlapLabel,overlapDetails]);
     const historyRows=(info.health_history||[]).slice().reverse().map(sample=>
       '<tr><td>'+safe(sample.at||'—')+'</td>'+
       '<td>'+n(sample.rss_mb)+'</td>'+
