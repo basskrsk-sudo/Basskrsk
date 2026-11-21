@@ -135,10 +135,12 @@ test('private paid sale notices actually respect settings; owner/admin/founder o
 
     assert.equal(savePreferences('owner',o,{sales:true}).ok,true);
     assert.equal(savePreferences('admin',a,{sales:true}).ok,true);
+    // Superadmins now receive a separate paid-sale profit breakdown, not a
+    // second generic optional sales notice for the same order.
     assert.equal(savePreferences('founder',f,{sales:true}).ok,true);
     sent=await sendPaidOrderNotifications(order,items);
-    assert.deepEqual(sent.attempted,['customer','owner','admin','founder']);
-    assert.deepEqual(deliveries.map(x=>x.chatId),['11001','11002','11004','11005']);
+    assert.deepEqual(sent.attempted,['customer','owner','founder']);
+    assert.deepEqual(deliveries.map(x=>x.chatId),['11001','11002','11005']);
     for(const row of deliveries.slice(1)) {
       assert.doesNotMatch(row.body,/Покупатель|79135550001/,
         'private optional reports should not disclose a customer phone/name');
@@ -147,15 +149,15 @@ test('private paid sale notices actually respect settings; owner/admin/founder o
     savePreferences('partner',p,{sales:true});
     savePreferences('owner',o,{sales:false});
     sent=await sendPaidOrderNotifications(order,items);
-    assert.deepEqual(sent.attempted,['customer','partner','admin','founder']);
-    assert.deepEqual(deliveries.map(x=>x.chatId),['11001','11002','11004','11005']);
+    assert.deepEqual(sent.attempted,['customer','partner','founder']);
+    assert.deepEqual(deliveries.map(x=>x.chatId),['11001','11002','11005']);
     assert.doesNotMatch(deliveries.find(x=>x.chatId==='11002').body,/79135550001|Покупатель/);
     // Same Telegram user is groomer + owner. Opting into both roles never
     // generates two copies of a single sale; personal groomer card wins.
     deliveries.length=0;
     savePreferences('owner',o,{sales:true});
     sent=await sendPaidOrderNotifications(order,items);
-    assert.deepEqual(sent.attempted,['customer','partner','admin','founder']);
+    assert.deepEqual(sent.attempted,['customer','partner','founder']);
     assert.equal(deliveries.filter(x=>x.chatId==='11002').length,1);
     assert.match(deliveries.find(x=>x.chatId==='11002').body,/Новая продажа у вас/);
   } finally {
