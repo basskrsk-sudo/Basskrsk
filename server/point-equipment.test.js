@@ -208,6 +208,20 @@ test('7% modeled tax is rounded per net paid order and replaces the old model ra
     'existing modeled tax is replaced, never supplemented by an extra 7%');
 });
 
+test('partially refunded status from live refund API preserves net point revenue',()=>{
+  const assumptions=getUnitEconomicsSettings().assumptions;
+  const orders=[
+    {point_id:'econ-none',total:500,refund_status:'refunded',refunded_amount:100},
+    {point_id:'econ-none',total:100,refund_status:'refunded',refunded_amount:100},
+    {point_id:'econ-none',total:200,refund_status:'refunded',refunded_amount:null},
+  ];
+  const model=buildPointEquipmentEconomics(db,assumptions,calculateUnitEconomics(assumptions),orders);
+  const point=model.points.find(p=>p.point_id==='econ-none');
+  assert.equal(point.period_revenue,400);
+  assert.equal(point.period_orders,1);
+  assert.equal(point.period_tax_est,28);
+});
+
 test('no-stand launch counts only approved initial goods and bonus, excluding future restocks',()=>{
   const id=Number(db.prepare(
     "INSERT INTO managers(mgr_code,login,password_hash,full_name,phone,active) VALUES(?,?,?,?,?,1)"

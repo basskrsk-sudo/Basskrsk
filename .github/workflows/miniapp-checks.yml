@@ -631,6 +631,8 @@ jobs:
           node --check server/expense-bot-files.test.js
           node --check public/expense-evidence.js
           node --check server/routes-business-founders.js
+          node --check server/net-paid-revenue.js
+          node --check server/net-paid-revenue.test.js
           node --check server/routes-auth.js
           node --check server/auth.js
           node --check server/auth-async.test.js
@@ -751,6 +753,8 @@ jobs:
         run: node --test server/customer-phone-lookup.test.js
       - name: Verify owner registry single SQL payout summary
         run: node --test server/owners-registry-summary.test.js
+      - name: Verify shared partial refund net revenue across SQL and JavaScript
+        run: node --test server/net-paid-revenue.test.js
       - name: Verify owner dashboard bounded SQL aggregation and payout arithmetic
         run: node --test server/owner-dashboard-aggregate.test.js
       - name: Verify indexed operations-center queries
