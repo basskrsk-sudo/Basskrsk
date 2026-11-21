@@ -3,7 +3,8 @@
 // Persist small approval requests instead of eagerly generating PDFs and CSVs.
 const db = require('./db');
 const { sendToChat } = require('./telegram');
-const { adminCanReadSales } = require('./sales-week-report');
+// The access check loads the sales report module only for an explicit request.
+const adminCanReadSales = (...args) => require('./sales-week-report').adminCanReadSales(...args);
 const REPORTS = Object.freeze({
   salesweek: {title:'Продажи за 7 дней',role:'admin'},
   business: {title:'Бизнес за год',role:'admin'},
