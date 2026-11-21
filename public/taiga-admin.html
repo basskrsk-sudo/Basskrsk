@@ -2687,8 +2687,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <form id="referral-new-partner-form" style="display:grid;gap:.7rem;">
             <div class="admin-field"><label for="referral-new-name">Фамилия и имя *</label><input id="referral-new-name" type="text" maxlength="120" required autocomplete="name"></div>
             <div class="admin-field"><label for="referral-new-phone">Телефон *</label><input id="referral-new-phone" type="tel" required autocomplete="tel" placeholder="+7 999 123-45-67"></div>
-            <div class="admin-field"><label for="referral-new-login">Логин *</label><input id="referral-new-login" type="text" minlength="3" maxlength="80" required autocomplete="off"></div>
-            <div class="admin-field"><label for="referral-new-password">Пароль для входа *</label><input id="referral-new-password" type="password" minlength="6" maxlength="128" required autocomplete="new-password"></div>
+            <p style="font-size:.8rem;color:var(--muted);line-height:1.5;">Логин и пароль не нужны. Рекомендатель входит через Telegram-мини-приложение с подтверждением своего номера или через MAX на сайте.</p>
             <div class="admin-field"><label for="referral-new-payout">Получение бонуса</label><select id="referral-new-payout" class="pm-select">
               <option value="">Не указано</option><option value="sbp">СБП на телефон</option><option value="card">Перевод на карту</option><option value="bank_account">На расчётный счёт</option><option value="cash">Наличными</option>
             </select></div>

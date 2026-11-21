@@ -97,6 +97,11 @@ function registerAuthRoutes(router) {
       return sendJson(res, 400, { error: 'Неизвестная роль' });
     }
 
+    // Referrer accounts have no password login, even if somebody discovers
+    // their internal SQLite login or an administrator resets the hash.
+    if (role === 'partner' && user?.partner_type === 'referrer') return sendJson(res, 401, {
+      error: 'Рекомендатели входят через Telegram-мини-приложение или MAX.'
+    });
     if (!user || !user.password_hash || !(await verifyPasswordAsync(password, user.password_hash))) {
       return sendJson(res, 401, { error: 'Неверный логин или пароль' });
     }
@@ -501,9 +506,16 @@ function registerAuthRoutes(router) {
     if (digits.length < 10) return sendJson(res, 400, { error: 'Укажите корректный номер телефона' });
     if (!process.env.TG_TOKEN) return sendJson(res, 503, { error: 'Вход через Telegram пока не настроен на сервере' });
 
-    const partner = db.prepare('SELECT id, phone FROM partners WHERE active = 1').all()
-      .find((p) => phonesMatch(p.phone, digits));
-    if (!partner) return sendJson(res, 404, { error: 'Партнёр с таким номером телефона не найден или ещё не активирован' });
+    const partners = db.prepare('SELECT id, phone, partner_type FROM partners WHERE phone_last10=? AND active=1 LIMIT 2')
+      .all(digits.slice(-10));
+    if (partners.length !== 1 || !phonesMatch(partners[0].phone,digits))
+      return sendJson(res, 404, { error: 'Не найден один активный партнёр с таким номером телефона' });
+    // Legacy website Telegram deep-links confirm only opening the bot. For a
+    // passwordless referrer this is insufficient proof of phone ownership;
+    // the Mini App requires a genuine self-contact with matching user_id.
+    if (partners[0].partner_type === 'referrer') return sendJson(res, 409, {
+      error: 'Для рекомендателя вход через Telegram доступен в мини-приложении: откройте @HvostMarketRusBot, поделитесь своим номером и выберите кабинет партнёра. На сайте можно войти через MAX.'
+    });
 
     const token = crypto.randomBytes(16).toString('hex');
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -523,6 +535,12 @@ function registerAuthRoutes(router) {
     const partner = db.prepare('SELECT * FROM partners WHERE active = 1').all()
       .find((p) => phonesMatch(p.phone, record.phone));
     if (!partner) return sendJson(res, 404, { error: 'Партнёр не найден или отключён' });
+    // Legacy Telegram site flow proves only that someone followed the link.
+    // For passwordless referrers it cannot issue a session. Mini App self-
+    // contact verification (or MAX contact verification) is mandatory.
+    if (partner.partner_type === 'referrer') return sendJson(res, 409, {
+      error: 'Рекомендатели входят через Telegram-мини-приложение с подтверждением номера или MAX.'
+    });
     if (record.chat_id && record.chat_id !== partner.telegram_chat_id) {
       bindTelegramAccount('partner',partner.id,record.chat_id);
       partner.telegram_chat_id = String(record.chat_id);
@@ -552,6 +570,12 @@ function registerAuthRoutes(router) {
     const partner = db.prepare('SELECT * FROM partners WHERE active = 1').all()
       .find((p) => phonesMatch(p.phone, record.phone));
     if (!partner) return sendJson(res, 404, { error: 'Партнёр не найден или отключён' });
+    // Legacy Telegram site flow proves only that someone followed the link.
+    // For passwordless referrers it cannot issue a session. Mini App self-
+    // contact verification (or MAX contact verification) is mandatory.
+    if (partner.partner_type === 'referrer') return sendJson(res, 409, {
+      error: 'Рекомендатели входят через Telegram-мини-приложение с подтверждением номера или MAX.'
+    });
     if (record.chat_id && record.chat_id !== partner.telegram_chat_id) {
       bindTelegramAccount('partner',partner.id,record.chat_id);
       partner.telegram_chat_id = String(record.chat_id);
@@ -708,8 +732,10 @@ function registerAuthRoutes(router) {
         return sendJson(res, 409, { error: 'Привязка MAX изменилась. Повторите вход.' });
       }
     }
-    const authToken = signToken({ role: 'partner', id: partner.id, login: partner.login });
+    const authToken = signToken({ role: 'partner', id: partner.id,
+      ...(partner.partner_type === 'referrer' ? {} : { login: partner.login }) });
     const { password_hash, telegram_chat_id, max_chat_id, ...safeUser } = partner;
+    if (partner.partner_type === 'referrer') safeUser.login = null;
     safeUser.telegram_connected = !!telegram_chat_id;
     safeUser.max_connected = true;
     sendJson(res, 200, { verified: true, token: authToken, user: safeUser });

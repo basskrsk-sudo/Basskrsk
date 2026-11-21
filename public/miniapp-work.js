@@ -1369,7 +1369,7 @@
         ? 'Минимаркет «' + esc(adminCreatedPointName) +
           '» создан. Можно сразу зарегистрировать владельца и грумеров.'
         : kind === 'referrer'
-          ? 'Рекомендатель зарегистрирован без торговой точки. Он может войти в кабинет и приглашать новые салоны.'
+          ? 'Рекомендатель зарегистрирован без логина и пароля. Войти можно через Telegram-мини-приложение (подтвердив свой телефон) или через MAX на сайте.'
           : 'Новый пользователь зарегистрирован. Ему доступен вход по подтверждённому номеру телефона.';
       var actions = kind === 'point'
         ? '<button class="work-primary" type="button" data-work-action="admin-reg-groomer">✂️ Добавить грумера</button>' +
@@ -1444,11 +1444,15 @@
       form += '<label class="work-register-label" for="workAdminPersonName">Фамилия и имя *</label>' +
         '<input class="work-register-input" id="workAdminPersonName" type="text" maxlength="120" required placeholder="Фамилия Имя">' +
         '<label class="work-register-label" for="workAdminPersonPhone">Телефон *</label>' +
-        '<input class="work-register-input" id="workAdminPersonPhone" type="tel" autocomplete="tel" inputmode="tel" required placeholder="+7 999 123-45-67">' +
-        '<label class="work-register-label" for="workAdminPersonLogin">Логин *</label>' +
-        '<input class="work-register-input" id="workAdminPersonLogin" type="text" maxlength="80" required placeholder="Логин для полного кабинета">' +
-        '<label class="work-register-label" for="workAdminPersonPassword">Пароль *</label>' +
-        '<input class="work-register-input" id="workAdminPersonPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" required placeholder="От 6 символов">';
+        '<input class="work-register-input" id="workAdminPersonPhone" type="tel" autocomplete="tel" inputmode="tel" required placeholder="+7 999 123-45-67">';
+      if(kind==='referrer'){
+        form += '<p class="work-note">Вход без логина и пароля: Telegram-мини-приложение с подтверждением своего номера или MAX на сайте.</p>';
+      }else{
+        form += '<label class="work-register-label" for="workAdminPersonLogin">Логин *</label>' +
+          '<input class="work-register-input" id="workAdminPersonLogin" type="text" maxlength="80" required placeholder="Логин для полного кабинета">' +
+          '<label class="work-register-label" for="workAdminPersonPassword">Пароль *</label>' +
+          '<input class="work-register-input" id="workAdminPersonPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" required placeholder="От 6 символов">';
+      }
       if (kind === 'manager') {
         form += '<label class="work-register-label" for="workAdminPersonEmail">Электронная почта (необязательно)</label>' +
           '<input class="work-register-input" id="workAdminPersonEmail" type="email" maxlength="120" placeholder="name@example.ru">';
@@ -1457,7 +1461,7 @@
           '<select class="work-register-input" id="workAdminPersonGroomer">' +
           '<option value="">Не связывать с грумером</option></select>' +
           '<p class="work-note">Для объединения кабинетов выбирайте карточку этого же человека на той же точке с тем же номером телефона.</p>';
-      } else {
+      } else if(kind==='groomer') {
         form += '<label class="work-register-label" for="workAdminPersonReferral">Код пригласившего (необязательно)</label>' +
           '<input class="work-register-input" id="workAdminPersonReferral" type="text" maxlength="60" placeholder="GR-001 / OWN-001">';
       }
@@ -1564,17 +1568,20 @@
     } else {
       name = String(get('workAdminPersonName').value || '').trim();
       var phone = String(get('workAdminPersonPhone').value || '').trim();
-      var login = String(get('workAdminPersonLogin').value || '').trim();
-      var password = String(get('workAdminPersonPassword').value || '');
+      var login = kind==='referrer'?'':String(get('workAdminPersonLogin').value || '').trim();
+      var password = kind==='referrer'?'':String(get('workAdminPersonPassword').value || '');
       var digits = phone.replace(/\D/g, '');
-      if (name.length < 3 || name.length > 120 || login.length < 3 ||
-          password.length < 6 || password.length > 128)
-        return adminRegistrationError('Укажите ФИО, логин от 3 символов и пароль от 6 символов.');
+      if(name.length<3||name.length>120)
+        return adminRegistrationError('Укажите фамилию и имя.');
+      if(kind!=='referrer' && (login.length<3||password.length<6||password.length>128))
+        return adminRegistrationError('Укажите логин от 3 символов и пароль от 6 символов.');
       if (!(digits.length === 10 || digits.length === 11 && /^[78]/.test(digits)))
         return adminRegistrationError('Проверьте номер телефона.');
       if (!get('workAdminConsent').checked)
         return adminRegistrationError('Необходимо получить согласие человека на обработку персональных данных.');
-      body = {full_name:name, phone:phone, login:login, password:password};
+      body = kind==='referrer'
+        ? {full_name:name,phone:phone}
+        : {full_name:name,phone:phone,login:login,password:password};
       if (kind === 'manager') {
         var managerCity = String(get('workAdminPersonCity').value || '');
         if (!(opts.cities || []).some(function(c) { return String(c.id) === managerCity; }))
