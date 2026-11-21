@@ -335,6 +335,8 @@ on:
       - scripts/sqlite-journal-benchmark.js
       - server/sqlite-offline-verify.test.js
       - scripts/sqlite-offline-verify.js
+      - server/sqlite-journal-maintenance.js
+      - server/sqlite-journal-maintenance.test.js
       - server/single-flight-job.js
       - server/single-flight-job.test.js
       - server/static-cache.js
@@ -455,6 +457,8 @@ jobs:
           node --check scripts/sqlite-journal-benchmark.js
           node --check server/sqlite-offline-verify.test.js
           node --check scripts/sqlite-offline-verify.js
+          node --check server/sqlite-journal-maintenance.js
+          node --check server/sqlite-journal-maintenance.test.js
           node --check server/single-flight-job.js
           node --check server/single-flight-job.test.js
           node --check server/static-cache.js
@@ -727,6 +731,8 @@ jobs:
           node scripts/sqlite-journal-benchmark.js --transactions 24
       - name: Verify offline SQLite backup integrity without altering source
         run: node --test server/sqlite-offline-verify.test.js
+      - name: Verify opt-in SQLite journal migration remains off unless confirmed
+        run: node --test server/sqlite-journal-maintenance.test.js
       - name: Verify startup catalog import is versioned and atomic
         run: node --test server/seed-bootstrap.test.js
       - name: Verify legacy task imports are skipped after migration
