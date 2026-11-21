@@ -5,35 +5,13 @@ const {sendJson}=require('./http-utils');
 const {requireActiveAdmin}=require('./routes-auth');
 const {createSqliteAnalyticsCache}=require('./analytics-cache');
 const {trackSync}=require('./runtime-diagnostics');
-const {periodBounds,buildFinanceSummary,buildPayoutSnapshot}=require('./finance-compact');
+const {periodBounds,buildFinanceSummary,buildPayoutSnapshot,queryExpenses}=require('./finance-compact');
 const cache=createSqliteAnalyticsCache(db,{ttlMs:15000,maxEntries:5});
 function validPage(query) {
   const parsed=Number(query?.page||1);
   if(!Number.isSafeInteger(parsed)||parsed<1||parsed>500)
     throw new RangeError('Номер страницы от 1 до 500');
   return parsed;
-}
-function queryExpenses(database,{period='month',page=1,investor='',now=new Date()}={}){
-  const b=periodBounds(period,now);
-  if(!Number.isSafeInteger(page)||page<1||page>500)
-    throw new RangeError('Неверная страница');
-  const person=String(investor||'').trim().slice(0,120);
-  const where='expense_date>=? AND expense_date<?'+(person?' AND investor_name=?':'');
-  const args=[b.from_day,b.next_day,...person?[person]:[]];
-  const totals=database.prepare(
-    'SELECT COUNT(*) AS count,COALESCE(SUM(amount),0) AS amount '+
-    'FROM expenses WHERE '+where
-  ).get(...args);
-  const rows=database.prepare(
-    'SELECT id,expense_date,category,amount,investor_name,note,city_id '+
-    'FROM expenses WHERE '+where+' ORDER BY expense_date DESC,id DESC LIMIT 20 OFFSET ?'
-  ).all(...args,(page-1)*20);
-  // Do not preload proof documents, or the full historic expense ledger.
-  // Older admin detail screen can open individual expenses on demand.
-  return {period:b,page,page_size:20,total_count:Number(totals.count)||0,
-    total_amount:Number(totals.amount)||0,
-    has_next:page*20<Number(totals.count),
-    expenses:rows};
 }
 function registerCompactFinanceRoutes(router){
   router.get('/api/admin/finance/summary',(req,res,ctx)=>{
@@ -71,4 +49,4 @@ function registerCompactFinanceRoutes(router){
     sendJson(res,200,data);
   });
 }
-module.exports={queryExpenses,validPage,registerCompactFinanceRoutes};
+module.exports={validPage,registerCompactFinanceRoutes};
