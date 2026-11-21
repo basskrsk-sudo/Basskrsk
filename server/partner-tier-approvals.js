@@ -252,11 +252,11 @@ async function decideTierDowngrade(chatId,action,requestId) {
       ' остаётся '+asPercent(payload.old_rate)+
       '. Повторная заявка за этот месяц не создаётся. Заявка №'+id+'.'};
 }
-// Pending proposals keep the original ten-minute delivery retry interval.
-// With no pending proposals the worker scans its indexed SQLite queue only
-// once every 30 minutes. New requests trigger an immediate wake-up instead.
+// Pending proposals retain ten-minute retries. Once the queue is empty,
+// stop periodic SQLite queries. New requests call wake after COMMIT; boot
+// still performs one recovery check after an Amvera restart.
 const TIER_APPROVAL_RETRY_MS=10*60*1000;
-const TIER_APPROVAL_IDLE_MS=30*60*1000;
+const TIER_APPROVAL_IDLE_MS=30*60*1000; // Legacy export, no idle timer
 function createTierApprovalScheduler({
   database=db,
   notify=()=>notifyPendingTierApprovals(),
@@ -293,7 +293,7 @@ function createTierApprovalScheduler({
       // If a notification is already being delivered by another caller,
       // retry soon rather than enter a long idle period.
       if(outcome?.skipped==='busy')delay=1000;
-      else delay=hasPending.get()?TIER_APPROVAL_RETRY_MS:TIER_APPROVAL_IDLE_MS;
+      else delay=hasPending.get()?TIER_APPROVAL_RETRY_MS:null;
     }catch(error){
       console.warn('[tier-approval] notify:',error.message);
     }finally{
@@ -302,7 +302,9 @@ function createTierApprovalScheduler({
     if(!started)return;
     const wake=wakeRequested;
     wakeRequested=false;
-    schedule(wake?0:delay);
+    if(wake) schedule(0);
+    else if(delay!==null) schedule(delay);
+    // Empty queue: no timer, no background query.
   }
   return {
     start(){

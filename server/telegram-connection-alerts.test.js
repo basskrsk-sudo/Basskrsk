@@ -152,6 +152,9 @@ test('source paths use the binder rather than unlogged direct chat updates',()=>
   const tasks=fs.readFileSync(path.join(__dirname,'routes-tasks.js'),'utf8');
   assert.match(poller,/bindTelegramAccount\(/);
   assert.match(poller,/startBotConnectionAlertWorker/);
+  const source=fs.readFileSync(path.join(__dirname,'telegram-connection-alerts.js'),'utf8');
+  assert.match(source,/database\.exec\('COMMIT'\);[\s\S]*?connectionAlertScheduler\.wake\(\)/,
+    'committed new alerts wake a parked production worker even with deferred delivery');
   assert.match(phone,/bindTelegramAccount\(role,account\.id,userId\)/);
   assert.match(routes,/bindTelegramAccount\('manager',mgr\.id,record\.chat_id\)/);
   assert.match(routes,/bindTelegramAccount\('partner',partner\.id,record\.chat_id\)/);
@@ -218,7 +221,7 @@ test('service group never receives private connection alert without explicit opt
 });
 
 
-test('connection worker sleeps for five minutes when idle and wakes on a new binding',async()=>{
+test('connection worker parks when idle and wakes for a new binding',async()=>{
   const database=fixture();
   const timers=new Map();let id=0,time=0,scans=0;
   const setTimer=(fn,delay)=>{
@@ -254,16 +257,17 @@ test('connection worker sleeps for five minutes when idle and wakes on a new bin
     assert.equal(nextDelay(),0,'deploy immediately recovers pending deliveries');
     await fire();
     assert.equal(scans,1);
-    assert.equal(nextDelay(),300000);
+    assert.equal(nextDelay(),undefined,'an empty alert queue must park');
+    assert.equal(timers.size,0);
 
     const result=bindTelegramAccount('partner',10,'10010',settings(database));
     assert.equal(result.recipients,2);
     scheduler.wake();
-    assert.equal(nextDelay(),0,'new account must preempt the five-minute idle check');
+    assert.equal(nextDelay(),0,'a new binding must wake the parked worker');
     await fire();
     assert.equal(scans,2);
     assert.equal(messages.length,2);
-    assert.equal(nextDelay(),300000,'after successful sends, worker becomes idle');
+    assert.equal(nextDelay(),undefined,'after successful sends worker parks');
 
     const failed=bindTelegramAccount('manager',13,'10013',settings(database));
     assert.equal(failed.recipients,2);
@@ -314,7 +318,7 @@ test('failed connection alerts keep retry polling and defer before the cooldown'
     ).run();
     await fire();
     assert.equal(attempts,4);
-    assert.equal([...tasks.values()][0].delay,300000);
+    assert.equal(tasks.size,0,'after successful retry the worker parks');
   }finally{scheduler.stop();database.close()}
 });
 

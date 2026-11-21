@@ -663,12 +663,20 @@ async function runBroadcastTick() {
     else if (delay !== null) scheduleBroadcastTick(delay);
   }
 }
+function recoverInterruptedDeliveries(database=db) {
+  // Unused campaigns must not trigger a needless SQLite write transaction
+  // on every container restart. Keep the prior ambiguous-send safeguard.
+  const interrupted=database.prepare(
+    "SELECT 1 FROM new_product_deliveries WHERE status='sending' LIMIT 1"
+  ).get();
+  if(!interrupted)return 0;
+  return database.prepare("UPDATE new_product_deliveries SET status='uncertain'," +
+    "error='Сервер перезапущен во время отправки',updated_at=CURRENT_TIMESTAMP " +
+    "WHERE status='sending'").run().changes;
+}
 function startBroadcastWorker() {
   if (workerStarted) return;
-  // Interruption is uncertain: Telegram might have delivered the photo.
-  db.prepare("UPDATE new_product_deliveries SET status='uncertain'," +
-    "error='Сервер перезапущен во время отправки',updated_at=CURRENT_TIMESTAMP " +
-    "WHERE status='sending'").run();
+  recoverInterruptedDeliveries();
   workerStarted = true;
   wakeBroadcastWorker();
 }
@@ -683,5 +691,5 @@ module.exports = {
   productCaption, validPhotoRef, startBroadcast, handleCallback,
   messageInput, cancelDraft, sendProductPhoto, processBroadcastQueue,
   startBroadcastWorker, stopBroadcastWorker, campaignStatus, nextBroadcastPollDelay,
-  nextBroadcastQueueDelay,
+  nextBroadcastQueueDelay, recoverInterruptedDeliveries,
 };

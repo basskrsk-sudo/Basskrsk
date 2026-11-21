@@ -235,7 +235,7 @@ test('bot menu, command and callback only expose the super-admin approval path',
   assert.match(groomerHtml,/Без одобрения процент не изменится/);
 });
 
-test('tier approval scheduler backs off when idle, preserves pending retries and wakes immediately',async()=>{
+test('tier approval scheduler parks when idle, preserves pending retries and wakes immediately',async()=>{
   const {DatabaseSync}=require('node:sqlite');
   const isolated=new DatabaseSync(':memory:');
   isolated.exec("CREATE TABLE partner_tier_approval_requests (id INTEGER PRIMARY KEY,status TEXT NOT NULL);");
@@ -268,7 +268,8 @@ test('tier approval scheduler backs off when idle, preserves pending retries and
     assert.equal(nextDelay(),0,'recovery check on startup');
     await fire();
     assert.equal(sends,1);
-    assert.equal(nextDelay(),approvals.TIER_APPROVAL_IDLE_MS);
+    assert.equal(nextDelay(),undefined,'a resolved/empty queue must park without new timers');
+    assert.equal(tasks.size,0);
 
     isolated.exec("INSERT INTO partner_tier_approval_requests(status) VALUES ('pending')");
     scheduler.wake();
@@ -282,7 +283,8 @@ test('tier approval scheduler backs off when idle, preserves pending retries and
     isolated.exec("UPDATE partner_tier_approval_requests SET status='approved'");
     scheduler.wake();
     await fire();
-    assert.equal(nextDelay(),approvals.TIER_APPROVAL_IDLE_MS);
+    assert.equal(nextDelay(),undefined,'a resolved/empty queue must park without new timers');
+    assert.equal(tasks.size,0);
     assert.equal(sends,3);
     scheduler.stop();
     assert.equal(tasks.size,0,'stop must cancel next probe');

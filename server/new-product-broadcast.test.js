@@ -268,3 +268,25 @@ test('idle broadcast queue checks every five minutes but scheduled retries remai
       'cancelled campaigns do not keep a scheduler timer alive');
   } finally { database.close(); }
 });
+
+
+test('unused product broadcast skips startup UPDATE and recovers interrupted sends',()=>{
+  let updates=0;
+  const fake={prepare(sql){
+    if(sql.startsWith('SELECT 1 FROM new_product_deliveries'))return {get:()=>undefined};
+    if(sql.startsWith('UPDATE new_product_deliveries')){updates++;throw Error('unused write');}
+    throw Error('unexpected query');
+  }};
+  assert.equal(marketing.recoverInterruptedDeliveries(fake),0);
+  assert.equal(updates,0);
+  const {DatabaseSync}=require('node:sqlite');
+  const isolated=new DatabaseSync(':memory:');
+  try{
+    isolated.exec('CREATE TABLE new_product_deliveries(status TEXT,error TEXT,updated_at TEXT);'+
+      "INSERT INTO new_product_deliveries(status) VALUES('sending'),('pending')");
+    assert.equal(marketing.recoverInterruptedDeliveries(isolated),1);
+    assert.equal(isolated.prepare("SELECT COUNT(*) AS n FROM new_product_deliveries WHERE status='uncertain'").get().n,1);
+    assert.equal(isolated.prepare("SELECT COUNT(*) AS n FROM new_product_deliveries WHERE status='pending'").get().n,1);
+    assert.equal(marketing.recoverInterruptedDeliveries(isolated),0);
+  }finally{isolated.close();}
+});
