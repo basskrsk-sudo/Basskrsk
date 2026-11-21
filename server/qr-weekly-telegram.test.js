@@ -60,3 +60,20 @@ test('scheduler compatibility entry point is disabled',()=>{
   assert.equal(scheduleWeeklyQrTelegramReport().enabled,false);
   assert.equal(getStatus().enabled,false);
 });
+
+test('weekly QR schedule never writes again after first activation',()=>{
+  const {initializeWeeklyQrSchedule}=require('./qr-weekly-telegram');
+  const {DatabaseSync}=require('node:sqlite');
+  const isolated=new DatabaseSync(':memory:');
+  try{
+    isolated.exec('CREATE TABLE qr_weekly_telegram_schedule(id INTEGER PRIMARY KEY,activated_at TEXT)');
+    assert.equal(initializeWeeklyQrSchedule(isolated,new Date('2026-11-19T00:00:00Z')),true);
+    assert.equal(initializeWeeklyQrSchedule(isolated,new Date('2026-11-20T00:00:00Z')),false);
+    assert.equal(isolated.prepare('SELECT COUNT(*) AS n FROM qr_weekly_telegram_schedule').get().n,1);
+    const fake={prepare(sql){
+      if(sql.startsWith('SELECT 1 FROM qr_weekly_telegram_schedule'))return {get:()=>({present:1})};
+      throw Error('an initialized report must not prepare a write');
+    }};
+    assert.equal(initializeWeeklyQrSchedule(fake),false);
+  }finally{isolated.close();}
+});

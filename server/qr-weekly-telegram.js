@@ -27,8 +27,16 @@ db.exec(`
  );
 `);
 // First new installation waits for the next scheduled Monday instead of backfilling.
-db.prepare('INSERT OR IGNORE INTO qr_weekly_telegram_schedule(id, activated_at) VALUES(1,?)')
-  .run(new Date().toISOString());
+function initializeWeeklyQrSchedule(database=db,date=new Date()) {
+  // Reports are approval-only. Avoid a writable transaction on every boot
+  // when the same weekly schedule was already activated.
+  if(database.prepare('SELECT 1 FROM qr_weekly_telegram_schedule WHERE id=1').get())
+    return false;
+  return database.prepare(
+    'INSERT OR IGNORE INTO qr_weekly_telegram_schedule(id, activated_at) VALUES(1,?)'
+  ).run(date.toISOString()).changes>0;
+}
+initializeWeeklyQrSchedule();
 function sqlUtc(ms) { return new Date(ms).toISOString().slice(0,19).replace('T',' '); }
 function localDay(ms) { return new Date(ms + LOCAL_OFFSET_MS).toISOString().slice(0,10); }
 function previousCompletedWeek(now = new Date()) {
@@ -235,4 +243,5 @@ function scheduleWeeklyQrTelegramReport(){
   return {enabled:false,mode:'telegram-approval'};
 }
 module.exports={TIME_ZONE,previousCompletedWeek,readWeeklyPointStats,makeSummary,buildCsv,
- getStatus,sendWeeklyQrReport,registerQrWeeklyTelegramRoutes,scheduleWeeklyQrTelegramReport};
+ getStatus,sendWeeklyQrReport,registerQrWeeklyTelegramRoutes,scheduleWeeklyQrTelegramReport,
+ initializeWeeklyQrSchedule};

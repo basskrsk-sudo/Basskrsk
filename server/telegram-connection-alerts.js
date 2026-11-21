@@ -142,13 +142,14 @@ function bindTelegramAccount(role,accountId,chatId,options={}){
     );
     for(const [id,kind] of recipients)insert.run(eventId,id,kind);
     database.exec('COMMIT');
+    // Also wake on deferred delivery; otherwise no periodic idle poll
+    // would ever discover this newly committed event.
+    if(database===db)connectionAlertScheduler.wake();
     if(!options.deferDelivery&&process.env.TG_TOKEN){
       // Never delay or fail the user's successful Telegram login because an
       // administrator blocked the bot, Telegram was down, or a chat was moved.
       Promise.resolve().then(()=>flushBotConnectionAlerts({database}))
-        // Immediate delivery is preserved. Recheck the retry schedule when
-        // Telegram rejects a delivery, even if the periodic worker is idle.
-        .finally(()=>{if(database===db)connectionAlertScheduler.wake();})
+        // Immediate delivery stays enabled; the worker handles retries.
         .catch(e=>console.error('Telegram connection alert:',e.message));
     }
     return {changed:true,eventId,recipients:recipients.size};
@@ -233,11 +234,10 @@ async function flushBotConnectionAlerts(options={}){
   try{return await inProgress;}finally{inProgress=null;}
 }
 
-// Empty queue: a five-minute safety scan instead of polling SQLite every
-// minute. Pending retries retain the former one-minute cadence and their
-// database-backed two-minute cooldown. An actual new binding still sends
-// immediately through bindTelegramAccount(), independently of this scheduler.
-const ALERT_IDLE_MS=5*60*1000;
+// Empty delivery queue parks with no timer. New Telegram bindings wake it
+// after COMMIT; startup recovers any pending deliveries. Failed attempts
+// still retry every minute with the persisted two-minute cooldown.
+const ALERT_IDLE_MS=5*60*1000; // Legacy compatibility constant
 const ALERT_RETRY_MS=60*1000;
 function createBotConnectionAlertScheduler({
   database=db,
@@ -280,12 +280,14 @@ function createBotConnectionAlertScheduler({
     if(!started)return;
     let next=ALERT_RETRY_MS;
     if(!failed){
-      try{next=pending.get()?ALERT_RETRY_MS:ALERT_IDLE_MS;}
+      try{next=pending.get()?ALERT_RETRY_MS:null;}
       catch(error){console.warn('Telegram alerts queue:',error.message);}
     }
     const wake=wakeRequested;
     wakeRequested=false;
-    schedule(wake?0:next);
+    if(wake) schedule(0);
+    else if(next!==null) schedule(next);
+    // Drained queue: no periodic SQLite activity.
   }
   return {
     start(){
