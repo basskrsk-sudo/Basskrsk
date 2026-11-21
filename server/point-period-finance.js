@@ -103,8 +103,11 @@ function loadPointPayoutProfit(database,orders,assumptions,period=null,options={
   for(const order of orders){
     if(!order.point_id || order.net_revenue!==undefined)continue;
     const row=results.get(order.point_id)||empty();
-    const net=order.refund_status==='refunded'
-      ?0:Math.max(0,number(order.total)-number(order.refunded_amount));
+    // The refund endpoint uses 'refunded' even for partial amounts.
+    // The amount (when positive) is the source of truth for net revenue.
+    const legacyFullRefund=order.refund_status==='refunded'&&number(order.refunded_amount)<=0;
+    const net=legacyFullRefund?0:
+      Math.max(0,number(order.total)-number(order.refunded_amount));
     const refund=order.refund_status==='refunded'||number(order.refunded_amount)>0;
     const id=Number(order.id);
     const ownerRecorded=ownerPaid.has(id),partnerRecorded=partnerPaid.has(id);

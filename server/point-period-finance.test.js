@@ -25,7 +25,7 @@ function fixture(){
     INSERT INTO orders VALUES
       (1,'a',1,0.10,250,'paid','2026-11-01 00:00:00','none',NULL),
       (2,'a',1,0.10,250,'paid','2026-11-02 00:00:00','none',NULL),
-      (3,'a',1,0.10,300,'paid','2026-11-03 00:00:00','partially_refunded',100),
+      (3,'a',1,0.10,300,'paid','2026-11-03 00:00:00','refunded',100),
       (4,'a',1,0.10,300,'paid','2026-11-04 00:00:00','refunded',300),
       (5,'a',1,0.10,250,'paid','2026-10-01 00:00:00','none',NULL);
     INSERT INTO order_items(order_id,variant_id,qty,price) VALUES(1,1,1,250),(2,1,1,250),(3,2,1,300),(4,2,1,300),(5,3,1,250);

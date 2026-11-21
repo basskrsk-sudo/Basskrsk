@@ -60,7 +60,7 @@ test('fallback cost is clearly labeled; refund updates profit and allocations',(
  try{
   db.exec("INSERT INTO order_items VALUES(2,1,'Игрушка','1 шт',1,300,0,2)");
   const s=loadSaleProfitEstimate(db,{...order(),total:550,refunded_amount:100,
-    refund_status:'partially_refunded'},assumptions);
+    refund_status:'refunded'},assumptions);
   assert.equal(s.refund_amount,100);
   assert.equal(s.revenue,450);
   assert.equal(s.fallback_item_qty,1);
@@ -70,6 +70,9 @@ test('fallback cost is clearly labeled; refund updates profit and allocations',(
     refund_status:'refunded',refunded_amount:250},assumptions);
   assert.equal(refunded.revenue,0);
   assert.equal(refunded.founder_profit_est,0);
+  const legacy=loadSaleProfitEstimate(db,{...order(),refund_status:'refunded',
+    refunded_amount:null},assumptions);
+  assert.equal(legacy.revenue,0,'legacy refunded orders with unknown amount stay at zero');
  }finally{db.close();}
 });
 test('already paid partner and salon commission used once, not accrued twice',()=>{

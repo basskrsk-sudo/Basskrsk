@@ -81,6 +81,9 @@ test('order list remains batched, profit is queried only when opened',()=>{
  assert.match(html,/Расчётная прибыль собственников/);
  assert.match(html,/escape\(x\.assumptions_note\)/);
  assert.match(html,/cost_estimated/);
+ assert.match(html,/Сумма первоначальной оплаты/);
+ assert.match(html,/Возвращено покупателю/);
+ assert.match(html,/orderProfitRequestSeq/);
 });
 test.after(()=>{
  try{db.close();}catch(_){}
