@@ -12,6 +12,7 @@ const EQUIPMENT = Object.freeze({
 const STANDARD_LARGE_STAND_COST = 5000;
 const {ESTIMATED_COST_SHARE,POINT_SALES_TAX_RATE}=require('./point-economics-rates');
 const {loadPointPayoutProfit}=require('./point-period-finance');
+const {netPaidRevenue}=require('./net-paid-revenue');
 const roundMoney = value => Math.round(Number(value||0)*100)/100;
 const MAX_SHELF_COST = 1000000;
 function invalid(message){
@@ -258,8 +259,7 @@ function buildPointEquipmentEconomics(database,assumptions,contribution,orders=[
       item.tax+=roundMoney(amount*POINT_SALES_TAX_RATE);
       item.orders+=Number(order.net_orders||0);
     }else{
-      const amount=order.refund_status==='refunded'
-        ?0:Math.max(0,Number(order.total||0)-Number(order.refunded_amount||0));
+      const amount=netPaidRevenue(order);
       if(amount<=0)continue;
       item.revenue+=amount;
       item.tax+=roundMoney(amount*POINT_SALES_TAX_RATE);

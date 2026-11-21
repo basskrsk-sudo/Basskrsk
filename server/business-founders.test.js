@@ -165,7 +165,7 @@ test('read-only founder and admin analytics are revision-aware, identity-scoped,
  assert.notStrictEqual(getCachedOperationsCenter(),operations);
  assert.ok(changed.capital.personal_expenses_recorded>=snapshot.capital.personal_expenses_recorded+17);
 });
-test('previous-period aggregation streams rows without allocating complete order arrays',()=>{
+test('previous-period aggregation uses SQL without streaming full order history',()=>{
  const from='2026-10-01 00:00:00',to='2026-11-01 00:00:00';
  const expected=summarizeOrders(db.prepare(
    'SELECT total,refund_status,refunded_amount FROM orders WHERE status=? AND created_at>=? AND created_at<?'
@@ -189,6 +189,35 @@ test('previous-period aggregation streams rows without allocating complete order
    db.exec('ROLLBACK TO founder_previous_period_refunds; RELEASE founder_previous_period_refunds');
  }
 });
+test('actual partial refunds keep positive revenue across founder and point reports',()=>{
+ db.exec('SAVEPOINT founder_partial_refund_check');
+ try {
+  db.prepare('INSERT INTO points(id,name,addr,icon,active,is_hub) VALUES(?,?,?,?,?,?)')
+    .run('founder-partial-salon','Салон с возвратом','Красноярск','🐾',1,0);
+  const add=db.prepare(
+   'INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,'+
+   'subtotal,total,payment_method,status,commission_rate,refund_status,refunded_amount,created_at) '+
+   'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  add.run('FOUNDER-REF-PARTIAL','Тест','79990000000','Салон с возвратом','founder-partial-salon',
+   500,500,'sbp','paid',0.15,'refunded',100,'2026-10-31 11:00:00');
+  add.run('FOUNDER-REF-FULL','Тест','79990000000','Салон с возвратом','founder-partial-salon',
+   500,500,'sbp','paid',0.15,'refunded',500,'2026-10-31 12:00:00');
+  const d=collectFounderDashboard(getFounder(1),'30d',new Date('2026-11-01T12:00:00Z'));
+  const point=d.point_economics.points.find(p=>p.point_id==='founder-partial-salon');
+  assert.ok(point);
+  assert.equal(point.period_revenue,400);
+  assert.equal(point.period_orders,1);
+  assert.equal(point.period_tax_est,28);
+  assert.equal(d.network.top_points.find(p=>p.id==='founder-partial-salon').revenue,400);
+  assert.equal(d.sales.revenue,1400,'the existing 1000 RUB order plus net 400 RUB');
+  assert.equal(d.finance.revenue,d.sales.revenue);
+  assert.equal(d.sales.last_six_months.find(row=>row.month==='2026-10').revenue,1400);
+  assert.equal(summarizePreviousPeriod('2026-10-01 00:00:00','2026-11-01 00:00:00').revenue,1400);
+ }finally{
+  db.exec('ROLLBACK TO founder_partial_refund_check; RELEASE founder_partial_refund_check');
+ }
+});
+
 test('founder counts ALL silent active salons, even past the previous 50-point ranking cutoff', () => {
  const founder=getFounder(1);
  for(let i=0;i<60;i++){

@@ -17,6 +17,7 @@ const { getCachedWeeklyBsc } = require('./weekly-report');
 const { getUnitEconomicsSettings,calculateUnitEconomics } = require('./unit-economics');
 const { buildPointEquipmentEconomics } = require('./point-equipment');
 const { loadPointPayoutProfit } = require('./point-period-finance');
+const { netPaidRevenue, NET_PAID_REVENUE_SQL } = require('./net-paid-revenue');
 
 const CAPITAL_PLAN_RUB = 1000000;
 const TAX_ESTIMATE_RATE = 0.07; // Founder management estimate: per net paid sale.
@@ -50,10 +51,8 @@ function safeNumber(n) { return Number.isFinite(Number(n)) ? Number(n) : 0; }
 function percentChange(current, previous) {
   return previous > 0 ? Math.round((current - previous) / previous * 1000) / 10 : null;
 }
-function netOrderAmount(order) {
-  if (order.refund_status === 'refunded') return 0;
-  return Math.max(0, safeNumber(order.total) - safeNumber(order.refunded_amount));
-}
+// Shared with point economics: partially refunded orders remain net-positive.
+function netOrderAmount(order) { return netPaidRevenue(order); }
 function ordersInRange(start, end) {
   return db.prepare(
     'SELECT id, point_id, partner_id, total, commission_rate, refund_status, refunded_amount, created_at ' +
@@ -68,16 +67,14 @@ function summarizeOrders(orders) {
 // Previous period is used ONLY for comparison totals: do not allocate all
 // historical order objects just to count them. Preserve JS rounding rules.
 function summarizePreviousPeriod(start,end){
-  let total=0,paidCount=0;
-  for(const order of db.prepare(
-    'SELECT total, refund_status, refunded_amount FROM orders ' +
-    'WHERE status=? AND created_at>=? AND created_at<?'
-  ).iterate('paid',start,end)){
-    const amount=netOrderAmount(order);
-    total+=amount;
-    if(amount>0)paidCount++;
-  }
-  const revenue=Math.round(total);
+  // Aggregate inside SQLite; do not iterate over historical sales on the
+  // main Node.js thread just to compute three figures.
+  const row=db.prepare(`
+    SELECT COALESCE(SUM(${NET_PAID_REVENUE_SQL}),0) AS revenue,
+      COUNT(*) FILTER (WHERE ${NET_PAID_REVENUE_SQL}>0) AS orders
+    FROM orders WHERE status='paid' AND created_at>=? AND created_at<?
+  `).get(start,end);
+  const revenue=Math.round(safeNumber(row.revenue)),paidCount=Number(row.orders||0);
   return {revenue,orders:paidCount,
     avg_check:paidCount?Math.round(revenue/paidCount):0};
 }
@@ -146,10 +143,8 @@ function monthHistory(now) {
   // queries and materializing its payment fields in Node.js.
   const monthly = db.prepare(`
     SELECT strftime('%Y-%m', created_at, '+7 hours') AS month,
-      ROUND(COALESCE(SUM(CASE WHEN refund_status = 'refunded' THEN 0
-        ELSE MAX(0, total - COALESCE(refunded_amount, 0)) END), 0)) AS revenue,
-      SUM(CASE WHEN refund_status = 'refunded'
-        OR total - COALESCE(refunded_amount, 0) <= 0 THEN 0 ELSE 1 END) AS orders
+      ROUND(COALESCE(SUM(${NET_PAID_REVENUE_SQL}),0)) AS revenue,
+      SUM(CASE WHEN ${NET_PAID_REVENUE_SQL}>0 THEN 1 ELSE 0 END) AS orders
     FROM orders
     WHERE status = 'paid' AND created_at >= ? AND created_at < ?
     GROUP BY month
@@ -173,11 +168,11 @@ function pointRanking(start) {
     'SELECT id,name,addr,city_id,created_at FROM points WHERE active = 1 AND COALESCE(is_hub,0) = 0 ORDER BY name'
   ).all();
   const sales = db.prepare(
-    'SELECT point_id,MAX(CASE WHEN refund_status != ? THEN created_at END) AS last_paid,' +
-    ' SUM(CASE WHEN refund_status = ? OR total-COALESCE(refunded_amount,0) <= 0 THEN 0 ELSE 1 END) AS n,' +
-    ' SUM(CASE WHEN refund_status = ? THEN 0 ELSE MAX(0,total-COALESCE(refunded_amount,0)) END) AS net ' +
+    'SELECT point_id,MAX(CASE WHEN '+NET_PAID_REVENUE_SQL+'>0 THEN created_at END) AS last_paid,' +
+    ' SUM(CASE WHEN '+NET_PAID_REVENUE_SQL+'>0 THEN 1 ELSE 0 END) AS n,' +
+    ' SUM('+NET_PAID_REVENUE_SQL+') AS net ' +
     'FROM orders WHERE status = ? AND created_at >= ? GROUP BY point_id'
-  ).all('refunded','refunded','refunded','paid',start);
+  ).all('paid',start);
   const map = new Map(sales.map(r=>[r.point_id,r]));
   return points.map(p=>{
     const s=map.get(p.id);
