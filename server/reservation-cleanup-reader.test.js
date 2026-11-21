@@ -9,7 +9,8 @@ const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hm-expired-reader-'));
 process.env.DATA_DIR = directory;
 const db = require('./db');
 const { listExpiredActiveReservationsBatch } = require('./reservations');
-const { createReservationCleanupReader, readExpiredReservationsBatch } = require('./reservation-cleanup-reader');
+const { createReservationCleanupReader, readExpiredReservationsBatch,
+  createReservationDeadlineReader, readEarliestReservationExpiry } = require('./reservation-cleanup-reader');
 const insert=db.prepare(
   'INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,subtotal,total,' +
   'payment_method,status,reservation_status,reservation_expires_at,yookassa_payment_id) ' +
@@ -64,4 +65,20 @@ test('reader timeout waits for termination',async()=>{
 test.after(()=>{
   try{db.close();}catch(_){}
   fs.rmSync(directory,{recursive:true,force:true});
+});
+
+test('read-only deadline worker returns earliest active pending expiry',async()=>{
+  assert.equal(await readEarliestReservationExpiry(db.DB_PATH),'2000-01-01 00:00:00');
+  const missing=path.join(directory,'missing-deadline.db');
+  await assert.rejects(readEarliestReservationExpiry(missing),/reader/i);
+  assert.equal(fs.existsSync(missing),false);
+});
+test('deadline reader times out without overlapping hanging workers',async()=>{
+  let terminated=0;
+  class StuckWorker extends EventEmitter {
+    terminate(){terminated++;return Promise.resolve(0);}
+  }
+  const read=createReservationDeadlineReader({WorkerClass:StuckWorker,timeoutMs:10});
+  await assert.rejects(read(db.DB_PATH),/timed out/);
+  assert.equal(terminated,1);
 });
