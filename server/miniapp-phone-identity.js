@@ -94,7 +94,8 @@ function accountMatchesForRole(role, phone, userId) {
   if (!table || !phone) return [];
   const select = role === 'customer'
     ? 'SELECT id, name, lname, phone, telegram_chat_id FROM customers'
-    : 'SELECT id, login, full_name, phone, telegram_chat_id FROM ' + table +
+    : 'SELECT id, login, full_name, phone, telegram_chat_id' +
+      (role === 'partner' ? ', partner_type' : '') + ' FROM ' + table +
       (role === 'founder' ? ' WHERE active = 1 AND login IS NOT NULL AND password_hash IS NOT NULL' : ' WHERE active = 1');
   return db.prepare(select).all()
     .filter(row =>
@@ -104,7 +105,8 @@ function accountMatchesForRole(role, phone, userId) {
       (!row.telegram_chat_id || String(row.telegram_chat_id) === String(userId))
     )
     .map(row => ({
-      role, id: row.id, login: row.login || null,
+      role, id: row.id,
+      login: role === 'partner' && row.partner_type === 'referrer' ? null : (row.login || null),
       name: (role === 'customer'
         ? [row.name, row.lname].filter(Boolean).join(' ')
         : row.full_name) || (role === 'customer' ? 'Покупатель' : 'Сотрудник'),

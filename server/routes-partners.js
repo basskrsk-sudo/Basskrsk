@@ -37,6 +37,8 @@ function nextPartnerCode() {
 
 function safePartner(p) {
   const { password_hash, telegram_chat_id, max_chat_id, ...rest } = p;
+  // The technical NOT NULL login of a referrer is not a sign-in method.
+  if(p.partner_type==='referrer')rest.login=null;
   return { ...rest, telegram_connected: !!telegram_chat_id, max_connected: !!max_chat_id };
 }
 
@@ -51,13 +53,14 @@ function registerPartnerRoutes(router) {
     const body=ctx.body||{};
     const name=String(body.full_name||'').trim().replace(/\s+/g,' ');
     const phone=String(body.phone||'').trim();
-    const last10=phone.replace(/\D/g,'').slice(-10);
-    const login=String(body.login||'').trim();
-    const password=String(body.password||'');
+    const digits=phone.replace(/\D/g,'');
+    const normalizedPhone=digits.length===10&&digits.startsWith('9')
+      ?'7'+digits:digits.length===11&&/^[78]9\d{9}$/.test(digits)
+        ?'7'+digits.slice(1):null;
+    const last10=normalizedPhone?.slice(-10)||'';
     if(name.length<3||name.length>120 || !/^\+?[\d ()-]{10,25}$/.test(phone) ||
-      last10.length!==10 || login.length<3||login.length>80 ||
-      /\s/.test(login) || password.length<6||password.length>128)
-      return sendJson(res,400,{error:'Укажите ФИО, корректный телефон, логин (3–80 символов без пробелов) и пароль (6–128 символов)'});
+      !normalizedPhone)
+      return sendJson(res,400,{error:'Укажите фамилию, имя и мобильный номер +7 (9XX) XXX-XX-XX'});
     if(body.personal_data_consent!==true)
       return sendJson(res,400,{error:'Нужно подтверждённое согласие партнёра на обработку персональных данных'});
     if(body.point_id!=null&&body.point_id!=='')
@@ -67,10 +70,12 @@ function registerPartnerRoutes(router) {
     catch(e){return sendJson(res,400,{error:e.message});}
     try{
       db.exec('BEGIN IMMEDIATE');
-      if(db.prepare('SELECT id FROM partners WHERE login=? COLLATE NOCASE').get(login))
-        throw Object.assign(new Error('Этот логин уже занят'),{statusCode:409});
       if(db.prepare('SELECT id FROM partners WHERE phone_last10=?').get(last10))
         throw Object.assign(new Error('Партнёр с таким телефоном уже зарегистрирован. Используйте его существующий реферальный код'),{statusCode:409});
+      // SQLite has legacy NOT NULL constraints. Keep random internal fields
+      // private; there is no issued password or user-supplied login.
+      const internalLogin='referrer-'+crypto.randomBytes(16).toString('hex');
+      const disabledPasswordHash=hashPassword(crypto.randomBytes(32).toString('hex'));
       const code=nextPartnerCode();
       const result=db.prepare(`
         INSERT INTO partners
@@ -78,12 +83,12 @@ function registerPartnerRoutes(router) {
            commission_rate,partner_type,display_stand,display_poster,display_basket,
            payout_method,active)
         VALUES (?,?,?,?,?,NULL,'Рекомендатель (без точки)',0,'referrer',0,0,0,?,1)
-      `).run(code,login,hashPassword(password),name,phone,payoutMethod);
+      `).run(code,internalLogin,disabledPasswordHash,name,normalizedPhone,payoutMethod);
       db.exec('COMMIT');
       sendJson(res,201,{ok:true,id:Number(result.lastInsertRowid),
         partner_code:code,partner_type:'referrer',
         referral_url:'https://хвостмаркет.рф/partner-invite.html?ref='+encodeURIComponent(code),
-        message:'Партнёр-рекомендатель зарегистрирован без точки и стойки. Реферальные бонусы начисляются по действующим правилам.'});
+        message:'Рекомендатель создан без логина и пароля. Вход через Telegram-мини-приложение (с подтверждением своего телефона) или через MAX на сайте. Реферальные бонусы начисляются по действующим правилам.'});
     }catch(e){
       try{db.exec('ROLLBACK');}catch(_){}
       if(!e.statusCode)console.error('[register-referral-partner]',e);
@@ -588,8 +593,11 @@ function registerPartnerRoutes(router) {
   router.post('/api/partners/:id/reset-password', (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
-    const existing = db.prepare('SELECT id FROM partners WHERE id = ?').get(ctx.params.id);
+    const existing = db.prepare('SELECT id, partner_type FROM partners WHERE id = ?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Партнёр не найден' });
+    if (existing.partner_type === 'referrer') return sendJson(res, 409, {
+      error: 'Для рекомендателя парольный вход отключён. Используйте Telegram или MAX.'
+    });
     const newPassword = crypto.randomBytes(6).toString('hex');
     db.prepare('UPDATE partners SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword), ctx.params.id);
     sendJson(res, 200, { ok: true, new_password: newPassword });

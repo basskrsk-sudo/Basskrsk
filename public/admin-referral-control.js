@@ -122,8 +122,6 @@
     var requestBody={
       full_name:E('referral-new-name').value.trim(),
       phone:E('referral-new-phone').value.trim(),
-      login:E('referral-new-login').value.trim(),
-      password:E('referral-new-password').value,
       payout_method:E('referral-new-payout').value,
       personal_data_consent:E('referral-new-consent').checked,
     };
@@ -133,8 +131,10 @@
       var info=await r.json();
       if(!r.ok)throw new Error(info.error||'Не удалось зарегистрировать рекомендателя');
       form.reset();
-      status.innerHTML='✅ Рекомендатель создан. Персональный код: <b>'+esc(info.partner_code)+
-        '</b>. <a href="'+esc(info.referral_url)+'" target="_blank" rel="noopener">Открыть ссылку-приглашение</a>';
+      status.innerHTML='✅ Рекомендатель создан без логина и пароля. Персональный код: <b>'+esc(info.partner_code)+
+        '</b>. <a href="'+esc(info.referral_url)+'" target="_blank" rel="noopener">Ссылка-приглашение</a>. '+
+        'Для входа: <a href="https://t.me/HvostMarketRusBot?start=app" target="_blank" rel="noopener">Telegram-мини-приложение</a> '+
+        'или <a href="/taiga-groomer.html" target="_blank" rel="noopener">кабинет через MAX</a>.';
       if(typeof renderPartners==='function')await renderPartners();
     }catch(error){status.textContent=error.message||'Ошибка регистрации';}
     finally{busy=false;submit.disabled=false;}

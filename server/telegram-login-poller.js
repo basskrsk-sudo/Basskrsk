@@ -1651,6 +1651,21 @@ async function processUpdate(update) {
     await replyToChat(msg.chat.id, 'Ссылка для входа устарела или уже использована. Вернитесь на сайт «ХвостМаркета» и запросите новую.');
     return;
   }
+  // Passwordless referrers require actual ownership of their Telegram phone.
+  // A legacy /start token is merely a public link: never bind its chat or
+  // verify it for a referrer. Account-scoped connect links from a previously
+  // authenticated session retain their existing authorized behavior.
+  if (record.role === 'partner' && !record.account_id) {
+    const phoneLast10=String(record.phone||'').replace(/\D/g,'').slice(-10);
+    const referrer=phoneLast10 && db.prepare(
+      "SELECT id FROM partners WHERE phone_last10=? AND partner_type='referrer' AND active=1 LIMIT 1"
+    ).get(phoneLast10);
+    if(referrer){
+      await replyToChat(msg.chat.id,
+        '🤝 Для входа рекомендателя откройте мини-приложение через /start app и подтвердите собственный контакт Telegram. На сайте доступен вход через MAX.');
+      return;
+    }
+  }
 
   const code = generateLoginCode();
   db.prepare('UPDATE telegram_login_tokens SET verified = 1, chat_id = ?, code = ? WHERE id = ?')

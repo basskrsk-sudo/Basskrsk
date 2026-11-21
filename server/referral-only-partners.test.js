@@ -7,7 +7,9 @@ const path=require('node:path');
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'hm-referrer-'));
 process.env.DATA_DIR=directory;
 const db=require('./db');
-const {signToken}=require('./auth');
+const {signToken,verifyToken,hashPassword}=require('./auth');
+const {registerAuthRoutes}=require('./routes-auth');
+const {recordVerifiedTelegramContact,issueTelegramAccountSession}=require('./miniapp-phone-identity');
 const {registerPartnerRoutes}=require('./routes-partners');
 const {registerAdminReferralRoutes}=require('./routes-admin-referrals');
 const {referralFromCode,storedReferral,referralSummary}=require('./referral-program');
@@ -21,6 +23,7 @@ for(const method of ['get','post','put','delete','patch']){
 }
 registerPartnerRoutes(router);
 registerAdminReferralRoutes(router);
+registerAuthRoutes(router);
 async function request(method,route,actor=null,body={},params={},query={}){
   const fn=handlers.get(method+' '+route);
   assert.ok(fn,'endpoint exists '+method+' '+route);
@@ -46,7 +49,7 @@ db.prepare('INSERT INTO manager_points(manager_id,point_id,point_name,point_type
 const admin={id:adminId,role:'admin',login:'referrer-admin'};
 const owner={id:55,role:'owner',login:'test-owner'};
 const base={full_name:'Иван Рекомендатель',phone:'+7 (913) 222-22-22',
-  login:'referrer-test',password:'securepassword',personal_data_consent:true,payout_method:'sbp'};
+  personal_data_consent:true,payout_method:'sbp'};
 let refId=null,code=null;
 
 test('only active admin creates a referral partner without any point or sales entitlement',async()=>{
@@ -70,18 +73,27 @@ test('only active admin creates a referral partner without any point or sales en
   assert.equal(p.display_basket,0);
   assert.equal(p.first_purchase_promo_code,null);
   assert.equal(p.payout_method,'sbp');
+  assert.equal(p.phone,'79132222222','canonical mobile phone supports Telegram and MAX');
   assert.equal(p.phone_last10,'9132222222');
+  assert.match(p.login,/^referrer-[a-f0-9]{32}$/,'technical unique login is not issued');
+  assert.notEqual(p.password_hash,null);
+  assert.notEqual(p.password_hash,'','a random unusable hash satisfies legacy SQLite NOT NULL');
+  assert.equal(res.body.login,undefined,'admin create response never exposes internal login');
+  assert.equal(res.body.password,undefined,'admin create response never issues passwords');
   const who=referralFromCode(code);
   assert.equal(who.role,'partner');
   assert.equal(who.recipient_id,refId);
   assert.equal(who.point_id,null);
-  assert.equal((await request('POST',url,admin,base)).status,409,'no duplicate login');
-  assert.equal((await request('POST',url,admin,{...base,login:'other-login'})).status,409,'no duplicate phone');
-  assert.equal((await request('GET','/api/partners/me',{id:refId,role:'partner'})).body.partner.referrals.count,0);
+  assert.equal((await request('POST',url,admin,base)).status,409,'duplicate phone');
+  assert.equal((await request('POST',url,admin,{...base,login:'other-login',password:'ignored'})).status,409,'no duplicate phone with user credentials');
+  assert.equal((await request('POST',url,admin,{...base,phone:'+7 (800) 000-00-00'})).status,400,'mobile number required');
+  const me=await request('GET','/api/partners/me',{id:refId,role:'partner'});
+  assert.equal(me.body.partner.referrals.count,0);
+  assert.equal(me.body.partner.login,null,'partner never sees technical login');
 });
 
 test('referral-only partner cannot acquire a point, equipment or sales tariff',async()=>{
-  const partner={id:refId,role:'partner',login:'referrer-test'};
+  const partner={id:refId,role:'partner'};
   assert.equal((await request('PUT','/api/partners/me',partner,{display_stand:true})).status,409);
   assert.equal((await request('PUT','/api/partners/:id',admin,{point_id:'referrer-target'},{id:refId})).status,409);
   assert.equal((await request('PUT','/api/partners/:id',admin,{commission_rate:0.15},{id:refId})).status,409);
@@ -92,6 +104,95 @@ test('referral-only partner cannot acquire a point, equipment or sales tariff',a
   assert.equal(db.prepare('SELECT commission_rate FROM partners WHERE id=?').get(refId).commission_rate,0);
   const payout=await request('PUT','/api/partners/me/payout-method',partner,{payout_method:'bank_account'});
   assert.equal(payout.status,200);
+});
+
+test('referrer cannot obtain a password session, including admin password reset',async()=>{
+  const p=db.prepare('SELECT login,password_hash FROM partners WHERE id=?').get(refId);
+  // Even a formerly issued/known password cannot open a referrer after update.
+  db.prepare('UPDATE partners SET password_hash=? WHERE id=?')
+    .run(hashPassword('securepassword'),refId);
+  try {
+    const credentials=await request('POST','/api/auth/login',null,
+      {role:'partner',login:p.login,password:'securepassword'});
+    assert.equal(credentials.status,401);
+    assert.match(credentials.body.error,/Telegram/);
+  } finally {
+    db.prepare('UPDATE partners SET password_hash=? WHERE id=?').run(p.password_hash,refId);
+  }
+  const reset=await request('POST','/api/partners/:id/reset-password',admin,{},{id:refId});
+  assert.equal(reset.status,409);
+});
+
+test('Telegram miniapp verifies the referrer owns the registered phone',()=>{
+  const telegramId=928371122;
+  const now=Math.floor(Date.now()/1000);
+  const bad=recordVerifiedTelegramContact({
+    chat:{type:'private',id:telegramId},
+    from:{id:telegramId},
+    contact:{user_id:telegramId+1,phone_number:base.phone}
+  },now);
+  assert.equal(bad.verified,false);
+  assert.equal(issueTelegramAccountSession(telegramId,'partner',now),null);
+  const verified=recordVerifiedTelegramContact({
+    chat:{type:'private',id:telegramId},
+    from:{id:telegramId},
+    contact:{user_id:telegramId,phone_number:base.phone}
+  },now);
+  assert.equal(verified.verified,true);
+  const session=issueTelegramAccountSession(telegramId,'partner',now);
+  assert.ok(session?.token);
+  assert.equal(verifyToken(session.token).role,'partner');
+  assert.equal(Number(verifyToken(session.token).id),refId);
+  assert.equal(session.account.login,null,'Telegram Mini App does not show the internal login');
+  assert.equal(verifyToken(session.token).login,undefined,'referrer JWT needs role and ID only');
+  const saved=db.prepare('SELECT telegram_chat_id FROM partners WHERE id=?').get(refId);
+  assert.equal(saved.telegram_chat_id,String(telegramId));
+  const otherId=telegramId+2;
+  recordVerifiedTelegramContact({
+    chat:{type:'private',id:otherId},from:{id:otherId},
+    contact:{user_id:otherId,phone_number:base.phone}
+  },now);
+  assert.equal(issueTelegramAccountSession(otherId,'partner',now),null,
+    'another Telegram account must not hijack a linked partner');
+});
+
+test('legacy website Telegram deep link cannot sign in a passwordless referrer',async()=>{
+  const old=process.env.TG_TOKEN;
+  process.env.TG_TOKEN='123456:test';
+  try{
+    const start=await request('POST','/api/partners/telegram/start',null,{phone:base.phone});
+    assert.equal(start.status,409);
+    assert.match(start.body.error,/мини-приложении/);
+    const token='legacy-referrer-token-'+refId;
+    db.prepare("INSERT INTO telegram_login_tokens(token,phone,role,code,chat_id,verified,expires_at) VALUES (?,?,'partner','5678','190087001',1,datetime('now','+10 minutes'))")
+      .run(token,'79132222222');
+    const checked=await request('GET','/api/partners/telegram/check',null,{}, {},{token});
+    assert.equal(checked.status,409);
+    const code=await request('POST','/api/partners/telegram/verify-code',null,
+      {phone:base.phone,code:'5678'});
+    assert.equal(code.status,409);
+    assert.equal(db.prepare('SELECT telegram_chat_id FROM partners WHERE id=?').get(refId).telegram_chat_id,
+      '928371122','old link must not rebind a verified referrer');
+  }finally{
+    if(old===undefined)delete process.env.TG_TOKEN;else process.env.TG_TOKEN=old;
+  }
+});
+
+test('MAX confirmed contact grants a one-time passwordless referral session',async()=>{
+  const token='f'.repeat(64);
+  db.prepare("INSERT INTO max_login_tokens(token,phone,role,account_id,chat_id,verified,expires_at) VALUES (?,?,'partner_login',?, ?,1,datetime('now','+10 minutes'))")
+    .run(token,'79132222222',refId,'max-referrer-123');
+  const result=await request('POST','/api/partners/max/check',null,{token});
+  assert.equal(result.status,200,JSON.stringify(result.body));
+  assert.equal(result.body.verified,true);
+  assert.equal(Number(verifyToken(result.body.token).id),refId);
+  assert.equal(verifyToken(result.body.token).role,'partner');
+  assert.equal(result.body.user.partner_type,'referrer');
+  assert.equal(result.body.user.login,null,'MAX does not reveal the internal login');
+  assert.equal(verifyToken(result.body.token).login,undefined);
+  assert.equal(db.prepare('SELECT max_chat_id FROM partners WHERE id=?').get(refId).max_chat_id,'max-referrer-123');
+  const used=await request('POST','/api/partners/max/check',null,{token});
+  assert.equal(used.status,404,'MAX token cannot be redeemed twice');
 });
 
 test('referrer uses existing point attribution, threshold, ledger and one-time payment',async()=>{
@@ -131,8 +232,13 @@ test('both registration interfaces and private dashboards expose referral-only m
   const referralControl=fs.readFileSync(path.join(__dirname,'../public/admin-referral-control.js'),'utf8');
   const loyalty=fs.readFileSync(path.join(__dirname,'routes-customers.js'),'utf8');
   assert.match(adminPage,/referral-new-partner-form/);
+  assert.doesNotMatch(adminPage,/id="referral-new-login"/);
+  assert.doesNotMatch(adminPage,/id="referral-new-password"/);
+  assert.match(adminPage,/Логин и пароль не нужны/);
   assert.match(referralControl,/api\/admin\/referral-partners/);
   assert.match(miniapp,/admin-reg-referrer/);
+  assert.match(miniapp,/kind==='referrer'\?'':String\(get\('workAdminPersonLogin'\)/);
+  assert.match(referralControl,/Рекомендатель создан без логина и пароля/);
   assert.match(miniapp,/partner_type==='referrer'/);
   assert.match(partnerPage,/renderReferralOnlyPage/);
   assert.match(loyalty,/partner_type=\\'groomer\\'/);
