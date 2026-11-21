@@ -16,7 +16,15 @@ const DB_PATH = process.env.DATA_DIR
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new DatabaseSync(DB_PATH);
-db.exec('PRAGMA journal_mode = WAL;');
+// WAL persists inside an existing SQLite database across restarts. Do not
+// force it again: Amvera /data may be slow, and an explicitly maintained
+// DELETE database must not silently switch back to WAL after deployment.
+// On a NEW SQLite database, SQLite's rollback journal default is DELETE.
+// Production WAL -> DELETE migration is a separate OFFLINE maintenance step
+// after a verified backup, not a change performed by normal app startup.
+const JOURNAL_MODE = String(db.prepare('PRAGMA journal_mode').get()?.journal_mode || '').toLowerCase();
+if (JOURNAL_MODE !== 'wal' && JOURNAL_MODE !== 'delete')
+  throw new Error('Unsupported SQLite journal mode; manual review required');
 db.exec('PRAGMA foreign_keys = ON;');
 
 // ── МИГРАЦИЯ: «амбассадор» → «менеджер» (июль 2026) ─────────────────────────
@@ -2147,3 +2155,4 @@ if (missingPartnerPhoneKeys.length) {
 require('./payout-reports').initializeReports(db);
 module.exports = db;
 module.exports.DB_PATH = DB_PATH;
+module.exports.JOURNAL_MODE = JOURNAL_MODE;

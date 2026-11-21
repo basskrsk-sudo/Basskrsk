@@ -106,6 +106,8 @@ test('only active admin can inspect process metrics and persistent restart log',
   assert.ok(r.data.backup===null||typeof r.data.backup.running==='boolean');
   assert.ok(r.data.cpu_throttle===null || typeof r.data.cpu_throttle.available==='boolean');
   assert.ok(Array.isArray(r.data.api_performance.slow_routes));
+  assert.equal(r.data.database_journal_mode,db.JOURNAL_MODE);
+  assert.ok(['wal','delete'].includes(r.data.database_journal_mode));
   assert.ok(r.data.io_probe === null || r.data.io_probe.storage_probe_cached ||
     Number.isFinite(r.data.io_probe.storage_write_ms));
 });

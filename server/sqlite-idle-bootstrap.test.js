@@ -10,7 +10,7 @@ const {DatabaseSync}=require('node:sqlite');
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'hm-sqlite-idle-'));
 const projectRoot=path.join(__dirname,'..');
 const databaseFile=path.join(directory,'taiga.db');
-function bootstrap(){
+function bootstrap(dataDir=directory){
   const script=[
     "const {DatabaseSync}=require('node:sqlite');",
     "const actualPrepare=DatabaseSync.prototype.prepare;",
@@ -20,14 +20,15 @@ function bootstrap(){
     "const version=db.prepare('PRAGMA schema_version').get().schema_version;",
     "const changes=db.prepare('SELECT total_changes() AS changes').get().changes;",
     "const mode=db.prepare('PRAGMA journal_mode').get().journal_mode;",
+    "const exportedMode=db.JOURNAL_MODE;",
     "const names=['trg_partner_first_purchase_promo_insert','trg_point_first_purchase_promo_insert'];",
     "const triggers=names.map(name=>db.prepare(\"SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?\").get(name)?.sql||null);",
-    "console.log('BOOT_RESULT:'+JSON.stringify({version,changes,mode,triggers,pragmaTableInfoCalls,legacyOrderScans}));",
+    "console.log('BOOT_RESULT:'+JSON.stringify({version,changes,mode,exportedMode,triggers,pragmaTableInfoCalls,legacyOrderScans}));",
     "db.close();",
   ].join('\n');
   const result=spawnSync(process.execPath,['-e',script],{
     cwd:projectRoot,
-    env:{...process.env,DATA_DIR:directory},
+    env:{...process.env,DATA_DIR:dataDir},
     encoding:'utf8',
     timeout:30000,
   });
@@ -40,7 +41,8 @@ function bootstrap(){
 test('a second SQLite startup preserves schema and performs zero data changes',()=>{
   const first=bootstrap();
   assert.ok(first.version>0);
-  assert.equal(first.mode,'wal','keep production journal mode unchanged');
+  assert.equal(first.mode,'delete','fresh SQLite databases must retain the safe default');
+  assert.equal(first.exportedMode,first.mode);
   assert.ok(first.triggers.every(Boolean));
   // An account without purchases keeps NULL last_order_at indefinitely:
   // it must not force a complete order-history scan on every restart.
@@ -51,13 +53,39 @@ test('a second SQLite startup preserves schema and performs zero data changes',(
   assert.equal(second.version,first.version,
     'no repeated DROP/CREATE trigger and schema metadata writes');
   assert.equal(second.changes,0,'fully migrated idle database has no data writes');
-  assert.equal(second.mode,'wal');
+  assert.equal(second.mode,'delete','a restart must not enable WAL');
+  assert.equal(second.exportedMode,second.mode);
   assert.equal(second.legacyOrderScans,0,'one-time legacy customer scan must not repeat');
   assert.ok(second.pragmaTableInfoCalls<=70,
     'startup should read each table schema once (23 tables, not 151 PRAGMA queries): '+
     second.pragmaTableInfoCalls);
   assert.ok(first.pragmaTableInfoCalls<=70,
     'new-database startup also uses bounded schema lookups');
+});
+
+
+test('existing WAL stays WAL, an offline DELETE conversion survives subsequent deploys',()=>{
+  const isolated=fs.mkdtempSync(path.join(os.tmpdir(),'hm-sqlite-existing-wal-'));
+  const file=path.join(isolated,'taiga.db');
+  try {
+    // Model a legacy production DB which has already opted into persistent WAL.
+    const seed=new DatabaseSync(file);
+    assert.equal(seed.prepare('PRAGMA journal_mode=WAL').get().journal_mode,'wal');
+    seed.close();
+    const existing=bootstrap(isolated);
+    assert.equal(existing.mode,'wal','normal boot must not auto-convert a live WAL DB');
+    assert.equal(existing.exportedMode,'wal');
+    // Offline switch can only be performed after stopping the site and
+    // verifying an independent backup. This disposable fixture models that.
+    const offline=new DatabaseSync(file);
+    try {
+      assert.equal(offline.prepare('PRAGMA journal_mode=DELETE').get().journal_mode,'delete');
+    } finally {offline.close();}
+    const converted=bootstrap(isolated);
+    assert.equal(converted.mode,'delete','a new deployment must never silently undo an offline DELETE switch');
+    assert.equal(converted.exportedMode,'delete');
+    assert.equal(converted.version,existing.version,'journal selection must not trigger a schema migration');
+  } finally { fs.rmSync(isolated,{recursive:true,force:true}); }
 });
 
 test('a legacy promo trigger is repaired once; new referrers never get buyer promos',()=>{
