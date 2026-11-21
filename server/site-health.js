@@ -192,6 +192,8 @@ async function metrics() {
     memory:{rss_mb:Math.round(mem.rss/1048576),heap_used_mb:Math.round(mem.heapUsed/1048576),
       limit_mb:limit?Math.round(limit/1048576):null},
     storage_free_mb:Number.isFinite(free)?Math.round(free/1048576):null,
+    // Read once on DB startup: no per-admin-request PRAGMA or disk I/O.
+    database_journal_mode:db.JOURNAL_MODE,
     event_loop_delay_ms:lastSample ? lastSample.event_loop_delay_ms : null,
     event_loop_p99_ms:lastSample ? lastSample.event_loop_p99_ms : null,
     event_loop_max_ms:lastSample ? lastSample.event_loop_max_ms : null,
