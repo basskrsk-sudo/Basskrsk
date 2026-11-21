@@ -129,6 +129,9 @@ on:
       - public/admin-point-equipment.js
       - server/economics-dashboard.js
       - server/economics-dashboard-performance.test.js
+      - server/finance-compact.js
+      - server/routes-finance-compact.js
+      - server/finance-compact.test.js
       - public/miniapp-founder-admin.js
       - public/miniapp-identity.js
       - public/miniapp-customer.js
@@ -434,6 +437,9 @@ jobs:
           node --check public/admin-point-equipment.js
           node --check server/economics-dashboard.js
           node --check server/economics-dashboard-performance.test.js
+          node --check server/finance-compact.js
+          node --check server/routes-finance-compact.js
+          node --check server/finance-compact.test.js
           node --check server/routes-audit.js
           node --check server/expense-bot-create.js
           node --check server/expense-bot-create.test.js
@@ -701,6 +707,8 @@ jobs:
         run: node --test server/stock-inventory-transactions.test.js
       - name: Verify batched warehouse lists
         run: node --test server/warehouse-list-query.test.js
+      - name: Verify compact financial overview, payouts and expense pagination
+        run: node --test server/finance-compact.test.js
       - name: Verify exact economics totals after streaming paid orders
         run: node --test server/economics-dashboard-performance.test.js
       - name: Verify simplified admin business metrics
