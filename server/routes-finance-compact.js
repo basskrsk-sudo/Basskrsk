@@ -5,7 +5,7 @@ const {sendJson}=require('./http-utils');
 const {requireActiveAdmin}=require('./routes-auth');
 const {createSqliteAnalyticsCache}=require('./analytics-cache');
 const {trackSync}=require('./runtime-diagnostics');
-const {periodBounds,buildFinanceSummary,buildPayoutSnapshot,queryExpenses}=require('./finance-compact');
+const {isFinancePeriod,periodBounds,buildFinanceSummary,buildPayoutSnapshot,queryExpenses}=require('./finance-compact');
 const cache=createSqliteAnalyticsCache(db,{ttlMs:15000,maxEntries:5});
 function validPage(query) {
   const parsed=Number(query?.page||1);
@@ -17,8 +17,8 @@ function registerCompactFinanceRoutes(router){
   router.get('/api/admin/finance/summary',(req,res,ctx)=>{
     if(!requireActiveAdmin(req,res,ctx))return;
     const period=String(ctx.query?.period||'month');
-    if(!['month','30d'].includes(period))
-      return sendJson(res,400,{error:'Допустимые периоды: month или 30d'});
+    if(!isFinancePeriod(period))
+      return sendJson(res,400,{error:'Допустимые периоды: month, 30d, календарные годы с 2026, all'});
     res.setHeader('Cache-Control','private, no-store');
     // Local midnight can advance without a write, so include local date
     // in the cache key even for the current calendar month.
@@ -30,8 +30,8 @@ function registerCompactFinanceRoutes(router){
   router.get('/api/admin/finance/expenses',(req,res,ctx)=>{
     if(!requireActiveAdmin(req,res,ctx))return;
     const period=String(ctx.query?.period||'month');
-    if(!['month','30d'].includes(period))
-      return sendJson(res,400,{error:'Допустимые периоды: month или 30d'});
+    if(!isFinancePeriod(period))
+      return sendJson(res,400,{error:'Допустимые периоды: month, 30d, календарные годы с 2026, all'});
     let page;
     try{page=validPage(ctx.query);}catch(e){return sendJson(res,400,{error:e.message});}
     const investor=String(ctx.query?.investor||'').trim().slice(0,120);
