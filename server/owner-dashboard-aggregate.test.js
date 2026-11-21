@@ -16,7 +16,7 @@ function fixture(){
     CREATE INDEX idx_orders_point_status_created ON orders(point_id,status,created_at);
     CREATE TABLE partners(id INTEGER PRIMARY KEY,point_id TEXT,full_name TEXT,commission_rate REAL,active INTEGER);
     CREATE TABLE salon_owners(id INTEGER PRIMARY KEY,point_id TEXT,commission_rate REAL);
-    CREATE TABLE owner_payout_items(order_id INTEGER,commission_amount INTEGER);
+    CREATE TABLE owner_payout_items(id INTEGER PRIMARY KEY,order_id INTEGER,commission_amount INTEGER);
     INSERT INTO partners VALUES
       (1,'a','Анна',0.15,1),(2,'a','Борис',0.20,0),(3,'b','Чужой грумер',0.10,1),
       (4,'a','Новый грумер',0.15,1);
@@ -33,7 +33,7 @@ function fixture(){
       (9,'a','paid','refunded',NULL,50,2,NULL,0,'sbp','2026-11-11 12:00:00'),
       (10,'a','paid','none',NULL,150,0,0,0,'sbp','2026-11-12 12:00:00'),
       (11,'a','paid','none',NULL,120,1,0.15,0,'sbp','2026-10-23 12:00:00');
-    INSERT INTO owner_payout_items VALUES(1,13),(8,50);
+    INSERT INTO owner_payout_items(order_id,commission_amount) VALUES(1,13),(8,50);
   `);
   return db;
 }
