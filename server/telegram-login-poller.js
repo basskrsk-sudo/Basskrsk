@@ -39,18 +39,30 @@ const { createBotConfigSync } = require('./bot-config-sync');
 const { recordVerifiedTelegramContact } = require('./miniapp-phone-identity');
 const { bindTelegramAccount } = require('./telegram-connection-alerts');
 const { commandsMenuButton, miniAppInlineKeyboard, miniAppDirectLinkMarkup } = require('./miniapp-bot-links');
-const { collectSalesWeekReport, formatSalesWeekReport, buildSalesWeekCsv, adminCanReadSales } = require('./sales-week-report');
-const {
-  currentKrasnoyarskYear, collectBusinessYearReport,
-  formatBusinessYearReport, buildBusinessYearCsv, buildBusinessPointsCsv,
-} = require('./business-year-report');
+// Report engines are approval-only. Parsing every SQL/CSV renderer at bot
+// startup costs RAM even on days when nobody requests a report.
+const lazyReport = (file, name) => (...args) => require(file)[name](...args);
+const collectSalesWeekReport = lazyReport('./sales-week-report','collectSalesWeekReport');
+const formatSalesWeekReport = lazyReport('./sales-week-report','formatSalesWeekReport');
+const buildSalesWeekCsv = lazyReport('./sales-week-report','buildSalesWeekCsv');
+const adminCanReadSales = lazyReport('./sales-week-report','adminCanReadSales');
+const currentKrasnoyarskYear = lazyReport('./business-year-report','currentKrasnoyarskYear');
+const collectBusinessYearReport = lazyReport('./business-year-report','collectBusinessYearReport');
+const formatBusinessYearReport = lazyReport('./business-year-report','formatBusinessYearReport');
+const buildBusinessYearCsv = lazyReport('./business-year-report','buildBusinessYearCsv');
+const buildBusinessPointsCsv = lazyReport('./business-year-report','buildBusinessPointsCsv');
 const { sendTelegramCsvDocument } = require('./telegram-csv-upload');
-const {
-  collectWarehouseStockReport, formatWarehouseStockMessages,
-  formatWarehouseStockSummary, buildWarehouseStockCsv,
-} = require('./warehouse-telegram-report');
-const { collectNoGroomerReport, formatNoGroomerReport, buildNoGroomerCsv } = require('./no-groomer-report');
-const { collectPayoutBrief, formatPayoutBriefMessage, formatRecipientPayoutMessage, buildPayoutBriefCsv } = require('./payout-brief');
+const collectWarehouseStockReport = lazyReport('./warehouse-telegram-report','collectWarehouseStockReport');
+const formatWarehouseStockMessages = lazyReport('./warehouse-telegram-report','formatWarehouseStockMessages');
+const formatWarehouseStockSummary = lazyReport('./warehouse-telegram-report','formatWarehouseStockSummary');
+const buildWarehouseStockCsv = lazyReport('./warehouse-telegram-report','buildWarehouseStockCsv');
+const collectNoGroomerReport = lazyReport('./no-groomer-report','collectNoGroomerReport');
+const formatNoGroomerReport = lazyReport('./no-groomer-report','formatNoGroomerReport');
+const buildNoGroomerCsv = lazyReport('./no-groomer-report','buildNoGroomerCsv');
+const collectPayoutBrief = lazyReport('./payout-brief','collectPayoutBrief');
+const formatPayoutBriefMessage = lazyReport('./payout-brief','formatPayoutBriefMessage');
+const formatRecipientPayoutMessage = lazyReport('./payout-brief','formatRecipientPayoutMessage');
+const buildPayoutBriefCsv = lazyReport('./payout-brief','buildPayoutBriefCsv');
 const newProductBroadcast = require('./new-product-broadcast');
 const tierApprovals = require('./partner-tier-approvals');
 const reportApprovals = require('./report-approvals');

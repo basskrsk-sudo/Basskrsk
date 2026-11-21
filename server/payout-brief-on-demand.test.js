@@ -65,3 +65,18 @@ test('payout default request produces CSV and never batch-renders personal PDFs'
   assert.match(src,/if\(type==='payoutpdf'\)return sendIndividualPayoutPdf\(chatId,params\)/);
   assert.match(src,/show_alert:!allowed/,'only an authorized private admin may request a payee');
 });
+
+// Keep reporting imports out of the always-on HTTP and Telegram startup path.
+test('large report engines load on demand rather than at server start',()=>{
+  const bot=fs.readFileSync(path.join(__dirname,'telegram-login-poller.js'),'utf8');
+  assert.match(bot,/const collectPayoutBrief = lazyReport\('\.\/payout-brief','collectPayoutBrief'\)/);
+  assert.match(bot,/const collectBusinessYearReport = lazyReport\('\.\/business-year-report','collectBusinessYearReport'\)/);
+  assert.match(bot,/const collectNoGroomerReport = lazyReport\('\.\/no-groomer-report','collectNoGroomerReport'\)/);
+  assert.match(bot,/const collectSalesWeekReport = lazyReport\('\.\/sales-week-report','collectSalesWeekReport'\)/);
+  assert.match(bot,/const collectWarehouseStockReport = lazyReport\('\.\/warehouse-telegram-report','collectWarehouseStockReport'\)/);
+  const routes=fs.readFileSync(path.join(__dirname,'routes-weekly-reports.js'),'utf8');
+  assert.match(routes,/const readComparison = \(\.\.\.args\) => require\('\.\/week-over-week'\)\.readComparison\(\.\.\.args\)/);
+  assert.match(routes,/const listWeeklyReports = \(\.\.\.args\) => require\('\.\/weekly-report'\)\.listWeeklyReports\(\.\.\.args\)/);
+  const approvals=fs.readFileSync(path.join(__dirname,'report-approvals.js'),'utf8');
+  assert.match(approvals,/const adminCanReadSales = \(\.\.\.args\) => require\('\.\/sales-week-report'\)\.adminCanReadSales\(\.\.\.args\)/);
+});

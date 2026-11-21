@@ -5,14 +5,13 @@ const fs = require('node:fs');
 const db = require('./db');
 const { sendJson } = require('./http-utils');
 const { requireAuth, requireActiveAdmin } = require('./routes-auth');
-const { readComparison } = require('./week-over-week');
-const {
-  createWeeklyReport,
-  customPeriod,
-  listWeeklyReports,
-  previousCompletedWeek,
-  resolveReportFile,
-} = require('./weekly-report');
+// Neither the comparison engine nor PDF/Excel report modules are needed
+// while the HTTP server starts or serves checkout requests.
+const readComparison = (...args) => require('./week-over-week').readComparison(...args);
+const customPeriod = (...args) => require('./weekly-report').customPeriod(...args);
+const listWeeklyReports = (...args) => require('./weekly-report').listWeeklyReports(...args);
+const previousCompletedWeek = (...args) => require('./weekly-report').previousCompletedWeek(...args);
+const resolveReportFile = (...args) => require('./weekly-report').resolveReportFile(...args);
 
 function safeRecord(record) {
   let summary = record.summary || {};
