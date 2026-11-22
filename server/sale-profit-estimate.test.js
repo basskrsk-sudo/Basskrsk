@@ -95,10 +95,9 @@ test('only active linked superadmins receive one private Telegram message',async
   assert.deepEqual(status,{attempted:1,delivered:1});
   assert.equal(sent[0].chat,'111222333');
   assert.match(sent[0].text,/ХМ-00001/);
-  assert.match(sent[0].text,/45%/);
-  assert.match(sent[0].text,/35%/);
-  assert.match(sent[0].text,/20%/);
-  assert.match(sent[0].text,/Расчётная прибыль проекта/);
+  assert.match(sent[0].text,/Расчётная прибыль ХвостМаркет: <b>44,75 ₽<\/b>/);
+  assert.doesNotMatch(sent[0].text,/Доли собственников|Лакомых|Соколов|Кучкин/);
+  assert.doesNotMatch(sent[0].text,/45%|35%|20%/);
   const skipped=await sendSuperadminSaleProfit(db,{...order(),status:'pending'},
     {assumptions,send});
   assert.equal(skipped.attempted,0);
@@ -124,6 +123,8 @@ test('no founder allocations are fabricated when shares are inconsistent',()=>{
   const result=loadSaleProfitEstimate(db,order(),assumptions);
   assert.equal(result.founder_split_available,false);
   assert.deepEqual(result.founder_shares,[]);
-  assert.match(formatSuperadminSaleProfit(result),/не дают 100%/);
+  const message=formatSuperadminSaleProfit(result);
+  assert.match(message,/Расчётная прибыль ХвостМаркет/);
+  assert.doesNotMatch(message,/не дают 100%|Доли собственников|Лакомых|Соколов|Кучкин/);
  }finally{db.close();}
 });
