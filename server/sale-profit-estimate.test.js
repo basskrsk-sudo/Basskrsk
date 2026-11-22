@@ -95,7 +95,7 @@ test('only active linked superadmins receive one private Telegram message',async
   assert.deepEqual(status,{attempted:1,delivered:1});
   assert.equal(sent[0].chat,'111222333');
   assert.match(sent[0].text,/ХМ-00001/);
-  assert.match(sent[0].text,/Расчётная прибыль ХвостМаркет: <b>44,75 ₽<\/b>/);
+  assert.match(sent[0].text,/<b>Расчётная прибыль ХвостМаркет: 44,75 ₽<\/b>/);
   assert.doesNotMatch(sent[0].text,/Доли собственников|Лакомых|Соколов|Кучкин/);
   assert.doesNotMatch(sent[0].text,/45%|35%|20%/);
   const skipped=await sendSuperadminSaleProfit(db,{...order(),status:'pending'},
