@@ -13,12 +13,9 @@ function formatSuperadminSaleProfit(estimate,{demo=false}={}){
     '; себест.: '+money(item.net_cost)+(item.cost_estimated?'*':'')
   );
   if((row.items||[]).length>9)items.push('• …ещё '+(row.items.length-9)+' позиций — в админке');
-  const split=row.founder_split_available
-    ?row.founder_shares.map(f=>'  '+esc(f.name)+' ('+Number(f.share_percent)+'%): <b>'+money(f.profit_est)+'</b>')
-    :['  ⚠️ Доли собственников не дают 100% — распределение не рассчитано'];
   return [
     ...(demo?['🧪 <b>ДЕМО — не настоящая оплата</b>','']:[]),
-    '💰 <b>Новая оплаченная продажа — расчёт собственников</b>',
+    '💰 <b>Новая оплаченная продажа — экономика ХвостМаркета</b>',
     'Заказ: '+esc(row.order_number),
     'Точка: '+esc(row.point_name||'Не назначена'),
     ...(row.partner_name?['Грумер: '+esc(row.partner_name)]:[]),
@@ -36,12 +33,11 @@ function formatSuperadminSaleProfit(estimate,{demo=false}={}){
     'Эквайринг: −'+money(row.acquiring_est),
     'Логистика: −'+money(row.logistics_est),
     '',
-    '📊 <b>Расчётная прибыль проекта: '+money(row.founder_profit_est)+'</b>',
-    'Доли собственников (расчётно):',...split,
+    '📊 <b>Расчётная прибыль ХвостМаркет: '+money(row.founder_profit_est)+'</b>',
     '',
     'ℹ️ *Закупочная цена из текущего каталога; неизвестная — оценка 50%. '+
       'Без общесетевых постоянных расходов и отдельных бонусов. '+
-      'Не является начислением или выплатой собственникам.',
+      'Это управленческая оценка, а не сумма к выплате.',
   ].join('\n').slice(0,3990);
 }
 async function sendSuperadminSaleProfit(database,order,options={}){
