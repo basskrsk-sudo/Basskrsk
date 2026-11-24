@@ -39,7 +39,7 @@ function lookupStoredFirstPurchasePromoCode(value,now=Date.now()){
   return code.replace(/^(HVOST|HV)15(?=-)/,(_,prefix)=>prefix+'20');
 }
 function firstPurchasePromoNotice(value,now=Date.now()){
-  if(isUniversalFirstPurchasePromoCode(value))return 'Единый промокод HV15: скидка 15% на первую покупку в любой точке ХвостМаркета.';
+  if(isUniversalFirstPurchasePromoCode(value))return 'Единый промокод HV15: скидка 15% на первую покупку в любой точке ХвостМаркета. Можно ввести просто 15.';
   const policy=getFirstPurchasePromoPolicy(now,value);
   if(!policy.changed && isNewCode(value))return 'По этому промокоду скидка на первую покупку — 15%.';
   if(!policy.changed)return 'До 30.11.2026 включительно по старым промокодам — 20%, по новым HV15/HVOST15 — 15%. С 01.12.2026 — 15% по всем промокодам.';
