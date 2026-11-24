@@ -15,6 +15,7 @@ const { resolveCheckoutGroomer } = require('./auto-groomer');
 const yookassa = require('./yookassa');
 const { matchesQrPaymentRetry } = require('./qr-payment-retry');
 const { storedQrPaymentArgs } = require('./qr-payment-recovery');
+const { redirectPaymentPath, paymentMatchesOrder, redirectContinuation } = require('./redirect-payment-capability');
 const { sendTelegram, buildOrderMessage } = require('./telegram');
 const { sendPaidOrderNotifications } = require('./order-notifications');
 const { sendSuperadminSaleProfit } = require('./superadmin-sale-profit');
@@ -479,6 +480,8 @@ function registerPaymentRoutes(router) {
       // YooKassa's idempotency key makes this the SAME payment operation.
       // Reconstruct its original request from persisted, server-priced data.
       if (!existingOrder.yookassa_payment_id) {
+        const age=Date.now()-Date.parse(String(existingOrder.created_at||'').replace(' ','T')+'Z');
+        if(!Number.isFinite(age)||age>30*60*1000)return sendJson(res,202,{...existingSummary,status:'initializing',error:'Требуется сверка предыдущего платежа. Не оплачивайте повторно.'});
         const args = storedQrPaymentArgs(existingOrder, db.prepare(
           'SELECT * FROM order_items WHERE order_id=? ORDER BY id'
         ).all(existingOrder.id));
@@ -699,6 +702,11 @@ function registerPaymentRoutes(router) {
       return sendJson(res, e.statusCode || 409, { error: e.message, code: e.code || 'RESERVATION_ERROR', details: e.details });
     }
 
+    // Root/miniapp opaque codes are reserved for hosted redirect checkouts;
+    // embedded payments must never be reconstructed with a different mode.
+    if (/^(TG|TMA)-\d{13}-[a-f0-9]{16}$/.test(String(orderId)) && confirmationMode!=='redirect') {
+      return sendJson(res,400,{code:'INVALID_PAYMENT_MODE',error:'Для этого заказа требуется защищённая страница оплаты'});
+    }
     const exactPaymentReturnUrl = paymentReturnUrl(req, orderId, returnPath);
     let orderRowId;
     try {
@@ -825,37 +833,67 @@ function registerPaymentRoutes(router) {
 
   // Возврат с резервной страницы ЮKassa содержит только код заказа. Не отдаём
   // публично ни телефон, ни сумму, ни выбранную точку — только результат.
-  router.get('/api/order-payment-status/:orderCode', async (req, res, ctx) => {
-    let order = db.prepare('SELECT * FROM orders WHERE order_code = ?').get(ctx.params.orderCode);
-    if (!order) return sendJson(res, 404, { error: 'Заказ не найден' });
-
-    if (order.status === 'pending' && order.yookassa_payment_id && yookassa.isConfigured()) {
-      try {
-        const payment = await yookassa.getPayment(order.yookassa_payment_id);
-        if (payment.status === 'succeeded') {
-          await finalizePaidOrder(order.id);
-        } else if (payment.status === 'canceled') {
-          releaseFailedOrderAndAlert(order.id, 'ЮKassa сообщила об отмене платежа');
-        }
-        order = db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id);
-      } catch (e) {
-        console.warn(`[order-payment-status] Не удалось сверить заказ ${order.order_code}: ${e.message}`);
+  // This GET never creates a payment. A capability is the random technical
+  // order code, not the short public order number or the customer's phone.
+  router.get('/api/order-payment-status/:orderCode', async (req,res,ctx) => {
+    res.setHeader('Cache-Control','no-store, private');
+    let order=db.prepare('SELECT * FROM orders WHERE order_code = ?').get(ctx.params.orderCode);
+    if(!order)return sendJson(res,404,{error:'Заказ не найден'});
+    let payment=null;
+    if(order.status==='pending'&&order.yookassa_payment_id&&yookassa.isConfigured()){
+      try{
+        payment=await yookassa.getPayment(order.yookassa_payment_id);
+        // The link/receipt belongs only to the exact provider payment.
+        if(redirectPaymentPath(order)&&!paymentMatchesOrder(order,payment))payment=null;
+        if(payment?.status==='succeeded')await finalizePaidOrder(order.id);
+        else if(payment?.status==='canceled')releaseFailedOrderAndAlert(order.id,'ЮKassa сообщила об отмене платежа');
+        order=db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id);
+      }catch(e){
+        console.warn('[order-payment-status] Не удалось сверить заказ '+order.order_code+': '+e.message);
       }
     }
-
-    // The full receipt is only exposed for the unguessable QR checkout code.
-    // Preserve the legacy first-item response for other public payment links.
-    const qrReceipt=/^TG-\d{13}-[a-f0-9]{16}$/.test(String(order.order_code||''));
-    const paidItems=order.status==='paid' ? db.prepare('SELECT name,weight,qty FROM order_items WHERE order_id=? ORDER BY id LIMIT ?').all(order.id,qrReceipt?50:1) : [];
-    sendJson(res, 200, {
-      paid: order.status === 'paid',
-      status: order.status,
-      order_code: order.order_code,
-      display_number: order.display_number || null,
-      is_partner_self_order: !!order.is_partner_self_order,
-      item: paidItems[0] || null,
-      items: paidItems,
+    const continuation=redirectContinuation(order,payment);
+    const qrReceipt=!!redirectPaymentPath(order);
+    const paidItems=order.status==='paid'?db.prepare('SELECT name,weight,qty FROM order_items WHERE order_id=? ORDER BY id LIMIT ?').all(order.id,qrReceipt?50:1):[];
+    sendJson(res,200,{
+      paid:order.status==='paid',status:order.status,order_code:order.order_code,
+      display_number:order.display_number||null,is_partner_self_order:!!order.is_partner_self_order,
+      item:paidItems[0]||null,items:paidItems,
+      ...(qrReceipt?{...continuation,amount:order.total,fulfillment_type:order.fulfillment_type}:{}),
     });
+  });
+
+  // Explicit user action after a lost provider response, including another
+  // Android browser. Never creates another order, changes totals or extends
+  // an already attached payment. Uses the original YooKassa idempotence key.
+  const redirectRecoveries=new Map();
+  router.post('/api/redirect-payment/:orderCode/resume',async(req,res,ctx)=>{
+    res.setHeader('Cache-Control','no-store, private');
+    const order=db.prepare('SELECT * FROM orders WHERE order_code=?').get(ctx.params.orderCode);
+    if(!redirectPaymentPath(order))return sendJson(res,404,{error:'Заказ не найден'});
+    if(order.status!=='pending'||order.yookassa_payment_id)return sendJson(res,200,{status:order.status});
+    const age=Date.now()-Date.parse(String(order.created_at||'').replace(' ','T')+'Z');
+    if(!redirectContinuation(order,null).can_recover||!Number.isFinite(age)||age>30*60*1000||!yookassa.isConfigured())
+      return sendJson(res,202,{status:'initializing',error:'Проверяем предыдущий платёж. Не оплачивайте повторно.'});
+    let job=redirectRecoveries.get(order.id);
+    if(!job){
+      job=(async()=>{
+        const args=storedQrPaymentArgs(order,db.prepare('SELECT * FROM order_items WHERE order_id=? ORDER BY id').all(order.id));
+        if(!args)return;
+        const payment=await yookassa.createPayment(args);
+        if(!paymentMatchesOrder(order,payment))throw Error('Несовпадение платежа и заказа');
+        const latest=db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);
+        if(latest.status!=='pending'||latest.reservation_status!=='active')return;
+        if(latest.yookassa_payment_id&&latest.yookassa_payment_id!==payment.id)throw Error('Несовпадение ID платежа');
+        if(payment.status==='canceled'){releaseFailedOrderAndAlert(order.id,'ЮKassa подтвердила отмену платежа');return;}
+        if(!latest.yookassa_payment_id)attachQrPayment(latest,payment);
+        if(payment.status==='succeeded')await finalizePaidOrder(order.id);
+      })();
+      redirectRecoveries.set(order.id,job);
+    }
+    try{await job;sendJson(res,200,{status:'checked'});}
+    catch(e){console.warn('[redirect-resume] '+order.order_code+': '+e.message);sendJson(res,202,{status:'initializing',error:'Связь с ЮKassa нестабильна. Проверьте этот же заказ.'});}
+    finally{if(redirectRecoveries.get(order.id)===job)redirectRecoveries.delete(order.id);}
   });
 
   // POST /api/yookassa-webhook — ЮKassa уведомляет о смене статуса платежа

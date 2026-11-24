@@ -2728,6 +2728,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/first-purchase-promo-display.js?v=20261124-4"></script>
+<script src="/android-payment.js"></script>
 <script>
 // ── DATA ──────────────────────────────────────────────
 let products = [];
@@ -6086,7 +6087,16 @@ function buyMoreAfterSuccess() {
   showPage('catalog');
 }
 
-async function launchYooKassaPayment() {
+let checkoutLaunchRunning=false;
+async function launchYooKassaPayment(){
+  if(checkoutLaunchRunning)return;
+  const pending=window.HvostAndroidPayment?.pending();
+  if(pending){window.HvostAndroidPayment.go(pending.code);return;}
+  checkoutLaunchRunning=true;
+  try{await launchYooKassaPaymentImpl();}finally{checkoutLaunchRunning=false;}
+}
+async function launchYooKassaPaymentImpl() {
+  const androidHosted=window.HvostAndroidPayment?.android()===true;
   const name    = document.getElementById('oName').value.trim() || 'Клиент';
   const lname   = document.getElementById('oLname').value.trim();
   const phone   = document.getElementById('oPhone').value.trim();
@@ -6132,7 +6142,7 @@ async function launchYooKassaPayment() {
   const adjustedDeliveryFee = deliveryFee - bonesAgainstDelivery;
   const total = adjustedGoodsTotal + adjustedDeliveryFee;
 
-  const orderId  = 'TG-' + Date.now();
+  const orderId  = androidHosted?window.HvostAndroidPayment.newCode('TG'):'TG-' + Date.now();
   const successPointId = isDelivery ? '' : document.getElementById('oPickupSelect').value;
   savePendingSuccess(orderId, {
     orderId,
@@ -6153,7 +6163,7 @@ async function launchYooKassaPayment() {
   try {
     // Проверяем внешний JS ДО создания заказа и резерва. Если встроенный
     // виджет недоступен, просим сервер создать redirect-платёж.
-    const widgetReady = await prepareYooKassaWidget();
+    const widgetReady = !androidHosted && await prepareYooKassaWidget();
     const confirmationMode = widgetReady ? 'embedded' : 'redirect';
 
     // Заголовок авторизации нужен, только если реально тратим косточки —
@@ -6162,10 +6172,7 @@ async function launchYooKassaPayment() {
     const bonesHeaders = bonesToUse > 0 && getAccountToken()
       ? { 'Authorization': 'Bearer ' + getAccountToken() }
       : {};
-    const res = await fetch('/api/create-payment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...bonesHeaders },
-      body: JSON.stringify({
+    const paymentBody = {
         amount: total,
         orderId,
         method: checkoutPaymentMethod,
@@ -6190,9 +6197,16 @@ async function launchYooKassaPayment() {
         promoCode: firstPurchasePromoValid ? promoInput.value.trim().toUpperCase() : null,
         confirmationMode,
         cartItems: cart.map((i) => ({ variantId: i.variantId, qty: i.qty })),
-      }),
-    });
-    const data = await res.json();
+      };
+    const requestOptions={method:'POST',headers:{'Content-Type':'application/json',...bonesHeaders},body:JSON.stringify(paymentBody)};
+    let res,data;
+    if(androidHosted){
+      window.HvostAndroidPayment.remember(orderId,'catalog',paymentBody);
+      res=await fetchWithTimeout('/api/create-payment',requestOptions,12000);
+      try{data=JSON.parse(res.body||'null');}catch(_){data=null;}
+      if(!data||!res.status||res.status>=500||res.status===202){window.HvostAndroidPayment.go(orderId);return;}
+      if(!res.ok){if(['PAYMENT_RETRY_MISMATCH','PAYMENT_RETRY_REQUIRED','RESERVATION_CLOSED'].includes(data.code)){window.HvostAndroidPayment.go(orderId);return;}window.HvostAndroidPayment.clear(orderId);}
+    }else{res=await fetch('/api/create-payment',requestOptions);data=await res.json();}
 
     if (!res.ok) {
       if (data && data.code === 'ORDER_TOTAL_CHANGED' && data.pricing && Array.isArray(data.pricing.items)) {
@@ -6235,6 +6249,7 @@ async function launchYooKassaPayment() {
     });
 
     if (data.demo === true) {
+      if(androidHosted)window.HvostAndroidPayment.clear(orderId);
       // Явный тестовый режим сервера (DEMO_MODE=true). В обычной среде без
       // настроенной ЮKassa этот ответ никогда не возвращается.
       isCurrentOrderSelfOrder = !!data.is_partner_self_order;
@@ -6242,6 +6257,7 @@ async function launchYooKassaPayment() {
       simulatePaymentSuccess(orderId, name, lname, phone, pickup, total, comment);
       return;
     }
+    if(androidHosted){window.HvostAndroidPayment.go(orderId);return;}
     if (!data.confirmation_token) {
       if (confirmationMode === 'redirect' && data.confirmation_url) {
         payBtn.innerHTML = '<span>Открываем безопасную оплату…</span>';
@@ -6375,6 +6391,7 @@ async function launchYooKassaPayment() {
     }
   } catch (e) {
     console.error('Ошибка запуска оплаты:', e);
+    if(androidHosted&&window.HvostAndroidPayment.pending()?.code===orderId){window.HvostAndroidPayment.go(orderId);return;}
     payBtn.style.display = 'flex';
     payBtn.disabled = false; payBtn.innerHTML = originalBtnHtml;
     trackGoal('payment_create_error', { scenario: 'catalog', source: checkoutOrigin, order_id: orderId });
@@ -6411,12 +6428,12 @@ async function handleRedirectPaymentReturn() {
       if (res.ok && data.paid) {
         isCurrentOrderSelfOrder = !!data.is_partner_self_order;
         const pending = readPendingSuccess(orderCode);
-        const successType = pending && pending.fulfillmentType ? pending.fulfillmentType : 'pickup';
+        const successType = pending && pending.fulfillmentType ? pending.fulfillmentType : (data.fulfillment_type||'pickup');
         configureSuccessFulfillment(successType);
-        renderSuccessProducts(pending && pending.items ? pending.items : []);
+        renderSuccessProducts(pending && pending.items ? pending.items : (data.items||[]));
         lastPaidCheckoutOrderId = data.order_code || orderCode;
         lastPaidCheckoutDisplayNumber = data.display_number || (pending && pending.display_number) || '';
-        lastPaidCheckoutPhone = pending && pending.phone ? pending.phone : getKnownPhone();
+        lastPaidCheckoutPhone = pending && pending.phone ? pending.phone : (window.HvostAndroidPayment?.codeValid(orderCode)?'':getKnownPhone());
         lastPaidCheckoutPointId = pending && pending.pointId ? pending.pointId : '';
         document.getElementById('success-details').innerHTML = `
           <div style="display:flex;flex-direction:column;gap:.4rem;">
@@ -6424,13 +6441,13 @@ async function handleRedirectPaymentReturn() {
             <div>📋 <strong>Заказ:</strong> ${escapeHtml(data.display_number || orderCode)}</div>
             ${data.display_number ? `<div style="font-size:.75rem;color:var(--muted);">🔐 Технический код для привязки заказа: ${escapeHtml(data.order_code || orderCode)}</div>` : ''}
             ${pending && pending.pickup ? `<div>📍 <strong>${successType === 'home_delivery' ? 'Доставка' : 'Минимаркет'}:</strong> ${escapeHtml(pending.pickup)}</div>` : ''}
-            ${pending && pending.total ? `<div>💳 <strong>Оплачено:</strong> <span style="color:var(--amber);font-weight:700;">${Number(pending.total)} ₽</span></div>` : ''}
+            ${(pending?.total||data.amount) ? `<div>💳 <strong>Оплачено:</strong> <span style="color:var(--amber);font-weight:700;">${Number(pending?.total||data.amount)} ₽</span></div>` : ''}
             ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 <strong>Самозаказ:</strong> при скидке на первую покупку комиссия не начисляется, без промокода — по тарифу; косточки отключены.</div>' : ''}
           </div>`;
         document.getElementById('loyalty-badge-card').style.display = 'none';
         trackGoalOnce('payment_success', data.order_code || orderCode, {
           scenario: 'catalog', source: pending && pending.source ? pending.source : 'catalog',
-          order_id: data.order_code || orderCode, revenue: pending && pending.total ? Number(pending.total) : 0,
+          order_id: data.order_code || orderCode, revenue: Number(pending?.total||data.amount)||0,
         });
         trackGoalOnce('purchase', data.order_code || orderCode, {
           order_id: data.order_code || orderCode,
@@ -6445,9 +6462,16 @@ async function handleRedirectPaymentReturn() {
         showPage('success');
         showCheckoutMessagingOffers();
         clearPendingSuccess(orderCode);
+        window.HvostAndroidPayment?.clear(orderCode);
         return;
       }
+      if(res.ok&&data.status==='pending'&&data.confirmation_url&&window.HvostAndroidPayment?.codeValid(orderCode)){
+        document.getElementById('payment-result-title').textContent='Платёж ещё не завершён';
+        document.getElementById('payment-result-message').textContent='Проверьте статус или продолжите тот же платёж. Повторную покупку создавать не нужно.';
+        retryButton.style.display='inline-flex';retryButton.textContent='Продолжить этот платёж';retryButton.onclick=()=>window.HvostAndroidPayment.go(orderCode);return;
+      }
       if (res.ok && ['failed', 'cancelled', 'canceled'].includes(data.status)) {
+        window.HvostAndroidPayment?.clear(orderCode);
         trackGoalOnce('payment_cancelled', orderCode, {
           scenario: 'catalog', order_id: orderCode, status: data.status,
         });
@@ -7382,6 +7406,12 @@ function resumePaymentCheck() {
 }
 document.addEventListener('visibilitychange', resumePaymentCheck);
 window.addEventListener('pageshow', resumePaymentCheck);
+window.addEventListener('pageshow',function(e){
+  if(!e.persisted||!window.HvostAndroidPayment?.android())return;
+  const pending=window.HvostAndroidPayment.pending();
+  const button=document.getElementById('pay-btn');
+  if(pending&&button){button.disabled=false;button.textContent='Продолжить существующий платёж';}
+});
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'hidden') {
     window._storefrontHiddenAt = Date.now();

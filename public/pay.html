@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0A4A38">
+<title>Оплата заказа — ХвостМаркет</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f7f5ef;color:#0d332a;font:16px system-ui,sans-serif}main{max-width:460px;margin:auto;padding:24px 16px}.brand{font-weight:800;font-size:20px;color:#0a4a38;margin:0 0 18px}.panel{background:white;border:1px solid #dfe8dc;border-radius:16px;padding:20px}h1{font-size:23px;margin:0 0 12px;line-height:1.25}p{line-height:1.5;margin:10px 0;color:#51675c}.amount{font-size:28px;font-weight:800;color:#0a4a38;margin:12px 0}.btn{display:block;width:100%;margin:12px 0 0;border:0;border-radius:12px;padding:14px 12px;text-align:center;text-decoration:none;font:700 16px system-ui;background:#0a4a38;color:white;cursor:pointer}.secondary{background:#e1eee5;color:#0a4a38}.btn:disabled{opacity:.55}input{width:100%;padding:12px;border:1px solid #dfe8dc;border-radius:8px;font-size:16px}.small{font-size:13px}.hidden,[hidden]{display:none!important}hr{border:0;border-top:1px solid #dfe8dc;margin:18px 0}#orderNumber{overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">🐾 ХвостМаркет</div>
+  <section class="panel" aria-live="polite">
+    <h1 id="title">Проверяем заказ…</h1>
+    <p id="orderNumber" class="small"></p>
+    <div id="amount" class="amount" hidden></div>
+    <p id="message">Подождите, пока мы получим статус от сервера.</p>
+    <a id="payLink" class="btn" hidden rel="noreferrer">Перейти к оплате →</a>
+    <button id="recover" class="btn" hidden>Восстановить этот платёж</button>
+    <button id="check" class="btn secondary">Проверить оплату</button>
+    <a id="result" class="btn" hidden>Вернуться к заказу →</a>
+    <div id="browserHelp" hidden><hr><b>Банк не открывается?</b>
+      <p class="small">Откройте эту ссылку в обычном браузере (Chrome, Яндекс Браузер или другом). В меню встроенного браузера выберите «Открыть в браузере» либо скопируйте ссылку. Затем выберите СБП или банковскую карту на странице ЮKassa.</p>
+      <button id="copy" class="btn secondary">Скопировать ссылку на заказ</button>
+      <input id="copyValue" readonly aria-label="Ссылка на этот заказ" hidden>
+    </div>
+    <p id="foot" class="small">Не создавайте новую покупку, пока статус этой не определён. Товары можно забрать только после подтверждения оплаты.</p>
+  </section>
+</main>
+<script src="/android-payment.js"></script>
+<script src="/payment-handoff.js"></script>
+</body>
+</html>
