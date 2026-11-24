@@ -57,7 +57,9 @@ function buildCustomerMessage(order, items) {
     ? '\n🦴 Списано косточек: ' + money(order.bones_used)
     : '';
   const selfOrder = order.is_partner_self_order
-    ? '\n🐾 Самозаказ: вознаграждение по тарифу; косточки не списываются и не начисляются.'
+    ? (order.promo_code && Number(order.commission_rate) === 0
+      ? '\n🐾 Самозаказ со скидкой на первую покупку: комиссия грумеру не начисляется; косточки не списываются и не начисляются.'
+      : '\n🐾 Самозаказ: вознаграждение по тарифу; косточки не списываются и не начисляются.')
     : '';
   const finalLine = isDelivery
     ? 'Мы сообщим, когда заказ будет передан в доставку.'
