@@ -274,8 +274,8 @@ function clearPendingQrPayment(orderId) {
       if(!orderId||(d&&d.orderId===orderId))store.removeItem(key);
     }catch(e){}
   }
-  if(typeof localStorage!=='undefined')clear(localStorage,sharedPaymentKey());
-  if(typeof sessionStorage!=='undefined')clear(sessionStorage,QR_PAYMENT_STORAGE_KEY);
+  try{if(typeof localStorage!=='undefined')clear(localStorage,sharedPaymentKey());}catch(e){}
+  try{if(typeof sessionStorage!=='undefined')clear(sessionStorage,QR_PAYMENT_STORAGE_KEY);}catch(e){}
   if(!orderId||(QR_PENDING_MEMORY&&QR_PENDING_MEMORY.orderId===orderId))QR_PENDING_MEMORY=null;
 }
 function newQrPaymentCode() {
@@ -284,7 +284,7 @@ function newQrPaymentCode() {
 }
 function showPendingQrPayment(message) {
   var saved = readPendingQrPayment();
-  if (!saved) { showPhoneStep(); return; }
+  if (!saved) { boot(); return; }
   state('<div class="panel" style="padding:24px 16px;text-align:center">'
     + '<div style="font-size:40px;margin-bottom:10px">📶</div>'
     + '<h2>Покупка сохранена</h2>'
@@ -321,7 +321,7 @@ var QR_PAYMENT_BUSY = false;
 var QR_PAYMENT_PREPARING = false;
 async function resumePendingQrPayment() {
   var saved = readPendingQrPayment();
-  if (!saved) { showPhoneStep(); return; }
+  if (!saved) { boot(); return; }
   await runQrPayment(saved);
 }
 async function runQrPayment(saved) {
@@ -334,6 +334,7 @@ async function runQrPayment(saved) {
     var response = result.response;
     var data = result.data || {};
     if (data.paid === true && response.ok) {
+      if(saved.cartRevision&&typeof window!=='undefined')window.HvostQrCart.clearPaid(CTX.pointId,saved.cartRevision);
       clearPendingQrPayment(saved.orderId);
       QR_PUBLIC_NUMBER = data.display_number || '';
       showSuccess(saved.orderId, saved.phone, !!data.is_partner_self_order, data.display_number, saved.items, saved);
@@ -363,7 +364,7 @@ async function runQrPayment(saved) {
     QR_PUBLIC_NUMBER = data.display_number || '';
     recordQrEvent('payment_created', saved.orderId);
     trackGoalOnce('payment_created', saved.orderId, {
-      scenario: 'qr', order_id: saved.orderId, product_id: CTX.product.id,
+      scenario: 'qr', order_id: saved.orderId, product_id: CTX.product?.id||saved.items?.[0]?.productId||0,
       variant_id: saved.variantId, point_id: CTX.pointId, revenue: saved.amount,
       confirmation_mode: 'redirect',
     });
@@ -405,6 +406,7 @@ function failState(title, text, alts) {
 async function boot() {
   var params = parseParams();
   CTX.pointId = params.point; CTX.productSlug = params.product;
+  CTX.selVariant=null;CTX.point=null;CTX.product=null;CTX.partners=[];CTX.defaultPartnerId=null;
   if (!params.point || !params.product) {
     failState('Не получилось открыть товар', 'Ссылка неполная. Попробуйте отсканировать QR-код на упаковке ещё раз.');
     return;
@@ -496,7 +498,7 @@ function renderCard(message) {
   else try { comp = JSON.parse(pr.comp || '[]'); } catch (e) { comp = []; }
   comp = comp.slice(0, 4);
 
-  var html = '<div class="hero"><div class="' + (pr.img ? 'hero-img-wrap' : 'hero-icon') + '">';
+  var html = (basket.items.length?qrCartBar(basket):'')+'<div class="hero"><div class="' + (pr.img ? 'hero-img-wrap' : 'hero-icon') + '">';
   html += pr.img ? '<img class="hero-img" src="' + esc(pr.img) + '" alt="' + esc(pr.name) + '">' : esc(pr.icon || '🦴');
   html += '</div><div class="hero-body">';
   if (pr.badge) html += '<div class="badge">' + esc(pr.badge) + '</div>';
@@ -518,8 +520,8 @@ function renderCard(message) {
   if(!basket.items.length)html += '<button class="cta" onclick="showPhoneStep(false)">Купить сейчас →</button>';
   html += '<button class="'+(basket.items.length?'cta':'qr-secondary')+'" onclick="addCurrentQrItem()">🛒 Добавить в корзину</button>';
   if(message)html += '<p class="qr-cart-message" role="status">'+esc(message)+'</p>';
-  if(basket.items.length)html += qrCartBar(basket)+'<button class="qr-secondary" onclick="scanNextQr()">📷 Сканировать следующий товар</button><p class="small muted" style="margin-top:8px">Можно также сканировать обычной камерой телефона — корзина сохранится в этом браузере.</p>';
-  html += '<button class="link-btn" onclick="location.href=\'/?ref=' + encodeURIComponent(CTX.pointId) + '\'">Весь каталог этой точки</button>';
+  if(basket.items.length)html += '<button class="qr-secondary" onclick="scanNextQr()">📷 Сканировать следующий товар</button><p class="small muted" style="margin-top:8px">Можно также сканировать обычной камерой телефона — корзина сохранится в этом браузере.</p>';
+  if(!basket.items.length)html += '<button class="link-btn" onclick="location.href=\'/?ref=' + encodeURIComponent(CTX.pointId) + '\'">Весь каталог этой точки</button>';
   html += '</div></div>';
   state(html);
 }
@@ -630,7 +632,8 @@ function pickVariant(id) {
 
 /* ── Экран 2: телефон ── */
 function showPhoneStep(useBasket) {
-  if(!useBasket){QR_CHECKOUT_ITEMS=null;QR_CHECKOUT_REVISION='';}
+  if(readPendingQrPayment()){showPendingQrPayment();return;}
+  if(!useBasket){QR_CHECKOUT_ITEMS=null;QR_CHECKOUT_REVISION='';if(window.HvostQrCart.get(CTX.pointId).items.length){openQrCart();return;}if(!CTX.selVariant){boot();return;}}
   var lines=qrCheckoutLines(), v=lines[0], subtotal=qrCheckoutSubtotal();
   QR_PROMO_VALID=false;QR_PROMO_PERCENT=0;QR_PROMO_CODE='';
   var restored = QR_PAYMENT_PREFILL;
@@ -846,10 +849,13 @@ async function startPayment() {
   function commitAttempt(){
     var pending=readPendingQrPayment();
     if(pending)return pending;
+    var current=window.HvostQrCart.get(CTX.pointId);
+    if(saved.cartRevision?current.revision!==saved.cartRevision:current.items.length>0)return null;
     savePendingQrPayment(saved);return saved;
   }
   var attempt=(typeof navigator!=='undefined'&&navigator.locks)
     ? await navigator.locks.request('hm-qr-payment:'+CTX.pointId,commitAttempt) : commitAttempt();
+  if(!attempt){await openQrCart('Корзина изменилась. Проверьте её перед оплатой.');return;}
   if(attempt.orderId!==saved.orderId){showPendingQrPayment('Незавершённая оплата уже сохранена. Продолжите тот же платёж.');return;}
   recordQrEvent('checkout');
   await runQrPayment(saved);
