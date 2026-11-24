@@ -10,7 +10,7 @@ const { sendJson } = require('./http-utils');
 const { requireAuth, requireActiveAdmin, requireSuperAdmin, tryAuth } = require('./routes-auth');
 const { reverseAndDeleteOrdersBy } = require('./order-reversal');
 const { buildCatalog } = require('./product-catalog');
-const { loadQrPreview } = require('./qr-fast-preview');
+const { loadQrPreview, loadQrCartPreview } = require('./qr-fast-preview');
 const { findDefaultGroomer } = require('./auto-groomer');
 const { createSalesCountCache } = require('./product-sales-cache');
 const { sendTelegram } = require('./telegram');
@@ -63,6 +63,15 @@ function registerProductRoutes(router) {
     const preview = loadQrPreview(db, ctx.params.pointId, ctx.params.product, findDefaultGroomer);
     if (!preview) return sendJson(res, 404, { error: 'Точка или товар не найдены' });
     return sendJson(res, 200, preview);
+  });
+  router.get('/api/qr-cart-preview/:pointId', (req,res,ctx)=>{
+    const raw=String(ctx.query.variants||'');
+    if(!/^\d+(,\d+){0,49}$/.test(raw)||raw.length>1000)
+      return sendJson(res,400,{error:'Некорректный состав корзины'});
+    const preview=loadQrCartPreview(db,ctx.params.pointId,raw.split(',').map(Number),findDefaultGroomer);
+    if(!preview)return sendJson(res,404,{error:'Минимаркет или корзина недоступны'});
+    res.setHeader('Cache-Control','no-store');
+    return sendJson(res,200,preview);
   });
   // POST /api/products/upload-image — загрузка фото товара (админ или кладовщик).
   // Картинка приходит base64 в JSON-теле (без multipart — сервер без внешних

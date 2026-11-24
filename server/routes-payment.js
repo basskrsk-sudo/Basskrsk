@@ -843,15 +843,18 @@ function registerPaymentRoutes(router) {
       }
     }
 
+    // The full receipt is only exposed for the unguessable QR checkout code.
+    // Preserve the legacy first-item response for other public payment links.
+    const qrReceipt=/^TG-\d{13}-[a-f0-9]{16}$/.test(String(order.order_code||''));
+    const paidItems=order.status==='paid' ? db.prepare('SELECT name,weight,qty FROM order_items WHERE order_id=? ORDER BY id LIMIT ?').all(order.id,qrReceipt?50:1) : [];
     sendJson(res, 200, {
       paid: order.status === 'paid',
       status: order.status,
       order_code: order.order_code,
       display_number: order.display_number || null,
       is_partner_self_order: !!order.is_partner_self_order,
-      item: order.status === 'paid' ? db.prepare(
-        'SELECT name,weight,qty FROM order_items WHERE order_id=? ORDER BY id LIMIT 1'
-      ).get(order.id) || null : null,
+      item: paidItems[0] || null,
+      items: paidItems,
     });
   });
 

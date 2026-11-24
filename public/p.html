@@ -111,6 +111,22 @@
   .state h2 { font-size:19px; color:var(--forest); margin-bottom:8px; }
   .state p { font-size:14px; line-height:1.55; }
 
+  .qr-secondary { width:100%; border:1.5px solid var(--deep); border-radius:12px; background:#fff; color:var(--deep); padding:13px; font:700 15px inherit; font-family:inherit; font-weight:700; font-size:15px; margin-top:10px; cursor:pointer; }
+  .qr-cart-bar { background:var(--mint); color:var(--forest); display:flex; align-items:center; justify-content:space-between; gap:12px; border-radius:12px; padding:12px; margin-top:12px; }
+  .qr-cart-bar button { border:0; border-radius:9px; background:var(--forest); color:#fff; padding:10px 12px; font:600 14px system-ui; cursor:pointer; }
+  .qr-cart-line { display:flex; align-items:center; justify-content:space-between; gap:10px; border-bottom:1px solid var(--border); padding:12px 0; }
+  .qr-cart-line b { display:block; }
+  .qr-cart-qty { display:flex; gap:8px; align-items:center; white-space:nowrap; }
+  .qr-cart-qty button { width:34px; height:34px; border:1px solid var(--border); border-radius:9px; background:var(--cream); color:var(--forest); font-size:20px; }
+  .qr-cart-qty button:disabled { opacity:.35; }
+  .qr-cart-message { font-size:13px; line-height:1.5; margin:8px 0; color:#7A4A00; }
+  .qr-scanner-overlay { position:fixed; inset:0; background:#0009; z-index:1000; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .qr-scanner-panel { width:100%; max-width:460px; border-radius:16px; padding:16px; background:white; max-height:95vh; overflow:auto; }
+  .qr-scanner-panel h2 { margin:12px 0; font-size:18px; }
+  .qr-scanner-panel video { display:block; width:100%; max-height:55vh; object-fit:contain; background:#102a23; border-radius:12px; }
+  .qr-scanner-panel video[hidden] { display:none; }
+  .qr-scanner-close { border:0; background:var(--mint); padding:10px 14px; border-radius:8px; color:var(--forest); font-weight:700; }
+  .qr-scanner-status { margin:12px 0; color:var(--forest); font-size:14px; }
   footer { text-align:center; font-size:12px; color:var(--muted); padding:14px 0 20px; }
   footer a { color:var(--deep); }
 </style>
@@ -127,6 +143,8 @@
 
 <script src="/config.js"></script>
 <script src="/first-purchase-promo-display.js?v=20261124-4"></script>
+<script src="/qr-cart.js"></script>
+<script src="/qr-cart-scanner.js"></script>
 <script>
 'use strict';
 var app = document.getElementById('app');
@@ -211,21 +229,54 @@ var QR_PROMO_PERCENT = 0;
 var QR_PROMO_CODE = '';
 var QR_PAYMENT_STORAGE_KEY = 'hvost_qr_payment:' + location.pathname;
 var QR_PAYMENT_PREFILL = null;
+var QR_PENDING_MEMORY = null;
+var QR_CHECKOUT_ITEMS = null;
+var QR_CHECKOUT_REVISION = '';
+var QR_CART_AVAILABLE = Object.create(null);
+var QR_CART_READY = false;
+var QR_CART_MESSAGE = '';
 
+function sharedPaymentKey(){return 'hm_qr_pending_v1:'+String(CTX.pointId);}
 function readPendingQrPayment() {
+  function valid(data){
+    return data && data.orderId && data.body && data.pointId === CTX.pointId &&
+      Date.now() - data.createdAt < 24 * 60 * 60 * 1000 ? data : null;
+  }
   try {
-    var data = JSON.parse(sessionStorage.getItem(QR_PAYMENT_STORAGE_KEY) || 'null');
-    if (data && data.orderId && data.body && data.pointId === CTX.pointId &&
-        data.productSlug === CTX.productSlug &&
-        Date.now() - data.createdAt < 24 * 60 * 60 * 1000) return data;
-  } catch (e) { /* storage may be disabled on some devices */ }
-  return null;
+    if(typeof localStorage!=='undefined'){
+      var shared=valid(JSON.parse(localStorage.getItem(sharedPaymentKey())||'null'));
+      if(shared)return shared;
+    }
+  }catch(e){}
+  try {
+    var data=valid(JSON.parse(sessionStorage.getItem(QR_PAYMENT_STORAGE_KEY)||'null'));
+    if(data && data.productSlug===CTX.productSlug)return data;
+  }catch(e){}
+  return valid(QR_PENDING_MEMORY);
 }
 function savePendingQrPayment(data) {
-  try { sessionStorage.setItem(QR_PAYMENT_STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+  QR_PENDING_MEMORY=data;
+  // New attempts are shared by the point, not by the scanned product/tab.
+  // Keep legacy per-product session storage only when local storage is blocked.
+  try {
+    if(typeof localStorage!=='undefined'){
+      localStorage.setItem(sharedPaymentKey(),JSON.stringify(data));
+      QR_PENDING_MEMORY=null;
+      return;
+    }
+  }catch(e){}
+  try { sessionStorage.setItem(QR_PAYMENT_STORAGE_KEY, JSON.stringify(data)); QR_PENDING_MEMORY=null; } catch (e) {}
 }
-function clearPendingQrPayment() {
-  try { sessionStorage.removeItem(QR_PAYMENT_STORAGE_KEY); } catch (e) {}
+function clearPendingQrPayment(orderId) {
+  function clear(store,key){
+    try{
+      var d=JSON.parse(store.getItem(key)||'null');
+      if(!orderId||(d&&d.orderId===orderId))store.removeItem(key);
+    }catch(e){}
+  }
+  try{if(typeof localStorage!=='undefined')clear(localStorage,sharedPaymentKey());}catch(e){}
+  try{if(typeof sessionStorage!=='undefined')clear(sessionStorage,QR_PAYMENT_STORAGE_KEY);}catch(e){}
+  if(!orderId||(QR_PENDING_MEMORY&&QR_PENDING_MEMORY.orderId===orderId))QR_PENDING_MEMORY=null;
 }
 function newQrPaymentCode() {
   var bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -233,14 +284,14 @@ function newQrPaymentCode() {
 }
 function showPendingQrPayment(message) {
   var saved = readPendingQrPayment();
-  if (!saved) { showPhoneStep(); return; }
+  if (!saved) { boot(); return; }
   state('<div class="panel" style="padding:24px 16px;text-align:center">'
     + '<div style="font-size:40px;margin-bottom:10px">📶</div>'
     + '<h2>Покупка сохранена</h2>'
     + '<p class="small muted" style="line-height:1.6;margin-bottom:16px">'
     + esc(message || 'Продолжите оплату после восстановления интернета.') + '</p>'
     + '<div class="note" style="display:block;text-align:left;margin-bottom:16px">'
-    + '<b>Заказ:</b> ' + esc(CTX.product.name) + ' · ' + fmtPrice(saved.amount)
+    + '<b>Заказ:</b> ' + esc(saved.items&&saved.items.length ? saved.items.reduce(function(n,i){return n+i.qty;},0)+' шт. в заказе' : (saved.productName||CTX.product.name)) + ' · ' + fmtPrice(saved.amount)
     + '<br>Если связь прервалась, мы проверим предыдущий платёж, прежде чем продолжать.'
     + '</div>'
     + '<button class="cta" id="retryQrPayment" onclick="resumePendingQrPayment()">Проверить и продолжить оплату</button>'
@@ -270,7 +321,7 @@ var QR_PAYMENT_BUSY = false;
 var QR_PAYMENT_PREPARING = false;
 async function resumePendingQrPayment() {
   var saved = readPendingQrPayment();
-  if (!saved) { showPhoneStep(); return; }
+  if (!saved) { boot(); return; }
   await runQrPayment(saved);
 }
 async function runQrPayment(saved) {
@@ -283,9 +334,10 @@ async function runQrPayment(saved) {
     var response = result.response;
     var data = result.data || {};
     if (data.paid === true && response.ok) {
-      clearPendingQrPayment();
+      if(saved.cartRevision&&typeof window!=='undefined')window.HvostQrCart.clearPaid(CTX.pointId,saved.cartRevision);
+      clearPendingQrPayment(saved.orderId);
       QR_PUBLIC_NUMBER = data.display_number || '';
-      showSuccess(saved.orderId, saved.phone, !!data.is_partner_self_order, data.display_number);
+      showSuccess(saved.orderId, saved.phone, !!data.is_partner_self_order, data.display_number, saved.items, saved);
       return;
     }
     if (response.status === 202 || data.status === 'initializing') {
@@ -293,12 +345,13 @@ async function runQrPayment(saved) {
       return;
     }
     if (!response.ok) {
-      if (data.code === 'PAYMENT_RETRY_REQUIRED' || data.code === 'PAYMENT_RETRY_MISMATCH' ||
-          data.code === 'ORDER_TOTAL_CHANGED' || data.code === 'FIRST_PURCHASE_PROMO_INVALID') {
+      if (['PAYMENT_RETRY_REQUIRED','ORDER_TOTAL_CHANGED','FIRST_PURCHASE_PROMO_INVALID','STOCK_UNAVAILABLE','VARIANT_NOT_FOUND','VARIANT_INACTIVE','POINT_UNAVAILABLE','ADVISOR_SELECTION_REQUIRED','PARTNER_POINT_MISMATCH','INVALID_QUANTITY','INVALID_CATALOG_PRICE','PAYMENT_NOT_CONFIGURED'].indexOf(data.code)>=0) {
+        clearPendingQrPayment(saved.orderId);
         QR_PAYMENT_PREFILL = saved.body;
-        clearPendingQrPayment();
-        showPhoneStep();
-        showErr(data.error || 'Предыдущий платёж не завершён. Проверьте заказ и попробуйте ещё раз.');
+        QR_CART_MESSAGE = data.error || 'Предыдущий платёж не завершён. Проверьте заказ и попробуйте ещё раз.';
+        await boot();
+        if(saved.cartRevision)await openQrCart(QR_CART_MESSAGE);
+        else if(CTX.selVariant&&CTX.point){showPhoneStep(false);showErr(QR_CART_MESSAGE);}
         return;
       }
       showPendingQrPayment(data.error || 'Платёж пока недоступен. Проверьте соединение и повторите.');
@@ -311,7 +364,7 @@ async function runQrPayment(saved) {
     QR_PUBLIC_NUMBER = data.display_number || '';
     recordQrEvent('payment_created', saved.orderId);
     trackGoalOnce('payment_created', saved.orderId, {
-      scenario: 'qr', order_id: saved.orderId, product_id: CTX.product.id,
+      scenario: 'qr', order_id: saved.orderId, product_id: CTX.product?.id||saved.items?.[0]?.productId||0,
       variant_id: saved.variantId, point_id: CTX.pointId, revenue: saved.amount,
       confirmation_mode: 'redirect',
     });
@@ -343,6 +396,7 @@ function failState(title, text, alts) {
     });
     html += '</div>';
   }
+  if (CTX.pointId && window.HvostQrCart && window.HvostQrCart.get(CTX.pointId).items.length) html += '<button class="qr-secondary" onclick="openQrCart()">🛒 Открыть корзину</button>';
   if (CTX.pointId) html += '<button class="link-btn" onclick="location.href=\'/?ref=' + encodeURIComponent(CTX.pointId) + '\'">Весь каталог этой точки</button>';
   html += '</div>';
   state(html);
@@ -352,6 +406,7 @@ function failState(title, text, alts) {
 async function boot() {
   var params = parseParams();
   CTX.pointId = params.point; CTX.productSlug = params.product;
+  CTX.selVariant=null;CTX.point=null;CTX.product=null;CTX.partners=[];CTX.defaultPartnerId=null;
   if (!params.point || !params.product) {
     failState('Не получилось открыть товар', 'Ссылка неполная. Попробуйте отсканировать QR-код на упаковке ещё раз.');
     return;
@@ -379,6 +434,7 @@ async function boot() {
       + encodeURIComponent(params.point) + '/' + encodeURIComponent(params.product));
     var data = await response.json();
     if (!response.ok || !data.point || !data.product) {
+      if(window.HvostQrCart.get(CTX.pointId).items.length){await openQrCart('Этот товар недоступен. Остальные товары сохранены.');return;}
       failState('Товар не найден', 'Проверьте QR-код или выберите другую точку.');
       return;
     }
@@ -401,6 +457,7 @@ async function boot() {
       .map(function(v) { return { id: v.id, weight: v.weight, price: v.price, qty: v.qty }; });
     var avail = CTX.variants.filter(function(v) { return v.qty > 0; });
     if (!avail.length) {
+      if(window.HvostQrCart.get(CTX.pointId).items.length){await openQrCart('Этот товар закончился. Проверьте корзину.');return;}
       failState('Сейчас нет на полке', 'Этот товар временно недоступен в данной точке.');
       return;
     }
@@ -431,14 +488,17 @@ function findAlts(products, current, pointId) {
 }
 
 /* ── Экран 1: карточка товара ── */
-function renderCard() {
+function renderCard(message) {
   var pr = CTX.product, v = CTX.selVariant;
+  if(!pr||!v){openQrCart();return;}
+  QR_CHECKOUT_ITEMS=null; QR_CHECKOUT_REVISION='';
+  var basket=window.HvostQrCart.get(CTX.pointId);
   var comp = [];
   if (Array.isArray(pr.comp)) comp = pr.comp;
   else try { comp = JSON.parse(pr.comp || '[]'); } catch (e) { comp = []; }
   comp = comp.slice(0, 4);
 
-  var html = '<div class="hero"><div class="' + (pr.img ? 'hero-img-wrap' : 'hero-icon') + '">';
+  var html = (basket.items.length?qrCartBar(basket):'')+'<div class="hero"><div class="' + (pr.img ? 'hero-img-wrap' : 'hero-icon') + '">';
   html += pr.img ? '<img class="hero-img" src="' + esc(pr.img) + '" alt="' + esc(pr.name) + '">' : esc(pr.icon || '🦴');
   html += '</div><div class="hero-body">';
   if (pr.badge) html += '<div class="badge">' + esc(pr.badge) + '</div>';
@@ -457,10 +517,112 @@ function renderCard() {
 
   html += '<div class="price-row"><div class="price">' + fmtPrice(v.price) + '</div></div>';
   html += '<div class="stock-note' + (v.qty <= 2 ? ' low' : '') + '">' + (v.qty <= 2 ? '⚡ Осталось всего ' + v.qty + ' шт этой фасовки' : 'В наличии на полке') + '</div>';
-  html += '<button class="cta" onclick="showPhoneStep()">Купить сейчас →</button>';
-  html += '<button class="link-btn" onclick="location.href=\'/?ref=' + encodeURIComponent(CTX.pointId) + '\'">Весь каталог этой точки</button>';
+  if(!basket.items.length)html += '<button class="cta" onclick="showPhoneStep(false)">Купить сейчас →</button>';
+  html += '<button class="'+(basket.items.length?'cta':'qr-secondary')+'" onclick="addCurrentQrItem()">🛒 Добавить в корзину</button>';
+  if(message)html += '<p class="qr-cart-message" role="status">'+esc(message)+'</p>';
+  if(basket.items.length)html += '<button class="qr-secondary" onclick="scanNextQr()">📷 Сканировать следующий товар</button><p class="small muted" style="margin-top:8px">Можно также сканировать обычной камерой телефона — корзина сохранится в этом браузере.</p>';
+  if(!basket.items.length)html += '<button class="link-btn" onclick="location.href=\'/?ref=' + encodeURIComponent(CTX.pointId) + '\'">Весь каталог этой точки</button>';
   html += '</div></div>';
   state(html);
+}
+
+function currentQrLine(){
+  var v=CTX.selVariant,p=CTX.product;
+  return {variantId:Number(v.id),productId:p.id,slug:p.slug||CTX.productSlug,name:p.name,weight:v.weight,price:Number(v.price),qty:1};
+}
+function qrCartBar(b){
+  return '<div class="qr-cart-bar"><div><b>🛒 Корзина: '+window.HvostQrCart.count(b.items)+' шт.</b><br>'+fmtPrice(window.HvostQrCart.total(b.items))+'</div><button onclick="openQrCart()">Открыть →</button></div>';
+}
+function addCurrentQrItem(){
+  if(readPendingQrPayment()){showPendingQrPayment();return;}
+  var added=window.HvostQrCart.add(CTX.pointId,currentQrLine(),CTX.selVariant.qty);
+  if(added.ok)trackGoal('add_to_cart',{scenario:'qr',point_id:CTX.pointId,product_id:CTX.product.id,price:CTX.selVariant.price});
+  renderCard(added.ok?'✅ Добавлено! Можно сканировать следующую упаковку.':added.error);
+}
+function scanNextQr(){
+  if(readPendingQrPayment()){showPendingQrPayment();return;}
+  window.HvostQrScanner.open(CTX.pointId,function(parsed){
+    location.assign('/p/'+encodeURIComponent(parsed.point)+'/'+encodeURIComponent(parsed.product));
+  });
+}
+async function refreshQrBasket(){
+  var api=window.HvostQrCart,b=api.get(CTX.pointId);
+  QR_CART_READY=false;QR_CART_AVAILABLE=Object.create(null);
+  if(!b.items.length){QR_CART_READY=true;return {basket:b,changed:false};}
+  var res=await fetchQrPrecheck('/api/qr-cart-preview/'+encodeURIComponent(CTX.pointId)+'?variants='+b.items.map(function(i){return i.variantId;}).join(','));
+  var data=await res.json();
+  if(!res.ok||!data.point||!Array.isArray(data.items))throw new Error(data.error||'Не удалось проверить корзину');
+  if(api.get(CTX.pointId).revision!==b.revision)throw new Error('Корзина изменилась в другой вкладке. Обновите её.');
+  CTX.point=data.point;CTX.partners=Array.isArray(data.partners)?data.partners:[];CTX.defaultPartnerId=data.default_partner_id||null;
+  var chip=document.getElementById('pointChip');if(chip){chip.textContent='📍 '+data.point.name;chip.style.display='block';}
+  var byId=new Map(data.items.map(function(i){return [Number(i.variantId),i];}));
+  var changed=false;
+  var items=b.items.map(function(i){
+    var fresh=byId.get(i.variantId);
+    QR_CART_AVAILABLE[i.variantId]=fresh&&Number.isSafeInteger(fresh.price)&&fresh.price>0?Math.max(0,Number(fresh.available)||0):0;
+    if(!fresh||!Number.isSafeInteger(fresh.price)||fresh.price<1)return i;
+    if(i.price!==fresh.price||i.name!==fresh.name||i.weight!==fresh.weight){
+      changed=true;return Object.assign({},i,{price:fresh.price,name:fresh.name,weight:fresh.weight});
+    }
+    return i;
+  });
+  if(changed)b=api.save(CTX.pointId,items);
+  QR_CART_READY=true;
+  return {basket:b,changed:changed};
+}
+function renderQrCart(message){
+  var api=window.HvostQrCart,b=api.get(CTX.pointId);
+  QR_CHECKOUT_ITEMS=null; QR_CHECKOUT_REVISION='';
+  var blocked=!QR_CART_READY||b.items.some(function(i){return i.qty>(QR_CART_AVAILABLE[i.variantId]||0);});
+  var html='<div class="panel"><h2>🛒 Ваша корзина</h2>';
+  if(message)html+='<p class="qr-cart-message" role="status">'+esc(message)+'</p>';
+  if(!b.items.length)html+='<p class="small muted">Корзина пока пуста. Отсканируйте товар и добавьте его.</p>';
+  b.items.forEach(function(i){
+    var available=QR_CART_AVAILABLE[i.variantId]||0;
+    html+='<div class="qr-cart-line"><div><b>'+esc(i.name)+'</b><span class="small muted">'+esc(i.weight)+' · '+fmtPrice(i.price)+'/шт.</span>'+
+      (QR_CART_READY&&i.qty>available?'<p class="qr-cart-message">'+(available?'В наличии только '+available+' шт.':'Нет в наличии')+'</p>':'')+'</div><div class="qr-cart-qty">'+
+      '<button aria-label="Уменьшить количество" onclick="changeQrCart('+i.variantId+',-1)">−</button><b>'+i.qty+'</b>'+
+      '<button aria-label="Увеличить количество" '+(!QR_CART_READY||i.qty>=Math.min(99,available)?'disabled ':'')+'onclick="changeQrCart('+i.variantId+',1)">+</button></div></div>';
+  });
+  if(b.items.length)html+='<div class="qr-cart-bar"><b>Итого</b><b>'+fmtPrice(api.total(b.items))+'</b></div>'+
+    '<button class="cta" style="margin-top:14px" '+(blocked?'disabled ':'')+'onclick="checkoutQrBasket()">Оформить заказ →</button>';
+  if(b.items.length&&!QR_CART_READY)html+='<button class="qr-secondary" onclick="openQrCart()">Обновить цены и остатки</button>';
+  html+='<button class="qr-secondary" onclick="scanNextQr()">📷 Сканировать следующий товар</button>'+
+    '<p class="small muted" style="margin-top:10px">Или сканируйте обычной камерой телефона. Корзина сохраняется в этом браузере.</p>'+
+    (CTX.product&&CTX.selVariant?'<button class="link-btn" onclick="renderCard()">← Назад к товару</button>':'')+'</div>';
+  state(html);
+}
+async function openQrCart(message){
+  if(readPendingQrPayment()){showPendingQrPayment();return;}
+  loadState('Проверяем корзину…','🛒');
+  try{
+    var quote=await refreshQrBasket();
+    renderQrCart((message?message+' ':'')+(quote.changed?'Цены или описание товаров обновились. Проверьте корзину.':''));
+  }catch(e){
+    QR_CART_READY=false;
+    renderQrCart(message||e.message||'Не удалось проверить корзину. Повторите попытку.');
+  }
+}
+function changeQrCart(id,delta){
+  if(readPendingQrPayment()){showPendingQrPayment();return;}
+  var result=window.HvostQrCart.change(CTX.pointId,id,delta,QR_CART_AVAILABLE[id]||0);
+  renderQrCart(result.ok?'':result.error);
+}
+function checkoutQrBasket(){
+  if(readPendingQrPayment()){showPendingQrPayment();return;}
+  var b=window.HvostQrCart.get(CTX.pointId);
+  if(!QR_CART_READY||!b.items.length||b.items.some(function(i){return i.qty>(QR_CART_AVAILABLE[i.variantId]||0);})){openQrCart();return;}
+  QR_CHECKOUT_ITEMS=b.items;QR_CHECKOUT_REVISION=b.revision;
+  showPhoneStep(true);
+}
+function qrCheckoutLines(){
+  return QR_CHECKOUT_ITEMS&&QR_CHECKOUT_ITEMS.length?QR_CHECKOUT_ITEMS:[currentQrLine()];
+}
+function qrCheckoutSubtotal(){
+  return window.HvostQrCart.total(qrCheckoutLines());
+}
+function qrCheckoutSummary(items){
+  return items.map(function(i){return '<div class="qr-cart-line"><div><b>'+esc(i.name)+'</b><span class="small muted">'+esc(i.weight)+' · '+i.qty+' шт.</span></div><b>'+fmtPrice(i.price*i.qty)+'</b></div>';}).join('');
 }
 
 function pickVariant(id) {
@@ -469,17 +631,20 @@ function pickVariant(id) {
 }
 
 /* ── Экран 2: телефон ── */
-function showPhoneStep() {
-  var v = CTX.selVariant;
+function showPhoneStep(useBasket) {
+  if(readPendingQrPayment()){showPendingQrPayment();return;}
+  if(!useBasket){QR_CHECKOUT_ITEMS=null;QR_CHECKOUT_REVISION='';if(window.HvostQrCart.get(CTX.pointId).items.length){openQrCart();return;}if(!CTX.selVariant){boot();return;}}
+  var lines=qrCheckoutLines(), v=lines[0], subtotal=qrCheckoutSubtotal();
+  QR_PROMO_VALID=false;QR_PROMO_PERCENT=0;QR_PROMO_CODE='';
   var restored = QR_PAYMENT_PREFILL;
   QR_PAYMENT_PREFILL = null;
   trackGoal('buy_now_clicked', {
-    scenario: 'qr', source: 'qr_product', product_id: CTX.product.id,
-    variant_id: v.id, price: v.price, point_id: CTX.pointId,
+    scenario: 'qr', source: useBasket?'qr_cart':'qr_product', product_id: v.productId,
+    variant_id: v.variantId, price: v.price, point_id: CTX.pointId,
   });
   trackGoal('checkout_started', {
-    scenario: 'qr', source: 'qr_product', product_id: CTX.product.id,
-    point_id: CTX.pointId, cart_total: v.price, items_count: 1,
+    scenario: 'qr', source: useBasket?'qr_cart':'qr_product', product_id: v.productId,
+    point_id: CTX.pointId, cart_total: subtotal, items_count: window.HvostQrCart.count(lines),
   });
   var advisorField = '';
   if (CTX.partners.length > 0) {
@@ -491,7 +656,8 @@ function showPhoneStep() {
     + (CTX.defaultPartnerId ? '<p class="small muted" id="qrDefaultPartnerNote" style="margin:-3px 0 11px">Грумер выбирается автоматически. Можно выбрать другого.</p>' : '');
   }
   state('<div class="panel"><h2>Почти готово</h2>'
-    + '<p class="small muted" style="margin-bottom:8px">' + esc(CTX.product.name) + ' · ' + esc(v.weight) + ' · <b>' + fmtPrice(v.price) + '</b>'
+    + qrCheckoutSummary(lines) + '<div class="qr-cart-bar"><b>Товары</b><b>' + fmtPrice(subtotal) + '</b></div>'
+    + '<p class="small muted" style="margin:10px 0 8px">'
     + '<div style="background:#E9F4EC;color:#143d35;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.45">🐾 Оплата онлайн — после подтверждения можно сразу забрать товар с полки</div>'
     + (CTX.point ? '<br>Забрать: ' + esc(CTX.point.name) + (CTX.point.addr ? ', ' + esc(CTX.point.addr) : '') : '') + '</p>'
     + '<label for="phone">Номер телефона</label>'
@@ -503,9 +669,9 @@ function showPhoneStep() {
     + '<p class="small" style="color:#775000;margin:0 0 12px;line-height:1.5">' + esc(window.HvostFirstPurchasePromo.checkoutNotice()) + '</p>'
     + advisorField
     + '<div class="note" style="display:block">📍 Точка уже определена по QR-коду товара. Повторно выбирать её не нужно.</div>'
-    + '<button class="cta" id="payBtn" onclick="startPayment()">Оплатить ' + fmtPrice(v.price) + '</button>'
+    + '<button class="cta" id="payBtn" onclick="startPayment()">Оплатить ' + fmtPrice(subtotal) + '</button>'
     + '<div class="err" id="err"></div>'
-    + '<button class="link-btn" onclick="renderCard()">← Назад к товару</button></div>');
+    + (useBasket?'<button class="link-btn" onclick="openQrCart()">← Назад в корзину</button>':'<button class="link-btn" onclick="renderCard()">← Назад к товару</button>')+'</div>');
   var advisor = document.getElementById('advisor');
   if (advisor && CTX.defaultPartnerId &&
       CTX.partners.some(function(partner) { return String(partner.id) === String(CTX.defaultPartnerId); })) {
@@ -521,7 +687,8 @@ function showPhoneStep() {
 }
 
 function qrPayAmount() {
-  return CTX.selVariant.price - (QR_PROMO_VALID ? Math.round(CTX.selVariant.price * QR_PROMO_PERCENT / 100) : 0);
+  var subtotal=qrCheckoutSubtotal();
+  return subtotal - (QR_PROMO_VALID ? Math.round(subtotal * QR_PROMO_PERCENT / 100) : 0);
 }
 
 function updateQrPayButton() {
@@ -602,7 +769,7 @@ async function checkQrSelfOrder() {
   return QR_SELF_ORDER;
 }
 
-function showErr(msg) { var e = document.getElementById('err'); e.textContent = msg; e.style.display = 'block'; }
+function showErr(msg) { var e = document.getElementById('err'); if(e){e.textContent = msg; e.style.display = 'block';} }
 
 /* ── Экран 3: оплата ── */
 async function startPayment() {
@@ -635,17 +802,18 @@ async function startPayment() {
   // The server independently detects groomer self-orders. Do not block
   // checkout on an extra advisory network request.
   rememberPhone(phone);
-  var v = CTX.selVariant;
+  if(QR_CHECKOUT_REVISION && window.HvostQrCart.get(CTX.pointId).revision!==QR_CHECKOUT_REVISION){await openQrCart('Корзина изменилась. Проверьте состав перед оплатой.');return;}
+  var lines=qrCheckoutLines(), v=lines[0];
   var paymentAmount = qrPayAmount();
   var orderId = newQrPaymentCode();
   QR_PUBLIC_NUMBER = '';
-  var funnelKey = 'qr:' + CTX.pointId + ':' + v.id;
+  var funnelKey = 'qr:' + CTX.pointId + ':' + v.variantId;
   trackGoalOnce('phone_entered', funnelKey, {
-    scenario: 'qr', product_id: CTX.product.id, variant_id: v.id, point_id: CTX.pointId,
+    scenario: 'qr', product_id: v.productId, variant_id: v.variantId, point_id: CTX.pointId,
   });
   trackGoalOnce('checkout_to_payment', funnelKey, {
-    scenario: 'qr', product_id: CTX.product.id, variant_id: v.id,
-    point_id: CTX.pointId, revenue: paymentAmount, items_count: 1,
+    scenario: 'qr', product_id: v.productId, variant_id: v.variantId,
+    point_id: CTX.pointId, revenue: paymentAmount, items_count: window.HvostQrCart.count(lines),
   });
   var body = {
     orderId: orderId,
@@ -668,14 +836,27 @@ async function startPayment() {
     promoCode: QR_PROMO_VALID ? QR_PROMO_CODE : null,
     confirmationMode: 'redirect',
     returnPath: location.pathname,
-    cartItems: [{ variantId: v.id, qty: 1 }],
+    cartItems: lines.map(function(i){return {variantId:i.variantId,qty:i.qty};}),
   };
   var saved = {
     orderId: orderId, pointId: CTX.pointId, productSlug: CTX.productSlug,
-    variantId: v.id, weight: v.weight, productName: CTX.product.name, amount: paymentAmount,
+    variantId: v.variantId, weight: v.weight, productName: v.name, amount: paymentAmount,
+    items:lines,cartRevision:QR_CHECKOUT_REVISION,
     phone: phone, createdAt: Date.now(), body: body,
   };
-  savePendingQrPayment(saved);
+  // Share the exact payment snapshot across tabs. Web Locks prevent a race
+  // between two simultaneous final taps when the browser supports them.
+  function commitAttempt(){
+    var pending=readPendingQrPayment();
+    if(pending)return pending;
+    var current=window.HvostQrCart.get(CTX.pointId);
+    if(saved.cartRevision?current.revision!==saved.cartRevision:current.items.length>0)return null;
+    savePendingQrPayment(saved);return saved;
+  }
+  var attempt=(typeof navigator!=='undefined'&&navigator.locks)
+    ? await navigator.locks.request('hm-qr-payment:'+CTX.pointId,commitAttempt) : commitAttempt();
+  if(!attempt){await openQrCart('Корзина изменилась. Проверьте её перед оплатой.');return;}
+  if(attempt.orderId!==saved.orderId){showPendingQrPayment('Незавершённая оплата уже сохранена. Продолжите тот же платёж.');return;}
   recordQrEvent('checkout');
   await runQrPayment(saved);
   } finally {
@@ -688,26 +869,31 @@ async function startPayment() {
 }
 
 /* ── Экран 4: успех ── */
-function showSuccess(orderId, phone, isSelfOrder, displayNumber) {
+function showSuccess(orderId, phone, isSelfOrder, displayNumber, paidItems, receipt) {
   if (!CTX.product) CTX.product = { id: 0, name: 'Оплаченный товар' };
   if (!CTX.selVariant) CTX.selVariant = { id: 0, weight: '', price: 0 };
-  clearPendingQrPayment();
+  if(!receipt){var pending=readPendingQrPayment();if(pending&&pending.orderId===orderId)receipt=pending;}
+  if(receipt&&receipt.cartRevision)window.HvostQrCart.clearPaid(CTX.pointId,receipt.cartRevision);
+  clearPendingQrPayment(orderId);
+  var confirmedItems=Array.isArray(paidItems)&&paidItems.length?paidItems:(receipt&&receipt.items)||[];
+  if(!confirmedItems.length)confirmedItems=[{name:CTX.product.name,weight:CTX.selVariant.weight,qty:1}];
+  var paidAmount=receipt&&receipt.amount;
   var shownNumber = displayNumber || QR_PUBLIC_NUMBER || orderId;
   QR_SELF_ORDER = !!isSelfOrder;
   SUCCESS_PHONE = phone || '';
   SUCCESS_ORDER_ID = orderId || '';
   trackGoalOnce('payment_success', orderId, {
     scenario: 'qr', order_id: orderId, product_id: CTX.product.id,
-    variant_id: CTX.selVariant.id, point_id: CTX.pointId, revenue: CTX.selVariant.price,
+    variant_id: CTX.selVariant.id, point_id: CTX.pointId, revenue: paidAmount||CTX.selVariant.price,
   });
   trackGoalOnce('purchase', orderId, {
-    order_id: orderId, revenue: CTX.selVariant.price, payment_method: 'yookassa', scenario: 'qr',
+    order_id: orderId, revenue: paidAmount||CTX.selVariant.price, payment_method: 'yookassa', scenario: 'qr',
   });
   state('<div class="panel success"><img class="mascot-success" src="/images/mascot/purchase-success-v2.webp" alt="Довольный хаски на четырёх лапах рядом с пакетом покупок" width="640" height="601" decoding="async">'
     + '<h2>Оплачено</h2>'
-    + '<div class="take-product">Возьмите товар с полки</div>'
+    + '<div class="take-product">Заберите оплаченные товары с полки</div>'
     + '<p>Обращаться к сотруднику не нужно.</p>'
-    + '<div class="success-product"><b>' + esc(CTX.product.name) + '</b><span>' + esc(CTX.selVariant.weight) + ' · 1 шт.</span></div>'
+    + confirmedItems.map(function(i){return '<div class="success-product"><b>'+esc(i.name)+'</b><span>'+esc(i.weight)+' · '+Number(i.qty||1)+' шт.</span></div>';}).join('')
     + (CTX.point ? '<p class="small" style="margin-top:12px">📍 ' + esc(CTX.point.name) + (CTX.point.addr ? '<br>' + esc(CTX.point.addr) : '') + '</p>' : '')
     + '<div class="order-code">Заказ ' + esc(shownNumber) + '</div>'
     + (shownNumber !== orderId ? '<p class="small">🔐 Технический код: ' + esc(orderId) + '</p>' : '')
@@ -803,15 +989,17 @@ async function handlePaymentReturn(orderCode) {
           CTX.product = { id: 0, name: result.item.name || 'Оплаченный товар' };
           CTX.selVariant = { id: 0, weight: result.item.weight || '', price: 0 };
         }
-        showSuccess(result.order_code || orderCode, knownPhone() === '+7' ? '' : knownPhone(), !!result.is_partner_self_order, result.display_number);
+        var receipt=readPendingQrPayment();
+        if(receipt&&receipt.orderId!==orderCode)receipt=null;
+        showSuccess(result.order_code || orderCode, receipt?receipt.phone:(knownPhone() === '+7' ? '' : knownPhone()), !!result.is_partner_self_order, result.display_number, result.items||(result.item?[result.item]:[]),receipt);
         return;
       }
       if (response.ok && (result.status === 'failed' || result.status === 'canceled')) {
         trackGoalOnce('payment_cancelled', orderCode, {
           scenario: 'qr', order_id: orderCode, status: result.status,
         });
-        clearPendingQrPayment();
-        failState('Оплата не прошла', 'Товар снова доступен. Вернитесь к товару и попробуйте ещё раз.');
+        clearPendingQrPayment(orderCode);
+        state('<div class="panel"><h2>Оплата не прошла</h2><p>Корзина сохранена. Проверьте заказ и попробуйте ещё раз.</p><button class="cta" style="margin-top:16px" onclick="location.replace(location.pathname)">Вернуться к покупке</button></div>');
         return;
       }
     } catch (e) { /* временный сетевой сбой — повторяем */ }
@@ -824,6 +1012,11 @@ async function handlePaymentReturn(orderCode) {
   document.getElementById('retryPaymentStatus').onclick = function() { handlePaymentReturn(orderCode); };
 }
 
+window.addEventListener('storage',function(e){
+  if(!CTX.pointId||QR_PAYMENT_BUSY||QR_PAYMENT_PREPARING)return;
+  if(e.key===sharedPaymentKey()&&readPendingQrPayment()){showPendingQrPayment();return;}
+  if(window.HvostQrCart&&e.key===window.HvostQrCart.key(CTX.pointId)&&document.querySelector('.hero')&&!document.getElementById('payBtn'))renderCard();
+});
 boot();
 </script>
 </body>
