@@ -4785,7 +4785,7 @@ function renderOrders() {
     const isPartnerSelfOrder = !!o.is_partner_self_order;
     const isAdvisorSelfChoice = !o.partner_id && o.commission_rate === 0;
     const selfBadge = isPartnerSelfOrder
-      ? ' <span title="Самозаказ грумера — вознаграждение по тарифу, без косточек" style="background:#FFF4E5;color:#7A4A00;font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:50px;margin-left:.3rem;">САМОЗАКАЗ</span>'
+      ? ' <span title="Самозаказ грумера: со скидкой на первую покупку — комиссия 0%, без промокода — по тарифу; без косточек" style="background:#FFF4E5;color:#7A4A00;font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:50px;margin-left:.3rem;">САМОЗАКАЗ</span>'
       : isAdvisorSelfChoice
         ? ' <span title="Покупатель выбрал товар самостоятельно" style="background:#EDF5EE;color:#2D5A3F;font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:50px;margin-left:.3rem;">ВЫБРАЛ САМ</span>'
         : '';
