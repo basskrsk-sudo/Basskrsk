@@ -197,6 +197,13 @@ function registerOrderRoutes(router) {
       });
     }
 
+    // Do not turn a new, explicitly non-commissionable promo self-order
+    // into a commission-bearing sale via the attribution correction form.
+    // Previously paid historical orders are not rewritten.
+    if (order.is_partner_self_order && order.promo_code && order.commission_rate === 0) {
+      return sendJson(res, 409, { error: 'Самозаказ со скидкой на первую покупку не предусматривает комиссию грумеру. Переназначение запрещено.', code: 'SELF_ORDER_PROMO_NO_COMMISSION' });
+    }
+
     const rawPartnerId = ctx.body && ctx.body.partner_id;
     const reason = String((ctx.body && ctx.body.reason) || '').trim();
     if (reason.length < 3) {
