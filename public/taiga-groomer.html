@@ -296,7 +296,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
 </style>
 <script src="config.js"></script>
-<script src="payout-schedule.js"></script>
+<script src="payout-schedule.js?v=20261124-groomer"></script>
 <script src="telegram-connect.js?v=38"></script>
 <script src="/telegram-login-polling.js?v=1"></script>
 <script src="/groomer-max-login.js?v=1"></script>
@@ -304,7 +304,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <script src="cabinet-navigation.js?v=46"></script>
 <link rel="stylesheet" href="/notification-settings.css">
 </head>
-<body>
+<body data-groomer-payout-schedule>
 
 <!-- ══ LOGIN SCREEN ══ -->
 <div id="login-screen">
@@ -458,7 +458,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <div class="payout-schedule-title">Следующая выплата вознаграждения</div>
           <span class="payout-schedule-date" data-next-payout-date>—</span>
           <span class="payout-schedule-countdown" data-next-payout-countdown></span>
-          <div class="payout-schedule-rule">Выплаты производятся два раза в месяц: 9-го и 24-го числа.</div>
+          <div class="payout-schedule-rule">Выплаты производятся раз в месяц, 25-го числа.</div>
         </div>
       </div>
 
@@ -530,7 +530,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
           <div style="font-size:.8rem;color:var(--muted);line-height:1.7;">
             Следующая выплата: <strong data-next-payout-date style="color:var(--text);">—</strong>
             (<span data-next-payout-countdown></span>)<br>
-            График: 9-го и 24-го числа каждого месяца, на карту из профиля.
+            График: 25-го числа каждого месяца, на карту из профиля.
           </div>
           <button class="payout-btn" onclick="requestPayout()">Запросить выплату</button>
         </div>
