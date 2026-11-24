@@ -2728,7 +2728,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/first-purchase-promo-display.js?v=20261124-4"></script>
-<script src="/android-payment.js"></script>
+<script src="/android-payment.js?v=20261124-5"></script>
 <script>
 // ── DATA ──────────────────────────────────────────────
 let products = [];
@@ -6096,7 +6096,7 @@ async function launchYooKassaPayment(){
   try{await launchYooKassaPaymentImpl();}finally{checkoutLaunchRunning=false;}
 }
 async function launchYooKassaPaymentImpl() {
-  const androidHosted=window.HvostAndroidPayment?.android()===true;
+  const androidHosted=window.HvostAndroidPayment?.hosted()===true; // Shared Android/iOS redirect checkout.
   const name    = document.getElementById('oName').value.trim() || 'Клиент';
   const lname   = document.getElementById('oLname').value.trim();
   const phone   = document.getElementById('oPhone').value.trim();
@@ -7406,12 +7406,15 @@ function resumePaymentCheck() {
 }
 document.addEventListener('visibilitychange', resumePaymentCheck);
 window.addEventListener('pageshow', resumePaymentCheck);
-window.addEventListener('pageshow',function(e){
-  if(!e.persisted||!window.HvostAndroidPayment?.android())return;
+function restoreHostedCheckoutButton(){
+  if(document.hidden||checkoutLaunchRunning||!window.HvostAndroidPayment?.hosted())return;
   const pending=window.HvostAndroidPayment.pending();
   const button=document.getElementById('pay-btn');
   if(pending&&button){button.disabled=false;button.textContent='Продолжить существующий платёж';}
-});
+}
+window.addEventListener('pageshow',function(e){if(e.persisted)restoreHostedCheckoutButton();});
+document.addEventListener('visibilitychange',restoreHostedCheckoutButton);
+window.addEventListener('online',function(){restoreHostedCheckoutButton();resumePaymentCheck();});
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'hidden') {
     window._storefrontHiddenAt = Date.now();

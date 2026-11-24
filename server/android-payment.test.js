@@ -33,9 +33,9 @@ test('hosted catalog and Mini App use capability only on the intended return pat
 });
 function store(){const m=new Map();return{getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,v),removeItem:k=>m.delete(k),values:()=>Array.from(m.values())};}
 const source=name=>fs.readFileSync(path.join(__dirname,'../public',name),'utf8');
-function helper(ua='Android Chrome'){
+function helper(ua='Android Chrome',extra={}){
  const localStorage=store(),sessionStorage=store(),navigations=[];
- const window={navigator:{userAgent:ua},crypto:webcrypto,localStorage,sessionStorage,location:{origin:'https://example.test',assign:x=>navigations.push(x)}};
+ const window={navigator:{userAgent:ua,...extra},crypto:webcrypto,localStorage,sessionStorage,location:{origin:'https://example.test',assign:x=>navigations.push(x)}};
  vm.runInNewContext(source('android-payment.js'),{window,Date,URL,Uint8Array});
  return{api:window.HvostAndroidPayment,window,localStorage,sessionStorage,navigations};
 }
@@ -52,8 +52,8 @@ test('Android detection, opaque IDs, tab-local request, matching cleanup and Tel
  assert.equal(h.navigations.length,0);
  a.clear(c);assert.equal(a.pending(),null);assert.equal(a.snapshot(c),null);
 });
-function harness(responses,withSnapshot=false){
- const h=helper(),els={},events={},requests=[];
+function harness(responses,withSnapshot=false,ua='Android Chrome'){
+ const h=helper(ua),els={},events={},requests=[];
  const document={hidden:false,getElementById(id){return els[id]||(els[id]={hidden:true,disabled:false,textContent:'',href:'',focus(){},select(){}});},addEventListener:(name,fn)=>events[name]=fn};
  h.window.addEventListener=(name,fn)=>events[name]=fn;
  const body={orderId:code,confirmationMode:'redirect',bonesUsed:0,cartItems:[{variantId:1,qty:2}]};
@@ -82,7 +82,36 @@ test('request not received: explicit retry uses exact saved orderId, never creat
  await flush();assert.equal(h.requests.length,1);assert.equal(h.els.recover.hidden,false);
  await h.els.recover.onclick();assert.equal(h.requests[1].url,'/api/create-payment');assert.equal(JSON.parse(h.requests[1].body).orderId,code);assert.equal(h.requests[2].method,'GET');
 });
-test('checkout scripts compile and the Android hosted path has no iframe dependency',()=>{
+test('iPhone Safari, iOS Telegram, iPad desktop mode and Android share hosted checkout; desktop stays unchanged',()=>{
+ for(const ua of ['iPhone Safari','iPhone CriOS','iPhone Telegram','iPad Safari','iPod Safari','Android Chrome']){
+  assert.equal(helper(ua).api.hosted(),true,ua);
+ }
+ assert.equal(helper('Macintosh Safari',{platform:'MacIntel',maxTouchPoints:5}).api.hosted(),true);
+ assert.equal(helper('Macintosh Safari',{platform:'MacIntel',maxTouchPoints:0}).api.hosted(),false);
+ assert.equal(helper('Windows Chrome').api.hosted(),false);
+ for(const file of ['index.html','p.html','miniapp.html'])assert.match(source(file),/HvostAndroidPayment\??\.hosted\(\)/);
+});
+test('iOS storage restrictions keep order pointer and exact snapshot in the original tab',()=>{
+ const h=helper('iPhone Safari'),a=h.api,c=a.newCode('TG');
+ h.window.localStorage.setItem=()=>{throw Error('storage restricted');};
+ const body={orderId:c,confirmationMode:'redirect',customerPhone:'+79990000000',promoCode:'HV20',cartItems:[{variantId:1,qty:2}]};
+ a.remember(c,'catalog',body);
+ assert.equal(a.pending('catalog').code,c);
+ assert.equal(a.snapshot(c).promoCode,'HV20');
+ assert.equal(a.snapshot(c).cartItems[0].qty,2);
+ a.external(c,{openLink(){throw Error('Telegram unavailable');}});
+ assert.equal(h.navigations[0],'/pay.html?order='+c);
+ a.clear(c);assert.equal(a.pending(),null);assert.equal(a.snapshot(c),null);
+});
+test('iOS fast return from bank checks only the same order, hides link after payment',async()=>{
+ const h=harness([{data:{status:'pending',confirmation_url:payment.confirmation.confirmation_url}},{data:{status:'paid',paid:true,return_path:'/p/salon/lung?payment_return='+code}}],false,'iPhone Safari');
+ await flush();assert.equal(h.els.payLink.hidden,false);
+ h.els.payLink.onclick();h.events.focus();await flush();
+ assert.equal(h.requests.length,2);
+ assert.ok(h.requests.every(r=>r.method==='GET'&&r.url.endsWith(code)));
+ assert.equal(h.els.payLink.hidden,true);assert.equal(h.els.result.hidden,false);
+});
+test('checkout scripts compile and the shared mobile hosted path has no iframe dependency',()=>{
  for(const file of ['index.html','miniapp.html','p.html','pay.html'])for(const match of source(file).matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))if(match[1].trim())new vm.Script(match[1]);
  assert.match(source('index.html'),/!androidHosted && await prepareYooKassaWidget/);
  assert.match(source('miniapp.html'),/HvostAndroidPayment\?\.external/);

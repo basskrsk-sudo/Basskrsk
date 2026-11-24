@@ -143,7 +143,7 @@
 
 <script src="/config.js"></script>
 <script src="/first-purchase-promo-display.js?v=20261124-4"></script>
-<script src="/android-payment.js"></script>
+<script src="/android-payment.js?v=20261124-5"></script>
 <script src="/qr-cart.js"></script>
 <script src="/qr-cart-scanner.js"></script>
 <script>
@@ -236,7 +236,7 @@ var QR_CHECKOUT_REVISION = '';
 var QR_CART_AVAILABLE = Object.create(null);
 var QR_CART_READY = false;
 var QR_CART_MESSAGE = '';
-function androidQrHandoff(){return typeof window!=='undefined'&&window.HvostAndroidPayment&&window.HvostAndroidPayment.android();}
+function androidQrHandoff(){return typeof window!=='undefined'&&window.HvostAndroidPayment&&window.HvostAndroidPayment.hosted();}
 
 function sharedPaymentKey(){return 'hm_qr_pending_v1:'+String(CTX.pointId);}
 function readPendingQrPayment() {
@@ -279,7 +279,7 @@ function clearPendingQrPayment(orderId) {
   try{if(typeof localStorage!=='undefined')clear(localStorage,sharedPaymentKey());}catch(e){}
   try{if(typeof sessionStorage!=='undefined')clear(sessionStorage,QR_PAYMENT_STORAGE_KEY);}catch(e){}
   if(!orderId||(QR_PENDING_MEMORY&&QR_PENDING_MEMORY.orderId===orderId))QR_PENDING_MEMORY=null;
-  if(orderId&&androidQrHandoff())window.HvostAndroidPayment.clear(orderId);
+  if(orderId&&typeof window!=='undefined')window.HvostAndroidPayment?.clear(orderId);
 }
 function newQrPaymentCode() {
   var bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -326,6 +326,11 @@ var QR_PAYMENT_PREPARING = false;
 async function resumePendingQrPayment() {
   var saved = readPendingQrPayment();
   if (!saved) { boot(); return; }
+  // Check the existing order first. Only explicit recovery can repeat its request.
+  if(androidQrHandoff()){
+    window.HvostAndroidPayment.remember(saved.orderId,'qr',saved.body);
+    window.HvostAndroidPayment.go(saved.orderId);return;
+  }
   await runQrPayment(saved);
 }
 async function runQrPayment(saved) {
@@ -1041,6 +1046,7 @@ function resumeQrReturn(){
 }
 document.addEventListener('visibilitychange',resumeQrReturn);
 window.addEventListener('pageshow',function(e){if(e.persisted)resumeQrReturn();});
+window.addEventListener('online',resumeQrReturn);
 window.addEventListener('storage',function(e){
   if(!CTX.pointId||QR_PAYMENT_BUSY||QR_PAYMENT_PREPARING)return;
   if(e.key===sharedPaymentKey()&&readPendingQrPayment()){showPendingQrPayment();return;}
