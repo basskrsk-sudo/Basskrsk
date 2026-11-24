@@ -6,15 +6,18 @@ const vm = require('node:vm');
 
 function setup() {
   const claims = { legacy: new Map(), salon: new Map() };
+  const paidPhones=new Set(['9130000999']);
   const db = {
     prepare(query) {
       return {
         all() { return []; },
         get(phoneOrCode) {
+          if (query.includes('FROM points WHERE id = ? AND active = 1')) return ['salon-a','salon-b'].includes(phoneOrCode) ? { id:phoneOrCode, name:phoneOrCode, first_purchase_promo_code:null } : undefined;
           if (query.includes('FROM points WHERE UPPER')) return phoneOrCode === 'HVOST20-S-TEST'
             ? { id:'salon-a', name:'Салон А', first_purchase_promo_code:'HVOST20-S-TEST' } : undefined;
           if (query.includes('FROM partners') && query.includes('UPPER')) return phoneOrCode === 'HVOST20-001'
             ? { id:1, full_name:'Грумер', first_purchase_promo_code:'HVOST20-001' } : undefined;
+          if (query.includes("FROM orders WHERE status='paid'")) return paidPhones.has(phoneOrCode) ? {ok:1} : undefined;
           if (query.includes('FROM orders WHERE id=?')) return { status: 'pending', reservation_status: 'active' };
           if (query.includes('FROM first_purchase_promo_claims')) return claims.legacy.get(phoneOrCode);
           if (query.includes('FROM first_purchase_point_promo_claims')) return claims.salon.get(phoneOrCode);
@@ -87,4 +90,22 @@ test('early 15% aliases share the same phone claim with legacy 20% codes',()=>{
  assert.equal(retry.valid,true);
  assert.equal(retry.discountPercent,15);
  assert.equal(api.validateFirstPurchasePromo('HVOST15-UNKNOWN',phone,'salon-a',now).valid,false);
+});
+
+
+test('universal HV15 works now at every active point, with numeric shortcut and shared claim',()=>{
+ const api=setup(),now=Date.parse('2026-11-24T06:00:00Z'),phone='+79130000081';
+ const a=api.validateFirstPurchasePromo(' hv15 ',phone,'salon-a',now);
+ const b=api.validateFirstPurchasePromo('15',phone,'salon-b',now);
+ for(const v of [a,b]){assert.equal(v.valid,true);assert.equal(v.discountPercent,15);assert.equal(v.promoCode,'HV15');assert.equal(v.partnerId,null);}
+ assert.equal(a.pointId,'salon-a');assert.equal(b.pointId,'salon-b');
+ assert.equal(api.validateFirstPurchasePromo('HV15',phone,null,now).valid,false);
+ assert.equal(api.validateFirstPurchasePromo('HV15',phone,'closed',now).valid,false);
+ assert.equal(api.validateFirstPurchasePromo('HV15','+79130000999','salon-a',now).valid,false);
+ api.claimFirstPurchasePromo(a,81);
+ assert.equal(api.validateFirstPurchasePromo('15',phone,'salon-b',now).valid,false);
+ assert.equal(api.validateFirstPurchasePromo('HVOST20-001',phone,'salon-a',now).valid,false);
+ api.releaseFirstPurchasePromoClaim(81);
+ assert.equal(api.validateFirstPurchasePromo('15',phone,'salon-b',now).valid,true);
+ assert.equal(api.validateFirstPurchasePromo('HV15',phone,'salon-a',Date.parse('2026-12-01T00:00:00Z')).discountPercent,15);
 });
