@@ -109,3 +109,31 @@ test('universal HV15 works now at every active point, with numeric shortcut and 
  assert.equal(api.validateFirstPurchasePromo('15',phone,'salon-b',now).valid,true);
  assert.equal(api.validateFirstPurchasePromo('HV15',phone,'salon-a',Date.parse('2026-12-01T00:00:00Z')).discountPercent,15);
 });
+
+test('universal 20 and HV20 share the same first-purchase claim with 15 across locations',()=>{
+ const api=setup(),cutoff=Date.parse('2026-11-30T17:00:00Z'),phone='+79130000083';
+ const a=api.validateFirstPurchasePromo(' 20 ',phone,'salon-a',cutoff-1);
+ const b=api.validateFirstPurchasePromo('hv20',phone,'salon-b',cutoff-1);
+ for(const v of [a,b]){
+  assert.equal(v.valid,true);
+  assert.equal(v.discountPercent,20);
+  assert.equal(v.promoCode,'HV20');
+  assert.equal(v.partnerId,null);
+ }
+ assert.equal(a.pointId,'salon-a');
+ assert.equal(b.pointId,'salon-b');
+ for(const p of [null,'closed'])assert.equal(api.validateFirstPurchasePromo('20',phone,p,cutoff-1).valid,false);
+ assert.equal(api.validateFirstPurchasePromo('20','+79130000999','salon-b',cutoff-1).valid,false);
+ assert.equal(api.validateFirstPurchasePromo('HVOST20-S-TEST',phone,'salon-b',cutoff-1).valid,false);
+ api.claimFirstPurchasePromo(a,83);
+ for(const code of ['15','HV15','20','HV20','HVOST20-001'])
+  assert.equal(api.validateFirstPurchasePromo(code,phone,'salon-b',cutoff).valid,false);
+ api.releaseFirstPurchasePromoClaim(83);
+ assert.equal(api.validateFirstPurchasePromo('15',phone,'salon-b',cutoff-1).discountPercent,15);
+ for(const code of ['20','HV20']){
+  const after=api.validateFirstPurchasePromo(code,phone,'salon-b',cutoff);
+  assert.equal(after.valid,true);
+  assert.equal(after.discountPercent,15);
+  assert.match(after.notice,/15% вместо 20%/);
+ }
+});
