@@ -70,7 +70,7 @@ test('groomer card shows universal 15% code and referral links',()=>{
   assert.match(markup,/GR-053/);
   assert.match(markup,/БаркЛай/);
   assert.match(markup,/partner-invite\.html\?ref=GR-053/);
-  assert.match(markup,/ref=bark-lay&amp;partner=53&amp;promo=HV15&amp;city=krsk/);
+  assert.match(markup,/ref=bark-lay&amp;partner=53&amp;city=krsk/);
   assert.equal((markup.match(/data-hm-promo-key=/g)||[]).length,4);
   assert.match(markup,/один раз.*номер телефона/);
 });
@@ -85,7 +85,8 @@ test('groomer can copy each code directly in Telegram after verifying role',asyn
     assert.equal(h.copied.at(-1),value);
   }
   await h.click('buyer');
-  assert.match(h.copied.at(-1),/partner=53&promo=HV15/);
+  assert.match(h.copied.at(-1),/partner=53&city=krsk/);
+  assert.doesNotMatch(h.copied.at(-1),/[?&]promo=/);
   await h.click('registration');
   assert.equal(h.copied.at(-1),'https://хвостмаркет.рф/partner-invite.html?ref=GR-053');
   assert.match(h.elements.workPromoCopyStatus.textContent,/Скопировано/);
@@ -208,5 +209,6 @@ test('on December 1 partner still sees the universal HV15 code and link',async()
   await h.click('groomer');
   assert.equal(h.copied.at(-1),'HV15');
   await h.click('buyer');
-  assert.match(h.copied.at(-1),/promo=HV15/);
+  assert.match(h.copied.at(-1),/partner=53/);
+  assert.doesNotMatch(h.copied.at(-1),/[?&]promo=/);
 });
