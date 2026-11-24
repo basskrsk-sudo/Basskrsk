@@ -3,6 +3,14 @@
 
   const START_DATE = new Date(2026, 8, 9);
   const PAYOUT_DAYS = [9, 24];
+  const GROOMER_PAYOUT_DAY = 25;
+  const GROOMER_START_DATE = new Date(2026, 10, GROOMER_PAYOUT_DAY);
+  const krasnoyarskCalendar = new Intl.DateTimeFormat('en', {
+    timeZone: 'Asia/Krasnoyarsk',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  });
   const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
     day: 'numeric',
     month: 'long',
@@ -23,6 +31,20 @@
     if (day <= PAYOUT_DAYS[0]) return new Date(year, month, PAYOUT_DAYS[0]);
     if (day <= PAYOUT_DAYS[1]) return new Date(year, month, PAYOUT_DAYS[1]);
     return new Date(year, month + 1, PAYOUT_DAYS[0]);
+  }
+
+  function groomerToday(instant) {
+    const parts = {};
+    for (const part of krasnoyarskCalendar.formatToParts(instant)) {
+      if (part.type !== 'literal') parts[part.type] = Number(part.value);
+    }
+    return new Date(parts.year, parts.month - 1, parts.day);
+  }
+
+  function nextGroomerDate(today) {
+    if (today < GROOMER_START_DATE) return new Date(GROOMER_START_DATE);
+    const month = today.getMonth() + (today.getDate() > GROOMER_PAYOUT_DAY ? 1 : 0);
+    return new Date(today.getFullYear(), month, GROOMER_PAYOUT_DAY);
   }
 
   function daysUntil(target, from) {
@@ -49,11 +71,15 @@
     return 'Ближайшая выплата — ' + dateFormatter.format(nextDate(from));
   }
 
-  function render(root) {
+  function render(root, from) {
     const scope = root || document;
-    const date = nextDate();
+    const page = scope.ownerDocument || document;
+    const now = from || new Date();
+    const isGroomer = page.body && page.body.hasAttribute('data-groomer-payout-schedule');
+    const today = isGroomer ? groomerToday(now) : now;
+    const date = isGroomer ? nextGroomerDate(today) : nextDate(today);
     const formattedDate = dateFormatter.format(date);
-    const countdown = countdownLabel(date);
+    const countdown = countdownLabel(date, today);
     scope.querySelectorAll('[data-next-payout-date]').forEach(function (el) {
       el.textContent = formattedDate;
     });
@@ -61,7 +87,7 @@
       el.textContent = countdown;
     });
     scope.querySelectorAll('[data-next-payout-short]').forEach(function (el) {
-      el.textContent = shortLabel();
+      el.textContent = 'Ближайшая выплата — ' + formattedDate;
     });
   }
 
