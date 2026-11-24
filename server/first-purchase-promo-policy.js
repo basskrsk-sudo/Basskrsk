@@ -24,8 +24,8 @@ function normalizedCode(value){
 }
 function getUniversalFirstPurchasePromoCode(value){
   const code=normalizedCode(value);
-  if(code===UNIVERSAL_PROMO_CODE || code==='15') return UNIVERSAL_PROMO_CODE;
-  if(code===UNIVERSAL_LEGACY_PROMO_CODE || code==='20') return UNIVERSAL_LEGACY_PROMO_CODE;
+  if(code===UNIVERSAL_PROMO_CODE) return UNIVERSAL_PROMO_CODE;
+  if(code===UNIVERSAL_LEGACY_PROMO_CODE) return UNIVERSAL_LEGACY_PROMO_CODE;
   return '';
 }
 function isUniversalFirstPurchasePromoCode(value){
@@ -46,11 +46,11 @@ function lookupStoredFirstPurchasePromoCode(value,now=Date.now()){
 }
 function firstPurchasePromoNotice(value,now=Date.now()){
   const universal=getUniversalFirstPurchasePromoCode(value);
-  if(universal===UNIVERSAL_PROMO_CODE)return 'Единый промокод HV15: скидка 15% на первую покупку в любой точке ХвостМаркета. Можно ввести просто 15.';
+  if(universal===UNIVERSAL_PROMO_CODE)return 'Единый промокод HV15: скидка 15% на первую покупку в любой точке ХвостМаркета.';
   const policy=getFirstPurchasePromoPolicy(now,value);
   if(universal===UNIVERSAL_LEGACY_PROMO_CODE)return policy.changed
-    ?'Промокод 20 действует. С 1 декабря 2026 скидка на первую покупку составляет 15% вместо 20%.'
-    :'Промокод 20 даёт скидку 20% на первую покупку до конца 30 ноября 2026 по Красноярску.';
+    ?'Промокод HV20 действует. С 1 декабря 2026 скидка на первую покупку составляет 15% вместо 20%.'
+    :'Промокод HV20 даёт скидку 20% на первую покупку до конца 30 ноября 2026 по Красноярску.';
   if(!policy.changed && isNewCode(value))return 'По этому промокоду скидка на первую покупку — 15%.';
   if(!policy.changed)return 'До 30.11.2026 включительно по старым промокодам — 20%, по новым HV15/HVOST15 — 15%. С 01.12.2026 — 15% по всем промокодам.';
   const legacy=/^(HVOST|HV)20(?=-)/.test(normalizedCode(value));

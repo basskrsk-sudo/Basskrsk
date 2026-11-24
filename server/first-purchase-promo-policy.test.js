@@ -73,14 +73,17 @@ test('all public purchase screens show notice and avoid a stale 20% payment amou
   assert.match(mini,/state\.promoInfo\.discount_percent!==window\.HvostFirstPurchasePromo\.percent\(undefined,state\.promo\)/);
   assert.doesNotMatch(mini,/Промокод −20%/);
   assert.doesNotMatch(qr,/Промокод грумера −20%/);
+  for(const source of [main,qr,mini])assert.match(source,/placeholder="Введите промокод"/);
+  assert.match(main,/codeFromLink\(firstPurchasePromo\)/);
+  assert.match(qr,/codeFromLink\(new URLSearchParams\(location.search\).get\('promo'\)\)/);
   // Existing backend 20% strings in promo-code prefixes remain deliberately.
 });
 
 
-test('universal code and numeric shortcut stay at 15% before and after cutoff',()=>{
+test('complete universal HV15 stays at 15% before and after cutoff',()=>{
  for(const now of [cutoff-1,cutoff,cutoff+1]){
   const client=browserAt(now);
-  for(const code of ['HV15','hv15','15',' 15 ']){
+  for(const code of ['HV15','hv15',' HV15 ']){
    assert.equal(policy.getFirstPurchasePromoPolicy(now,code).discountPercent,15);
    assert.equal(client.percent(now,code),15);
    assert.match(client.notice(code),/15%/);
@@ -95,15 +98,18 @@ test('the temporary network-wide code gives 20% only before the Krasnoyarsk cuto
   for(const now of [cutoff-1,cutoff,cutoff+1]){
     const browser=browserAt(now);
     const expected=now<cutoff?20:15;
-    for(const code of ['20',' 20 ','HV20','hv20']){
+    for(const code of [' HV20 ','HV20','hv20']){
       assert.equal(policy.getUniversalFirstPurchasePromoCode(code),'HV20');
       assert.equal(policy.getFirstPurchasePromoPolicy(now,code).discountPercent,expected);
       assert.equal(browser.percent(now,code),expected);
       assert.equal(browser.notice(code),policy.firstPurchasePromoNotice(code,now));
       assert.match(browser.notice(code),now<cutoff?/даёт скидку 20%/:/составляет 15% вместо 20%/);
     }
-    assert.match(browser.checkoutNotice(),/15%/);
-    assert.equal(browser.checkoutNotice().includes('код 20'),now<cutoff);
+    assert.match(browser.checkoutNotice(),/введите его полностью/);
+    assert.doesNotMatch(browser.checkoutNotice(),/HV15|HV20/);
+    for(const invalid of ['15','20','HV-15','HV-20'])assert.equal(policy.getUniversalFirstPurchasePromoCode(invalid),'');
+    for(const auto of ['HV15','hv20','15','20',' HV15 '])assert.equal(browser.codeFromLink(auto),'');
+    assert.equal(browser.codeFromLink('HV20-G-053'),'HV20-G-053');
     assert.equal(browser.publicCode,'HV15');
     for(const scoped of ['HV20-S-001','HVOST20-G-001','HV15-S-001'])
       assert.equal(policy.getUniversalFirstPurchasePromoCode(scoped),'');

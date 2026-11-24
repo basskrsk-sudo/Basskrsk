@@ -685,7 +685,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       <div class="ref-card">
         <div class="ref-title" id="groomer-first-promo-title">Промокод на первую покупку</div>
         <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Один код для новых покупателей во всех точках</div>
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка 15% применяется один раз по номеру телефона и действует на товары. Можно ввести просто 15. Ваша ссылка для покупателей уже содержит этот код.</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка применяется один раз по номеру телефона. Покупатель вводит промокод самостоятельно. До 30 ноября HV20 даёт 20%; HV15 — 15%. С 1 декабря оба кода дают 15%.</div>
         <div class="ref-link-wrap">
           <span class="ref-link" id="first-purchase-promo-text">Код появится после входа</span>
           <button class="copy-btn" onclick="copyLink('first-purchase-promo-text', this)">Скопировать</button>
@@ -901,7 +901,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 </div><!-- /app -->
 
 <script src="salon-photo-gallery.js?v=70"></script>
-<script src="/first-purchase-promo-display.js?v=20261124-2"></script>
+<script src="/first-purchase-promo-display.js?v=20261124-4"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 let PRODUCTS = [];
@@ -1290,7 +1290,6 @@ async function onPartnerLoginSuccess(data) {
     const customerUrl = new URL('/', window.location.origin);
     customerUrl.searchParams.set('ref', data.user.point_id);
     customerUrl.searchParams.set('partner', data.user.id);
-    if (firstPurchasePromoCode) customerUrl.searchParams.set('promo', firstPurchasePromoCode);
     if (data.user.city_id) customerUrl.searchParams.set('city', data.user.city_id);
     customerLinkEl.textContent = customerUrl.toString();
   }

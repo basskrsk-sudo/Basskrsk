@@ -2514,7 +2514,7 @@
       <div class="form-group">
         <label id="first-purchase-promo-label">Промокод грумера или салона на первую покупку</label>
         <div style="display:flex;gap:.5rem;">
-          <input type="text" id="oFirstPurchasePromo" placeholder="HV15" oninput="this.value=this.value.toUpperCase(); onFirstPurchasePromoContextChange();" style="flex:1;min-width:0;">
+          <input type="text" id="oFirstPurchasePromo" placeholder="Введите промокод" oninput="this.value=this.value.toUpperCase(); onFirstPurchasePromoContextChange();" style="flex:1;min-width:0;">
           <button type="button" onclick="validateFirstPurchasePromo(true)" style="border:0;border-radius:8px;background:var(--deep);color:#fff;padding:0 .9rem;font-weight:600;cursor:pointer;">Применить</button>
         </div>
         <div id="first-purchase-promo-msg" style="font-size:.8rem;margin-top:.4rem;min-height:1.1em;"></div>
@@ -2727,7 +2727,7 @@
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<script src="/first-purchase-promo-display.js?v=20261124-3"></script>
+<script src="/first-purchase-promo-display.js?v=20261124-4"></script>
 <script>
 // ── DATA ──────────────────────────────────────────────
 let products = [];
@@ -2965,8 +2965,8 @@ function updateFirstPurchasePromoNotice(code) {
   const enteredCode = code || document.getElementById('oFirstPurchasePromo')?.value || '';
   if (label) label.textContent = 'Промокод грумера или салона' + (enteredCode || p.changed() ? ' −' + p.percent(undefined, enteredCode) + '%' : '') + ' на первую покупку';
   const input=document.getElementById('oFirstPurchasePromo');
-  if (input) input.placeholder='Например, '+p.publicCode;
-  if (note) note.textContent = enteredCode ? p.notice(enteredCode) : p.checkoutNotice();
+  if (input) input.placeholder='Введите промокод';
+  if (note) note.textContent = p.checkoutNotice();
 }
 
 function onFirstPurchasePromoContextChange() {
@@ -6916,7 +6916,7 @@ function initFromQR() {
   window._qrProductId = product || '';
   window._referralCodeFromLink = friend || '';
   window._groomerPartnerIdFromLink = /^\d+$/.test(linkedPartner || '') ? linkedPartner : '';
-  window._firstPurchasePromoFromLink = firstPurchasePromo || '';
+  window._firstPurchasePromoFromLink = window.HvostFirstPurchasePromo.codeFromLink(firstPurchasePromo);
 
   // Подставить точку самовывоза
   applyPickupFromRef(ref);
