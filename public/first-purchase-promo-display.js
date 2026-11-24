@@ -14,7 +14,7 @@
     return changed(now)?code.replace(/^(HVOST|HV)20(?=-)/,function(_,p){return p+'15'}):code;
   }
   function notice(code,now){
-    if(isUniversal(code))return 'Единый промокод HV15: скидка 15% на первую покупку в любой точке ХвостМаркета.';
+    if(isUniversal(code))return 'Единый промокод HV15: скидка 15% на первую покупку в любой точке ХвостМаркета. Можно ввести просто 15.';
     if(!changed(now)&&isNewCode(code))return 'По этому промокоду скидка на первую покупку — 15%.';
     if(!changed(now))return 'До 30 ноября по старым промокодам — 20%, по новым HV15/HVOST15 — 15%. С 1 декабря — 15% по всем промокодам.';
     if(/^(HVOST|HV)20(?=-)/i.test(String(code||'').trim()))
