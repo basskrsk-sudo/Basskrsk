@@ -59,7 +59,11 @@ test('salon HVOST20 and HVOST15 aliases resolve to the same location from 1 Dece
  const api=setup(),cutoff=Date.parse('2026-11-30T17:00:00.000Z');
  const before=api.validateFirstPurchasePromo('HVOST20-S-TEST','+79130000021','salon-a',cutoff-1);
  assert.equal(before.discountPercent,20);
- assert.equal(api.validateFirstPurchasePromo('HVOST15-S-TEST','+79130000022','salon-a',cutoff-1).valid,false);
+ const early=api.validateFirstPurchasePromo('HVOST15-S-TEST','+79130000022','salon-a',cutoff-1);
+ assert.equal(early.valid,true);
+ assert.equal(early.discountPercent,15);
+ assert.equal(early.pointId,'salon-a');
+ assert.equal(api.validateFirstPurchasePromo('HVOST15-S-TEST','+79130000026','salon-b',cutoff-1).valid,false);
  const old=api.validateFirstPurchasePromo('HVOST20-S-TEST','+79130000023','salon-a',cutoff);
  const current=api.validateFirstPurchasePromo('HVOST15-S-TEST','+79130000024','salon-a',cutoff);
  assert.equal(old.valid,true);
