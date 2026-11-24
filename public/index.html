@@ -2727,7 +2727,7 @@
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<script src="/first-purchase-promo-display.js?v=20261201"></script>
+<script src="/first-purchase-promo-display.js?v=20261124"></script>
 <script>
 // ── DATA ──────────────────────────────────────────────
 let products = [];
@@ -2962,7 +2962,8 @@ function updateFirstPurchasePromoNotice(code) {
   if (!p) return;
   const label = document.getElementById('first-purchase-promo-label');
   const note = document.getElementById('first-purchase-promo-policy-notice');
-  if (label) label.textContent = 'Промокод грумера или салона −' + p.percent() + '% на первую покупку';
+  const enteredCode = code || document.getElementById('oFirstPurchasePromo')?.value || '';
+  if (label) label.textContent = 'Промокод грумера или салона' + (enteredCode || p.changed() ? ' −' + p.percent(undefined, enteredCode) + '%' : '') + ' на первую покупку';
   const input=document.getElementById('oFirstPurchasePromo');
   if (input) input.placeholder='Например, '+p.displayCode('HV20-001');
   if (note) note.textContent = p.notice(code || document.getElementById('oFirstPurchasePromo')?.value || '');
@@ -3000,7 +3001,7 @@ async function validateFirstPurchasePromo(showEmptyError = false) {
   }
   const pickupPointId = document.getElementById('oPickupSelect')?.value || '';
   const key = code + ':' + digits.slice(-10) + ':' + pickupPointId + ':' +
-    (firstPurchasePromoOffer()?.percent() || 20);
+    (firstPurchasePromoOffer()?.percent(undefined, code) || 20);
   if (firstPurchasePromoValid && key === lastCheckedFirstPurchasePromoKey) return true;
   try {
     const res = await fetch('/api/first-purchase-promo/validate?code=' + encodeURIComponent(code) + '&phone=' + encodeURIComponent(phone) + '&point_id=' + encodeURIComponent(pickupPointId));

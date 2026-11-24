@@ -55,10 +55,10 @@ function hasUnsettledPromoClaim(phone) {
 
 function validateFirstPurchasePromo(code, phone, pointId = null, now = Date.now()) {
   const promoCode = normalizePromoCode(code);
-  // Read-only alias: after 1 December both HV20 and HV15 point/partner codes
-  // resolve to the same original code stored in SQLite. Old QR labels survive.
+  // HV15/HVOST15 aliases work immediately and retain the same partner/salon.
+  // Old codes keep their scheduled 20% -> 15% transition.
   const storedCode = lookupStoredFirstPurchasePromoCode(promoCode, now);
-  const policy = getFirstPurchasePromoPolicy(now);
+  const policy = getFirstPurchasePromoPolicy(now, promoCode);
   const normalizedPhone = normalizePromoPhone(phone);
   if (!promoCode) return { valid: false, error: 'Введите промокод на первую покупку' };
   if (!normalizedPhone) return { valid: false, error: 'Сначала укажите корректный номер телефона' };

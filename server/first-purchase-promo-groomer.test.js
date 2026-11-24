@@ -78,7 +78,11 @@ test('existing groomer HV20 and legacy code work after cutoff at 15%, new HV15 i
   const before=validateFirstPurchasePromo(oldCode,'+79007771001',pointId,cutoff-1);
   assert.equal(before.valid,true);
   assert.equal(before.discountPercent,20);
-  assert.equal(validateFirstPurchasePromo(newCode,'+79007771002',pointId,cutoff-1).valid,false);
+  const early=validateFirstPurchasePromo(newCode,'+79007771002',pointId,cutoff-1);
+  assert.equal(early.valid,true);
+  assert.equal(early.discountPercent,15);
+  assert.equal(early.partnerId,before.partnerId);
+  assert.equal(early.promoCode,newCode);
   const old=validateFirstPurchasePromo(oldCode,'+79007771003',pointId,cutoff);
   const revised=validateFirstPurchasePromo(newCode,'+79007771004',pointId,cutoff);
   assert.equal(old.discountPercent,15);

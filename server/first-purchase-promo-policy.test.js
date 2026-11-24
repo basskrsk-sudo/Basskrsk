@@ -34,7 +34,13 @@ test('newly displayed HV15 codes map to stored HV20, while printed originals rem
     assert.equal(policy.lookupStoredFirstPurchasePromoCode(display,cutoff),old);
     assert.equal(policy.lookupStoredFirstPurchasePromoCode(old,cutoff),old);
     assert.equal(before.displayCode(old),old);
-    assert.equal(policy.lookupStoredFirstPurchasePromoCode(display,cutoff-1),display);
+    assert.equal(policy.lookupStoredFirstPurchasePromoCode(display,cutoff-1),old);
+    assert.equal(policy.getFirstPurchasePromoPolicy(cutoff-1,display).discountPercent,15);
+    assert.equal(policy.getFirstPurchasePromoPolicy(cutoff-1,old).discountPercent,20);
+    assert.equal(before.percent(cutoff-1,display),15);
+    assert.equal(before.percent(cutoff-1,old),20);
+    assert.match(before.notice(display),/15%/);
+    assert.match(policy.firstPurchasePromoNotice(display,cutoff-1),/15%/);
     assert.match(after.notice(old),/15%/);
     assert.match(after.notice(old),/старый промокод/i);
   }
@@ -64,7 +70,7 @@ test('all public purchase screens show notice and avoid a stale 20% payment amou
   assert.match(main,/first-purchase-promo-policy-notice/);
   assert.match(main,/percentBeforeValidation !== firstPurchasePromoPercent/);
   assert.match(qr,/previousPromoPercent !== QR_PROMO_PERCENT/);
-  assert.match(mini,/state\.promoInfo\.discount_percent!==window\.HvostFirstPurchasePromo\.percent\(\)/);
+  assert.match(mini,/state\.promoInfo\.discount_percent!==window\.HvostFirstPurchasePromo\.percent\(undefined,state\.promo\)/);
   assert.doesNotMatch(mini,/Промокод −20%/);
   assert.doesNotMatch(qr,/Промокод грумера −20%/);
   // Existing backend 20% strings in promo-code prefixes remain deliberately.
