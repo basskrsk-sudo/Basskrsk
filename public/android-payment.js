@@ -8,9 +8,11 @@
     return (prefix==='TMA'?'TMA':'TG')+'-'+Date.now()+'-'+Array.from(root.crypto.getRandomValues(new Uint8Array(8))).map(function(x){return x.toString(16).padStart(2,'0');}).join('');
   }
   function url(code){return codeValid(code)?'/pay.html?order='+encodeURIComponent(code):'';}
-  function remember(code,flow){
+  function remember(code,flow,body){
     if(!codeValid(code))return;
     try{root.localStorage.setItem(key,JSON.stringify({code:code,flow:flow,at:Date.now()}));}catch(_){}
+    // Exact request stays in this tab only. Never store bank URLs or credentials here.
+    try{if(body&&body.orderId===code)root.sessionStorage.setItem(key+':'+code,JSON.stringify(body));}catch(_){}
   }
   function pending(flow){
     try{var v=JSON.parse(root.localStorage.getItem(key)||'null');
@@ -18,7 +20,12 @@
     }catch(_){}
     return null;
   }
+  function snapshot(code){
+    if(!codeValid(code))return null;
+    try{var body=JSON.parse(root.sessionStorage.getItem(key+':'+code)||'null');return body&&body.orderId===code&&body.confirmationMode==='redirect'?body:null;}catch(_){return null;}
+  }
   function clear(code){
+    try{root.sessionStorage.removeItem(key+':'+code);}catch(_){}
     try{var v=JSON.parse(root.localStorage.getItem(key)||'null');if(v&&v.code===code)root.localStorage.removeItem(key);}catch(_){}
   }
   function go(code){var path=url(code);if(path)root.location.assign(path);}
@@ -30,5 +37,5 @@
     }
     root.location.assign(path);return true;
   }
-  root.HvostAndroidPayment={android:android,codeValid:codeValid,newCode:newCode,url:url,remember:remember,pending:pending,clear:clear,go:go,external:external};
+  root.HvostAndroidPayment={android:android,codeValid:codeValid,newCode:newCode,url:url,remember:remember,pending:pending,snapshot:snapshot,clear:clear,go:go,external:external};
 })(window);
