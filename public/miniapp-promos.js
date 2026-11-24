@@ -13,9 +13,6 @@
     });
   }
   function offerPolicy() { return window.HvostFirstPurchasePromo; }
-  function codeForCustomer(code) {
-    return offerPolicy().displayCode(code);
-  }
   function card(key, title, value, description) {
     if (!value) {
       return '<div class="work-promo-card"><b>' + esc(title) + '</b>' +
