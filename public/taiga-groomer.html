@@ -684,8 +684,8 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 
       <div class="ref-card">
         <div class="ref-title" id="groomer-first-promo-title">Промокод на первую покупку</div>
-        <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Ваш персональный код для новых покупателей</div>
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка применяется один раз по номеру телефона и действует на товары. Ваша ссылка для покупателей уже содержит этот код.</div>
+        <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem;">Один код для новых покупателей во всех точках</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка 15% применяется один раз по номеру телефона и действует на товары. Можно ввести просто 15. Ваша ссылка для покупателей уже содержит этот код.</div>
         <div class="ref-link-wrap">
           <span class="ref-link" id="first-purchase-promo-text">Код появится после входа</span>
           <button class="copy-btn" onclick="copyLink('first-purchase-promo-text', this)">Скопировать</button>
@@ -901,7 +901,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 </div><!-- /app -->
 
 <script src="salon-photo-gallery.js?v=70"></script>
-<script src="/first-purchase-promo-display.js?v=20261124"></script>
+<script src="/first-purchase-promo-display.js?v=20261124-2"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 let PRODUCTS = [];
@@ -1280,10 +1280,9 @@ async function onPartnerLoginSuccess(data) {
   }
   const customerLinkEl = document.getElementById('customer-link-text');
   const firstPurchasePromoEl = document.getElementById('first-purchase-promo-text');
-  const firstPurchasePromoCode=data.user.first_purchase_promo_code
-    ? window.HvostFirstPurchasePromo.displayCode(data.user.first_purchase_promo_code) : '';
+  const firstPurchasePromoCode=window.HvostFirstPurchasePromo.publicCode;
   const promoTitle=document.getElementById('groomer-first-promo-title');
-  if (promoTitle) promoTitle.textContent='Промокод −'+window.HvostFirstPurchasePromo.percent()+'% на первую покупку';
+  if (promoTitle) promoTitle.textContent='Единый промокод −'+window.HvostFirstPurchasePromo.publicPercent+'% на первую покупку';
   if (firstPurchasePromoEl && firstPurchasePromoCode) {
     firstPurchasePromoEl.textContent = firstPurchasePromoCode;
   }

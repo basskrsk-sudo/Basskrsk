@@ -126,7 +126,7 @@
 </div>
 
 <script src="/config.js"></script>
-<script src="/first-purchase-promo-display.js?v=20261124"></script>
+<script src="/first-purchase-promo-display.js?v=20261124-2"></script>
 <script>
 'use strict';
 var app = document.getElementById('app');
@@ -498,9 +498,9 @@ function showPhoneStep() {
     + '<input type="tel" id="phone" inputmode="tel" autocomplete="tel" placeholder="+7 (900) 000-00-00" value="' + esc(restored?.customerPhone || knownPhone()) + '" oninput="invalidateQrPromo();checkQrSelfOrder()" onblur="checkQrSelfOrder();validateQrPromo(false)">'
     + '<p class="small muted" id="qrBonesNote" style="margin-top:6px">Свяжем заказ с вашим номером и начислим косточки-бонусы.</p>'
     + '<label for="qrPromo">Промокод грумера или салона на первую покупку</label>'
-    + '<div style="display:flex;gap:8px;margin-bottom:4px"><input id="qrPromo" value="' + esc(restored?.promoCode || new URLSearchParams(location.search).get('promo') || '') + '" placeholder="' + window.HvostFirstPurchasePromo.displayCode('HVOST20-001') + '" oninput="this.value=this.value.toUpperCase();invalidateQrPromo()" style="margin-bottom:0;flex:1;min-width:0"><button type="button" class="variant" onclick="validateQrPromo(true)" style="white-space:nowrap">Применить</button></div>'
+    + '<div style="display:flex;gap:8px;margin-bottom:4px"><input id="qrPromo" value="' + esc(restored?.promoCode || new URLSearchParams(location.search).get('promo') || '') + '" placeholder="' + window.HvostFirstPurchasePromo.publicCode + '" oninput="this.value=this.value.toUpperCase();invalidateQrPromo()" style="margin-bottom:0;flex:1;min-width:0"><button type="button" class="variant" onclick="validateQrPromo(true)" style="white-space:nowrap">Применить</button></div>'
     + '<p class="small" id="qrPromoMsg" style="min-height:18px;margin-bottom:6px"></p>'
-    + '<p class="small" style="color:#775000;margin:0 0 12px;line-height:1.5">' + esc(window.HvostFirstPurchasePromo.notice()) + '</p>'
+    + '<p class="small" style="color:#775000;margin:0 0 12px;line-height:1.5">' + esc('Единый промокод HV15 — скидка 15% на первую покупку. Можно ввести просто 15.') + '</p>'
     + advisorField
     + '<div class="note" style="display:block">📍 Точка уже определена по QR-коду товара. Повторно выбирать её не нужно.</div>'
     + '<button class="cta" id="payBtn" onclick="startPayment()">Оплатить ' + fmtPrice(v.price) + '</button>'

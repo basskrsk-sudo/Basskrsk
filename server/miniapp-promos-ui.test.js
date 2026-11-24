@@ -61,17 +61,17 @@ function harness(opts={}){
   return {api,root,window,click,copied,prompts,elements};
 }
 
-test('groomer card shows personal and canonical active salon 20% codes and referral links',()=>{
+test('groomer card shows universal 15% code and referral links',()=>{
   const h=harness();
   const markup=h.api.section(personalPartner,()=>true);
   assert.match(markup,/Мои промокоды/);
-  assert.match(markup,/HV20-G-053/);
-  assert.match(markup,/HV20-002/);
+  assert.match(markup,/HV15/);
+  assert.doesNotMatch(markup,/HV20-G-053|HV20-002/);
   assert.match(markup,/GR-053/);
   assert.match(markup,/БаркЛай/);
   assert.match(markup,/partner-invite\.html\?ref=GR-053/);
-  assert.match(markup,/ref=bark-lay&amp;partner=53&amp;promo=HV20-G-053&amp;city=krsk/);
-  assert.equal((markup.match(/data-hm-promo-key=/g)||[]).length,5);
+  assert.match(markup,/ref=bark-lay&amp;partner=53&amp;promo=HV15&amp;city=krsk/);
+  assert.equal((markup.match(/data-hm-promo-key=/g)||[]).length,4);
   assert.match(markup,/один раз.*номер телефона/);
 });
 
@@ -79,13 +79,13 @@ test('groomer can copy each code directly in Telegram after verifying role',asyn
   const h=harness();
   h.api.section(personalPartner,()=>true);
   for(const [key,value] of [
-    ['groomer','HV20-G-053'],['salon','HV20-002'],['referral','GR-053'],
+    ['groomer','HV15'],['referral','GR-053'],
   ]){
     assert.equal(await h.click(key),true);
     assert.equal(h.copied.at(-1),value);
   }
   await h.click('buyer');
-  assert.match(h.copied.at(-1),/partner=53&promo=HV20-G-053/);
+  assert.match(h.copied.at(-1),/partner=53&promo=HV15/);
   await h.click('registration');
   assert.equal(h.copied.at(-1),'https://хвостмаркет.рф/partner-invite.html?ref=GR-053');
   assert.match(h.elements.workPromoCopyStatus.textContent,/Скопировано/);
@@ -141,7 +141,7 @@ test('denied WebView clipboard offers user-visible manual copying fallback',asyn
   h.api.section(personalPartner,()=>true);
   await h.click('groomer');
   assert.equal(h.prompts.length,1);
-  assert.equal(h.prompts[0].value,'HV20-G-053');
+  assert.equal(h.prompts[0].value,'HV15');
   assert.match(h.elements.workPromoCopyStatus.textContent,/Не удалось скопировать/);
 });
 
@@ -197,18 +197,16 @@ test('owner referral invitation requires verified owner role and cannot be read 
   assert.equal(h.copied.length,0);
 });
 
-test('on December 1 partner sees HV15 code and link; printed HV20 remains valid as an alias',async()=>{
+test('on December 1 partner still sees the universal HV15 code and link',async()=>{
   const h=harness({now:Date.parse('2026-11-30T17:00:00.000Z')});
   const markup=h.api.section(personalPartner,()=>true);
   assert.match(markup,/скидка 15%/i);
-  assert.match(markup,/HV15-G-053/);
-  assert.match(markup,/HV15-002/);
+  assert.match(markup,/HV15/);
+  assert.doesNotMatch(markup,/HV15-G-053|HV15-002/);
   assert.doesNotMatch(markup,/HV20-G-053/);
-  assert.match(markup,/С 1 декабря 2026 года скидка на первую покупку — 15%/);
+  assert.match(markup,/Единый промокод HV15/);
   await h.click('groomer');
-  assert.equal(h.copied.at(-1),'HV15-G-053');
-  await h.click('salon');
-  assert.equal(h.copied.at(-1),'HV15-002');
+  assert.equal(h.copied.at(-1),'HV15');
   await h.click('buyer');
-  assert.match(h.copied.at(-1),/promo=HV15-G-053/);
+  assert.match(h.copied.at(-1),/promo=HV15/);
 });

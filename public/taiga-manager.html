@@ -920,7 +920,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
 <script src="salon-photo-gallery.js?v=70"></script>
 <script src="manager-leads.js?v=2"></script>
 <script src="partner-network-map.js?v=10"></script>
-<script src="/first-purchase-promo-display.js?v=20261124"></script>
+<script src="/first-purchase-promo-display.js?v=20261124-2"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
 let MY_POINTS = [];
@@ -2160,11 +2160,11 @@ async function renderStockSection() {
     return;
   }
   const promoListHtml = '<div class="card" style="margin-bottom:1rem;">' +
-    '<div class="card-title">Промокоды салонов на первую покупку −'+window.HvostFirstPurchasePromo.percent()+'%</div>' +
+    '<div class="card-title">Промокоды салонов на первую покупку −'+window.HvostFirstPurchasePromo.publicPercent+'%</div>' +
     '<p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;">Один код для каждой точки. Старые промокоды грумеров продолжают работать.</p>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.65rem;">' +
     points.map(function(pt) {
-      const code = window.HvostFirstPurchasePromo.displayCode(pt.first_purchase_promo_code || '');
+      const code = window.HvostFirstPurchasePromo.customerCode(pt.first_purchase_promo_code || '');
       return '<div style="border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;">' +
         '<div style="font-weight:600;margin-bottom:.4rem;">' + escapeManagerPayoutCell(pt.point_name) + '</div>' +
         '<button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(code) + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)"' +
@@ -2221,7 +2221,7 @@ async function renderPartnersSection() {
         : '<span class="pill pill-red">Отключён</span>';
       return '<tr>' +
         '<td style="font-weight:500;">' + p.full_name + '<br><span style="font-size:.72rem;color:var(--muted);">' + p.partner_code + ' · ' + p.phone + '</span></td>' +
-        '<td>' + (p.first_purchase_promo_code ? '<button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(window.HvostFirstPurchasePromo.displayCode(p.first_purchase_promo_code)) + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)">' + escapeManagerPayoutCell(window.HvostFirstPurchasePromo.displayCode(p.first_purchase_promo_code)) + '</button>' : '—') + '</td>' +
+        '<td>' + (p.first_purchase_promo_code ? '<button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(window.HvostFirstPurchasePromo.customerCode(p.first_purchase_promo_code)) + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)">' + escapeManagerPayoutCell(window.HvostFirstPurchasePromo.customerCode(p.first_purchase_promo_code)) + '</button>' : '—') + '</td>' +
         '<td class="r">' + Math.round(p.commission_rate * 100) + '%</td>' +
         '<td class="r">' + p.orders_count + '</td>' +
         '<td class="r">' + p.revenue.toLocaleString('ru-RU') + ' ₽</td>' +
@@ -2231,7 +2231,7 @@ async function renderPartnersSection() {
         '</tr>';
     }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:1rem;">На этой точке пока нет партнёра — можно зарегистрировать в разделе «Привлечение точек»</td></tr>';
     return '<div class="card" style="margin-bottom:1rem;">' +
-      '<div class="card-title">' + (pt.point_icon || '📍') + ' ' + escapeManagerPayoutCell(pt.point_name) + ' · Промокод −'+window.HvostFirstPurchasePromo.percent()+'%: <button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(window.HvostFirstPurchasePromo.displayCode(pt.first_purchase_promo_code || '')) + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)">' + escapeManagerPayoutCell(window.HvostFirstPurchasePromo.displayCode(pt.first_purchase_promo_code || '—')) + '</button></div>' +
+      '<div class="card-title">' + (pt.point_icon || '📍') + ' ' + escapeManagerPayoutCell(pt.point_name) + ' · Промокод −'+window.HvostFirstPurchasePromo.publicPercent+'%: <button type="button" class="copy-btn" data-promo="' + escapeManagerPayoutCell(window.HvostFirstPurchasePromo.customerCode(pt.first_purchase_promo_code || '')) + '" onclick="copyPartnerPromoCode(this.dataset.promo,this)">' + escapeManagerPayoutCell(window.HvostFirstPurchasePromo.customerCode(pt.first_purchase_promo_code || '—')) + '</button></div>' +
       '<table class="tbl"><thead><tr>' +
         '<th>Партнёр</th><th>Персональный промокод</th><th class="r">Тариф</th><th class="r">Заказов</th><th class="r">Выручка</th><th class="r">Начислено</th><th class="r">К выплате</th><th>Статус</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
@@ -2466,7 +2466,7 @@ function renderPoints(){
         <div>
           <div class="point-name">${p.name}</div>
           <div class="point-addr">${p.addr}</div>
-          <div style="font-size:.75rem;margin-top:.4rem;">Промокод −${window.HvostFirstPurchasePromo.percent()}%: <button type="button" class="copy-btn" data-promo="${window.HvostFirstPurchasePromo.displayCode(p.salonPromoCode || '')}" onclick="copyPartnerPromoCode(this.dataset.promo,this)" ${p.salonPromoCode ? '' : 'disabled'}>${window.HvostFirstPurchasePromo.displayCode(p.salonPromoCode || '—')}</button></div>
+          <div style="font-size:.75rem;margin-top:.4rem;">Промокод −${window.HvostFirstPurchasePromo.publicPercent}%: <button type="button" class="copy-btn" data-promo="${window.HvostFirstPurchasePromo.customerCode(p.salonPromoCode || '')}" onclick="copyPartnerPromoCode(this.dataset.promo,this)" ${p.salonPromoCode ? '' : 'disabled'}>${window.HvostFirstPurchasePromo.customerCode(p.salonPromoCode || '—')}</button></div>
         </div>
         <span class="pill ${pillClass[p.status]}">${statusLabel[p.status]}</span>
       </div>

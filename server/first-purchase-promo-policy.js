@@ -7,6 +7,7 @@
 const EFFECTIVE_AT_UTC = Date.parse('2026-11-30T17:00:00.000Z');
 const OLD_PERCENT = 20;
 const NEW_PERCENT = 15;
+const UNIVERSAL_PROMO_CODE = 'HV15';
 
 function getFirstPurchasePromoPolicy(now = Date.now(), value = '') {
   const changed=Number(now)>=EFFECTIVE_AT_UTC;
@@ -20,8 +21,12 @@ function getFirstPurchasePromoPolicy(now = Date.now(), value = '') {
 function normalizedCode(value){
   return String(value||'').trim().toUpperCase();
 }
+function isUniversalFirstPurchasePromoCode(value){
+  const code=normalizedCode(value);
+  return code===UNIVERSAL_PROMO_CODE || code==='15';
+}
 function isNewCode(value){
-  return /^(HVOST|HV)15(?=-)/.test(normalizedCode(value));
+  return isUniversalFirstPurchasePromoCode(value) || /^(HVOST|HV)15(?=-)/.test(normalizedCode(value));
 }
 function displayFirstPurchasePromoCode(value,now=Date.now()){
   const code=normalizedCode(value);
@@ -34,6 +39,7 @@ function lookupStoredFirstPurchasePromoCode(value,now=Date.now()){
   return code.replace(/^(HVOST|HV)15(?=-)/,(_,prefix)=>prefix+'20');
 }
 function firstPurchasePromoNotice(value,now=Date.now()){
+  if(isUniversalFirstPurchasePromoCode(value))return 'Единый промокод HV15: скидка 15% на первую покупку в любой точке ХвостМаркета. Можно ввести просто 15.';
   const policy=getFirstPurchasePromoPolicy(now,value);
   if(!policy.changed && isNewCode(value))return 'По этому промокоду скидка на первую покупку — 15%.';
   if(!policy.changed)return 'До 30.11.2026 включительно по старым промокодам — 20%, по новым HV15/HVOST15 — 15%. С 01.12.2026 — 15% по всем промокодам.';
@@ -43,7 +49,7 @@ function firstPurchasePromoNotice(value,now=Date.now()){
     :'С 01.12.2026 скидка на первую покупку составляет 15%. Старые промокоды тоже действуют со скидкой 15%.';
 }
 module.exports={
-  EFFECTIVE_AT_UTC,OLD_PERCENT,NEW_PERCENT,
+  EFFECTIVE_AT_UTC,OLD_PERCENT,NEW_PERCENT,UNIVERSAL_PROMO_CODE,isUniversalFirstPurchasePromoCode,
   getFirstPurchasePromoPolicy,
   displayFirstPurchasePromoCode,
   lookupStoredFirstPurchasePromoCode,
