@@ -2,11 +2,11 @@
 (function(root){
   'use strict';
   var MAX_LINES=50, MAX_QTY=99, TTL=24*60*60*1000;
-  var memory=Object.create(null);
+  var memory=Object.create(null),fallback=Object.create(null);
   function key(point){return 'hm_qr_cart_v1:'+String(point);}
   function get(point){
     var raw;
-    try{raw=root.localStorage.getItem(key(point));}catch(_){raw=memory[key(point)];}
+    try{raw=fallback[key(point)]?memory[key(point)]:root.localStorage.getItem(key(point));}catch(_){raw=memory[key(point)];}
     try{
       var b=JSON.parse(raw||'null');
       if(!b||Date.now()-b.updatedAt>TTL||!Array.isArray(b.items))return {items:[],revision:''};
@@ -22,7 +22,7 @@
     var b={items:items,updatedAt:Date.now(),revision:Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)};
     var raw=JSON.stringify(b);
     memory[key(point)]=raw;
-    try{root.localStorage.setItem(key(point),raw);}catch(_){}
+    try{root.localStorage.setItem(key(point),raw);delete fallback[key(point)];}catch(_){fallback[key(point)]=true;}
     return b;
   }
   function add(point,item,available){
@@ -38,6 +38,7 @@
   }
   function change(point,id,delta,available){
     var b=get(point),i=b.items.find(function(x){return x.variantId===Number(id);});
+    if(delta!==1&&delta!==-1)return {ok:false,error:'Некорректное количество'};
     if(!i)return {ok:false,error:'Товар уже удалён'};
     if(delta>0&&i.qty>=Math.min(MAX_QTY,Number(available)||0))return {ok:false,error:'Больше нет в наличии на этой точке'};
     i.qty+=delta;
