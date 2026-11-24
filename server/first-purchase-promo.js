@@ -63,6 +63,7 @@ function validateFirstPurchasePromo(code, phone, pointId = null, now = Date.now(
   const policy = getFirstPurchasePromoPolicy(now, promoCode);
   const normalizedPhone = normalizePromoPhone(phone);
   if (!promoCode) return { valid: false, error: 'Введите промокод на первую покупку' };
+  if (/^(15|20)$/.test(promoCode)) return { valid: false, error: 'Введите промокод полностью, включая буквы' };
   if (!normalizedPhone) return { valid: false, error: 'Сначала укажите корректный номер телефона' };
 
   // The shared code belongs to the actual active pickup point, never an arbitrary partner.
@@ -86,7 +87,7 @@ function validateFirstPurchasePromo(code, phone, pointId = null, now = Date.now(
 
   return {
     valid: true,
-    // Store numeric shortcuts as their canonical network-wide codes; keep scoped codes as entered.
+    // Store the normalized complete code, preserving existing scoped codes.
     promoCode,
     partnerId: partner ? partner.id : null,
     partnerName: partner ? partner.full_name : null,
