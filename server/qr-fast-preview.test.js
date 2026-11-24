@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { loadQrPreview } = require('./qr-fast-preview');
+const { loadQrPreview, loadQrCartPreview } = require('./qr-fast-preview');
 test('compact QR route uses one product and live stock', () => {
   const calls = [];
   const database = { prepare(sql) { return {
@@ -38,4 +38,25 @@ test('SQL fast lookup works with a real SQLite database', () => {
     assert.equal(preview.product.variants[0].stock.salon, 3);
     assert.equal(preview.partners.length, 1);
   } finally { database.close(); }
+});
+
+test('multi-product preview returns only requested live variants and shop-specific stock',()=>{
+  const {DatabaseSync}=require('node:sqlite'),db=new DatabaseSync(':memory:');
+  try{
+    db.exec("CREATE TABLE points(id TEXT,name TEXT,addr TEXT,city_id TEXT,active INTEGER);"+
+      "CREATE TABLE products(id INTEGER,slug TEXT,name TEXT,active INTEGER,archived_at TEXT);"+
+      "CREATE TABLE product_variants(id INTEGER,product_id INTEGER,weight TEXT,price INTEGER,active INTEGER);"+
+      "CREATE TABLE stock(variant_id INTEGER,point_id TEXT,qty INTEGER);"+
+      "CREATE TABLE partners(id INTEGER,point_id TEXT,full_name TEXT,active INTEGER);"+
+      "INSERT INTO points VALUES('salon','Салон','','krsk',1),('closed','Closed','','krsk',0);"+
+      "INSERT INTO products VALUES(11,'lung','Лёгкое',1,NULL),(12,'toy','Игрушка',1,NULL),(13,'old','Старый',0,NULL);"+
+      "INSERT INTO product_variants VALUES(5,11,'50 г',250,1),(9,12,'1 шт.',300,1),(10,13,'1 шт.',100,1);"+
+      "INSERT INTO stock VALUES(5,'salon',3),(5,'other',50),(9,'salon',1);");
+    const result=loadQrCartPreview(db,'salon',[5,9,10],()=>({partner:null}));
+    assert.equal(result.items.length,2);
+    assert.equal(result.items.find(i=>i.variantId===5).available,3);
+    assert.equal(result.items.find(i=>i.variantId===9).price,300);
+    assert.equal(loadQrCartPreview(db,'salon',[5,5],()=>({partner:null})),null);
+    assert.equal(loadQrCartPreview(db,'closed',[5],()=>({partner:null})),null);
+  }finally{db.close();}
 });
