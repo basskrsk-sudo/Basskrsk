@@ -93,8 +93,11 @@
     try{await navigator.clipboard.writeText(url);el('copy').textContent='Ссылка скопирована';}
     catch(_){el('copyValue').value=url;show('copyValue',true);el('copyValue').focus();el('copyValue').select();}
   };
-  document.addEventListener('visibilitychange',function(){if(document.hidden){left=true;return;}if(left){left=false;check(false);}});
-  window.addEventListener('pageshow',function(e){if(e.persisted)check(true);});
-  window.addEventListener('online',function(){check(false);});
+  // iOS may restore the tab without a full page load, including a fast bank return.
+  function afterBankReturn(){if(document.hidden||!left)return;left=false;check(true);}
+  document.addEventListener('visibilitychange',function(){if(document.hidden){left=true;return;}afterBankReturn();});
+  window.addEventListener('focus',afterBankReturn);
+  window.addEventListener('pageshow',function(e){if(e.persisted){left=false;check(true);}});
+  window.addEventListener('online',function(){if(!document.hidden)check(true);});
   if(valid)check(true);else error('Ссылка на оплату некорректна. Откройте заказ из ХвостМаркета.');
 })();
