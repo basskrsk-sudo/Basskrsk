@@ -2727,7 +2727,7 @@
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<script src="/first-purchase-promo-display.js?v=20261124-2"></script>
+<script src="/first-purchase-promo-display.js?v=20261124-3"></script>
 <script>
 // ── DATA ──────────────────────────────────────────────
 let products = [];
@@ -2966,7 +2966,7 @@ function updateFirstPurchasePromoNotice(code) {
   if (label) label.textContent = 'Промокод грумера или салона' + (enteredCode || p.changed() ? ' −' + p.percent(undefined, enteredCode) + '%' : '') + ' на первую покупку';
   const input=document.getElementById('oFirstPurchasePromo');
   if (input) input.placeholder='Например, '+p.publicCode;
-  if (note) note.textContent = enteredCode ? p.notice(enteredCode) : 'Единый промокод HV15 — скидка 15% на первую покупку. Можно ввести просто 15.';
+  if (note) note.textContent = enteredCode ? p.notice(enteredCode) : p.checkoutNotice();
 }
 
 function onFirstPurchasePromoContextChange() {

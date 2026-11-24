@@ -90,3 +90,22 @@ test('universal code and numeric shortcut stay at 15% before and after cutoff',(
   assert.equal(client.customerCode('GR-053'),'GR-053');
  }
 });
+
+test('the temporary network-wide code gives 20% only before the Krasnoyarsk cutoff',()=>{
+  for(const now of [cutoff-1,cutoff,cutoff+1]){
+    const browser=browserAt(now);
+    const expected=now<cutoff?20:15;
+    for(const code of ['20',' 20 ','HV20','hv20']){
+      assert.equal(policy.getUniversalFirstPurchasePromoCode(code),'HV20');
+      assert.equal(policy.getFirstPurchasePromoPolicy(now,code).discountPercent,expected);
+      assert.equal(browser.percent(now,code),expected);
+      assert.equal(browser.notice(code),policy.firstPurchasePromoNotice(code,now));
+      assert.match(browser.notice(code),now<cutoff?/даёт скидку 20%/:/составляет 15% вместо 20%/);
+    }
+    assert.match(browser.checkoutNotice(),/15%/);
+    assert.equal(browser.checkoutNotice().includes('код 20'),now<cutoff);
+    assert.equal(browser.publicCode,'HV15');
+    for(const scoped of ['HV20-S-001','HVOST20-G-001','HV15-S-001'])
+      assert.equal(policy.getUniversalFirstPurchasePromoCode(scoped),'');
+  }
+});
