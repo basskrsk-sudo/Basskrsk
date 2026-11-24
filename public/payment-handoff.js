@@ -4,7 +4,7 @@
   var el=function(id){return document.getElementById(id);};
   var code=new URLSearchParams(location.search).get('order');
   var valid=window.HvostAndroidPayment.codeValid(code);
-  var busy=false,finished=false,lastCheck=0,left=false;
+  var busy=false,finished=false,lastCheck=0,left=false,missing=false;
   function show(id,on){el(id).hidden=!on;}
   function safePath(path){
     try{
@@ -28,6 +28,7 @@
     show('check',valid);show('browserHelp',valid);
   }
   function render(data){
+    missing=false;el('recover').textContent='Восстановить этот платёж';
     var path=safePath(data.return_path),link=providerLink(data.confirmation_url);
     show('amount',Number.isSafeInteger(data.amount)&&data.amount>0);
     if(!el('amount').hidden)el('amount').textContent=data.amount.toLocaleString('ru-RU')+' ₽';
@@ -54,7 +55,7 @@
     show('payLink',false);show('recover',false);
     try{
       var result=await request('/api/order-payment-status/'+encodeURIComponent(code));
-      if(result.status===404){error('Заказ пока не найден. Возможно, создание ещё не завершилось. Вернитесь в исходную вкладку или проверьте статус через несколько секунд. Не создавайте новую покупку, если банк уже принял платёж.');return;}
+      if(result.status===404){missing=true;error('Заказ пока не найден. Возможно, создание ещё не завершилось. Если запрос не дошёл до сервера, его можно повторить с тем же номером заказа из исходной вкладки.');var original=window.HvostAndroidPayment.snapshot(code);if(original){el('recover').textContent='Повторить запрос этого заказа';show('recover',true);}return;}
       if(result.status!==200)throw Error('status');
       render(result.data||{});
     }catch(_){error('Проверьте интернет и повторите проверку этого заказа.');}
@@ -63,7 +64,25 @@
   async function recover(){
     if(!valid||busy||finished)return;
     busy=true;el('recover').disabled=true;el('check').disabled=true;
-    try{await request('/api/redirect-payment/'+encodeURIComponent(code)+'/resume','POST');}
+    try{
+      if(missing){
+        var body=window.HvostAndroidPayment.snapshot(code);
+        if(!body)return;
+        var headers={'Content-Type':'application/json'};
+        if(Number(body.bonesUsed)>0){var token='';try{token=localStorage.getItem('taiga_customer_token')||'';}catch(_){}if(!token){el('message').textContent='Для оплаты косточками откройте исходную вкладку, в которой вы вошли в аккаунт.';return;}headers.Authorization='Bearer '+token;}
+        var ac=new AbortController(),timer=setTimeout(function(){ac.abort();},12000);
+        try{var response=await fetch('/api/create-payment',{method:'POST',headers:headers,body:JSON.stringify(body),cache:'no-store',signal:ac.signal});
+          var data=await response.json();
+          if(data.demo===true){await check(true);return;}
+          if(!response.ok&&response.status<500&&data.code&&['ORDER_TOTAL_CHANGED','FIRST_PURCHASE_PROMO_INVALID','STOCK_UNAVAILABLE','VARIANT_NOT_FOUND','VARIANT_INACTIVE','POINT_UNAVAILABLE','ADVISOR_SELECTION_ERROR','INVALID_QUANTITY','INVALID_CATALOG_PRICE'].includes(data.code)){
+            // The request was rejected before payment. Do not silently change its total.
+            var p=body.returnPath||'/';if(!/^\/(?:miniapp\.html|p\/[^/]+\/[^/]+\/?)?$/.test(p))p='/';
+            var probe=await request('/api/order-payment-status/'+encodeURIComponent(code));
+            if(probe.status===404){window.HvostAndroidPayment.clear(code);finished=true;el('title').textContent='Проверьте заказ';el('message').textContent=data.error||'Изменились условия заказа.';el('result').href=p;show('result',true);show('recover',false);show('check',false);return;}
+          }
+        }finally{clearTimeout(timer);}
+      }else await request('/api/redirect-payment/'+encodeURIComponent(code)+'/resume','POST');
+    }
     catch(_){}
     finally{busy=false;el('recover').disabled=false;el('check').disabled=false;await check(true);}
   }
