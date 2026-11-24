@@ -79,9 +79,8 @@
     var point = partner.current_point &&
       String(partner.current_point.id) === String(partner.point_id)
       ? partner.current_point : null;
-    var groomerCode = codeForCustomer(partner.first_purchase_promo_code || '');
-    var salonCode = point ? codeForCustomer(point.first_purchase_promo_code || '') : '';
-    var promoPercent=offerPolicy().percent();
+    var groomerCode = offerPolicy().publicCode;
+    var promoPercent=offerPolicy().publicPercent;
     var referralCode = String(partner.partner_code || '').trim();
     var buyerLink = point && groomerCode
       ? 'https://хвостмаркет.рф/?ref=' + encodeURIComponent(point.id) +
@@ -94,17 +93,15 @@
       : '';
     return '<section class="work-surface"><h2>🎁 Мои промокоды</h2>' +
       '<p class="work-note">Скидка '+promoPercent+'% на первую покупку доступна один раз ' +
-      'на номер телефона покупателя. Промокоды грумера и салона отличаются. '+
+      'на номер телефона покупателя. Один промокод для всей сети. '+
       esc(offerPolicy().notice(groomerCode))+'</p>' +
       '<div class="work-promo-list">' +
-      card('groomer', '✂️ Персональный промокод грумера −'+promoPercent+'%', groomerCode,
-        'Поделитесь с новым покупателем.') +
-      card('salon', '🏪 Промокод моего салона −'+promoPercent+'%', salonCode,
-        point ? 'Действующая точка: ' + point.name : 'Нет действующего назначенного салона.') +
+      card('groomer', '🎁 Единый промокод −'+promoPercent+'%', groomerCode,
+        'Действует во всех точках. Можно ввести просто 15.' + (point ? ' Ваш салон: ' + point.name : '')) +
       card('referral', '🤝 Реферальный код для привлечения точек', referralCode,
         'Пригласите нового грумера или салон.') +
       card('buyer', '🔗 Моя ссылка для покупателей', buyerLink,
-        'Предвыбирает ваш салон, грумера и персональный промокод.') +
+        'Предвыбирает ваш салон, грумера и единый промокод.') +
       card('registration', '🔗 Моя ссылка для привлечения новых грумеров', registrationLink,
         'Новый салон заполнит заявку. За новую точку фиксируется 1 000 ₽, к выплате после 2 000 ₽ прибыли.') +
       '</div>' + referralStats(partner.referrals) +
