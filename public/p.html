@@ -789,6 +789,8 @@ async function startPayment() {
     paymentButton.textContent = 'Готовим оплату…';
   }
   try {
+  var globalPending=window.HvostAndroidPayment?.pending();
+  if(globalPending&&!readPendingQrPayment()){window.HvostAndroidPayment.go(globalPending.code);return;}
   var existing = readPendingQrPayment();
   if (existing) { showPendingQrPayment('Незавершённая оплата уже сохранена. Продолжите тот же платёж.'); return; }
   var phone = normPhone(document.getElementById('phone').value);
@@ -904,6 +906,7 @@ function showSuccess(orderId, phone, isSelfOrder, displayNumber, paidItems, rece
     + confirmedItems.map(function(i){return '<div class="success-product"><b>'+esc(i.name)+'</b><span>'+esc(i.weight)+' · '+Number(i.qty||1)+' шт.</span></div>';}).join('')
     + (CTX.point ? '<p class="small" style="margin-top:12px">📍 ' + esc(CTX.point.name) + (CTX.point.addr ? '<br>' + esc(CTX.point.addr) : '') + '</p>' : '')
     + '<div class="order-code">Заказ ' + esc(shownNumber) + '</div>'
+    + ((paidAmount||CTX.selVariant.price)>0?'<p class="small" style="margin-top:8px">Оплачено: '+fmtPrice(paidAmount||CTX.selVariant.price)+'</p>':'')
     + (shownNumber !== orderId ? '<p class="small">🔐 Технический код: ' + esc(orderId) + '</p>' : '')
     + (phone ? '<p class="small" style="margin-top:14px">Заказ привязан к номеру ' + esc(phone) + '.<br>' + (QR_SELF_ORDER ? '🐾 Самозаказ: при скидке на первую покупку комиссия не начисляется, без промокода — по вашему тарифу; косточки не списываются и не начисляются.' : 'Косточки-бонусы начислятся на этот номер.') + '</p>' : '')
     + '<button class="link-btn" onclick="location.href=\'/?page=account&open_orders=1\'">Открыть мой заказ</button>'
@@ -999,11 +1002,11 @@ async function handlePaymentReturn(orderCode) {
       if (response.ok && result.paid) {
         if (result.item) {
           CTX.product = { id: 0, name: result.item.name || 'Оплаченный товар' };
-          CTX.selVariant = { id: 0, weight: result.item.weight || '', price: 0 };
+          CTX.selVariant = { id: 0, weight: result.item.weight || '', price: Number(result.amount)||0 };
         }
         var receipt=readPendingQrPayment();
         if(receipt&&receipt.orderId!==orderCode)receipt=null;
-        showSuccess(result.order_code || orderCode, receipt?receipt.phone:(knownPhone() === '+7' ? '' : knownPhone()), !!result.is_partner_self_order, result.display_number, result.items||(result.item?[result.item]:[]),receipt);
+        showSuccess(result.order_code || orderCode, receipt?receipt.phone:(androidQrHandoff()?'':(knownPhone() === '+7' ? '' : knownPhone())), !!result.is_partner_self_order, result.display_number, result.items||(result.item?[result.item]:[]),receipt);
         return;
       }
       if (response.ok && (result.status === 'failed' || result.status === 'canceled')) {
@@ -1031,8 +1034,9 @@ function resumeQrReturn(){
   if(document.hidden||QR_PAYMENT_BUSY||QR_PAYMENT_PREPARING)return;
   var code=new URLSearchParams(location.search).get('payment_return');
   if(code&&document.getElementById('retryPaymentStatus'))handlePaymentReturn(code);
-  else if(androidQrHandoff()&&document.getElementById('retryQrPayment')){
-    var saved=readPendingQrPayment();if(saved)window.HvostAndroidPayment.go(saved.orderId);
+  else if(androidQrHandoff()&&!code){
+    var saved=readPendingQrPayment();
+    if(saved&&!document.getElementById('retryPaymentStatus'))showPendingQrPayment('Проверьте этот заказ после возврата из банка. Повторную покупку создавать не нужно.');
   }
 }
 document.addEventListener('visibilitychange',resumeQrReturn);
