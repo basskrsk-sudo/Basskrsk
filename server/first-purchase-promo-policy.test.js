@@ -75,3 +75,18 @@ test('all public purchase screens show notice and avoid a stale 20% payment amou
   assert.doesNotMatch(qr,/Промокод грумера −20%/);
   // Existing backend 20% strings in promo-code prefixes remain deliberately.
 });
+
+
+test('universal code and numeric shortcut stay at 15% before and after cutoff',()=>{
+ for(const now of [cutoff-1,cutoff,cutoff+1]){
+  const client=browserAt(now);
+  for(const code of ['HV15','hv15','15',' 15 ']){
+   assert.equal(policy.getFirstPurchasePromoPolicy(now,code).discountPercent,15);
+   assert.equal(client.percent(now,code),15);
+   assert.match(client.notice(code),/15%/);
+  }
+  assert.equal(client.publicCode,policy.UNIVERSAL_PROMO_CODE);
+  assert.equal(client.customerCode('HV20-G-053'),'HV15');
+  assert.equal(client.customerCode('GR-053'),'GR-053');
+ }
+});
