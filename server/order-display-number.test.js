@@ -113,7 +113,7 @@ test('all purchase pages show the short number while preserving private payment 
   assert.match(mini,/state\.pendingPublicNumber=data\.display_number\|\|null/);
   assert.match(mini,/showResult\(d\.paid\?'paid':d\.status==='failed'\?'failed':'pending',code,d\.display_number\|\|null\)/);
   assert.match(qr,/QR_PUBLIC_NUMBER = data\.display_number \|\| ''/);
-  assert.match(qr,/showSuccess\(result\.order_code \|\| orderCode,.*result\.display_number\)/);
+  assert.match(qr,/showSuccess\(result\.order_code \|\| orderCode,.*result\.display_number, result\.items\|\|/);
   assert.match(admin,/escapeOrderCell\(o\.display_number \|\| o\.order_code\)/);
   const auth=source('server/routes-auth.js');
   assert.match(auth,/WHERE order_code = \? AND status = \?/,'account claim must use the harder-to-guess technical code');
