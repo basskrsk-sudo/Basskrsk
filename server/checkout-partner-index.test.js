@@ -109,6 +109,56 @@ test('checkout and tier checks use bounded partner reads, with no full-salon loa
   assert.match(tier,/WHERE point_id = \? AND active = 1 LIMIT 2/);
 });
 
+test('first purchase promo self-order keeps the discount but freezes zero groomer commission',()=>{
+  const a=point('checkout-promo-self');
+  const phone='+79135550123';
+  const id=partner(a,phone,0.20);
+  const other=partner(a,'+79135550124',0.15);
+  const { validateFirstPurchasePromo }=require('./first-purchase-promo');
+  const { resolveCheckoutGroomer }=require('./auto-groomer');
+  const { getUnpaidSummary, getUnpaidOrders }=require('./partner-payouts');
+  const { buildCustomerMessage, buildPartnerMessage }=require('./order-notifications');
+  const { buildOrderMessage }=require('./telegram');
+  const before=Date.parse('2026-11-24T06:00:00Z');
+  const after=Date.parse('2026-12-01T06:00:00Z');
+  const picked=resolveCheckoutGroomer({pointId:a,partnerId:other,advisorSelection:'self',
+    selfOrderingPartner:findSelfOrderingPartner(a,phone),fulfillmentType:'pickup'});
+  assert.equal(picked.id,id,'self-order identity takes precedence over other groomers');
+  for(const [code,now,expected] of [['HV20',before,20],['HV15',before,15],['HV20',after,15],
+      ['HV15',after,15],['HV20-G-'+String(id).padStart(3,'0'),before,20]]){
+    const promo=validateFirstPurchasePromo(code,phone,a,now);
+    assert.equal(promo.valid,true);
+    assert.equal(promo.discountPercent,expected);
+    assert.deepEqual(resolveOrderCommission(a,picked.id,phone,'self',promo.valid),{rate:0,isSelfOrder:true});
+    assert.deepEqual(resolveOrderCommission(a,id,'+79135550999',null,promo.valid),{rate:0.20,isSelfOrder:false});
+  }
+  assert.deepEqual(resolveOrderCommission(a,id,phone,null,false),{rate:0.20,isSelfOrder:true});
+  const insert=db.prepare('INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,partner_id,subtotal,discount,total,promo_code,payment_method,commission_rate,is_partner_self_order,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  const rate=resolveOrderCommission(a,id,phone,null,true).rate;
+  const orderId=Number(insert.run('SELF-PROMO-ZERO','Грумер',phone,a,a,id,1000,150,850,'HV15','sbp',rate,1,'paid').lastInsertRowid);
+  const order=db.prepare('SELECT * FROM orders WHERE id=?').get(orderId);
+  assert.equal(order.total,850);
+  assert.equal(order.commission_rate,0);
+  assert.equal(getUnpaidOrders(id).find(o=>o.id===orderId).commission_amount,0);
+  assert.equal(getUnpaidSummary(id).amount,0);
+  assert.match(buildCustomerMessage(order,[]),/комиссия грумеру не начисляется/);
+  assert.match(buildPartnerMessage(order,[],{}),/Вознаграждение по этому заказу не начисляется/);
+  assert.match(buildOrderMessage(order,[]),/комиссия грумеру 0%/);
+  insert.run('SELF-REGULAR','Грумер',phone,a,a,id,1000,0,1000,null,'sbp',0.20,1,'paid');
+  insert.run('CLIENT-PROMO','Клиент','+79135550999',a,a,id,1000,150,850,'HV15','sbp',0.20,0,'paid');
+  assert.equal(getUnpaidSummary(id).amount,370);
+});
+
+test('payment route forwards validated first purchase promo, and manager totals respect the frozen rate',()=>{
+  const payment=fs.readFileSync(path.join(__dirname,'routes-payment.js'),'utf8');
+  const managers=fs.readFileSync(path.join(__dirname,'routes-managers.js'),'utf8');
+  const orders=fs.readFileSync(path.join(__dirname,'routes-orders.js'),'utf8');
+  assert.match(payment,/resolveOrderCommission\(\s*pointId, authoritativePartnerId, customerPhone, advisorSelection, !!promoValidation\?\.valid/);
+  assert.match(payment,/commissionRate: orderCommissionRate, isSelfOrder/);
+  assert.match(managers,/SUM\(ROUND\(total \* COALESCE\(commission_rate, \?, 0\)\)\)/);
+  assert.match(orders,/SELF_ORDER_PROMO_NO_COMMISSION/);
+});
+
 test.after(()=>{
   try { db.close(); }catch(_){}
   fs.rmSync(directory,{recursive:true,force:true});

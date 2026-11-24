@@ -596,7 +596,7 @@ async function checkQrSelfOrder() {
     QR_SELF_ORDER = false;
   }
   note.textContent = QR_SELF_ORDER
-    ? '🐾 Самозаказ: вознаграждение начислится по вашему тарифу. Косточки не списываются и не начисляются.'
+    ? '🐾 Самозаказ: при скидке на первую покупку комиссия не начисляется, без промокода — по вашему тарифу. Косточки не списываются и не начисляются.'
     : 'Свяжем заказ с вашим номером и начислим косточки-бонусы.';
   note.style.color = QR_SELF_ORDER ? '#7A4A00' : '';
   return QR_SELF_ORDER;
@@ -711,7 +711,7 @@ function showSuccess(orderId, phone, isSelfOrder, displayNumber) {
     + (CTX.point ? '<p class="small" style="margin-top:12px">📍 ' + esc(CTX.point.name) + (CTX.point.addr ? '<br>' + esc(CTX.point.addr) : '') + '</p>' : '')
     + '<div class="order-code">Заказ ' + esc(shownNumber) + '</div>'
     + (shownNumber !== orderId ? '<p class="small">🔐 Технический код: ' + esc(orderId) + '</p>' : '')
-    + (phone ? '<p class="small" style="margin-top:14px">Заказ привязан к номеру ' + esc(phone) + '.<br>' + (QR_SELF_ORDER ? '🐾 Самозаказ: вознаграждение начислено по вашему тарифу; косточки не списываются и не начисляются.' : 'Косточки-бонусы начислятся на этот номер.') + '</p>' : '')
+    + (phone ? '<p class="small" style="margin-top:14px">Заказ привязан к номеру ' + esc(phone) + '.<br>' + (QR_SELF_ORDER ? '🐾 Самозаказ: при скидке на первую покупку комиссия не начисляется, без промокода — по вашему тарифу; косточки не списываются и не начисляются.' : 'Косточки-бонусы начислятся на этот номер.') + '</p>' : '')
     + '<button class="link-btn" onclick="location.href=\'/?page=account&open_orders=1\'">Открыть мой заказ</button>'
     + '<div class="notify-title">Получать уведомления о заказах</div>'
     + '<div class="notify-grid">'

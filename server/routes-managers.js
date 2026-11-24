@@ -535,10 +535,11 @@ function registerManagerRoutes(router) {
       `).all(point.id);
       const withStats = partners.map((p) => {
         const stats = db.prepare(`
-          SELECT COUNT(*) AS orders_count, COALESCE(SUM(total), 0) AS revenue
+          SELECT COUNT(*) AS orders_count, COALESCE(SUM(total), 0) AS revenue,
+            COALESCE(SUM(ROUND(total * COALESCE(commission_rate, ?, 0))), 0) AS commission_earned
           FROM orders
           WHERE partner_id = ? AND status = 'paid' AND created_at >= datetime('now', '-' || ? || ' days')
-        `).get(p.id, days);
+        `).get(p.commission_rate, p.id, days);
         return {
           id: p.id,
           partner_code: p.partner_code,
@@ -549,7 +550,7 @@ function registerManagerRoutes(router) {
           active: !!p.active,
           orders_count: stats.orders_count,
           revenue: stats.revenue,
-          commission_earned: Math.round(stats.revenue * p.commission_rate),
+          commission_earned: stats.commission_earned,
           unpaid_earnings: getUnpaidSummary(p.id).amount,
         };
       });

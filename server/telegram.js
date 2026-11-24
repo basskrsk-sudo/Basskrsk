@@ -180,7 +180,9 @@ function buildOrderMessage(order, items) {
   const bonesLine = order.bones_used > 0 ? '🦴 Оплачено косточками: ' + order.bones_used + ' ₽\n' : '';
   const deliveryFeeLine = isHomeDelivery ? '🚚 Доставка: ' + (order.delivery_fee > 0 ? order.delivery_fee + ' ₽' : 'бесплатно') + '\n' : '';
   const selfOrderLine = order.is_partner_self_order
-    ? '👤 <b>САМОЗАКАЗ ГРУМЕРА</b> — вознаграждение начислено по тарифу ' + Math.round(Number(order.commission_rate || 0) * 100) + '%. Косточки не списываются и не начисляются.\n'
+    ? '👤 <b>САМОЗАКАЗ ГРУМЕРА</b> — ' + (order.promo_code && Number(order.commission_rate) === 0
+      ? 'скидка на первую покупку, комиссия грумеру 0%.'
+      : 'вознаграждение начислено по тарифу ' + Math.round(Number(order.commission_rate || 0) * 100) + '%.') + ' Косточки не списываются и не начисляются.\n'
     : '';
   const actionLine = (isHomeDelivery
     ? '→ Соберите заказ, передайте курьеру или отвезите по адресу сами, свяжитесь с клиентом для согласования времени.'

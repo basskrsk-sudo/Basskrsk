@@ -2561,7 +2561,7 @@
           <div class="checkout-advisor-hint" id="oGroomerLinkHint"></div>
         </div>
         <div id="oSelfOrderBanner" style="display:none;background:#FFF4E5;border-radius:8px;padding:.7rem .9rem;margin-bottom:.9rem;font-size:.82rem;color:#7A4A00;line-height:1.5;">
-          🐾 Самозаказ грумера: вознаграждение начислится по вашему тарифу. Косточки в этом заказе нельзя списать, и новые косточки не начисляются.
+          🐾 Самозаказ грумера: со скидкой на первую покупку комиссия не начисляется, без промокода — по вашему тарифу. Косточки не списываются и не начисляются.
         </div>
         <div id="pickup-instant-note" style="background:#FDF3DC;border-radius:var(--radius);padding:.9rem 1rem;margin-bottom:1.2rem;font-size:.85rem;color:var(--deep);line-height:1.6;">
           ✅ Товар уже находится в минимаркете. После оплаты заберите его самостоятельно — обращаться к сотруднику не обязательно.
@@ -5896,7 +5896,7 @@ async function goToPayment() {
     <div style="font-size:.8rem;color:#775000;margin-top:8px;padding:8px;background:#FFF8E6;border-radius:8px;">
       ℹ️ ${escapeHtml(firstPurchasePromoOffer()?.notice(document.getElementById('oFirstPurchasePromo')?.value) || '')}
     </div>` : ''}
-    ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 Самозаказ: вознаграждение по тарифу; косточки не списываются и не начисляются.</div>' : ''}
+    ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 Самозаказ: при скидке на первую покупку комиссия не начисляется, без промокода — по тарифу; косточки отключены.</div>' : ''}
     <div style="border-top:1px solid var(--border);margin-top:.75rem;padding-top:.75rem;display:flex;justify-content:space-between;font-weight:700;font-size:1rem;">
       <span>Итого</span><span style="color:var(--amber);">${total} ₽</span>
     </div>
@@ -6425,7 +6425,7 @@ async function handleRedirectPaymentReturn() {
             ${data.display_number ? `<div style="font-size:.75rem;color:var(--muted);">🔐 Технический код для привязки заказа: ${escapeHtml(data.order_code || orderCode)}</div>` : ''}
             ${pending && pending.pickup ? `<div>📍 <strong>${successType === 'home_delivery' ? 'Доставка' : 'Минимаркет'}:</strong> ${escapeHtml(pending.pickup)}</div>` : ''}
             ${pending && pending.total ? `<div>💳 <strong>Оплачено:</strong> <span style="color:var(--amber);font-weight:700;">${Number(pending.total)} ₽</span></div>` : ''}
-            ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 <strong>Самозаказ:</strong> вознаграждение по тарифу; косточки не списываются и не начисляются.</div>' : ''}
+            ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 <strong>Самозаказ:</strong> при скидке на первую покупку комиссия не начисляется, без промокода — по тарифу; косточки отключены.</div>' : ''}
           </div>`;
         document.getElementById('loyalty-badge-card').style.display = 'none';
         trackGoalOnce('payment_success', data.order_code || orderCode, {
@@ -6568,7 +6568,7 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
       ${!isCurrentOrderSelfOrder && getLoyaltyCashbackAmount(subtotal) > 0 ? `<div>${isPetBirthdayCheckout ? '🎂' : '🎉'} <strong>Кэшбэк ${loyaltyPercent}%:</strong> +${getLoyaltyCashbackAmount(subtotal)} 🦴 начислим на баланс</div>` : ''}
       ${bonesToUse > 0 ? `<div>🦴 <strong>Оплачено косточками:</strong> −${bonesToUse} ₽</div>` : ''}
       ${firstPurchasePromoValid ? `<div>🏷️ <strong>Промокод:</strong> скидка ${firstPurchasePromoPercent}%</div>` : ''}
-      ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 <strong>Самозаказ:</strong> вознаграждение начислено по вашему тарифу; косточки не списываются и не начисляются.</div>' : ''}
+      ${isCurrentOrderSelfOrder ? '<div style="color:#7A4A00;">🐾 <strong>Самозаказ:</strong> при скидке на первую покупку комиссия не начисляется, без промокода — по тарифу; косточки отключены.</div>' : ''}
       <div style="border-top:1px solid var(--border);margin-top:.5rem;padding-top:.5rem;">
         💳 <strong>Оплачено через ЮKassa:</strong> <span style="color:var(--amber);font-weight:700;">${subtotal} ₽</span>
       </div>

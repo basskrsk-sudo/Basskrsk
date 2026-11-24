@@ -51,8 +51,8 @@ function releaseFailedOrderAndAlert(orderId, reason) {
 
 
 // Самозаказ определяется сервером по телефону активного грумера выбранной
-// точки. Такой заказ получает обычную ставку грумера, но не участвует в
-// программе «Косточки»: их нельзя ни списать, ни получить.
+// точки. С действительным промокодом первой покупки комиссия равна 0;
+// без него применяется обычная ставка. Косточки всегда отключены.
 
 // Оплаченный демо-заказ опасен как неявный запасной сценарий: отсутствие или
 // опечатка в ключах ЮKassa не должны превращать неоплаченный заказ в продажу.
@@ -92,7 +92,7 @@ function phonesMatchLast10(a, b) {
 // Смотрим на партнёра, который реально обслуживал заказ (partnerId, если
 // клиент его выбрал — актуально для точек с несколькими грумерами), а если
 // не выбирали — на единственного активного грумера точки.
-function resolveOrderCommission(pointId, partnerId, customerPhone, advisorSelection) {
+function resolveOrderCommission(pointId, partnerId, customerPhone, advisorSelection, firstPurchasePromoApplied = false) {
   let partner = null;
   if (partnerId) {
     partner = db.prepare('SELECT phone, commission_rate FROM partners WHERE id = ?').get(partnerId);
@@ -111,7 +111,7 @@ function resolveOrderCommission(pointId, partnerId, customerPhone, advisorSelect
   }
   if (!partner) return { rate: null, isSelfOrder: false };
   const isSelfOrder = phonesMatchLast10(partner.phone, customerPhone);
-  return { rate: partner.commission_rate, isSelfOrder };
+  return { rate: isSelfOrder && firstPurchasePromoApplied ? 0 : partner.commission_rate, isSelfOrder };
 }
 
 const selfOrderingPartnerQuery = db.prepare(`
@@ -614,9 +614,10 @@ function registerPaymentRoutes(router) {
     }
 
     // Телефон имеет приоритет над выбором в форме: самозаказ автоматически
-    // привязывается к самому грумеру и оплачивается по его действующему тарифу.
+    // привязывается к самому грумеру. Валидный промокод первой покупки
+    // сохраняет скидку, но обнуляет только комиссию грумера.
     const { rate: orderCommissionRate, isSelfOrder } = resolveOrderCommission(
-      pointId, authoritativePartnerId, customerPhone, advisorSelection
+      pointId, authoritativePartnerId, customerPhone, advisorSelection, !!promoValidation?.valid
     );
     if (isSelfOrder) {
       console.log(`[create-payment] Заказ ${orderId}: самозаказ грумера — вознаграждение ${Math.round(orderCommissionRate * 100)}%, косточки отключены`);
