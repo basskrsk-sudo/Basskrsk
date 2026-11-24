@@ -34,3 +34,12 @@ test.after(()=>{
   try { require('./db').close(); } catch(_) {}
   fs.rmSync(temp, { recursive:true, force:true });
 });
+
+test('retry reconstructs a multi-item fiscal receipt with exactly the paid amount',()=>{
+  const multi=[{variant_id:1,name:'Лёгкое',weight:'50 г',price:250,qty:2},
+    {variant_id:2,name:'Игрушка',weight:'1 шт.',price:300,qty:1}];
+  const args=storedQrPaymentArgs({...order,subtotal:800,discount:160,total:640},multi);
+  assert.equal(args.amount,640);
+  assert.equal(args.receiptItems.reduce((sum,i)=>sum+Math.round(Number(i.amount.value)*100)*Number(i.quantity),0),64000);
+  assert.equal(storedQrPaymentArgs({...order,subtotal:800,discount:160,total:640},multi.slice(0,1)),null);
+});
