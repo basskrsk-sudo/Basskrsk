@@ -337,7 +337,7 @@ if(!tg||!tg.initData){
 try{var d=await api('/api/miniapp/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})});state.verified=true;state.user=d.user;state.name=d.user.first_name||'';el('hello').textContent='Привет, '+state.name+'!';el('appMode').textContent='● Telegram'}catch(e){el('appMode').textContent='Нет входа';toast(e.message)}if(window.HvostMiniAppIdentity)await window.HvostMiniAppIdentity.init(tg,state.verified?state.user:null)}
 function resumeAndroidMiniPayment(){if(!document.hidden&&state.view==='result'&&state.paymentUncertain&&state.pendingCode)checkPaymentReturn(state.pendingCode);}
 document.addEventListener('visibilitychange',resumeAndroidMiniPayment);
-window.addEventListener('pageshow',function(e){if(e.persisted)resumeAndroidMiniPayment();});
+if(typeof window.addEventListener==='function')window.addEventListener('pageshow',function(e){if(e.persisted)resumeAndroidMiniPayment();});
 async function refreshReadOnlyAfterReconnect(){
   // Only refetch and revalidate: never duplicate payment or inventory writes.
   // Mark shop stock stale; do not download the entire catalog while a user
