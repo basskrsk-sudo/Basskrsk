@@ -1,10 +1,11 @@
 'use strict';
 const { buildReceiptItems } = require('./order-pricing');
+const { redirectPaymentPath } = require('./redirect-payment-capability');
 // Identical request body + original idempotency key; only new opaque QR codes.
 function storedQrPaymentArgs(order, items) {
-  if (!order || !/^TG-\d{13}-[a-f0-9]{16}$/.test(String(order.order_code || '')) ||
-      !order.payment_return_url || order.payment_method !== 'yookassa' ||
-      order.fulfillment_type !== 'pickup' || !order.point_id ||
+  if (!redirectPaymentPath(order) ||
+      !['pickup','home_delivery'].includes(order.fulfillment_type) ||
+      (order.fulfillment_type==='pickup'&&!order.point_id) ||
       !Array.isArray(items) || items.length < 1 || items.length > 50 ||
       items.some(i=>!i.variant_id||!Number.isSafeInteger(i.qty)||i.qty<1||i.qty>99||!Number.isSafeInteger(i.price)||i.price<1)) return null;
   const subtotal=Number(order.subtotal), discount=Number(order.discount||0);
@@ -14,8 +15,8 @@ function storedQrPaymentArgs(order, items) {
       subtotal <= 0 || amount < 1 || discount < 0 || bones < 0 ||
       deliveryFee < 0 || subtotal-discount+deliveryFee-bones !== amount) return null;
   if(items.reduce((sum,i)=>sum+i.price*i.qty,0)!==subtotal)return null;
-  // Only reconstruct a QR redirect, not arbitrary catalog/embedded payments.
-  try { if(!/^\/p\/[-A-Za-z0-9._~%]+\/[-A-Za-z0-9._~%]+\/?$/.test(new URL(order.payment_return_url).pathname))return null; } catch (_) { return null; }
+  // Only opaque codes issued for a hosted redirect may be reconstructed.
+  if(order.fulfillment_type==='home_delivery'&&redirectPaymentPath(order)!=='/')return null;
   const goodsAfterPromo=subtotal-discount;
   const adjustedGoods=goodsAfterPromo-Math.min(bones,goodsAfterPromo);
   const adjustedDelivery=deliveryFee-(bones-Math.min(bones,goodsAfterPromo));
