@@ -408,8 +408,10 @@ function startReservationCleanup() {
 function registerPaymentRoutes(router) {
   startReservationCleanup();
   router.get('/api/first-purchase-promo/policy', (req, res) => {
-    const policy = getFirstPurchasePromoPolicy();
-    sendJson(res, 200, {discount_percent: policy.discountPercent,
+    const { UNIVERSAL_PROMO_CODE } = require('./first-purchase-promo-policy');
+    const policy = getFirstPurchasePromoPolicy(undefined, UNIVERSAL_PROMO_CODE);
+    sendJson(res, 200, {promo_code: UNIVERSAL_PROMO_CODE, discount_percent: policy.discountPercent,
+      legacy_discount_percent: getFirstPurchasePromoPolicy().discountPercent,
       effective_on:policy.effectiveOn,timezone:policy.timezone,
       changed:policy.changed});
   });
