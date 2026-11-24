@@ -82,7 +82,6 @@
     var buyerLink = point && groomerCode
       ? 'https://хвостмаркет.рф/?ref=' + encodeURIComponent(point.id) +
         '&partner=' + encodeURIComponent(partner.id) +
-        '&promo=' + encodeURIComponent(groomerCode) +
         (point.city_id ? '&city=' + encodeURIComponent(point.city_id) : '')
       : '';
     var registrationLink = referralCode
@@ -94,11 +93,11 @@
       esc(offerPolicy().notice(groomerCode))+'</p>' +
       '<div class="work-promo-list">' +
       card('groomer', '🎁 Единый промокод −'+promoPercent+'%', groomerCode,
-        'Действует во всех точках. Можно ввести просто 15.' + (point ? ' Ваш салон: ' + point.name : '')) +
+        'Действует во всех точках. Покупатель вводит код самостоятельно. До 30 ноября HV20 даёт 20%; HV15 — 15%.' + (point ? ' Ваш салон: ' + point.name : '')) +
       card('referral', '🤝 Реферальный код для привлечения точек', referralCode,
         'Пригласите нового грумера или салон.') +
       card('buyer', '🔗 Моя ссылка для покупателей', buyerLink,
-        'Предвыбирает ваш салон, грумера и единый промокод.') +
+        'Предвыбирает ваш салон и грумера. Покупатель вводит промокод сам.') +
       card('registration', '🔗 Моя ссылка для привлечения новых грумеров', registrationLink,
         'Новый салон заполнит заявку. За новую точку фиксируется 1 000 ₽, к выплате после 2 000 ₽ прибыли.') +
       '</div>' + referralStats(partner.referrals) +
