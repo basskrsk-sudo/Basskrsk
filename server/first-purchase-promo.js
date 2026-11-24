@@ -5,6 +5,8 @@ const { PAID_PHONE_KEY_SQL } = require('./report-phone-key');
 
 const {
   getFirstPurchasePromoPolicy,
+  UNIVERSAL_PROMO_CODE,
+  isUniversalFirstPurchasePromoCode,
   lookupStoredFirstPurchasePromoCode,
   firstPurchasePromoNotice,
 } = require('./first-purchase-promo-policy');
@@ -54,7 +56,8 @@ function hasUnsettledPromoClaim(phone) {
 }
 
 function validateFirstPurchasePromo(code, phone, pointId = null, now = Date.now()) {
-  const promoCode = normalizePromoCode(code);
+  const universal = isUniversalFirstPurchasePromoCode(code);
+  const promoCode = universal ? UNIVERSAL_PROMO_CODE : normalizePromoCode(code);
   // HV15/HVOST15 aliases work immediately and retain the same partner/salon.
   // Old codes keep their scheduled 20% -> 15% transition.
   const storedCode = lookupStoredFirstPurchasePromoCode(promoCode, now);
@@ -63,7 +66,11 @@ function validateFirstPurchasePromo(code, phone, pointId = null, now = Date.now(
   if (!promoCode) return { valid: false, error: 'Введите промокод на первую покупку' };
   if (!normalizedPhone) return { valid: false, error: 'Сначала укажите корректный номер телефона' };
 
-  const point = db.prepare('SELECT id, name, first_purchase_promo_code FROM points WHERE UPPER(first_purchase_promo_code) = ? AND active = 1').get(storedCode);
+  // The shared code belongs to the actual active pickup point, never an arbitrary partner.
+  const point = universal
+    ? (pointId ? db.prepare('SELECT id, name, first_purchase_promo_code FROM points WHERE id = ? AND active = 1').get(pointId) : null)
+    : db.prepare('SELECT id, name, first_purchase_promo_code FROM points WHERE UPPER(first_purchase_promo_code) = ? AND active = 1').get(storedCode);
+  if (universal && !point) return { valid: false, error: 'Для промокода HV15 выберите действующую точку ХвостМаркета' };
   const alias = point ? null : db.prepare('SELECT p.id, p.name, p.first_purchase_promo_code FROM first_purchase_point_promo_aliases a JOIN points p ON p.id=a.point_id WHERE UPPER(a.promo_code)=? AND p.active=1').get(storedCode);
   const salon = point || alias;
   const partner = salon ? null : db.prepare(`
@@ -80,7 +87,7 @@ function validateFirstPurchasePromo(code, phone, pointId = null, now = Date.now(
 
   return {
     valid: true,
-    // Keep exactly the code the buyer entered, not a hidden rewrite.
+    // Keep legacy code as entered; the numeric shortcut is stored as HV15.
     promoCode,
     partnerId: partner ? partner.id : null,
     partnerName: partner ? partner.full_name : null,
