@@ -83,5 +83,5 @@ test('salon editor modal opens at its own scroll top; not its previous gallery p
   const modal=sourceBetween(adminHtml,'async function openSalonPageModal(pointId, pointName) {','function closeSalonPageModal() {');
   assert.match(modal,/modal\.style\.display = 'flex';/);
   assert.match(modal,/modal\.firstElementChild\.scrollTop = 0/);
-  assert.match(adminHtml,/admin-point\.js\?v=2/);
+  assert.match(adminHtml,/admin-point\.js\?v=3/);
 });
