@@ -1957,24 +1957,42 @@ db.exec("CREATE TABLE IF NOT EXISTS point_referrals (" +
   ")");
 ensureColumn('point_referrals','invited_partner_id','INTEGER REFERENCES partners(id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_point_referrals_recipient ON point_referrals(role,recipient_id)');
-db.exec(`CREATE TABLE IF NOT EXISTS point_referral_assignment_log (
+const referralAuditSchema=`CREATE TABLE IF NOT EXISTS point_referral_assignment_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   point_id TEXT NOT NULL,point_name TEXT NOT NULL,
-  inviter_partner_id INTEGER NOT NULL,inviter_name TEXT NOT NULL,
+  inviter_role TEXT NOT NULL DEFAULT 'partner' CHECK(inviter_role IN ('partner','owner')),
+  inviter_partner_id INTEGER,inviter_owner_id INTEGER,inviter_name TEXT NOT NULL,
   invited_partner_id INTEGER,invited_name TEXT,
   admin_id INTEGER NOT NULL,admin_login TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-)`);
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK((inviter_role='partner' AND inviter_partner_id IS NOT NULL AND inviter_owner_id IS NULL)
+    OR (inviter_role='owner' AND inviter_owner_id IS NOT NULL AND inviter_partner_id IS NULL))
+)`;
+db.exec(referralAuditSchema);
+// One-time additive role migration, preserve every legacy audit row and ID.
+if(!db.prepare('PRAGMA table_info(point_referral_assignment_log)').all().some(c=>c.name==='inviter_role')){
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    db.exec('ALTER TABLE point_referral_assignment_log RENAME TO point_referral_assignment_log_old');
+    db.exec(referralAuditSchema);
+    db.exec(`INSERT INTO point_referral_assignment_log
+      (id,point_id,point_name,inviter_role,inviter_partner_id,inviter_name,invited_partner_id,invited_name,admin_id,admin_login,created_at)
+      SELECT id,point_id,point_name,'partner',inviter_partner_id,inviter_name,invited_partner_id,invited_name,admin_id,admin_login,created_at
+      FROM point_referral_assignment_log_old`);
+    db.exec('DROP TABLE point_referral_assignment_log_old');
+    db.exec('COMMIT');
+  }catch(e){db.exec('ROLLBACK');throw e;}
+}
 db.exec('CREATE INDEX IF NOT EXISTS idx_partner_leads_referrer ON partner_leads(referred_by_role,referred_by_id)');
 // Preserve previously accrued referral bonuses; never recreate a cash payout.
 db.exec("INSERT OR IGNORE INTO point_referrals(point_id,point_name,role,recipient_id,recipient_code,amount,source) " +
   "SELECT mp.point_id,mp.point_name,'partner',mp.referred_groomer_id,g.partner_code," +
   "COALESCE(mp.referred_groomer_amount,1000),'legacy-bonus' FROM manager_points mp " +
-  "JOIN partners g ON g.id=mp.referred_groomer_id WHERE mp.point_id IS NOT NULL AND mp.bonus_paid=1");
+  "JOIN partners g ON g.id=mp.referred_groomer_id WHERE mp.point_id IS NOT NULL AND mp.referred_groomer_amount>0");
 db.exec("INSERT OR IGNORE INTO point_referrals(point_id,point_name,role,recipient_id,recipient_code,amount,source) " +
   "SELECT mp.point_id,mp.point_name,'owner',mp.referred_owner_id,o.owner_code," +
   "COALESCE(mp.referred_owner_amount,1000),'legacy-bonus' FROM manager_points mp " +
-  "JOIN salon_owners o ON o.id=mp.referred_owner_id WHERE mp.point_id IS NOT NULL AND mp.bonus_paid=1");
+  "JOIN salon_owners o ON o.id=mp.referred_owner_id WHERE mp.point_id IS NOT NULL AND mp.referred_owner_amount>0");
 
 // Bring already accrued but NOT transferred manager launch bonuses into the
 // 1 000 + 1 000 split for points with a recorded inviter. Historical payouts
@@ -2153,6 +2171,8 @@ if (missingPartnerPhoneKeys.length) {
   }
 }
 require('./payout-reports').initializeReports(db);
+const ownerReferralBackfill=require('./referral-policy').backfillOwnerReferrals(db);
+if(ownerReferralBackfill)console.info('[referrals] Owner bonuses accrued at unified threshold:',ownerReferralBackfill);
 module.exports = db;
 module.exports.DB_PATH = DB_PATH;
 module.exports.JOURNAL_MODE = JOURNAL_MODE;

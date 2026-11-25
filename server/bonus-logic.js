@@ -2,8 +2,7 @@
 // Без пригласившего менеджеру начисляется 2 000 ₽. При зафиксированном
 // пригласившем: 1 000 ₽ менеджеру и отдельно 1 000 ₽ пригласившему
 // при выполнении условий его реферальной программы.
-// Пригласивший грумер достигает порога при 1 000 ₽ оплаченной выручки;
-// для приглашений владельцами по-прежнему нужен порог 2 000 ₽ прямой прибыли.
+// Для всех рекомендателей порог един: 1 000 ₽ оплаченной выручки за вычетом возвратов.
 'use strict';
 
 const db = require('./db');
@@ -19,20 +18,13 @@ const FEE_RATE = { card: 0.025, bank_card: 0.025, sbp: 0.007, yookassa: 0.025 };
 
 const LAUNCH_BONUS = 2000; // бюджет премии менеджеру и пригласившему вместе
 const MANAGER_REVENUE_THRESHOLD = 2000; // оплаченная выручка за всё время
-const REFERRAL_REVENUE_THRESHOLD = 1000; // новая акция «Приведи партнёра» для грумеров
-const REFERRAL_PROFIT_THRESHOLD = 2000; // существующее правило приглашений владельцами
-const REFERRAL_SPLIT = 1000; // премия пригласившему партнёру из бюджета запуска
+const {REFERRAL_REVENUE_THRESHOLD,REFERRAL_SPLIT,computeReferralRevenue}=require('./referral-policy');
 
 // Прямая прибыль компании с точки за ВСЁ время (без квартальных накладных —
 // те распределяются отдельно, раз в квартал, см. quarterly-bonus.js). Та же
 // формула себестоимости и комиссий, что и там — чтобы цифры не расходились
 // между "когда выплачивать бонус" и "квартальный отчёт по прибыльности".
-function computePointRevenueSoFar(pointId) {
-  return Number(db.prepare("SELECT COALESCE(SUM(CASE WHEN COALESCE(refund_status,'')='refunded' THEN 0 " +
-"ELSE MAX(0,total-COALESCE(refunded_amount,0)) END),0) AS revenue FROM orders " +
-    "WHERE point_id=? AND status='paid'")
-    .get(pointId).revenue || 0);
-}
+function computePointRevenueSoFar(pointId) { return computeReferralRevenue(db,pointId); }
 
 function computePointProfitSoFar(pointId, partnerRate, managerRate) {
   const orders = db.prepare(`
@@ -74,7 +66,7 @@ function computePointProfitSoFar(pointId, partnerRate, managerRate) {
 // начислить бонус за точку, к которой относится этот заказ.
 async function checkAndPayManagerBonus(pointId) {
   if (!pointId) return;
-  const mgrPoint = db.prepare('SELECT * FROM manager_points WHERE point_id = ?').get(pointId);
+  const mgrPoint = db.prepare('SELECT * FROM manager_points WHERE point_id = ? ORDER BY id LIMIT 1').get(pointId);
   if (!mgrPoint) return;
   const revenueSoFar = computePointRevenueSoFar(pointId);
   const managerIsDue = !mgrPoint.bonus_paid && revenueSoFar >= MANAGER_REVENUE_THRESHOLD;
@@ -108,18 +100,22 @@ async function checkAndPayManagerBonus(pointId) {
       "AND NOT EXISTS (SELECT 1 FROM manager_launch_bonus_payouts bp WHERE bp.manager_point_id=manager_points.id)"
     ).run(managerBonusAmount,mgrPoint.id,LAUNCH_BONUS,managerBonusAmount);
   }
-  const profitSoFar = ownerReferrer && !alreadyAccruedReferral
-    ? computePointProfitSoFar(pointId,partner ? partner.commission_rate : 0,mgrPoint.commission_rate)
-    : 0;
-  const referralIsDue = hasReferrer && !alreadyAccruedReferral &&
-    (groomerReferrer ? revenueSoFar >= REFERRAL_REVENUE_THRESHOLD
-      : profitSoFar >= REFERRAL_PROFIT_THRESHOLD);
+  // A historical full launch payment cannot be silently clawed back or
+  // doubled. Refuse a new referral if this point's budget is already spent.
+  const referralBudgetUsed=!!db.prepare(`SELECT 1 FROM manager_launch_bonus_payouts bp
+    JOIN manager_points old ON old.id=bp.manager_point_id WHERE old.point_id=? AND bp.amount>?
+    UNION ALL SELECT 1 FROM referral_bonus_payouts bp JOIN manager_points old ON old.id=bp.manager_point_id
+    WHERE old.point_id=? LIMIT 1`).get(pointId,REFERRAL_SPLIT,pointId);
+  const otherAccrual=!!db.prepare(`SELECT 1 FROM manager_points
+    WHERE point_id=? AND id<>? AND (referred_groomer_id IS NOT NULL OR referred_owner_id IS NOT NULL) LIMIT 1`).get(pointId,mgrPoint.id);
+  const referralIsDue = !!(groomerReferrer||ownerReferrer) && !alreadyAccruedReferral &&
+    !referralBudgetUsed && !otherAccrual && revenueSoFar >= REFERRAL_REVENUE_THRESHOLD;
   if (!managerIsDue && !referralIsDue) return;
 
   let managerAccrued = false;
   let referralAccrued = false;
   // Independent thresholds, but a shared 2k launch budget: manager receives
-  // 1k when an inviter is registered, even if owner's referral accrues later.
+  // 1k when an inviter is registered, independently of the referral threshold.
   if (managerIsDue) {
     const result = db.prepare(
       "UPDATE manager_points SET bonus_paid=1,bonus_manager_amount=?," +
@@ -151,10 +147,8 @@ async function checkAndPayManagerBonus(pointId) {
       ': <b>' + managerBonusAmount + ' ₽</b> за запуск — начислено к выплате.');
   }
   if (referralAccrued) {
-    if (groomerReferrer) lines.push('✅ Оплаченная выручка новой точки за вычетом возвратов: ' + Math.round(revenueSoFar) +
+    lines.push('✅ Оплаченная выручка новой точки за вычетом возвратов: ' + Math.round(revenueSoFar) +
       ' ₽ (порог ' + REFERRAL_REVENUE_THRESHOLD + ' ₽).');
-    else lines.push('✅ Прямая прибыль: ' + Math.round(profitSoFar) +
-      ' ₽ (порог ' + REFERRAL_PROFIT_THRESHOLD + ' ₽).');
     if (groomerReferrer) lines.push('🤝 Пригласившему грумеру ' + groomerReferrer.full_name +
       ': <b>' + REFERRAL_SPLIT + ' ₽</b> — начислено к выплате.');
     if (ownerReferrer) lines.push('🏠 Пригласившему владельцу ' + ownerReferrer.full_name +
@@ -164,4 +158,4 @@ async function checkAndPayManagerBonus(pointId) {
   await sendTelegram(lines.join('\n')).catch(() => {});
 }
 
-module.exports = { checkAndPayManagerBonus, computePointRevenueSoFar, computePointProfitSoFar, LAUNCH_BONUS, MANAGER_REVENUE_THRESHOLD, REFERRAL_REVENUE_THRESHOLD, REFERRAL_PROFIT_THRESHOLD, REFERRAL_SPLIT };
+module.exports = { checkAndPayManagerBonus, computePointRevenueSoFar, computePointProfitSoFar, LAUNCH_BONUS, MANAGER_REVENUE_THRESHOLD, REFERRAL_REVENUE_THRESHOLD, REFERRAL_SPLIT };

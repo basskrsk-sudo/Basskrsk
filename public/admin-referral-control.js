@@ -3,7 +3,7 @@
 // Real transfers remain in "Отчёты к договорам" / "Бонусы за привлечение точек".
 (function(){
   'use strict';
-  var data={points:[],partners:[],counts:{},bonus_by_partner:{}};
+  var data={points:[],partners:[],owners:[],counts:{},bonus_by_partner:{}};
   var selectedPointId='';
   var busy=false;
   var E=function(id){return document.getElementById(id);};
@@ -12,7 +12,7 @@
   });};
   var money=function(n){return Number(n||0).toLocaleString('ru-RU')+' ₽';};
   var labels={
-    unassigned:'Не назначен',other_referral:'Пригласил владелец (другая программа)',
+    unassigned:'Не назначен',
     awaiting:'Ожидает выручку',needs_reconcile:'Порог достигнут — проверить',
     payable:'Начислено к выплате',on_hold:'После возврата — проверка',paid:'Бонус выплачен',
   };
@@ -30,16 +30,16 @@
       var next=p.status==='needs_reconcile'
         ?'<button type="button" class="row-btn" data-ref-reconcile="'+esc(p.point_id)+'">Проверить начисление</button>'
         :p.status==='unassigned'&&p.manager_assigned
-          ?'<button type="button" class="row-btn" data-ref-open="'+esc(p.point_id)+'">Выбрать грумера</button>'
+          ?'<button type="button" class="row-btn" data-ref-open="'+esc(p.point_id)+'" >Назначить рекомендателя</button>'
           :p.status==='awaiting'&&!p.invited_partner_id
             ?'<button type="button" class="row-btn" data-ref-open="'+esc(p.point_id)+'">Указать приглашённого</button>'
             :p.status==='payable'
-              ?'<button type="button" class="row-btn" data-ref-report="'+Number(p.inviter_partner_id)+'">К выплатам</button>'
+              ?'<button type="button" class="row-btn" data-ref-report="'+Number(p.inviter_id||p.inviter_partner_id)+'" data-ref-report-role="'+esc(p.role)+'">К выплатам</button>'
               :'';
       return '<tr>'+
         '<td><b>'+esc(p.point_name)+'</b><div style="font-size:.73rem;color:var(--muted)">'+esc(p.point_address||'')+'</div></td>'+
         '<td>'+esc(p.invited_name||'—')+'</td>'+
-        '<td>'+esc(p.inviter_name||'—')+'</td>'+
+        '<td>'+esc(p.inviter_name||'—')+(p.inviter_name?'<div style="font-size:.73rem;color:var(--muted)">'+esc(p.inviter_kind==='owner'?'Владелец салона':p.inviter_kind==='referrer'?'Рекомендатель без точки':'Грумер')+(p.inviter_salon_name?' · '+esc(p.inviter_salon_name):'')+'</div>':'')+'</td>'+
         '<td style="min-width:155px;"><b>'+money(p.revenue)+'</b> / '+money(data.threshold)+
           '<div style="height:6px;border-radius:6px;background:#E9E5DE;overflow:hidden;margin-top:6px"><div style="width:'+pct+'%;height:100%;background:var(--deep);"></div></div></td>'+
         '<td>'+esc(status)+(p.status==='unassigned'&&!p.manager_assigned
@@ -50,8 +50,18 @@
   function options(partners, selected, placeholder){
     return '<option value="">'+esc(placeholder)+'</option>'+partners.map(function(p){
       return '<option value="'+Number(p.id)+'"'+(Number(selected)===Number(p.id)?' selected':'')+'>'+
-        esc(p.full_name)+' ('+esc(p.partner_code||'')+')</option>';
+        esc((p.point_name?p.point_name+' — ':'')+p.full_name)+' ('+esc(p.owner_code||p.partner_code||'')+')</option>';
     }).join('');
+  }
+  function fillInviters(point){
+    var role=E('referral-inviter-role').value;
+    var choices=role==='owner'?(data.owners||[]):(data.partners||[]).filter(function(g){return role==='referrer'?g.partner_type==='referrer':g.partner_type!=='referrer';});
+    var inviters=choices.filter(function(g){return g.active&&g.point_id!==point.point_id;});
+    var selected=point.inviter_id||point.inviter_partner_id||point.inviter_owner_id;
+    var inviter=E('referral-inviter');
+    inviter.innerHTML=options(inviters,selected,'— Выберите рекомендателя —');
+    inviter.disabled=['partner','owner'].includes(point.role);
+    E('referral-inviter-label').textContent=role==='owner'?'Владелец и его салон':role==='referrer'?'Рекомендатель без стойки':'Грумер и его салон';
   }
   function open(pointId){
     var point=(data.points||[]).find(function(p){return p.point_id===pointId;});
@@ -61,12 +71,13 @@
     E('referral-modal-point').textContent=point.point_name;
     E('referral-modal-status').textContent='';
     var invitees=(data.partners||[]).filter(function(g){return g.active&&g.point_id===pointId;});
-    var inviters=(data.partners||[]).filter(function(g){return g.active&&g.point_id!==pointId;});
-    var inviter=E('referral-inviter');
-    inviter.innerHTML=options(inviters,point.inviter_partner_id,'— Выберите пригласившего —');
-    inviter.disabled=point.role==='partner';
+    var role=E('referral-inviter-role');
+    role.value=point.inviter_kind||'partner';
+    role.disabled=['partner','owner'].includes(point.role);
+    E('referral-historical-confirm').checked=false;
+    fillInviters(point);
     E('referral-invited').innerHTML=options(invitees,point.invited_partner_id,'— Приглашённый ещё не зарегистрирован —');
-    E('referral-modal-note').textContent=point.role==='partner'
+    E('referral-modal-note').textContent=['partner','owner'].includes(point.role)
       ?'Пригласивший уже зафиксирован. Можно указать приглашённого грумера, если связь ещё не была указана.'
       :'При наличии ранее оплаченных заказов потребуется отдельно подтвердить назначение задним числом.';
   }
@@ -75,9 +86,9 @@
     if(busy||!selectedPointId)return;
     var invited=E('referral-invited').value,inviter=E('referral-inviter').value;
     var status=E('referral-modal-status'),button=E('referral-modal-save');
-    if(!inviter){status.textContent='Выберите пригласившего грумера.';return;}
+    if(!inviter){status.textContent='Выберите рекомендателя.';return;}
     busy=true;button.disabled=true;status.textContent='Сохраняем связь…';
-    var base={inviter_partner_id:Number(inviter),invited_partner_id:invited?Number(invited):null};
+    var base={inviter_role:E('referral-inviter-role').value==='owner'?'owner':'partner',inviter_id:Number(inviter),invited_partner_id:invited?Number(invited):null};
     try{
       async function submit(historical){
         var r=await authFetch('/api/admin/referral-control/points/'+encodeURIComponent(selectedPointId),{
@@ -87,7 +98,7 @@
         if(!r.ok)throw Object.assign(new Error(result.error||'Не удалось сохранить'),{code:result.code});
         return result;
       }
-      try{await submit(false);}
+      try{await submit(E('referral-historical-confirm').checked);}
       catch(error){
         if(error.code!=='CONFIRM_HISTORICAL_SALES')throw error;
         if(!confirm('На точке уже были оплаченные продажи. Назначить пригласившего задним числом? Если выручка достигла 1 000 ₽, бонус будет начислен сразу.')) {
@@ -149,7 +160,7 @@
       if(b.dataset.refOpen)return open(b.dataset.refOpen);
       if(b.dataset.refReconcile)return reconcile(b.dataset.refReconcile);
       if(b.dataset.refReport&&typeof openPayoutReports==='function'){
-        openPayoutReports('partner').then(function(){
+        openPayoutReports(b.dataset.refReportRole==='owner'?'owner':'partner').then(function(){
           var el=E('pr-recipient');
           if(el){el.value=b.dataset.refReport; if(typeof changeReportRecipient==='function')changeReportRecipient();}
         });
@@ -157,6 +168,7 @@
     });
     var registration=E('referral-new-partner-form');
     if(registration)registration.addEventListener('submit',createReferralPartner);
+    E('referral-inviter-role').addEventListener('change',function(){var point=(data.points||[]).find(p=>p.point_id===selectedPointId);if(point)fillInviters(point);});
     E('referral-modal-cancel').addEventListener('click',close);
     E('referral-modal-save').addEventListener('click',save);
   }

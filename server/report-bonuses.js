@@ -31,10 +31,10 @@ function getBonuses(db, role, recipientId) {
   // Do not remove the historic accrual; separate it from payable balances.
   const held = [];
   const payable = [];
-  if (role === 'partner') {
-    const { computePointRevenueSoFar, REFERRAL_REVENUE_THRESHOLD } = require('./bonus-logic');
+  if (role === 'partner' || role === 'owner') {
+    const { computeReferralRevenue, REFERRAL_REVENUE_THRESHOLD } = require('./referral-policy');
     for (const item of pending) {
-      if (item.point_id && computePointRevenueSoFar(item.point_id)<REFERRAL_REVENUE_THRESHOLD)
+      if (item.point_id && computeReferralRevenue(db,item.point_id)<REFERRAL_REVENUE_THRESHOLD)
         held.push({...item, reason:'После возвратов выручка ниже 1 000 ₽'});
       else payable.push(item);
     }
@@ -73,9 +73,9 @@ function createReferralBonusPayout(db, role, managerPointId, recipientId, expect
     // Referral accrual is independent of the manager's launch bonus. The
     // referral id and amount are written only after the relevant threshold.
     if (!Number.isSafeInteger(amount) || amount <= 0) throw Object.assign(new Error('Бонус ещё не начислен'),{statusCode:409});
-    if (role === 'partner' && point.point_id) {
-      const { computePointRevenueSoFar, REFERRAL_REVENUE_THRESHOLD } = require('./bonus-logic');
-      if (computePointRevenueSoFar(point.point_id) < REFERRAL_REVENUE_THRESHOLD) {
+    if (point.point_id) {
+      const { computeReferralRevenue, REFERRAL_REVENUE_THRESHOLD } = require('./referral-policy');
+      if (computeReferralRevenue(db,point.point_id) < REFERRAL_REVENUE_THRESHOLD) {
         throw Object.assign(new Error('После возвратов оплаченная выручка точки ниже 1 000 ₽ — выплата временно недоступна'),{statusCode:409});
       }
     }

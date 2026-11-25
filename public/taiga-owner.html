@@ -262,7 +262,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
       <div class="owner-panel" data-owner-panel="salon">
       <div class="card" style="margin-bottom:1.2rem;">
         <div class="card-title">🤝 Мой промокод для привлечения новых точек</div>
-        <p style="font-size:.85rem;color:var(--muted);line-height:1.6;margin-bottom:.8rem;">Приведите нового грумера или ветеринара — когда его точка заработает «ХвостМаркету» 2 000 ₽ прямой прибыли, вам придёт 1 000 ₽ (вторая половина достаётся менеджеру, который нашёл саму точку).</p>
+        <p style="font-size:.85rem;color:var(--muted);line-height:1.6;margin-bottom:.8rem;">Приведите новую точку — получите разовый бонус 1 000 ₽ после достижения ею 1 000 ₽ оплаченной выручки за вычетом возвратов. Менеджер получает отдельные 1 000 ₽ после 2 000 ₽ оплаченной выручки приглашённой точки.</p>
         <div style="display:flex;align-items:center;gap:.6rem;background:var(--cream);border-radius:8px;padding:.7rem 1rem;flex-wrap:wrap;">
           <span style="font-family:monospace;font-weight:700;font-size:1.05rem;color:var(--forest);" id="owner-ref-code">—</span>
           <button class="row-btn" onclick="copyOwnerRefCode(this)" style="margin-left:auto;">Скопировать</button>
@@ -274,13 +274,15 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
         <button class="row-btn" type="button" onclick="copyOwnerRefLink(this)" style="margin:8px 0 0;">📋 Скопировать ссылку</button>
         <p style="margin-top:.8rem;font-size:.82rem;color:var(--muted);">
           При создании новой точки фиксируется ожидаемый бонус 1 000 ₽.
-          К выплате после 2 000 ₽ прямой прибыли точки. Перевод подтверждается администратором.
+          К выплате после 1 000 ₽ оплаченной выручки точки за вычетом возвратов. Перевод подтверждается администратором.
         </p>
         <p style="font-size:.82rem;color:var(--muted);line-height:1.65">
           Ожидается: <b id="owner-ref-awaiting">0 ₽</b> ·
           К выплате: <b id="owner-ref-payable">0 ₽</b> ·
+          На удержании после возвратов: <b id="owner-ref-held">0 ₽</b> ·
           Выплачено: <b id="owner-ref-paid">0 ₽</b>
         </p>
+        <div id="owner-ref-points" style="margin-top:.8rem;font-size:.82rem;"></div>
         <div style="margin-top:.8rem;font-size:.82rem;color:var(--muted);">Уже заработано по промокоду: <strong id="owner-ref-total" style="color:var(--text);">0 ₽</strong></div>
       </div>
 
@@ -612,6 +614,10 @@ async function loadDashboard() {
     document.getElementById('owner-ref-awaiting').textContent=fmtMoney(bonuses.awaiting||0);
     document.getElementById('owner-ref-payable').textContent=fmtMoney(bonuses.payable||0);
     document.getElementById('owner-ref-paid').textContent=fmtMoney(bonuses.paid||0);
+    document.getElementById('owner-ref-held').textContent=fmtMoney(bonuses.held||0);
+    const referralPoints=document.getElementById('owner-ref-points');referralPoints.replaceChildren();
+    const referralLabels={awaiting:'Ожидает выручку',payable:'Начислено к выплате',on_hold:'На удержании после возврата',paid:'Выплачено'};
+    for(const row of bonuses.rows||[]){const el=document.createElement('div');el.textContent=row.point_name+' · '+fmtMoney(row.amount)+' · '+(referralLabels[row.status]||row.status);referralPoints.append(el);}
     document.getElementById('owner-ref-total').textContent = fmtMoney((data.referral_bonuses && data.referral_bonuses.total) || 0);
 
     const groomersBody = document.getElementById('groomers-tbody');
