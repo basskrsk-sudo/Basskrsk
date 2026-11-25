@@ -4,10 +4,10 @@
 // ledgers remain authoritative. No new payout, snapshot, or partner message.
 function fail(message,statusCode=400){return Object.assign(new Error(message),{statusCode,publicMessage:true});}
 const LABELS={partner:'Грумер / рекомендатель',owner:'Владелец салона',manager:'Менеджер'};
-function listRewardReports(db,kind,collect){
+function listRewardReports(db,kind,collect,now=new Date()){
   if(kind==='unpaid'){
-    const report=(collect||require('./payout-brief').collectPayoutBrief)(new Date(),{summaryOnly:true});
-    return {kind,recipients:report.people.map(p=>({key:p.selection_key,name:p.name,roles:p.roles_label,
+    const report=(collect||require('./payout-brief').collectPayoutBrief)(now,{summaryOnly:true,monthly:true});
+    return {kind,period:report.period,recipients:report.people.map(p=>({key:p.selection_key,name:p.name,roles:p.roles_label,
       points:[...new Set(p.statements.map(s=>s.point).filter(Boolean))].join(', '),amount:p.total}))};
   }
   if(kind!=='period')throw fail('Выберите вид отчёта');
@@ -21,12 +21,12 @@ function listRewardReports(db,kind,collect){
   }
   return {kind,recipients};
 }
-function createMaxRewardReports(db,{collect,renderBrief,generatePeriod,renderPeriod,sendFile}={}){
+function createMaxRewardReports(db,{collect,renderBrief,generatePeriod,renderPeriod,sendFile,now=()=>new Date()}={}){
   let busy=false;
   const readBrief=collect||((...args)=>require('./payout-brief').collectPayoutBrief(...args));
   const readPeriod=generatePeriod||((...args)=>require('./payout-reports').generatePeriodReport(...args));
   const money=n=>Number(n||0).toLocaleString('ru-RU')+' ₽';
-  function options(body){return listRewardReports(db,body?.kind,readBrief);}
+  function options(body){return listRewardReports(db,body?.kind,readBrief,now());}
   async function send(body,{userId,token,authorize}){
     if(busy)throw fail('Другой отчёт MAX ещё формируется. Повторите запрос после его завершения.',503);
     busy=true;
@@ -36,16 +36,19 @@ function createMaxRewardReports(db,{collect,renderBrief,generatePeriod,renderPer
       if(body?.kind==='unpaid'){
         if(typeof body.key!=='string'||!/^[a-f0-9]{16}$/.test(body.key)||!Number.isSafeInteger(body.expected_total)||body.expected_total<0)
           throw fail('Выберите получателя справки из списка');
-        const report=readBrief(new Date(),{recipientKey:body.key});
+        const report=readBrief(now(),{recipientKey:body.key,monthly:true});
         const person=report.people.find(p=>p.selection_key===body.key);
-        if(!person||person.total!==body.expected_total)throw fail('Начисления изменились. Обновите список получателей.',409);
+        if(!person||person.total!==body.expected_total||(body.expected_period&&report.period.key!==body.expected_period))throw fail('Начисления изменились. Обновите список получателей.',409);
         const rows=person.statements.reduce((n,s)=>n+(s.sales||[]).length+(s.bonuses||[]).length+(s.refund_adjustments||[]).length+(s.refund_outstanding||[]).length+(s.refund_orders||[]).length+(s.refund_review||[]).length,0);
         if(rows>500)throw fail('Справка слишком объёмна. Используйте отчёт за более короткий период.',413);
         pdf=await (renderBrief||require('./payout-brief-pdf').renderPayoutBriefPdf)(report,{recipient:person});
         filename='HvostMarket_payout_'+body.key+'.pdf';
+        const {formatSaleDateTime,monthlyBreakdownLines}=require('./payout-brief');
         caption=['ХвостМаркет — справка к выплате','Получатель: '+person.name,'Роли: '+person.roles_label,
-          'Период: '+person.period.label,'К выплате: '+money(person.total),
-          'Справка предварительная. Выплата не зафиксирована. Перешлите нужному партнёру самостоятельно.'].join('\n');
+          'Период: '+person.period.label,
+          'Срез начислений: '+formatSaleDateTime(report.generated_at)+' (Красноярск)',
+          ...((person.prior_accrued||person.undated_accrued||person.adjustments_applied||person.deferred_commission)?monthlyBreakdownLines(person):[]),
+          'К выплате: '+money(person.total)].join('\n');
       }else if(body?.kind==='period'){
         if(!Object.hasOwn(LABELS,body.role)||!Number.isSafeInteger(body.recipient_id)||body.recipient_id<=0)throw fail('Выберите получателя отчёта');
         const report=readPeriod(db,body.role,body.recipient_id,body.start,body.end);
@@ -54,8 +57,7 @@ function createMaxRewardReports(db,{collect,renderBrief,generatePeriod,renderPer
         filename='HvostMarket_reward_'+body.role+'_'+body.recipient_id+'_'+body.start+'_'+body.end+'.pdf';
         caption=['ХвостМаркет — расчёт вознаграждения','Получатель: '+report.recipient.name,
           'Роль: '+LABELS[body.role],'Период: '+body.start+' — '+body.end,
-          'Начислено за период: '+money(report.accrued),
-          'Отчёт справочный. Перешлите нужному партнёру самостоятельно.'].join('\n');
+          'Начислено за период: '+money(report.accrued)].join('\n');
       }else throw fail('Выберите вид отчёта');
       authorize();
       const result=await (sendFile||require('./max-reward-report-file').sendMaxRewardFile)({userId,token,pdf,filename,caption,authorize});

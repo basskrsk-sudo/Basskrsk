@@ -118,7 +118,11 @@ test('each recipient gets a standalone itemized sales report with a precise peri
   assert.ok(pages.length>=1);
   const document=pages.join('\n').replace(/\u00a0|\u202f/g,' ');
   assert.match(document,/Получатель: Иван Иванов/);
-  assert.match(document,/Период расчётов: 20\.10\.2026/);
+  assert.match(document,/Даты начислений: 20\.10\.2026 — 24\.10\.2026/);
+  const cutoff='2026-11-24T18:30:00.000Z'; // Nov 25 in Krasnoyarsk, still Nov 24 UTC.
+  const cutoffPdf=payoutBriefPdfPages({...report,generated_at:cutoff},'/usr/share/fonts/dejavu/DejaVuSans.ttf',{recipient:dual}).join('\n');
+  assert.match(cutoffPdf,/Срез начислений: 25\.11\.2026,?\s+01:30 \(Красноярск\)/);
+  assert.match(cutoffPdf,/Даты начислений: 20\.10\.2026 — 24\.10\.2026/);
   assert.match(document,/Бычий корень/);
   assert.match(document,/Стоимость продажи: 1 000 ₽/);
   assert.match(document,/Ставка \(Грумер\): 20%/);
@@ -188,4 +192,50 @@ test('full returns are absent from groomer and owner remuneration reports; parti
    }
    assert.equal(JSON.stringify(archived),before);
  }
+});
+
+test('closed monthly payout cycle is fixed on local 25th through 24th, independently of orders',()=>{
+ const {monthlyPayoutPeriod}=require('./payout-brief');
+ assert.equal(monthlyPayoutPeriod(new Date('2026-11-24T16:59:59Z')).label,'25.09.2026 — 24.10.2026');
+ const now=new Date('2026-11-24T17:00:00Z');
+ assert.equal(monthlyPayoutPeriod(now).label,'25.10.2026 — 24.11.2026');
+ assert.equal(monthlyPayoutPeriod(new Date('2027-01-25T05:00:00Z')).label,'25.12.2026 — 24.01.2027');
+ assert.equal(monthlyPayoutPeriod(new Date('2028-03-25T05:00:00Z')).label,'25.02.2028 — 24.03.2028');
+ const previous=insertOrder('MONTHLY-PRIOR',groomer2,500,'paid');
+ const end=insertOrder('MONTHLY-LAST',groomer2,1000,'paid');
+ const next=insertOrder('MONTHLY-NEXT',groomer2,2000,'paid');
+ const set=db.prepare('UPDATE orders SET created_at=? WHERE id=?');
+ set.run('2026-10-24 16:59:59',previous);
+ set.run('2026-11-24 16:59:59',end);
+ set.run('2026-11-24 17:00:00',next);
+ const monthly=collectPayoutBrief(now,{monthly:true});
+ const person=monthly.people.find(p=>p.statements.some(s=>s.role==='partner'&&s.account_id===groomer2));
+ assert.equal(person.period.label,'25.10.2026 — 24.11.2026');
+ assert.equal(person.period_accrued,200);
+ assert.equal(person.prior_accrued,200);
+ assert.equal(person.total,400);
+ assert.ok(!person.statements[0].sales.some(s=>s.order_id===next));
+ assert.equal(person.statements[0].sales.find(s=>s.order_id===end).period_part,'current');
+ assert.equal(person.statements[0].sales.find(s=>s.order_id===previous).period_part,'prior');
+ const selected=collectPayoutBrief(now,{monthly:true,recipientKey:person.selection_key});
+ assert.equal(selected.people[0].total,400);
+ const summary=collectPayoutBrief(now,{monthly:true,summaryOnly:true});
+ assert.equal(summary.people.find(p=>p.selection_key===person.selection_key).total,400);
+ const noSales=monthly.people.find(p=>p.statements.some(s=>s.role==='partner'&&s.account_id===groomer1));
+ // This recipient combines a groomer and the salon's manager. The groomer
+ // has no new sales; the manager earns 7% on the other groomer's 1,000 RUB.
+ assert.equal(noSales.statements.find(s=>s.role==='partner').period_accrued,0);
+ assert.equal(noSales.statements.find(s=>s.role==='manager').period_accrued,70);
+ assert.equal(noSales.period_accrued,70);
+ assert.equal(noSales.period.label,person.period.label);
+ const msg=formatRecipientPayoutMessage(person,monthly.generated_at).replace(/\u00a0|\u202f/g,' ');
+ assert.match(msg,/Период расчётов: 25\.10\.2026 — 24\.11\.2026/);
+ assert.match(msg,/Долг прошлых периодов: 200 ₽/);
+ const pdf=payoutBriefPdfPages(monthly,'/test/font.ttf',{recipient:person}).join('\n');
+ assert.match(pdf,/Расчётный период: 25\.10\.2026 — 24\.11\.2026/);
+ assert.doesNotMatch(pdf,/MONTHLY-NEXT/);
+ const csv=buildPayoutBriefCsv(monthly);
+ assert.match(csv,/MONTHLY-LAST/);assert.doesNotMatch(csv,/MONTHLY-NEXT/);
+ const nextReport=collectPayoutBrief(new Date('2026-12-25T08:00:00Z'),{monthly:true,recipientKey:person.selection_key});
+ assert.equal(nextReport.people[0].period_accrued,400);
 });
