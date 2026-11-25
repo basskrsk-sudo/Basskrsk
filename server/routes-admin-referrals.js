@@ -134,7 +134,7 @@ function adminAssignReferral(pointId, body, admin) {
     const accrued = !!db.prepare('SELECT 1 FROM manager_points WHERE point_id=? AND (referred_groomer_id IS NOT NULL OR referred_owner_id IS NOT NULL) LIMIT 1').get(pointId);
     const paid = db.prepare('SELECT bp.id FROM referral_bonus_payouts bp JOIN manager_points old ON old.id=bp.manager_point_id WHERE old.point_id=? LIMIT 1').get(pointId);
     const previousInviters=db.prepare('SELECT referred_by_partner_id,referred_by_owner_id,phone FROM partners WHERE point_id=? AND (referred_by_partner_id IS NOT NULL OR referred_by_owner_id IS NOT NULL)').all(pointId);
-    if(previousInviters.some(g=>(g.referred_by_partner_id&&(role!==\'partner\'||Number(g.referred_by_partner_id)!==inviterId))||(g.referred_by_owner_id&&(role!==\'owner\'||Number(g.referred_by_owner_id)!==inviterId))))throw Object.assign(new Error('У точки уже есть другой рекомендатель в истории регистраций'),{statusCode:409});
+    if(previousInviters.some(g=>(g.referred_by_partner_id&&(role!=='partner'||Number(g.referred_by_partner_id)!==inviterId))||(g.referred_by_owner_id&&(role!=='owner'||Number(g.referred_by_owner_id)!==inviterId))))throw Object.assign(new Error('У точки уже есть другой рекомендатель в истории регистраций'),{statusCode:409});
     // Prevent an additional 1 000 RUB invitation after the manager already
     // received the entire 2 000 RUB launch budget. No automatic clawback.
     if ((!previous || previous.role==='none') && db.prepare(
