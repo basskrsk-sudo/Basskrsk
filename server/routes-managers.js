@@ -290,6 +290,14 @@ function registerManagerRoutes(router) {
 
     let pointId = null;
     if (address) {
+      // This legacy route has no city input and creates points in the default
+      // city (krsk). Prevent a repeated registration from making a second
+      // point and therefore another welcome draft.
+      const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase('ru-RU')
+        .replace(/[.,;]+/g,' ').replace(/\s+/g,' ').trim();
+      if(db.prepare("SELECT name,addr FROM points WHERE city_id='krsk'").all()
+        .some(p=>normalize(p.name)===normalize(point_name)&&normalize(p.addr)===normalize(address)))
+        return sendJson(res,409,{error:'Минимаркет с таким названием и адресом уже зарегистрирован.'});
       const { slugify } = require('./routes-warehouse');
       let base = slugify(point_name);
       let candidate = base, i = 1;
