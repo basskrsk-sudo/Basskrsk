@@ -55,7 +55,18 @@ test('PDF download uses the saved snapshot endpoint and an actual PDF filename',
 test('PDF endpoint requires admin, validates ids, and exports only stored financial data', async () => {
   const handlers=new Map();let allowed=false, queried=false, rendered;
   const r=sample(1);
-  const db={prepare(sql){queried=true;if(sql.includes('FROM payout_reports'))return {get:()=>({id:12,snapshot_json:JSON.stringify(r)})};throw Error('unexpected query: '+sql);}};
+  const db={prepare(sql){
+    queried=true;
+    if(sql.includes('FROM payout_reports'))return {get:()=>({id:12,snapshot_json:JSON.stringify(r)})};
+    // enrichReportOrders prepares both historical lookup statements even when
+    // the stored snapshot already contains a date and product lines.
+    // Preparation is allowed; reading live data for a complete snapshot is not.
+    if(sql.includes('FROM orders')||sql.includes('FROM order_items')){
+      const unexpected=()=>{throw Error('unexpected live lookup for complete snapshot');};
+      return {get:unexpected,all:unexpected};
+    }
+    throw Error('unexpected query: '+sql);
+  }};
   const mod={exports:{}};
   const localRequire=name=>name==='./db'?db:name==='./routes-auth'?{requireAuth:()=>()=>allowed?{id:1}:null}:
     name==='./payout-report-pdf'?{renderPayoutPdf:async report=>{rendered=report;return Buffer.from('%PDF-1.4\nTEST');}}:
