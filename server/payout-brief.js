@@ -6,6 +6,7 @@ const {getOwnerUnpaidOrders}=require('./owner-payouts');
 const {getManagerUnpaidOrders}=require('./manager-payouts');
 const {getBonuses}=require('./report-bonuses');
 const {createHash}=require('node:crypto');
+const {PAYOUT_METHODS,payoutMethodCode,payoutMethodLabel}=require('./payout-methods');
 
 const ROLES=Object.freeze({partner:'Грумер',owner:'Владелец салона',manager:'Менеджер'});
 const formatter=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0});
@@ -111,9 +112,9 @@ function itemListLabel(items){
 
 function accounts(){
   return [
-    ...db.prepare('SELECT id,full_name,phone,inn,telegram_chat_id,point_name,point_id FROM partners ORDER BY id')
+    ...db.prepare('SELECT id,full_name,phone,inn,telegram_chat_id,point_name,point_id,payout_method FROM partners ORDER BY id')
       .all().map(row=>({...row,role:'partner'})),
-    ...db.prepare('SELECT o.id,o.full_name,o.phone,NULL AS inn,o.telegram_chat_id,p.name AS point_name,o.point_id FROM salon_owners o LEFT JOIN points p ON p.id=o.point_id ORDER BY o.id')
+    ...db.prepare('SELECT o.id,o.full_name,o.phone,NULL AS inn,o.telegram_chat_id,p.name AS point_name,o.point_id,o.payout_method FROM salon_owners o LEFT JOIN points p ON p.id=o.point_id ORDER BY o.id')
       .all().map(row=>({...row,role:'owner'})),
     ...db.prepare('SELECT id,full_name,phone,inn,telegram_chat_id,NULL AS point_name,NULL AS point_id FROM managers ORDER BY id')
       .all().map(row=>({...row,role:'manager'})),
@@ -186,6 +187,7 @@ function roleStatement(account,getItems,detail=true,cycle=null){
   return {
     role:account.role,role_label:ROLES[account.role],account_id:account.id,
     name:clean(account.full_name),point:clean(account.point_name),
+    payout_method:payoutMethodCode(account.payout_method),payout_method_label:payoutMethodLabel(account.payout_method),
     orders:eligible.length,commission,bonus,total:commission+bonus,
     ...(cycle?{period_accrued:breakdown.current,prior_accrued:breakdown.prior,undated_accrued:breakdown.undated,
       adjustments_applied:plan.adjustments.reduce((n,x)=>n+num(x.amount),0),
@@ -206,6 +208,30 @@ function roleStatement(account,getItems,detail=true,cycle=null){
 function recipientKeyForAccounts(accounts){
   const identities=(accounts||[]).map(account=>String(account.role)+':'+String(account.id)).sort();
   return createHash('sha256').update(identities.join('|')).digest('hex').slice(0,16);
+}
+function payoutMethodGroups(people){
+  const map=new Map();
+  for(const person of people||[]){
+    for(const s of person.statements||[]){
+      const amount=num(s.total);
+      if(amount<=0)continue;
+      const method=payoutMethodCode(s.payout_method);
+      if(!map.has(method))map.set(method,{method,label:payoutMethodLabel(method),amount:0,people:[]});
+      const row=map.get(method);row.amount+=amount;
+      const key=person.selection_key||person.index||person.name;
+      let payee=row.people.find(x=>x.key===key);
+      if(!payee){payee={key,name:person.name,amount:0,roles:[]};row.people.push(payee);}
+      payee.amount+=amount;
+      if(!payee.roles.includes(s.role_label||ROLES[s.role]))payee.roles.push(s.role_label||ROLES[s.role]);
+    }
+  }
+  return [...Object.keys(PAYOUT_METHODS),null].filter(m=>map.has(m)).map(m=>map.get(m));
+}
+function payoutMethodDescription(person){
+  const groups=person.payout_method_groups||payoutMethodGroups([person]);
+  if(!groups.length)return payoutMethodLabel(person.payout_method);
+  if(groups.length===1)return groups[0].label;
+  return groups.map(g=>g.label+' — '+money(g.amount)).join('; ');
 }
 function groupStatements(entries,cycle=null){
   const people=[];
@@ -230,7 +256,7 @@ function groupStatements(entries,cycle=null){
       period:cycle||personPeriod(p.statements),
       ...(cycle?{monthly:true,period_accrued:total('period_accrued'),prior_accrued:total('prior_accrued'),
         undated_accrued:total('undated_accrued'),adjustments_applied:total('adjustments_applied'),deferred_commission:total('deferred_commission')}:{}),
-      statements:p.statements,commission:total('commission'),bonus:total('bonus'),
+      statements:p.statements,payout_method_groups:payoutMethodGroups([p]),commission:total('commission'),bonus:total('bonus'),
       total:total('total'),held_orders:new Set(p.statements.flatMap(s=>s.held_order_ids)).size,
       held_order_ids:[...new Set(p.statements.flatMap(s=>s.held_order_ids))],
       held_amount:total('held_amount')};
@@ -277,7 +303,7 @@ function collectPayoutBrief(now=new Date(),{recipientKey=null,summaryOnly=false,
       adjustments_applied:sum('adjustments_applied'),deferred_commission:sum('deferred_commission')}:{}),
     bonus:sum('bonus'),held_orders:new Set(people.flatMap(p=>p.held_order_ids)).size,
     held_amount:sum('held_amount'),
-    role_totals,identities_to_verify,
+    role_totals,identities_to_verify,payout_method_groups:payoutMethodGroups(people),
     note:'Справка предварительная. Выплаты не отмечены. Возвраты учитываются автоматически; исторические выплаты без подтверждённой ставки выделены отдельно. Суммы до налоговых удержаний.',
   };
 }
@@ -301,15 +327,20 @@ function formatPayoutBriefMessage(report){
     '• Грумерам: '+money(report.role_totals.partner),
     '• Владельцам: '+money(report.role_totals.owner),
     '• Менеджерам: '+money(report.role_totals.manager),
-    'В том числе бонусы: '+money(report.bonus),'','Получатели:'];
+    'В том числе бонусы: '+money(report.bonus),'','По способам выплаты:'];
+  const groups=report.payout_method_groups||payoutMethodGroups(report.people);
+  for(const g of groups)lines.push('• '+g.label+': '+money(g.amount));
+  lines.push('','Получатели по способам:');
   if(!report.people.length)lines.push('Сейчас невыплаченных начислений нет.');
-  for(const p of report.people){
-    const line=p.index+'. '+clean(p.name,44)+' — '+money(p.total)+' ('+
-      p.roles.map(role=>ROLES[role]).join(' + ')+')'+(p.held_orders?' · ⚠️ возвраты: '+p.held_orders:'');
-    if((lines.join('\n')+'\n'+line).length>3000){
-      lines.push('… остальные получатели — в CSV.');break;
+  let truncated=false;
+  for(const g of groups){
+    if(truncated)break;
+    lines.push(g.label+':');
+    for(const payee of g.people){
+      const line='• '+clean(payee.name,44)+' — '+money(payee.amount)+' ('+payee.roles.join(' + ')+')';
+      if((lines.join('\n')+'\n'+line).length>3000){lines.push('… остальные получатели — в CSV.');truncated=true;break;}
+      lines.push(line);
     }
-    lines.push(line);
   }
   lines.push('','📊 CSV: общая детализация по получателям, ролям и точкам.',
     '📄 Персональные PDF: только после выбора получателя и отдельного подтверждения.');
@@ -326,6 +357,7 @@ function formatRecipientPayoutMessage(person,generatedAt){
     '👤 '+clean(person.name,75),
     'Роли: '+person.roles.map(role=>ROLES[role]).join(' + '),
     '📅 Период расчётов: '+person.period.label,
+    'Способ выплаты: '+payoutMethodDescription(person),
     'Срез начислений: '+formatSaleDateTime(generatedAt)+' (Красноярск)',
     'Дата продажи указана по времени создания оплаченного заказа.',
     person.monthly?'Основа: невыплаченные начисления до конца периода; старые долги отдельно.':'Основа: все ещё невыплаченные заказы и бонусы.',
@@ -382,9 +414,11 @@ function csvCell(value){
 function buildPayoutBriefCsv(report){
   const rows=[['Получатель','Роль','Период расчётов','Дата заказа/продажи (Красноярск)',
     'Заказ','Точка','Наименования товаров','Стоимость продажи (руб.)',
-    'Процент партнёра','Вознаграждение (руб.)','Тип начисления'].map(csvCell).join(';')];
+    'Процент партнёра','Вознаграждение (руб.)','Тип начисления','Способ выплаты'].map(csvCell).join(';')];
   for(const person of report.people){
     for(const section of person.statements){
+      const method=payoutMethodLabel(section.payout_method);
+      const first=rows.length;
       for(const sale of section.sales||[]){
         rows.push([person.name,section.role_label,person.period.label,
           sale.date,sale.order_code,sale.point,sale.items_label,sale.sale_total,
@@ -401,14 +435,19 @@ function buildPayoutBriefCsv(report){
           '', '',bonus.amount,(bonus.type==='launch_bonus'?'Бонус за запуск':'Реферальный бонус')+(bonus.period_part==='prior'?' — долг прошлого периода':bonus.period_part==='undated'?' — без даты':'')]
           .map(csvCell).join(';'));
       }
+      for(let i=first;i<rows.length;i++)rows[i]+=';'+csvCell(method);
     }
     rows.push([person.name,'ИТОГО',person.period.label,'','','','', '',
-      '',person.total,'Итого к выплате'].map(csvCell).join(';'));
+      '',person.total,'Итого к выплате',payoutMethodDescription(person)].map(csvCell).join(';'));
+  }
+  for(const g of report.payout_method_groups||payoutMethodGroups(report.people)){
+    for(const payee of g.people)rows.push([payee.name,payee.roles.join(' + '),report.period?.label||'','','','','','','',payee.amount,'К выплате по способу',g.label].map(csvCell).join(';'));
+    rows.push(['ИТОГО ПО СПОСОБУ','',report.period?.label||'','','','','','','',g.amount,'Итого по способу',g.label].map(csvCell).join(';'));
   }
   rows.push(['ОБЩИЙ ИТОГ','','','','','','','',
-    '',report.total,'Все получатели'].map(csvCell).join(';'));
+    '',report.total,'Все получатели',''].map(csvCell).join(';'));
   return '\uFEFF'+rows.join('\r\n')+'\r\n';
 }
 module.exports={collectPayoutBrief,formatPayoutBriefMessage,buildPayoutBriefCsv,
   groupStatements,recipientKeyForAccounts,sameRecipient,normalizePhone,namesCompatible,money,clean,
-  formatRecipientPayoutMessage,formatSaleDateTime,personPeriod,itemListLabel,monthlyPayoutPeriod,monthlyBreakdownLines};
+  formatRecipientPayoutMessage,formatSaleDateTime,personPeriod,itemListLabel,monthlyPayoutPeriod,monthlyBreakdownLines,payoutMethodGroups,payoutMethodDescription};

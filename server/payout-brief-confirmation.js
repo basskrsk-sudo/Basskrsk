@@ -3,6 +3,7 @@
 const db=require('./db');
 const {randomBytes}=require('node:crypto');
 const {staleStatement}=require('./payout-statement-orders');
+const {PAYOUT_METHODS,payoutMethodCode,payoutMethodLabel}=require('./payout-methods');
 const roles=new Set(['partner','owner','manager']);
 let initialized=false;
 function ensure(){
@@ -45,7 +46,7 @@ function snapshotPerson(person){
     const commission=Number(section.commission);
     if(!integer(commission)||commission!==Math.max(0,gross-sum(adjustments,'amount')-Number(section.refund_carried||0))||
       bonus!==Number(section.bonus)||commission+bonus!==Number(section.total))throw staleStatement();
-    if(commission+bonus>0)statements.push({role:section.role,account_id:Number(section.account_id),name:section.name,commission,bonus,sales:commission>0?sales:[],adjustments,bonuses});
+    if(commission+bonus>0)statements.push({role:section.role,account_id:Number(section.account_id),name:section.name,commission,bonus,payout_method:payoutMethodCode(section.payout_method),sales:commission>0?sales:[],adjustments,bonuses});
   }
   const amount=statements.reduce((n,s)=>n+s.commission+s.bonus,0);
   if(!Number.isSafeInteger(amount)||amount<=0||amount!==Number(person.total))throw staleStatement();
@@ -74,14 +75,15 @@ function ownedRow(chatId,id){
   const row=db.prepare('SELECT * FROM payout_brief_confirmations WHERE id=? AND chat_id=? AND admin_id=?').get(id,String(chatId),admin.id);
   return row?{row,admin}:null;
 }
-function applyStatement(snapshot,admin){
+function applyStatement(snapshot,admin,override){
   const partner=require('./partner-payouts'),owner=require('./owner-payouts'),manager=require('./manager-payouts');
   const {getBonuses,createReferralBonusPayout}=require('./report-bonuses');
   const create={partner:partner.createPartnerPayout,owner:owner.createOwnerPayout,manager:manager.createManagerCommissionPayout};
   const {roleConfig}=require('./payout-reports');
-  const results=[],options={inTransaction:true};
+  const results=[];
   for(const section of snapshot.statements){
     const role=section.role,accountId=section.account_id;
+    const options={inTransaction:true,payout_method:override===undefined?payoutMethodCode(section.payout_method):override};
     const account=db.prepare('SELECT full_name FROM '+roleConfig(role).table+' WHERE id=?').get(accountId);
     const cleanName=v=>String(v||'').replace(/[\x00-\x1f\x7f]/g,' ').replace(/\s+/g,' ').trim().slice(0,120);
     if(!account||cleanName(account.full_name)!==section.name)throw staleStatement();
@@ -111,7 +113,7 @@ function applyStatement(snapshot,admin){
   return results;
 }
 function handlePayoutConfirmation(chatId,data){
-  const match=/^payout:(paid|confirm|cancel):([0-9a-f]{32})$/.exec(String(data||''));
+  const match=/^payout:(paid|confirm|cancel|confirm-(?:sbp|card|bank_account|cash|unknown)):([0-9a-f]{32})$/.exec(String(data||''));
   if(!match)return {ok:false,message:'Некорректная кнопка выплаты.'};
   const [,action,id]=match;
   const found=ownedRow(chatId,id);
@@ -121,8 +123,14 @@ function handlePayoutConfirmation(chatId,data){
     message:'✅ Выплата уже зафиксирована: '+row.recipient_name+' — '+rub(row.amount)+'. Повторная фиксация не выполняется.'};
   if(action==='paid'){
     db.prepare("UPDATE payout_brief_confirmations SET state='confirming' WHERE id=? AND state='ready'").run(id);
-    return {ok:true,message:'Подтвердите, что деньги фактически переведены.\n\nПолучатель: '+row.recipient_name+'\nСумма по справке: '+rub(row.amount)+'\n\nБудут закрыты только начисления из этого PDF. Новые продажи останутся к выплате. Бот не переводит деньги.',
-      reply_markup:{inline_keyboard:[[{text:'✅ Подтвердить выплату',callback_data:'payout:confirm:'+id}],[{text:'❌ Отмена',callback_data:'payout:cancel:'+id}]]}};
+    const snapshot=JSON.parse(row.snapshot_json);
+    const labels={partner:'Грумер',owner:'Владелец салона',manager:'Менеджер'};
+    const details=snapshot.statements.map(s=>labels[s.role]+': '+payoutMethodLabel(s.payout_method)+' · '+rub(s.commission+s.bonus));
+    return {ok:true,message:'Подтвердите, что деньги фактически переведены.\n\nПолучатель: '+row.recipient_name+'\nСумма по справке: '+rub(row.amount)+'\n\nСпособы выплаты по справке:\n'+details.join('\n')+'\n\nПодтвердите указанные способы или выберите один фактический способ для всей суммы. Будут закрыты только начисления из этого PDF. Бот не переводит деньги.',
+      reply_markup:{inline_keyboard:[[{text:'✅ Подтвердить выплату',callback_data:'payout:confirm:'+id}],
+        ...Object.entries(PAYOUT_METHODS).map(([key,label])=>[{text:'✅ '+label,callback_data:'payout:confirm-'+key+':'+id}]),
+        [{text:'✅ Способ не указан',callback_data:'payout:confirm-unknown:'+id}],
+        [{text:'❌ Отмена',callback_data:'payout:cancel:'+id}]]}};
   }
   if(action==='cancel'){
     db.prepare("UPDATE payout_brief_confirmations SET state='ready' WHERE id=? AND state='confirming'").run(id);
@@ -135,7 +143,8 @@ function handlePayoutConfirmation(chatId,data){
     if(!current||current.row.state!=='confirming')throw staleStatement();
     const snapshot=JSON.parse(current.row.snapshot_json);
     if(snapshot.amount!==current.row.amount)throw staleStatement();
-    const results=applyStatement(snapshot,current.admin);
+    const override=action==='confirm'?undefined:action==='confirm-unknown'?null:payoutMethodCode(action.slice('confirm-'.length));
+    const results=applyStatement(snapshot,current.admin,override);
     const updated=db.prepare("UPDATE payout_brief_confirmations SET state='paid',confirmed_at=CURRENT_TIMESTAMP,result_json=? WHERE id=? AND state='confirming'").run(JSON.stringify(results),id);
     if(!updated.changes)throw staleStatement();
     db.exec('COMMIT');

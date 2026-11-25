@@ -23,3 +23,11 @@ test('arbitrary payout method payloads are rejected', () => {
     assert.throws(() => parsePayoutMethod(value), /Недопустимый/);
   }
 });
+
+test('actual payout method is explicit, nullable and validates enum',()=>{
+ const {parseActualPayoutMethod}=require('./payout-methods');
+ assert.equal(parseActualPayoutMethod(undefined),null);
+ assert.equal(parseActualPayoutMethod('cash'),'cash');
+ assert.throws(()=>parseActualPayoutMethod('bogus'),{statusCode:400});
+ assert.equal(payoutMethodLabel('constructor'),'Не указан');
+});

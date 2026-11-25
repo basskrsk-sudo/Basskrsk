@@ -182,7 +182,7 @@ function registerManagerRoutes(router) {
           preview,
         });
       }
-      const payout = createManagerCommissionPayout(managerId, payload);
+      const payout = createManagerCommissionPayout(managerId, payload,{payout_method:ctx.body?.payout_method});
       let deliveries = [];
       if (sendNotifications) {
         try {
@@ -193,6 +193,7 @@ function registerManagerRoutes(router) {
       }
       sendJson(res, 201, { ok: true, payout, deliveries, notifications_skipped: !sendNotifications });
     } catch (error) {
+      if (error.statusCode===400&&error.publicMessage) return sendJson(res,400,{error:error.message});
       if (error.code === 'MANAGER_NOT_FOUND') return sendJson(res, 404, { error: error.message });
       if (error.code === 'NOTHING_TO_PAY') return sendJson(res, 409, { error: error.message });
       console.error('[manager-payout] Не удалось зафиксировать выплату 7%:', error);
@@ -227,7 +228,7 @@ function registerManagerRoutes(router) {
           preview,
         });
       }
-      const payout = createManagerLaunchBonusPayout(managerPointId, payload);
+      const payout = createManagerLaunchBonusPayout(managerPointId, payload,{payout_method:ctx.body?.payout_method});
       let deliveries = [];
       if (sendNotifications) {
         try {
@@ -238,6 +239,7 @@ function registerManagerRoutes(router) {
       }
       sendJson(res, 201, { ok: true, payout, deliveries, notifications_skipped: !sendNotifications });
     } catch (error) {
+      if (error.statusCode===400&&error.publicMessage) return sendJson(res,400,{error:error.message});
       if (error.code === 'POINT_NOT_FOUND') return sendJson(res, 404, { error: error.message });
       if (['NOT_ACCRUED', 'ALREADY_PAID'].includes(error.code)) return sendJson(res, 409, { error: error.message });
       console.error('[manager-launch-bonus] Не удалось зафиксировать выплату:', error);

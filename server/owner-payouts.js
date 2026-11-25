@@ -6,6 +6,7 @@
 const db = require('./db');
 const {netOrder,isPayable,planCommission,verifyPlan,recordOffsets}=require('./commission-refunds');
 const { snapshotPayout } = require('./payout-reports');
+const {parseActualPayoutMethod}=require('./payout-methods');
 
 function getOwnerUnpaidOrders(ownerId) {
   return db.prepare(`
@@ -38,7 +39,7 @@ function payoutSelect(whereClause) {
   return `
     SELECT
       id, owner_id, owner_name, owner_code, point_id, point_name,
-      amount, orders_count, paid_by_admin_id, paid_by_admin_login, paid_at
+      amount, orders_count, paid_by_admin_id, paid_by_admin_login, paid_at, payout_method
     FROM owner_payouts
     ${whereClause}
     ORDER BY paid_at DESC, id DESC
@@ -82,8 +83,8 @@ function createOwnerPayout(ownerId, adminPayload, options = {}) {
     const payoutInfo = db.prepare(`
       INSERT INTO owner_payouts
         (owner_id, owner_name, owner_code, point_id, point_name,
-         amount, orders_count, paid_by_admin_id, paid_by_admin_login)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         amount, orders_count, paid_by_admin_id, paid_by_admin_login,payout_method)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       owner.id,
       owner.full_name,
@@ -93,7 +94,8 @@ function createOwnerPayout(ownerId, adminPayload, options = {}) {
       amount,
       orders.length,
       adminPayload.id || null,
-      adminPayload.login || null
+      adminPayload.login || null,
+      parseActualPayoutMethod(options.payout_method)
     );
     const payoutId = Number(payoutInfo.lastInsertRowid);
     const insertItem = db.prepare(`

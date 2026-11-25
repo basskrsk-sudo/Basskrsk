@@ -115,6 +115,8 @@ function reportNow(){const report=collectPayoutBrief(new Date(),{monthly:true});
 function draft(){const {report,person}=reportNow();return{person,...confirmations.registerPayoutBrief('777001',person,report.generated_at)};}
 const act=(id,action,chat='777001')=>confirmations.handlePayoutConfirmation(chat,'payout:'+action+':'+id);
 test('PDF payout confirmation is bound to an active admin, and cancel never records money',()=>{
+ db.prepare("UPDATE partners SET payout_method='sbp' WHERE id=?").run(partnerId);
+ db.prepare("UPDATE salon_owners SET payout_method='bank_account' WHERE id=?").run(ownerId);
  const order=sale('CONFIRM-FIRST',3000);
  const {person,id,reply_markup}=draft();
  const held=sale('CONFIRM-REFUND',500,100);
@@ -128,6 +130,7 @@ test('PDF payout confirmation is bound to an active admin, and cancel never reco
  assert.equal(confirmations.registerPayoutBrief('999999',person,new Date().toISOString()),null);
  const prompt=act(id,'paid');
  assert.equal(prompt.ok,true);assert.match(prompt.message,/фактически переведены/);
+ assert.match(prompt.message,/СБП на номер телефона/);assert.match(prompt.message,/Безналичный расчёт по договору/);
  assert.equal(act(id,'cancel').ok,true);
  assert.equal(act(id,'confirm').ok,false);
  assert.deepEqual(counts(),before);
@@ -150,6 +153,9 @@ test('PDF payout confirmation is bound to an active admin, and cancel never reco
   assert.ok(!db.prepare('SELECT 1 FROM '+table+' WHERE order_id=?').get(held));
  }
  assert.equal(db.prepare('SELECT COUNT(*) n FROM referral_bonus_payouts WHERE manager_point_id=?').get(bonusId).n,2);
+ assert.equal(db.prepare('SELECT payout_method FROM partner_payouts ORDER BY id DESC LIMIT 1').get().payout_method,'sbp');
+ assert.equal(db.prepare('SELECT payout_method FROM owner_payouts ORDER BY id DESC LIMIT 1').get().payout_method,'bank_account');
+ assert.deepEqual(db.prepare('SELECT payout_method FROM referral_bonus_payouts WHERE manager_point_id=? ORDER BY role').all(bonusId).map(r=>r.payout_method),['bank_account','sbp']);
  const completed=counts();
  assert.match(act(id,'confirm').message,/уже зафиксирована/);
  assert.equal(act(duplicate.id,'paid').ok,true);
@@ -232,5 +238,17 @@ test('refund of previously paid order is offset once in the next confirmed combi
  assert.equal(db.prepare('SELECT COUNT(*) n FROM commission_refund_offsets').get().n,before+3);
  sale('CONFIRM-AFTER-OFFSET',1000);
  assert.equal(reportNow().person.total,320,'recovered commission never deducted again');
+});
+test('administrator can explicitly confirm a different actual method for a combined payment',()=>{
+ const {id,person}=draft();
+ assert.ok(person.total>0);
+ assert.equal(act(id,'paid').ok,true);
+ assert.equal(act(id,'confirm-cash','777002').ok,false);
+ const result=act(id,'confirm-cash');
+ assert.equal(result.ok,true,result.message);
+ for(const table of ['partner_payouts','owner_payouts','manager_commission_payouts'])assert.equal(db.prepare('SELECT payout_method FROM '+table+' ORDER BY id DESC LIMIT 1').get().payout_method,'cash');
+ assert.equal(db.prepare('SELECT payout_method FROM partners WHERE id=?').get(partnerId).payout_method,'sbp');
+ assert.equal(db.prepare('SELECT payout_method FROM salon_owners WHERE id=?').get(ownerId).payout_method,'bank_account');
+ const count=counts();assert.match(act(id,'confirm-sbp').message,/уже зафиксирована/);assert.deepEqual(counts(),count);
 });
 test.after(()=>{try{db.close();}catch(_){}fs.rmSync(process.env.DATA_DIR,{recursive:true,force:true});});

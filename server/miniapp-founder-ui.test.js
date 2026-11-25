@@ -66,7 +66,7 @@ test('founder admin activation UI never prints passwords, raw phone or credentia
  assert.doesNotMatch(html,/79135554433/);
 });
 test('Mini App loads founder modules before workspace loader',()=>{
- const a=html.indexOf('src="/miniapp-founder.js"'),b=html.indexOf('src="/miniapp-founder-admin.js"'),c=html.indexOf('src="/miniapp-work.js"');
+ const a=html.indexOf('src="/miniapp-founder.js"'),b=html.indexOf('src="/miniapp-founder-admin.js"'),c=html.search(/src="\/miniapp-work\.js(?:\?v=[^"]+)?"/);
  assert.ok(a>0&&b>a&&c>b);
 });
 

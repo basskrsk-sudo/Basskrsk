@@ -195,7 +195,7 @@ test('MAX reward reports require active admin, same signed private chat and send
  const phone='79135550999',userId=829999,chat='8877999',salon='max-reward-test';
  point(salon);
  const pid=partner('79135550888',{chat:'8877888',point:salon});
- db.prepare("UPDATE partners SET full_name='Получатель отчёта',commission_rate=.15 WHERE id=?").run(pid);
+ db.prepare("UPDATE partners SET full_name='Получатель отчёта',commission_rate=.15,payout_method='sbp' WHERE id=?").run(pid);
  db.prepare(`INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,partner_id,subtotal,total,payment_method,status,commission_rate)
  VALUES('MAX-REPORT-ORDER','Клиент','79130000000','Точка',?,?,500,500,'sbp','paid',.15)`).run(salon,pid);
  // A last sale on an earlier day does not set the calculation cutoff.
@@ -227,6 +227,7 @@ test('MAX reward reports require active admin, same signed private chat and send
  assert.equal(sentReports[0].userId,String(userId));
  assert.match(sentReports[0].caption,/Период: 25\.10\.2026 — 24\.11\.2026/);
  assert.match(sentReports[0].caption,/Срез начислений: 25\.11\.2026,?\s+14:10 \(Красноярск\)/);
+ assert.match(sentReports[0].caption,/Способ выплаты: СБП на номер телефона/);
  assert.match(sentReports[0].caption,/К выплате: 75 ₽$/);
  assert.doesNotMatch(sentReports[0].caption,/предварительная|не зафиксирована|Перешлите/i);
  const periods=await api(optionsPath,{init_data,kind:'period'},token);

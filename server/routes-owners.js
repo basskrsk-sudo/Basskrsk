@@ -168,7 +168,7 @@ function registerOwnerRoutes(router) {
           preview,
         });
       }
-      const payout = createOwnerPayout(ownerId, payload);
+      const payout = createOwnerPayout(ownerId, payload,{payout_method:ctx.body?.payout_method});
       let deliveries;
       try {
         deliveries = await sendOwnerPayoutNotification(ownerId, payout, expectedMessage);
@@ -178,6 +178,7 @@ function registerOwnerRoutes(router) {
       }
       sendJson(res, 201, { ok: true, payout, deliveries });
     } catch (error) {
+      if (error.statusCode===400&&error.publicMessage) return sendJson(res,400,{error:error.message});
       if (error.code === 'OWNER_NOT_FOUND') return sendJson(res, 404, { error: error.message });
       if (error.code === 'NOTHING_TO_PAY') return sendJson(res, 409, { error: error.message });
       console.error('[owner-payout] Не удалось зафиксировать выплату:', error);

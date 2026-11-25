@@ -2146,7 +2146,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <option value="">— Выберите способ —</option>
         <option value="sbp">СБП на номер телефона</option>
         <option value="card">Перевод на банковскую карту</option>
-        <option value="bank_account">На расчётный счёт</option>
+        <option value="bank_account">Безналичный расчёт по договору (на счёт)</option>
         <option value="cash">Наличными по согласованию</option>
           </select>
           <small style="font-size:.73rem;color:var(--muted);">Выбор получателя — реквизиты согласуются отдельно.</small>
@@ -2428,6 +2428,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <h3 style="margin-bottom:.3rem;">Подтверждение выплаты</h3>
         <p id="payout-approval-meta" style="font-size:.84rem;color:var(--muted);margin-bottom:.8rem;line-height:1.5;"></p>
         <div id="payout-approval-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.6rem .75rem;border-radius:6px;margin-bottom:.8rem;line-height:1.45;"></div>
+        <div class="admin-field"><label for="payout-actual-method">Фактический способ выплаты</label><select id="payout-actual-method" class="pm-select"><option value="">Не указан</option><option value="sbp">СБП на телефон</option><option value="card">Перевод на карту</option><option value="bank_account">Безналичный расчёт по договору (на счёт)</option><option value="cash">Наличными</option></select><small>Укажите способ уже выполненного перевода. Настройки партнёра не изменятся.</small></div>
         <div id="payout-approval-channels" style="display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.8rem;"></div>
         <div id="payout-approval-warning" style="display:none;background:#FFF5DA;color:#79520A;font-size:.8rem;padding:.6rem .75rem;border-radius:6px;margin-bottom:.8rem;line-height:1.45;"></div>
         <label id="payout-notification-choice" style="display:none;align-items:flex-start;gap:.65rem;padding:.75rem;background:#F7F5EF;border:1px solid var(--border);border-radius:8px;margin-bottom:.8rem;cursor:pointer;">
@@ -2689,7 +2690,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <div class="admin-field"><label for="referral-new-phone">Телефон *</label><input id="referral-new-phone" type="tel" required autocomplete="tel" placeholder="+7 999 123-45-67"></div>
             <p style="font-size:.8rem;color:var(--muted);line-height:1.5;">Логин и пароль не нужны. Рекомендатель входит через Telegram-мини-приложение с подтверждением своего номера или через MAX на сайте.</p>
             <div class="admin-field"><label for="referral-new-payout">Получение бонуса</label><select id="referral-new-payout" class="pm-select">
-              <option value="">Не указано</option><option value="sbp">СБП на телефон</option><option value="card">Перевод на карту</option><option value="bank_account">На расчётный счёт</option><option value="cash">Наличными</option>
+              <option value="">Не указано</option><option value="sbp">СБП на телефон</option><option value="card">Перевод на карту</option><option value="bank_account">Безналичный расчёт по договору (на счёт)</option><option value="cash">Наличными</option>
             </select></div>
             <label style="font-size:.8rem;"><input id="referral-new-consent" type="checkbox" required> Согласие партнёра на обработку персональных данных получено</label>
             <button id="referral-new-submit" type="submit" class="row-btn" style="background:var(--forest);color:#fff;width:fit-content;">Создать рекомендателя</button>
@@ -6226,7 +6227,7 @@ function renderManagerPayoutHistory(payouts) {
       '<td style="font-weight:500;">' + escapeOrderCell(payout.manager_name) + '</td>' +
       '<td>' + type + '</td><td>' + details + '</td>' +
       '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><button class="row-btn" onclick="openPayoutReportForPayment(\'manager\', ' + Number(payout.id) + ', \'' + (payout.payout_type === 'launch_bonus' ? 'launch_bonus' : 'commission') + '\')">Отчёт</button></td></tr>';
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><small>'+escapeOrderCell(actualPayoutMethodLabel(payout.payout_method))+'</small><br><button class="row-btn" onclick="openPayoutReportForPayment(\'manager\', ' + Number(payout.id) + ', \'' + (payout.payout_type === 'launch_bonus' ? 'launch_bonus' : 'commission') + '\')">Отчёт</button></td></tr>';
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплаты менеджерам пока не зафиксированы</td></tr>';
 }
 
@@ -6483,7 +6484,7 @@ function renderOwnerPayoutHistory(payouts) {
       '<td>' + escapeOrderCell(payout.point_name || '—') + '</td>' +
       '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
       '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><button class="row-btn" onclick="openPayoutReportForPayment(\'owner\', ' + Number(payout.id) + ')">Отчёт</button></td>' +
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><small>'+escapeOrderCell(actualPayoutMethodLabel(payout.payout_method))+'</small><br><button class="row-btn" onclick="openPayoutReportForPayment(\'owner\', ' + Number(payout.id) + ')">Отчёт</button></td>' +
       '</tr>';
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплат владельцам пока не зафиксировано</td></tr>';
 }
@@ -6527,8 +6528,13 @@ function updatePayoutNotificationChoice() {
   }
 }
 
+function actualPayoutMethodLabel(method) {
+  const labels={sbp:'СБП на номер телефона',card:'Перевод на банковскую карту',bank_account:'Безналичный расчёт по договору (на счёт)',cash:'Наличными по согласованию'};
+  return Object.hasOwn(labels,method)?labels[method]:'Не указан';
+}
 function renderPayoutApprovalPreview(preview, changed) {
   payoutApprovalState.preview = preview;
+  document.getElementById('payout-actual-method').value = preview.payout_method || '';
   document.getElementById('payout-approval-meta').textContent =
     preview.recipient_name + ' · ' + Number(preview.amount || 0).toLocaleString('ru-RU') + ' ₽ · ' +
     (preview.meta_label || (Number(preview.orders_count || 0) + ' заказов')) +
@@ -6613,6 +6619,7 @@ async function confirmPayoutApproval() {
         expected_amount: preview.amount,
         expected_orders_count: preview.orders_count,
         expected_message: preview.message,
+        payout_method: document.getElementById('payout-actual-method').value || null,
         send_notifications: sendNotifications,
       },
     });
@@ -7340,7 +7347,7 @@ function renderPartnerPayoutHistory(payouts) {
       '<td>' + (payout.manager_name ? escapeOrderCell(payout.manager_name) : '—') + '</td>' +
       '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
       '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><button class="row-btn" onclick="openPayoutReportForPayment(\'partner\', ' + Number(payout.id) + ')">Отчёт</button></td>' +
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><small>'+escapeOrderCell(actualPayoutMethodLabel(payout.payout_method))+'</small><br><button class="row-btn" onclick="openPayoutReportForPayment(\'partner\', ' + Number(payout.id) + ')">Отчёт</button></td>' +
       '</tr>';
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплат пока не зафиксировано</td></tr>';
 }
@@ -8523,7 +8530,7 @@ if ('serviceWorker' in navigator) {
 }
 
 </script>
-<script src="/payout-reports.js"></script>
+<script src="/payout-reports.js?v=methods-20261125"></script>
 <script src="/miniapp-return.js"></script>
 <script src="/notification-settings.js?v=20261119-system"></script>
 </body>

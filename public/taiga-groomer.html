@@ -828,7 +828,7 @@ body{font-family:'Inter',sans-serif;background:#F0EDE6;color:var(--text);font-si
               <option value="">— Выберите способ —</option>
         <option value="sbp">СБП на номер телефона</option>
         <option value="card">Перевод на банковскую карту</option>
-        <option value="bank_account">На расчётный счёт</option>
+        <option value="bank_account">Безналичный расчёт по договору (на счёт)</option>
         <option value="cash">Наличными по согласованию</option>
             </select>
             <div id="profile-payout-status" role="status" aria-live="polite" style="font-size:.78rem;margin-bottom:.6rem;"></div>
@@ -1234,7 +1234,7 @@ async function renderReferralOnlyPage(user){
     '<div class="card"><h3>Способ выплаты</h3>'+
       '<label for="referrer-payout-method">Куда перечислять бонусы</label>'+
       '<select id="referrer-payout-method" style="width:100%;max-width:360px;margin:.6rem 0;padding:.65rem;">'+
-        [['','Не указан'],['sbp','СБП на телефон'],['card','Перевод на карту'],['bank_account','Расчётный счёт'],['cash','Наличными']].map(function(item){
+        [['','Не указан'],['sbp','СБП на телефон'],['card','Перевод на карту'],['bank_account','Безналичный расчёт по договору'],['cash','Наличными']].map(function(item){
           return '<option value="'+item[0]+'"'+(details.payout_method===item[0]?' selected':'')+'>'+item[1]+'</option>';
         }).join('')+'</select>'+
       '<p><button class="copy-btn" type="button" onclick="saveReferrerPayoutMethod()">Сохранить способ выплаты</button></p>'+

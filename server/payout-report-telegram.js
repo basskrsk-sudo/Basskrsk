@@ -51,6 +51,7 @@ async function sendWorkReport(db, report, admin, options, dependencies = {}) {
     const caption = ['Отчёт ' + (report.role === 'owner' ? 'владельца салона' : report.role === 'manager' ? 'менеджера' : 'грумера') + ' — ХвостМаркет','Отчёт № ' + report.id,
       'Получатель: ' + report.recipient.name,
       'Период расчёта: ' + (report.period_start || 'по составу выплаты') + ' — ' + (report.period_end || ''),
+      (report.kind==='payout'?'Фактический способ выплаты: ':'Способ выплаты: ')+require('./payout-methods').payoutMethodLabel(report.kind==='payout'?report.payout_method:report.preferred_payout_method),
       'Заказов: ' + report.items.length,'Начислено: ' + rub(report.accrued),
       report.kind === 'payout' ? 'Сумма выплаты: ' + rub(report.payout_amount) : 'К выплате: ' + rub(report.unpaid)].join('\n');
     providerStarted = true;
