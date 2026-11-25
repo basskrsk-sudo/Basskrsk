@@ -143,6 +143,10 @@ test('admin and legacy retail registration create drafts; manager-only lead and 
  assert.match(welcomeFor(legacy.body.point_id).message,/Ветеринарная клиника/);
  assert.equal(welcomeCount(),before+1);
  assert.equal(club.welcomeNewPoint({id:legacy.body.point_id}),false);
+ const repeated=await invoke('POST','/api/managers/:id/points',actor,{point_name:' ВЕТКЛИНИКА  ТЕСТ ',point_type:'Ветеринарная клиника',address:'Тестовая, 20'},{id:managerId});
+ assert.equal(repeated.status,409);
+ assert.equal(welcomeCount(),before+1);
+ assert.equal(club.welcomeNewPoint({id:'not-registered'}),false);
  configureClub({new_points:false});
  try{
   const disabled=await invoke('POST','/api/points',actor,{...base,name:'Выключенная рассылка',addr:'Тестовая 21'});
