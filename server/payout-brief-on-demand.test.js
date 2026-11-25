@@ -150,7 +150,7 @@ test('PDF payout confirmation is bound to an active admin, and cancel never reco
  assert.equal(act(duplicate.id,'paid').ok,true);
  assert.equal(act(duplicate.id,'confirm').ok,false);
  assert.deepEqual(counts(),completed);
- assert.equal(reportNow().person.total,160,'only the later order remains payable');
+ assert.equal(reportNow().person.total,288,'later order and net partial return remain payable');
 });
 test('a stale rate rolls back all roles even if a preceding role has already written',()=>{
  const {id}=draft();
@@ -210,5 +210,22 @@ test('PDF document has a real Telegram keyboard and payment callback is private,
   await callback(confirm);
   assert.deepEqual(counts(),completed);
  }finally{global.fetch=oldFetch;pdf.renderPayoutBriefPdf=oldRender;}
+});
+test('refund of previously paid order is offset once in the next confirmed combined PDF',()=>{
+ const old=db.prepare("SELECT id FROM orders WHERE order_code='CONFIRM-FIRST'").get().id;
+ db.prepare("UPDATE orders SET refund_status='refunded',refunded_amount=1000 WHERE id=?").run(old);
+ sale('CONFIRM-NEXT-REFUND',2000);
+ const {person,id}=draft();
+ assert.equal(person.total,320);
+ assert.equal(person.statements.reduce((n,s)=>n+(s.refund_adjustments||[]).reduce((m,x)=>m+x.amount,0),0),320);
+ const before=db.prepare('SELECT COUNT(*) n FROM commission_refund_offsets').get().n;
+ assert.equal(act(id,'paid').ok,true);
+ const result=act(id,'confirm');
+ assert.equal(result.ok,true,result.message);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM commission_refund_offsets').get().n,before+3);
+ assert.match(act(id,'confirm').message,/уже зафиксирована/);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM commission_refund_offsets').get().n,before+3);
+ sale('CONFIRM-AFTER-OFFSET',1000);
+ assert.equal(reportNow().person.total,320,'recovered commission never deducted again');
 });
 test.after(()=>{try{db.close();}catch(_){}fs.rmSync(process.env.DATA_DIR,{recursive:true,force:true});});

@@ -36,6 +36,7 @@ function initializeReports(db) {
     UNIQUE(report_id, target_chat_id)
   )`);
   require('./report-bonuses').initializeBonusLedger(db);
+  require('./commission-refunds').initializeRefundOffsets(db);
 }
 
 function validDate(value) {
@@ -65,6 +66,7 @@ function buildReport(role, recipient, orders, options = {}) {
     base: o.total == null ? null : Number(o.total),
     rate: o.commission_rate == null ? null : Number(o.commission_rate),
     amount: Number(o.commission_amount), already_paid: !!o.already_paid,
+    ...(o.return_amount>0?{original_total:o.original_total,refunded_amount:o.return_amount}:{}),
     point: o.point_name || recipient.point_name || null,
     point_id: o.point_id || recipient.point_id || null,
     products: Array.isArray(o.products) ? o.products : [],
@@ -89,6 +91,7 @@ function buildReport(role, recipient, orders, options = {}) {
     base_total: knownBase ? sum('base') : null, accrued: sum('amount') + bonusAccrued,
     already_paid: sum('amount', items.filter((i) => i.already_paid)) + bonusPaid,
     unpaid: sum('amount', items.filter((i) => !i.already_paid)) + bonusAccrued - bonusPaid,
+    refund_adjustments:options.refund_adjustments||[],refund_adjustment_total:(options.refund_adjustments||[]).reduce((s,x)=>s+Number(x.amount),0),
     source_key: options.source_key || null, payout_type: options.payout_type || 'commission',
     bonus_payout_id: options.bonus_payout_id || null,
     payout_id: options.payout_id || null, paid_at: options.paid_at || null,
@@ -145,37 +148,31 @@ function generatePeriodReport(db, role, id, start, end, meta) {
   const recipient = db.prepare(`SELECT r.*, r.${c.code} AS code${role === 'manager' ? '' : ', p.name AS point_name'}
     FROM ${c.table} r ${role === 'manager' ? '' : 'LEFT JOIN points p ON p.id = r.point_id'} WHERE r.id = ?`).get(id);
   if (!recipient) throw Object.assign(new Error('Получатель не найден'), { statusCode: 404 });
+  const {netOrder}=require('./commission-refunds');
   if (role === 'manager') {
-    const orders = db.prepare(`SELECT o.order_code, o.created_at, o.total, mp.commission_rate,
+    const orders = db.prepare(`SELECT o.order_code, o.created_at, o.total, mp.commission_rate,o.refund_status,o.refunded_amount,
       NULL AS paid_commission, 0 AS already_paid, NULL AS payout_id, p.name AS point_name, p.id AS point_id
       FROM orders o JOIN points p ON p.id = o.point_id
       JOIN manager_points mp ON mp.point_id = p.id AND mp.manager_id = p.manager_id
       LEFT JOIN manager_commission_payout_items pi ON pi.order_id = o.id
       WHERE p.manager_id = ? AND pi.id IS NULL AND o.status = 'paid' AND o.created_at >= ? AND o.created_at < datetime(?, '+1 day')
       UNION ALL
-      SELECT pi.order_code,o.created_at,NULL,pi.commission_rate,pi.commission_amount,1,pi.payout_id,pi.point_name,pi.point_id
+      SELECT pi.order_code,o.created_at,NULL,pi.commission_rate,o.refund_status,o.refunded_amount,pi.commission_amount,1,pi.payout_id,pi.point_name,pi.point_id
       FROM manager_commission_payout_items pi JOIN manager_commission_payouts cp ON cp.id = pi.payout_id
       JOIN orders o ON o.id = pi.order_id
       WHERE cp.manager_id = ? AND o.status = 'paid' AND o.created_at >= ? AND o.created_at < datetime(?, '+1 day')
-      ORDER BY 2,1`).all(id,start,end,id,start,end).map(o=>({ ...o,
-        commission_amount: o.already_paid ? o.paid_commission : Math.round(Number(o.total)*Number(o.commission_rate)),
-        ...(o.already_paid ? {total:null} : {}),
-      }));
+      ORDER BY 2,1`).all(id,start,end,id,start,end).map(o=>o.already_paid?{...o,commission_amount:o.paid_commission,total:null}:netOrder(o));
     return buildReport(role,recipient,attachOrderProducts(db,restoreSavedCalculations(db, role, orders)),{start,end,metadata:meta,...require('./report-bonuses').periodBonuses(db,role,id,start,end)});
   }
   const condition = role === 'partner' ? 'o.partner_id = ?' : 'o.point_id = ?';
-  const orders = db.prepare(`SELECT o.order_code, o.created_at, o.total,
+  const orders = db.prepare(`SELECT o.order_code, o.created_at, o.total,o.refund_status,o.refunded_amount,
     ${role === 'partner' ? 'COALESCE(o.commission_rate, r.commission_rate, 0)' : 'r.commission_rate'} AS commission_rate,
     pi.commission_amount AS paid_commission, pi.id IS NOT NULL AS already_paid, pi.payout_id
     FROM orders o JOIN ${c.table} r ON r.id = ?
     LEFT JOIN ${c.items} pi ON pi.order_id = o.id
     WHERE ${condition} AND o.status = 'paid'
       AND o.created_at >= ? AND o.created_at < datetime(?, '+1 day')
-    ORDER BY o.created_at, o.id`).all(id, role === 'partner' ? id : recipient.point_id, start, end).map((order) => ({
-      ...order, commission_amount: order.already_paid ? order.paid_commission : Math.round(Number(order.total) * Number(order.commission_rate)),
-      // An old payout may have used a different base/rate: never invent a historical one.
-      ...(order.already_paid ? { total: null, commission_rate: null } : {}),
-    }));
+    ORDER BY o.created_at, o.id`).all(id, role === 'partner' ? id : recipient.point_id, start, end).map(order=>order.already_paid?{...order,commission_amount:order.paid_commission,total:null,commission_rate:null}:netOrder(order));
   return buildReport(role, recipient, attachOrderProducts(db,restoreSavedCalculations(db, role, orders)), { start, end, metadata: meta, ...require('./report-bonuses').periodBonuses(db,role,id,start,end) });
 }
 
@@ -192,6 +189,7 @@ function restoreSavedCalculations(db, role, orders) {
     const saved = snapshots.get(order.payout_id).find(i => i.order_code === order.order_code && Number(i.amount) === Number(order.commission_amount));
     if (!saved) return order;
     return { ...order, total:saved.base ?? null, commission_rate:saved.rate ?? null,
+      ...(saved.refunded_amount>0?{original_total:saved.original_total,return_amount:saved.refunded_amount}:{}),
       point_name:saved.point || order.point_name, point_id:saved.point_id || order.point_id };
   });
 }
@@ -213,11 +211,11 @@ function saveReport(db, report, adminId) {
   return { ...report, id: Number(info.lastInsertRowid) };
 }
 
-function snapshotPayout(db, role, recipient, orders, payout, adminId) {
+function snapshotPayout(db, role, recipient, orders, payout, adminId, refund_adjustments=[]) {
   const dates = orders.map((o) => String(o.created_at || '').slice(0, 10)).filter(Boolean).sort();
   return saveReport(db, buildReport(role, recipient, attachOrderProducts(db, orders), {
     kind: 'payout', start: dates[0] || null, end: dates.at(-1) || null,
-    payout_id: payout.id, paid_at: payout.paid_at, payout_amount: payout.amount,
+    payout_id: payout.id, paid_at: payout.paid_at, payout_amount: payout.amount,refund_adjustments,
   }), adminId);
 }
 

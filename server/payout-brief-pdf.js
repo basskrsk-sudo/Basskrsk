@@ -97,7 +97,7 @@ function payoutBriefPdfPages(report,font,options={}){
   line('Комиссионные начисления',report.commission);
   line('Невыплаченные бонусы',report.bonus);
   for(const role of ['partner','owner','manager'])line('В том числе: '+LABELS[role],report.role_totals[role]);
-  if(report.held_orders)paragraph('Внимание: '+report.held_orders+' заказов с возвратами исключены из расчёта до ручной сверки.','#A33D32',18);
+  if(report.held_orders)paragraph('Внимание: '+report.held_orders+' исторических возвратов требуют проверки сохранённой ставки.','#A33D32',18);
   if(report.identities_to_verify?.length)paragraph('Совпадающие ФИО без подтверждённой личности не объединены; проверьте в админке.','#A33D32',17);
   paragraph('На следующих листах — отдельная справка каждому получателю. Если человек одновременно грумер и менеджер, начисления представлены в одной справке с разбивкой по ролям.', '#52695A',18);
   if(!report.people.length)paragraph('Невыплаченных начислений нет.');
@@ -112,7 +112,7 @@ function payoutBriefPdfPages(report,font,options={}){
       ensure(140);
       y+=20;
       paragraph(section.role_label+(section.point?' · '+section.point:''),'#1C3A2F',23);
-      line('Вознаграждение с продаж ('+section.orders+' заказов)',section.commission,'heading');
+      line('Начислено с продаж ('+section.orders+' заказов)',section.gross_commission??section.commission,'heading');
       // Each order gets its own legible block with the original item snapshot,
       // full paid sale value, recorded rate and its exact payable commission.
       const sales=section.sales||[];
@@ -140,17 +140,26 @@ function payoutBriefPdfPages(report,font,options={}){
         ensure(37);
         paragraph('Стоимость продажи: '+money(sale.sale_total)+' · Ставка ('+section.role_label+'): '+rate+
           ' · Вознаграждение: '+money(sale.commission_amount),'#1C3A2F',18);
+        if(sale.refunded_amount)paragraph('Возврат: '+money(sale.refunded_amount)+' из '+money(sale.original_total)+'; комиссия с остатка.','#A33D32',17);
         y+=10;
       }
+      for(const r of section.refund_orders||[])if(r.net<=0)paragraph('Полный возврат · '+r.order_code+' · '+money(r.refunded_amount)+' · комиссия 0 ₽.','#A33D32',17);
+      for(const x of section.refund_adjustments||[])paragraph('Корректировка ранее выплаченной комиссии · '+x.order_code+' · возврат '+money(x.refunded_amount)+' · удержание '+money(x.amount),'#A33D32',18);
+      if(section.refund_carried){
+        paragraph('Перенос до следующей положительной выплаты: '+money(section.refund_carried)+'. Бонусы не удерживаются.','#A33D32',17);
+        for(const x of section.refund_outstanding||[])paragraph('Заказ '+x.order_code+' · возврат '+money(x.refunded_amount)+' · ожидаемое удержание '+money(x.amount),'#A33D32',17);
+      }
+      for(const x of section.refund_review||[])paragraph('Проверка исторической ставки · '+x.order_code+' · возврат '+money(x.refunded_amount),'#A33D32',17);
+      if(section.refund_adjustments?.length||section.refund_carried)line('Комиссия к перечислению',section.commission,'total');
       for(const bonus of section.bonuses){
         line((bonus.type==='launch_bonus'?'Бонус за запуск':'Реферальный бонус')+' · '+bonus.point,bonus.amount);
       }
-      if(section.held_orders)paragraph('На сверке: '+section.held_orders+' заказов с возвратами; комиссия '+money(section.held_amount)+' не включена.','#A33D32',17);
+      if(section.held_orders)paragraph('Исторических возвратов без подтверждённой ставки: '+section.held_orders+'. Автоматическое удержание не выполняется.','#A33D32',17);
     }
     ensure(95);
     y+=18;
     line('ИТОГО к выплате · '+recipient.name,recipient.total,'total');
-    paragraph('Сумма предварительная, до возможных налоговых удержаний. Заказы с возвратами исключены до проверки. Указанные средства ещё не перечислены.','#52695A',17);
+    paragraph('Сумма предварительная, до возможных налоговых удержаний. Возвраты учтены по остаточной сумме. Указанные средства ещё не перечислены.','#52695A',17);
   }
   footer();
   return pages.map(commands=>commands.join('\n'));

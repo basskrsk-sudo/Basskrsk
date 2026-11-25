@@ -4,6 +4,7 @@
 'use strict';
 
 const db = require('./db');
+const {netOrder,isPayable,planCommission,verifyPlan,recordOffsets}=require('./commission-refunds');
 const { snapshotPayout } = require('./payout-reports');
 
 function getOwnerUnpaidOrders(ownerId) {
@@ -11,7 +12,7 @@ function getOwnerUnpaidOrders(ownerId) {
     SELECT
       o.id,
       o.order_code,
-      o.total,
+      o.total, o.refund_status, o.refunded_amount,
       o.created_at,
       so.commission_rate
     FROM salon_owners so
@@ -21,16 +22,14 @@ function getOwnerUnpaidOrders(ownerId) {
       AND o.status = 'paid'
       AND opi.id IS NULL
     ORDER BY o.created_at, o.id
-  `).all(ownerId).map((order) => ({
-    ...order,
-    commission_amount: Math.round(Number(order.total || 0) * Number(order.commission_rate || 0)),
-  }));
+  `).all(ownerId).map(netOrder);
 }
 
 function getOwnerUnpaidSummary(ownerId) {
-  const orders = getOwnerUnpaidOrders(ownerId);
+  const orders = getOwnerUnpaidOrders(ownerId).filter(isPayable);
+  const plan=planCommission(db,'owner',ownerId,orders);
   return {
-    amount: orders.reduce((sum, order) => sum + order.commission_amount, 0),
+    amount: plan.amount,
     orders_count: orders.length,
   };
 }
@@ -70,9 +69,10 @@ function createOwnerPayout(ownerId, adminPayload, options = {}) {
       throw error;
     }
 
-    const pending = getOwnerUnpaidOrders(owner.id);
+    const pending = getOwnerUnpaidOrders(owner.id).filter(isPayable);
     const orders = options.statementOrders ? require('./payout-statement-orders').selectStatementOrders(db,pending,options.statementOrders) : pending;
-    const amount = orders.reduce((sum, order) => sum + order.commission_amount, 0);
+    const plan=verifyPlan(planCommission(db,'owner',owner.id,orders),options);
+    const amount=plan.amount;
     if (!orders.length || amount <= 0) {
       const error = new Error('У владельца сейчас нет невыплаченного вознаграждения');
       error.code = 'NOTHING_TO_PAY';
@@ -104,8 +104,9 @@ function createOwnerPayout(ownerId, adminPayload, options = {}) {
     orders.forEach((order) => {
       insertItem.run(payoutId, order.id, order.order_code, order.commission_amount);
     });
+    recordOffsets(db,'owner',owner.id,payoutId,plan);
     const payout = db.prepare(payoutSelect('WHERE id = ?')).get(payoutId, 1);
-    const report = snapshotPayout(db, 'owner', { ...owner, code: owner.owner_code }, orders, payout, adminPayload.id);
+    const report = snapshotPayout(db, 'owner', { ...owner, code: owner.owner_code }, orders, payout, adminPayload.id,plan.adjustments);
     if(!options.inTransaction) db.exec('COMMIT');
     return { ...payout, report_id: report.id };
   } catch (error) {

@@ -3,7 +3,8 @@
 // Read-only owner dashboard: aggregate paid sales in SQLite instead of loading
 // every historic order into the single-threaded HTTP process.
 // Preserve the existing net-refund rule and frozen per-order groomer rates.
-const NET = `CASE WHEN o.refund_status='refunded' AND o.refunded_amount IS NULL THEN 0
+const {corrections}=require('./commission-refunds');
+const NET = `CASE WHEN o.refund_status='refunded' AND COALESCE(o.refunded_amount,0)<=0 THEN 0
   ELSE MAX(0,o.total-COALESCE(o.refunded_amount,0)) END`;
 
 const TOTALS_SQL = `
@@ -44,15 +45,15 @@ const RECENT_SQL = `
   ORDER BY o.created_at DESC LIMIT 20
 `;
 
-// Keep the payout ledger's original per-order Math.round logic. This is only
-// a faster READ for the owner dashboard, not a change to actual payouts.
+// Net unpaid commission uses the same per-order rounding as the ledger.
 const UNPAID_SQL = `
   SELECT COUNT(*) AS orders_count,
-    COALESCE(SUM(ROUND(o.total * so.commission_rate)),0) AS amount
+    COALESCE(SUM(ROUND((${NET}) * so.commission_rate)),0) AS amount
   FROM salon_owners so
   JOIN orders o ON o.point_id=so.point_id
   LEFT JOIN owner_payout_items opi ON opi.order_id=o.id
   WHERE so.id=? AND o.status='paid' AND opi.id IS NULL
+    AND ((${NET})>0 OR (COALESCE(o.refunded_amount,0)=0 AND COALESCE(o.refund_status,'none')<>'refunded'))
 `;
 
 function loadOwnerDashboardSales(database,pointId,ownerId,monthStartIso) {
@@ -73,6 +74,7 @@ function loadOwnerDashboardSales(database,pointId,ownerId,monthStartIso) {
     created_at:o.created_at,is_self_order:!!o.is_self_order,
   }));
   const unpaid=database.prepare(UNPAID_SQL).get(ownerId);
+  const debt=corrections(database,'owner',ownerId).due.reduce((s,x)=>s+x.amount,0);
   return {
     totals:{
       revenue,orders,avg_order:orders?Math.round(revenue/orders):0,
@@ -81,7 +83,7 @@ function loadOwnerDashboardSales(database,pointId,ownerId,monthStartIso) {
     },
     groomers,unassigned_orders_count:Number(sum.unassigned_orders_count||0),
     recent_orders,
-    unpaid:{amount:Number(unpaid.amount||0),orders_count:Number(unpaid.orders_count||0)},
+    unpaid:{amount:Math.max(0,Number(unpaid.amount||0)-debt),orders_count:Number(unpaid.orders_count||0)},
   };
 }
 module.exports={loadOwnerDashboardSales,TOTALS_SQL,GROOMERS_SQL,RECENT_SQL,UNPAID_SQL};

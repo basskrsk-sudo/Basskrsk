@@ -135,31 +135,32 @@ function formatSale(account,order,getItems){
     created_at:order.created_at, date:formatSaleDateTime(order.created_at),
     point:clean(order.point_name||account.point_name||'Без точки'),
     items, items_label:itemListLabel(items),
-    sale_total:num(order.total),commission_rate:num(order.commission_rate),
+    sale_total:num(order.total),original_total:num(order.original_total??order.total),refunded_amount:num(order.return_amount),commission_rate:num(order.commission_rate),
     commission_amount:num(order.commission_amount),
   };
 }
 
-function roleStatement(account,refundQuery,getItems,detail=true){
-  const eligible=[],held=[];
-  for(const order of pendingOrders(account)){
-    const refund=refundQuery.get(order.id);
-    const isRefunded=refund&&(refund.refund_status==='refunded'||num(refund.refunded_amount)>0);
-    (isRefunded?held:eligible).push(order);
-  }
+const {isPayable,planCommission}=require('./commission-refunds');
+function roleStatement(account,getItems,detail=true){
+  const pending=pendingOrders(account);
+  const eligible=pending.filter(isPayable);
+  const returned=pending.filter(o=>o.return_amount>0||o.refund_status==='refunded');
+  const plan=planCommission(db,account.role,account.id,eligible);
   const bonuses=getBonuses(db,account.role,account.id).pending
     .filter(b=>Number.isFinite(Number(b.amount))&&Number(b.amount)>0)
     .map(b=>({manager_point_id:b.manager_point_id,point:clean(b.point_name||account.point_name||'Точка'),
       amount:num(b.amount),type:account.role==='manager'?'launch_bonus':'referral_bonus',
       accrued_at:b.accrued_at||null}));
-  const commission=eligible.reduce((sum,o)=>sum+num(o.commission_amount),0);
+  const commission=plan.amount;
   const bonus=bonuses.reduce((sum,b)=>sum+b.amount,0);
   return {
     role:account.role,role_label:ROLES[account.role],account_id:account.id,
     name:clean(account.full_name),point:clean(account.point_name),
     orders:eligible.length,commission,bonus,total:commission+bonus,
-    held_orders:held.length,held_order_ids:held.map(o=>o.id),
-    held_amount:held.reduce((sum,o)=>sum+num(o.commission_amount),0),
+    gross_commission:plan.gross,refund_adjustments:plan.adjustments,refund_outstanding:plan.outstanding,refund_carried:plan.carried,
+    refund_orders:returned.map(o=>({order_id:o.id,order_code:o.order_code,original_total:o.original_total,refunded_amount:o.return_amount,net:o.total,commission:o.commission_amount})),
+    held_orders:plan.review.length,held_order_ids:plan.review.map(o=>o.order_id),
+    held_amount:plan.review.reduce((sum,o)=>sum+Math.max(0,o.paid_commission-o.recovered),0),refund_review:plan.review,
     points:detail?groupedPoints(account,eligible):[],
     sales:detail?eligible.map(order=>formatSale(account,order,getItems)).sort((a,b)=>
       String(a.created_at||'').localeCompare(String(b.created_at||'')) || a.order_id-b.order_id):[],
@@ -206,14 +207,11 @@ function formatMoment(iso){
     month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(iso));
 }
 function collectPayoutBrief(now=new Date(),{recipientKey=null}={}){
-  const fetchRefund=db.prepare('SELECT refund_status,refunded_amount FROM orders WHERE id=?');
-  const cache=new Map();
-  const refundQuery={get(id){if(!cache.has(id))cache.set(id,fetchRefund.get(id)||null);return cache.get(id)}};
   let entries=[];
   const getItems=createOrderItemReader();
   for(const account of accounts()){
-    const statement=roleStatement(account,refundQuery,getItems,!recipientKey);
-    if(statement.total>0||statement.held_orders)entries.push({account,statement});
+    const statement=roleStatement(account,getItems,!recipientKey);
+    if(statement.total>0||statement.held_orders||statement.refund_carried)entries.push({account,statement});
   }
   // Determine the exact current grouping from unpaid totals first (including
   // newly active roles/refunds). Only then read product details for the chosen
@@ -222,7 +220,7 @@ function collectPayoutBrief(now=new Date(),{recipientKey=null}={}){
     const selected=groupStatements(entries).find(person=>person.selection_key===recipientKey);
     const roles=new Set((selected?.statements||[]).map(s=>s.role+':'+s.account_id));
     entries=entries.filter(e=>roles.has(e.account.role+':'+e.account.id))
-      .map(e=>({account:e.account,statement:roleStatement(e.account,refundQuery,getItems)}));
+      .map(e=>({account:e.account,statement:roleStatement(e.account,getItems)}));
   }
   const people=groupStatements(entries);
   const sum=key=>people.reduce((result,p)=>result+num(p[key]),0);
@@ -242,7 +240,7 @@ function collectPayoutBrief(now=new Date(),{recipientKey=null}={}){
     bonus:sum('bonus'),held_orders:new Set(people.flatMap(p=>p.held_order_ids)).size,
     held_amount:sum('held_amount'),
     role_totals,identities_to_verify,
-    note:'Справка предварительная. Выплаты не отмечены. Заказы с возвратами исключены до сверки с администратором. Суммы до налоговых удержаний.',
+    note:'Справка предварительная. Выплаты не отмечены. Возвраты учитываются автоматически; исторические выплаты без подтверждённой ставки выделены отдельно. Суммы до налоговых удержаний.',
   };
 }
 function formatPayoutBriefMessage(report){
@@ -266,7 +264,7 @@ function formatPayoutBriefMessage(report){
   }
   lines.push('','📊 CSV: общая детализация по получателям, ролям и точкам.',
     '📄 Персональные PDF: только после выбора получателя и отдельного подтверждения.');
-  if(report.held_orders)lines.push('⚠️ Заказов с возвратами на сверке: '+report.held_orders+'. Не включены.');
+  if(report.held_orders)lines.push('⚠️ Исторических возвратов без сохранённой ставки: '+report.held_orders+'. Требуется проверка.');
   if(report.identities_to_verify.length)lines.push('⚠️ ФИО совпадают, но личность не подтверждена: '+
     report.identities_to_verify.slice(0,5).join(', ')+'. Не объединены.');
   lines.push('','Это НЕ подтверждение перевода денег. Выплаты в базе не меняются.');
@@ -306,11 +304,21 @@ function formatRecipientPayoutMessage(person,generatedAt){
     for(const section of person.statements)for(const bonus of section.bonuses||[])
       output.push('• '+clean(bonus.point,55)+' ('+section.role_label+'): '+money(bonus.amount));
   }
+  const returned=new Set();
+  for(const section of person.statements){
+   for(const r of section.refund_orders||[])if(!returned.has(r.order_id)){
+    returned.add(r.order_id);
+    if(returned.size<=3)output.push('↩️ Заказ '+r.order_code+': возврат '+money(r.refunded_amount)+', осталось '+money(r.net));
+   }
+   for(const x of (section.refund_adjustments||[]).slice(0,3))output.push('➖ Корректировка ('+section.role_label+') '+x.order_code+': −'+money(x.amount));
+   for(const x of (section.refund_review||[]).slice(0,2))output.push('⚠️ '+x.order_code+': возврат '+money(x.refunded_amount)+', историческая ставка не сохранена.');
+   if(section.refund_carried)output.push('Перенос корректировки ('+section.role_label+'): '+money(section.refund_carried));
+  }
   output.push('',
     'Комиссия: '+money(person.commission),
     'Бонусы: '+money(person.bonus),
     '💚 ИТОГО к выплате: '+money(person.total));
-  if(person.held_orders)output.push('⚠️ На сверке '+person.held_orders+' заказ(ов) с возвратами — в сумму не включены.');
+  if(person.held_orders)output.push('⚠️ Исторических возвратов без подтверждённой ставки: '+person.held_orders+'. Подробности в PDF.');
   output.push('📎 Полная детализация по датам, товарам и ставкам — в персональном PDF.',
     'Справка предварительная: деньги не перечислены.');
   return output.join('\n').slice(0,3950);
@@ -331,8 +339,12 @@ function buildPayoutBriefCsv(report){
         rows.push([person.name,section.role_label,person.period.label,
           sale.date,sale.order_code,sale.point,sale.items_label,sale.sale_total,
           (sale.commission_rate*100).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%',
-          sale.commission_amount,'Продажа'].map(csvCell).join(';'));
+          sale.commission_amount,sale.refunded_amount?'Продажа после возврата '+money(sale.refunded_amount):'Продажа'].map(csvCell).join(';'));
       }
+      for(const r of section.refund_orders||[])if(r.net<=0)rows.push([person.name,section.role_label,person.period.label,'',r.order_code,section.point,'Полный возврат '+money(r.refunded_amount),0,'',0,'Возврат'].map(csvCell).join(';'));
+      for(const x of section.refund_adjustments||[])rows.push([person.name,section.role_label,person.period.label,'',x.order_code,section.point,'Возврат ранее выплаченной комиссии','','',-x.amount,'Корректировка'].map(csvCell).join(';'));
+      if(section.refund_carried)for(const x of section.refund_outstanding||[])rows.push([person.name,section.role_label,person.period.label,'',x.order_code,section.point,'Перенос корректировки '+money(x.amount),'','','','Не удержано'].map(csvCell).join(';'));
+      for(const x of section.refund_review||[])rows.push([person.name,section.role_label,person.period.label,'',x.order_code,section.point,'Историческая ставка не сохранена','','','','Проверка'].map(csvCell).join(';'));
       for(const bonus of section.bonuses||[]){
         rows.push([person.name,section.role_label,person.period.label,
           formatSaleDateTime(bonus.accrued_at),'',bonus.point,'Бонус за подключение / рекомендацию',

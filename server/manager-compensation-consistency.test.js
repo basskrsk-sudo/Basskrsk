@@ -69,12 +69,12 @@ test('duplicate and deleted manager_point history does not multiply a single sal
   assert.equal(new Set(all.map(x=>x.order_code)).size,all.length);
   assert.equal(all.some(o=>o.point_name==='Груминг Пушок'),false);
   const payable=getManagerPayableOrders(angelina);
-  assert.deepEqual(payable.map(x=>x.order_code).sort(),['CURRENT-1','CURRENT-2','PREV']);
-  assert.equal(getManagerUnpaidSummary(angelina).amount,280);
-  assert.equal(getManagerUnpaidSummary(angelina).orders_count,3);
+  assert.deepEqual(payable.map(x=>x.order_code).sort(),['CURRENT-1','CURRENT-2','PARTIAL-RETURN','PREV']);
+  assert.equal(getManagerUnpaidSummary(angelina).amount,301);
+  assert.equal(getManagerUnpaidSummary(angelina).orders_count,4);
   const preview=previewManagerCommissionPayout(angelina);
-  assert.equal(preview.amount,280,'Telegram payout preview matches ledger');
-  assert.equal(preview.orders_count,3);
+  assert.equal(preview.amount,301,'Telegram payout preview matches ledger');
+  assert.equal(preview.orders_count,4);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM manager_commission_payouts').get().n,1,
     'read-only dashboard never creates additional payments');
 });
@@ -105,9 +105,9 @@ test('authenticated full and mini app manager compensation endpoints share one s
  }
  const result=invoke('/api/managers/me/compensation');
  assert.equal(result.status,200);
- assert.equal(result.body.commission_unpaid,280);
+ assert.equal(result.body.commission_unpaid,301);
  assert.equal(result.body.launch_bonus_unpaid,500);
- assert.equal(result.body.total_unpaid,780);
+ assert.equal(result.body.total_unpaid,801);
  assert.equal(typeof result.body.period_residual,'number',
    'period accrued uses current system time (not a hardcoded screenshot)');
  assert.equal(invoke('/api/managers/me/compensation','partner').status,401);

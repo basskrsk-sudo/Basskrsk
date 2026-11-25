@@ -2,6 +2,7 @@
 'use strict';
 
 const db = require('./db');
+const {netOrder,isPayable,planCommission,verifyPlan,recordOffsets}=require('./commission-refunds');
 const { snapshotPayout } = require('./payout-reports');
 
 function getUnpaidOrders(partnerId) {
@@ -9,7 +10,7 @@ function getUnpaidOrders(partnerId) {
     SELECT
       o.id,
       o.order_code,
-      o.total,
+      o.total, o.refund_status, o.refunded_amount,
       o.created_at,
       COALESCE(o.commission_rate, p.commission_rate, 0) AS commission_rate
     FROM orders o
@@ -19,16 +20,14 @@ function getUnpaidOrders(partnerId) {
       AND o.status = 'paid'
       AND pi.id IS NULL
     ORDER BY o.created_at, o.id
-  `).all(partnerId).map((order) => ({
-    ...order,
-    commission_amount: Math.round(Number(order.total || 0) * Number(order.commission_rate || 0)),
-  }));
+  `).all(partnerId).map(netOrder);
 }
 
 function getUnpaidSummary(partnerId) {
-  const orders = getUnpaidOrders(partnerId);
+  const orders = getUnpaidOrders(partnerId).filter(isPayable);
+  const plan=planCommission(db,'partner',partnerId,orders);
   return {
-    amount: orders.reduce((sum, order) => sum + order.commission_amount, 0),
+    amount: plan.amount,
     orders_count: orders.length,
   };
 }
@@ -77,9 +76,10 @@ function createPartnerPayout(partnerId, adminPayload, options = {}) {
       throw error;
     }
 
-    const pending = getUnpaidOrders(partner.id);
+    const pending = getUnpaidOrders(partner.id).filter(isPayable);
     const orders = options.statementOrders ? require('./payout-statement-orders').selectStatementOrders(db,pending,options.statementOrders) : pending;
-    const amount = orders.reduce((sum, order) => sum + order.commission_amount, 0);
+    const plan=verifyPlan(planCommission(db,'partner',partner.id,orders),options);
+    const amount=plan.amount;
     if (!orders.length || amount <= 0) {
       const error = new Error('У партнёра нет невыплаченного вознаграждения');
       error.code = 'NOTHING_TO_PAY';
@@ -111,8 +111,9 @@ function createPartnerPayout(partnerId, adminPayload, options = {}) {
     orders.forEach((order) => {
       insertItem.run(payoutId, order.id, order.order_code, order.commission_amount);
     });
+    recordOffsets(db,'partner',partner.id,payoutId,plan);
     const payout = db.prepare(payoutSelect('WHERE id = ?')).get(payoutId, 1);
-    const report = snapshotPayout(db, 'partner', { ...partner, code: partner.partner_code }, orders, payout, adminPayload.id);
+    const report = snapshotPayout(db, 'partner', { ...partner, code: partner.partner_code }, orders, payout, adminPayload.id,plan.adjustments);
     if(!options.inTransaction) db.exec('COMMIT');
     return { ...payout, report_id: report.id };
   } catch (error) {
