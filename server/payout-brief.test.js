@@ -222,7 +222,11 @@ test('closed monthly payout cycle is fixed on local 25th through 24th, independe
  const summary=collectPayoutBrief(now,{monthly:true,summaryOnly:true});
  assert.equal(summary.people.find(p=>p.selection_key===person.selection_key).total,400);
  const noSales=monthly.people.find(p=>p.statements.some(s=>s.role==='partner'&&s.account_id===groomer1));
- assert.equal(noSales.period_accrued,0);
+ // This recipient combines a groomer and the salon's manager. The groomer
+ // has no new sales; the manager earns 7% on the other groomer's 1,000 RUB.
+ assert.equal(noSales.statements.find(s=>s.role==='partner').period_accrued,0);
+ assert.equal(noSales.statements.find(s=>s.role==='manager').period_accrued,70);
+ assert.equal(noSales.period_accrued,70);
  assert.equal(noSales.period.label,person.period.label);
  const msg=formatRecipientPayoutMessage(person,monthly.generated_at).replace(/\u00a0|\u202f/g,' ');
  assert.match(msg,/Период расчётов: 25\.10\.2026 — 24\.11\.2026/);
