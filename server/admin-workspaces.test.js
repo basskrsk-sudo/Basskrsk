@@ -173,3 +173,51 @@ test('admin UI has exactly 8 primary menu items and modules without breaking pre
   const backups=html.slice(html.indexOf('id="sec-backup"'),html.indexOf('id="sec-system-health"'));
   assert.match(backups,/restore-backup-file/);
 });
+
+test('network navigation groups only relevant screens and retains all workflows',()=>{
+  const root=path.join(__dirname,'..','public');
+  const html=fs.readFileSync(path.join(root,'taiga-admin.html'),'utf8');
+  const nav=fs.readFileSync(path.join(root,'admin-navigation.js'),'utf8');
+  const doc={querySelectorAll:()=>[],addEventListener:()=>{}};
+  const win={addEventListener:()=>{}};
+  const {networkContextMarkup,filterNetworkTable}=new Function('document','window',nav+';return {networkContextMarkup,filterNetworkTable};')(doc,win);
+  const cases={
+    points:['points','point-sales','qr'],
+    'point-sales':['points','point-sales','qr'],
+    point:['points','point-sales','qr'],
+    qr:['points','point-sales','qr'],
+    partners:['partners','owners','managers','referrals'],
+    owners:['partners','owners','managers','referrals'],
+    managers:['partners','owners','managers','referrals'],
+    referrals:['partners','owners','managers','referrals'],
+    leads:['leads','network-map'],
+    'network-map':['leads','network-map'],
+  };
+  for(const [section,expected] of Object.entries(cases)){
+    const markup=networkContextMarkup(section);
+    assert.equal((markup.match(/data-network-area=/g)||[]).length,3);
+    assert.deepEqual([...markup.matchAll(/data-network-section="([^"]+)"/g)].map(m=>m[1]),expected);
+    assert.ok(markup.includes('data-network-section="'+(section==='point'?'points':section)+'" aria-current="page"'));
+    assert.ok(html.includes('id="sec-'+section+'"'));
+  }
+  const partners=html.split('id="sec-partners"')[1].split('id="sec-referrals"')[0];
+  const referrals=html.split('id="sec-referrals"')[1].split('id="sec-managers"')[0];
+  assert.doesNotMatch(partners,/id="admin-referral-control"|partners-promo-list|<th>Промокод на первую покупку<\/th>/);
+  assert.match(referrals,/id="admin-referral-control"/);
+  assert.match(referrals,/id="referral-control-dialog"/);
+  assert.doesNotMatch(html,/Персональные промокоды грумеров|partners-promo-list/);
+  const point=fs.readFileSync(path.join(root,'admin-point.js'),'utf8');
+  const people=point.split('async function renderPointPeopleForCurrent()')[1].split('async function renderPointQrForCurrent()')[0];
+  assert.doesNotMatch(people,/first_purchase_promo_code|Промокод/);
+  assert.match(point.split('async function renderPointQrForCurrent()')[1],/first_purchase_promo_code/);
+  assert.equal((html.match(/<details class="card network-history"/g)||[]).length,3);
+  const rows=[{textContent:'Лапочки Красноярск',cells:[{},{}],hidden:false},{textContent:'Дог Стиль',cells:[{},{}],hidden:false}];
+  const elements={query:{value:'лапочки красноярск'},body:{rows},'query-status':{textContent:''}};
+  doc.getElementById=id=>elements[id];
+  filterNetworkTable('query','body');
+  assert.deepEqual(rows.map(row=>row.hidden),[false,true]);
+  assert.equal(elements['query-status'].textContent,'Найдено: 1');
+  elements.query.value='';
+  filterNetworkTable('query','body');
+  assert.deepEqual(rows.map(row=>row.hidden),[false,false]);
+});

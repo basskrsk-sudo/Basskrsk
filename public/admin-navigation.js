@@ -15,8 +15,8 @@ const titles={
   'payout-reports':'Отчёты партнёрам','report-center':'Центр отчётности',
   orders:'Заказы',customers:'Покупатели', stock:'Остатки на точках',
   products:'Каталог товаров',reviews:'Отзывы',news:'Новости',
-  winback:'Возврат клиентов',partners:'Грумеры',managers:'Менеджеры',
-  points:'Сеть точек',owners:'Владельцы салонов',qr:'QR-коды',
+  winback:'Возврат клиентов',partners:'Грумеры и рекомендатели',managers:'Менеджеры',
+  points:'Точки продаж · реестр', 'point-sales':'Продажи по точкам',owners:'Владельцы салонов',qr:'QR-коды',referrals:'Рекомендатели и бонусы',
   'qr-analytics':'Аналитика QR',leads:'Привлечение салонов', 'network-map':'Карта сети',
   warehouse:'Центральный склад',restock:'Перемещения',
   audit:'Журнал действий',admins:'Администраторы',
@@ -27,7 +27,7 @@ const titles={
 
 const sectionGroups={
   dashboard:'home',
-  points:'network',point:'network',partners:'network',managers:'network',
+  points:'network',point:'network','point-sales':'network',partners:'network',managers:'network',referrals:'network',
   owners:'network',leads:'network','network-map':'network',qr:'network',
   products:'inventory',stock:'inventory',warehouse:'inventory',restock:'inventory',
   orders:'sales',customers:'sales',
@@ -43,8 +43,6 @@ const sectionGroups={
 // Exactly eight top-level business workflows; other screens stay reachable
 // as context tabs or from the centralized report/point workspaces.
 const contextTabs={
-  network:[['points','Точки'],['partners','Грумеры'],['owners','Владельцы'],
-    ['managers','Менеджеры'],['leads','Привлечение'],['network-map','Карта сети'],['qr','QR-коды']],
   inventory:[['products','Каталог'],['stock','На точках'],
     ['warehouse','Центральный склад'],['restock','Перемещения']],
   sales:[['orders','Заказы'],['customers','Покупатели']],
@@ -58,6 +56,57 @@ const contextTabs={
     ['audit','Журнал',true],['guides','Инструкции']]
 };
 
+// Network navigation has three stable business areas, each with its own screens.
+const networkAreas=[
+  {id:'points',label:'Точки продаж',tabs:[['points','Реестр точек'],['point-sales','Продажи'],['qr','QR-коды']]},
+  {id:'partners',label:'Партнёры и команда',tabs:[['partners','Грумеры и рекомендатели'],['owners','Владельцы'],['managers','Менеджеры'],['referrals','Реферальная программа']]},
+  {id:'leads',label:'Развитие сети',tabs:[['leads','Переговоры'],['network-map','Карта сети']]},
+];
+function networkContextMarkup(sectionId){
+  const activeId=sectionId==='point'?'points':sectionId;
+  const activeArea=networkAreas.find(area=>area.tabs.some(tab=>tab[0]===activeId))||networkAreas[0];
+  function button(id,label,active,kind){
+    return '<button type="button" class="section-context-tab '+(active?'active':'')+
+      '" data-network-'+kind+'="'+id+'" '+(active?'aria-current="page" ':'')+
+      'onclick="showSection(\''+id+'\')">'+label+'</button>';
+  }
+  return '<div class="network-area-tabs" role="group" aria-label="Направления сети">'+
+    networkAreas.map(area=>button(area.id,area.label,area.id===activeArea.id,'area')).join('')+
+    '</div><div class="network-sub-tabs" role="group" aria-label="Подразделы направления">'+
+    activeArea.tabs.map(tab=>button(tab[0],tab[1],tab[0]===activeId,'section')).join('')+'</div>';
+}
+
+// Search the rendered registry locally: typing never triggers another API request.
+function filterNetworkTable(inputId,bodyId){
+  const input=document.getElementById(inputId),body=document.getElementById(bodyId);
+  if(!input||!body)return;
+  const terms=input.value.trim().toLocaleLowerCase('ru-RU').split(/\s+/).filter(Boolean);
+  let count=0;
+  Array.from(body.rows).forEach(row=>{
+    const isPlaceholder=row.cells.length===1&&row.cells[0].colSpan>1;
+    if(isPlaceholder){row.hidden=terms.length>0;return;}
+    const value=row.textContent.toLocaleLowerCase('ru-RU');
+    row.hidden=!terms.every(term=>value.includes(term));
+    if(!row.hidden)count++;
+  });
+  const status=document.getElementById(inputId+'-status');
+  if(status)status.textContent=terms.length?'Найдено: '+count:'';
+}
+async function renderAdminReferralControl(){
+  const module=window.HvostAdminReferralControl;
+  if(!module)return;
+  const note=document.getElementById('referral-control-error');
+  if(note)note.textContent='Загрузка…';
+  try{
+    const response=await authFetch('/api/admin/referral-control');
+    if(!response.ok)throw new Error('Не удалось загрузить реферальную программу');
+    module.render(await response.json());
+    if(note)note.textContent='';
+  }catch(error){
+    module.render(null);
+    if(note)note.textContent=error.message||'Ошибка загрузки';
+  }
+}
 const reportDetailSections=new Set([
   'payout-reports','week-comparison','weekly-reports','qr-analytics'
 ]);
@@ -66,6 +115,12 @@ function renderContextTabs(sectionId){
   const holder=document.getElementById('section-context-tabs');
   if(!holder)return;
   const group=sectionGroups[sectionId];
+  holder.classList.toggle('network-context',group==='network');
+  if(group==='network'){
+    holder.style.display='flex';
+    holder.innerHTML=networkContextMarkup(sectionId);
+    return;
+  }
   const tabs=(contextTabs[group]||[]).filter(tab=>!tab[2]||currentAdminRole==='super');
   holder.style.display=tabs.length>1?'flex':'none';
   const activeId=sectionId==='point'?'points':
@@ -168,11 +223,13 @@ async function showSection(id) {
     el.classList.toggle('active', el.dataset.group === sectionGroups[id]);
   });
   closeAdminMenu();
+  if(typeof closePartnerActions==='function')closePartnerActions();
+  if(id!=='referrals'&&window.HvostAdminReferralControl)window.HvostAdminReferralControl.close();
   renderContextTabs(id);
   const titleEl = document.getElementById('section-title');
   if (titleEl && titles[id]) titleEl.textContent = titles[id];
 
-  const showGlobalPeriod = ['dashboard', 'points', 'partners'].includes(id);
+  const showGlobalPeriod = ['dashboard', 'point-sales', 'partners'].includes(id);
   document.querySelectorAll('.topbar-right > .period-btn').forEach(function(btn) {
     btn.style.display = showGlobalPeriod ? '' : 'none';
   });
@@ -220,7 +277,9 @@ async function showSection(id) {
   if (id === 'winback')     await loadWinbackCandidates();
   if (id === 'partners')    await renderPartners();
   if (id === 'managers') await renderManagers();
-  if (id === 'points')      { await Promise.all([loadAdminSalesSummary(), loadPointsInfo()]); renderPointsOverview(); await renderPointsManagement(); }
+  if (id === 'points')      await renderPointsManagement();
+  if (id === 'point-sales') { await Promise.all([loadAdminSalesSummary(), loadPointsInfo()]); renderPointsOverview(); }
+  if (id === 'referrals')    await renderAdminReferralControl();
   if (id === 'owners')      await renderOwners();
   if (id === 'qr')          await qrInitSection();
   if (id === 'qr-analytics') await loadQrAnalytics();

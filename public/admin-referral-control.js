@@ -107,7 +107,7 @@
         await submit(true);
       }
       close();
-      if(typeof renderPartners==='function')await renderPartners();
+      if(typeof renderAdminReferralControl==='function')await renderAdminReferralControl();
     }catch(error){status.textContent=error.message||'Ошибка сохранения';}
     finally{busy=false;button.disabled=false;}
   }
@@ -121,7 +121,7 @@
       var value=await r.json();
       if(!r.ok)throw new Error(value.error||'Не удалось обновить начисление');
       note.textContent='';
-      if(typeof renderPartners==='function')await renderPartners();
+      if(typeof renderAdminReferralControl==='function')await renderAdminReferralControl();
     }catch(error){note.textContent=error.message||'Ошибка проверки';}
     finally{busy=false;}
   }
@@ -146,7 +146,7 @@
         '</b>. <a href="'+esc(info.referral_url)+'" target="_blank" rel="noopener">Ссылка-приглашение</a>. '+
         'Для входа: <a href="https://t.me/HvostMarketRusBot?start=app" target="_blank" rel="noopener">Telegram-мини-приложение</a> '+
         'или <a href="/taiga-groomer.html" target="_blank" rel="noopener">кабинет через MAX</a>.';
-      if(typeof renderPartners==='function')await renderPartners();
+      if(typeof renderAdminReferralControl==='function')await renderAdminReferralControl();
     }catch(error){status.textContent=error.message||'Ошибка регистрации';}
     finally{busy=false;submit.disabled=false;}
   }

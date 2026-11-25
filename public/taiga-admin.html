@@ -122,6 +122,18 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 }
 .section-context-tab:hover { color:var(--forest); background:rgba(255,255,255,.75); }
 .section-context-tab.active { color:#fff; background:var(--forest); }
+.section-context-tabs.network-context { flex-direction:column; align-items:stretch; gap:.45rem; overflow:visible; }
+.network-area-tabs,.network-sub-tabs { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem; min-width:0; }
+.network-area-tabs { border-bottom:1px solid var(--border); padding-bottom:.45rem; }
+.network-area-tabs .section-context-tab { font-size:.83rem; }
+.network-sub-tabs .section-context-tab.active { color:var(--forest); background:rgba(45,90,63,.12); }
+.network-registry-search { display:flex; flex-wrap:wrap; align-items:center; gap:.6rem; margin-bottom:.8rem; }
+.network-registry-search input { min-width:0; flex:1 1 200px; max-width:360px; padding:.5rem .7rem; border:1px solid var(--border); border-radius:7px; font:inherit; font-size:.82rem; }
+.network-registry-search [role="status"] { font-size:.76rem; color:var(--muted); }
+.network-history summary { cursor:pointer; font-weight:600; color:var(--forest); padding:.25rem 0; }
+.network-history[open] summary { margin-bottom:.7rem; }
+.network-history table { min-width:560px; }
+#points-mgmt-tbody tr[hidden],#partners-tbody tr[hidden],#owners-tbody tr[hidden],#mgr-tbody tr[hidden] { display:none; }
 
 /* ── KPI CARDS ── */
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
@@ -1456,6 +1468,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <option value="">Все города</option>
           </select>
         </div>
+        <div class="network-registry-search"><input type="search" id="points-registry-search" aria-label="Поиск точки по названию или адресу" placeholder="Поиск точки по названию или адресу" oninput="filterNetworkTable('points-registry-search','points-mgmt-tbody')"><span id="points-registry-search-status" role="status"></span></div>
         <table class="tbl">
           <thead>
             <tr><th>Точка</th><th>Дата создания</th><th>Промокод на первую покупку</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Открытие</th><th>Оснащение</th><th>Статус</th><th class="r">Действие</th></tr>
@@ -1599,9 +1612,13 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
 
+    </div>
+
+    <!-- Sales summary loads separately from the point registry. -->
+    <div id="sec-point-sales" style="display:none;">
       <div class="grid-3" id="point-cards-full"></div>
       <div class="card" style="margin-top:1rem;">
-        <div class="card-title">Продажи по точкам по дням</div>
+        <div class="card-title">Выручка по точкам за выбранный период</div>
         <div class="legend" id="points-chart-legend"></div>
         <div style="position:relative;height:260px;">
           <canvas id="chartPoints" role="img" aria-label="Продажи по точкам по дням"></canvas>
@@ -1728,7 +1745,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <span>Владельцы салонов <span id="owners-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
           <button class="add-product-btn" onclick="openOwnerModal()">+ Добавить владельца</button>
         </div>
-        <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;">В колонке «К выплате» показано вознаграждение по оплаченным заказам, которые ещё не включались в выплату. После подтверждения выплаты счётчик обнулится, а операция сохранится в реестре.</p>
+        <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;">В колонке «К выплате» показано вознаграждение по оплаченным заказам, которые ещё не включались в выплату. После подтверждения выплаты операция сохранится в истории.</p>
+        <div class="network-registry-search"><input type="search" id="owners-registry-search" aria-label="Поиск владельца, точки или телефона" placeholder="Поиск владельца, точки или телефона" oninput="filterNetworkTable('owners-registry-search','owners-tbody')"><span id="owners-registry-search-status" role="status"></span></div>
         <table class="tbl">
           <thead>
             <tr><th>ФИО</th><th>Логин</th><th>Телефон</th><th>Точка</th><th class="r">К выплате</th><th>Статус</th><th class="r">Действие</th></tr>
@@ -1736,13 +1754,13 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <tbody id="owners-tbody"></tbody>
         </table>
       </div>
-      <div class="card" style="margin-top:1rem;overflow-x:auto;">
-        <div class="card-title">История выплат владельцам салонов <span id="owner-payouts-count"></span></div>
+      <details class="card network-history" style="margin-top:1rem;overflow-x:auto;">
+        <summary>История выплат владельцам салонов <span id="owner-payouts-count"></span></summary>
         <table class="tbl">
           <thead><tr><th>Дата</th><th>Владелец</th><th>Точка</th><th class="r">Заказов</th><th class="r">Сумма</th><th>Подтвердил</th></tr></thead>
           <tbody id="owner-payouts-tbody"></tbody>
         </table>
-      </div>
+      </details>
     </div>
 
     <!-- ══ ПРОЗВОН ГРУМЕРСКИХ ══ -->
@@ -2680,6 +2698,31 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
       <div id="partners-risk-banner" style="display:none;background:#FFF4E5;border:1px solid #F0DDB8;border-radius:8px;padding:.9rem 1.1rem;margin-bottom:1rem;font-size:.85rem;color:#7A4A00;line-height:1.6;"></div>
+      <div class="card">
+        <div class="card-title">
+          <span>Грумеры и рекомендатели <span id="partners-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
+        </div>
+        <div class="network-registry-search"><input type="search" id="partners-registry-search" aria-label="Поиск по имени, точке или коду партнёра" placeholder="Поиск по имени, точке или коду партнёра" oninput="filterNetworkTable('partners-registry-search','partners-tbody')"><span id="partners-registry-search-status" role="status"></span></div>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Партнёр</th><th>Точка</th><th class="r">Тариф</th><th>Формат</th>
+              <th>Рекомендатель</th><th class="r" id="partners-earnings-heading">К выплате</th><th>Статус</th><th class="r">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="partners-tbody"></tbody>
+        </table>
+      </div>
+      <details class="card network-history" style="margin-top:1rem;overflow-x:auto;">
+        <summary>История выплат грумерам <span id="partner-payouts-count"></span></summary>
+        <table class="tbl">
+          <thead><tr><th>Дата</th><th>Грумер</th><th>Менеджер</th><th class="r">Заказов</th><th class="r">Сумма</th><th>Подтвердил</th></tr></thead>
+          <tbody id="partner-payouts-tbody"></tbody>
+        </table>
+      </details>
+    </div>
+
+    <div id="sec-referrals" style="display:none;">
       <div class="card" id="admin-referral-control" style="margin-bottom:1.1rem;">
         <div class="card-title">🤝 Приведи партнёра — контроль бонусов</div>
         <details id="referral-new-partner" style="margin:.65rem 0 1rem;padding:1rem;border:1px solid var(--border);border-radius:10px;">
@@ -2735,28 +2778,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </div>
         </div>
       </div>
-      <div id="partners-promo-list"></div>
-      <div class="card">
-        <div class="card-title">
-          <span>Партнёры и рекомендатели <span id="partners-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
-        </div>
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th>Партнёр</th><th>Промокод на первую покупку</th><th>Точка</th><th class="r">Тариф</th><th>Формат</th>
-              <th>Приведён грумером</th><th class="r" id="partners-earnings-heading">К выплате</th><th>Статус</th><th class="r">Действия</th>
-            </tr>
-          </thead>
-          <tbody id="partners-tbody"></tbody>
-        </table>
-      </div>
-      <div class="card" style="margin-top:1rem;overflow-x:auto;">
-        <div class="card-title">История выплат грумерам <span id="partner-payouts-count"></span></div>
-        <table class="tbl">
-          <thead><tr><th>Дата</th><th>Грумер</th><th>Менеджер</th><th class="r">Заказов</th><th class="r">Сумма</th><th>Подтвердил</th></tr></thead>
-          <tbody id="partner-payouts-tbody"></tbody>
-        </table>
-      </div>
     </div>
 
     <div id="sec-managers" style="display:none;">
@@ -2807,6 +2828,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <option value="">Все города</option>
           </select>
         </div>
+        <div class="network-registry-search"><input type="search" id="managers-registry-search" aria-label="Поиск менеджера, города или телефона" placeholder="Поиск менеджера, города или телефона" oninput="filterNetworkTable('managers-registry-search','mgr-tbody')"><span id="managers-registry-search-status" role="status"></span></div>
         <table class="tbl">
           <thead>
             <tr>
@@ -2845,13 +2867,13 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </table>
       </div>
 
-      <div class="card" style="margin-top:1rem;overflow-x:auto;">
-        <div class="card-title">История выплат менеджерам <span id="manager-payouts-count"></span></div>
+      <details class="card network-history" style="margin-top:1rem;overflow-x:auto;">
+        <summary>История выплат менеджерам <span id="manager-payouts-count"></span></summary>
         <table class="tbl">
           <thead><tr><th>Дата</th><th>Менеджер</th><th>Вид выплаты</th><th>Точка / заказы</th><th class="r">Сумма</th><th>Подтвердил</th></tr></thead>
           <tbody id="manager-payouts-tbody"></tbody>
         </table>
-      </div>
+      </details>
 
     </div>
 
@@ -2952,11 +2974,11 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="max-connect.js?v=2"></script>
 <script src="max-admin.js?v=3"></script>
 <script src="partner-network-map.js?v=10"></script>
-<script src="admin-navigation.js?v=6"></script>
-<script src="admin-point.js?v=2"></script>
+<script src="admin-navigation.js?v=7"></script>
+<script src="admin-point.js?v=3"></script>
 <script src="/admin-point-equipment.js?v=20261119"></script>
 <!-- Загружается только после открытия архива отчётов. -->
-<script src="/admin-referral-control.js?v=2"></script>
+<script src="/admin-referral-control.js?v=3"></script>
 <!-- Сравнение недель загружается только при открытии экрана. -->
 <script src="/first-purchase-promo-display.js?v=20261124-4"></script>
 <script>
@@ -3491,7 +3513,7 @@ async function setPeriod(code, btn) {
   if (btn) btn.classList.add('active');
   const partnersSection = document.getElementById('sec-partners');
   if (partnersSection && partnersSection.style.display !== 'none') await renderPartners();
-  else if (document.getElementById('sec-points').style.display !== 'none') {
+  else if (document.getElementById('sec-point-sales').style.display !== 'none') {
     await loadAdminSalesSummary();
     renderPointsOverview();
   }
@@ -5514,7 +5536,7 @@ async function renderPointsManagement() {
         escapeOrderCell(window.HvostPointEquipmentUI.equipmentLabel(equipment)) + '</button></td>' +
       '<td><span class="toggle-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '🟢 Активна' : '⚪ Отключена') + '</span></td>' +
       '<td class="r">' +
-        (p.active ? '<button class="row-btn" onclick="openPointChecklistById(\'' + p.id + '\')">✓ Чек-лист</button> ' : '') +
+        (p.active ? '<button class="row-btn" onclick="openPointChecklistById(\'' + p.id + '\')">Карточка / чек-лист</button> ' : '') +
         '<button class="row-btn" onclick="openAssignManagerModal(\'' + p.id + '\')">👤 Менеджер</button> ' +
         '<button class="row-btn" onclick="openSalonPageModal(\'' + p.id + '\', \'' + p.name.replace(/'/g, "\\'") + '\')">🏠 Страница</button> ' +
         '<button class="row-btn" onclick="togglePointActive(\'' + p.id + '\')">' + (p.active ? 'Отключить' : 'Включить') + '</button> ' +
@@ -5522,6 +5544,7 @@ async function renderPointsManagement() {
       '</td>' +
       '</tr>';
   }).join('');
+  filterNetworkTable('points-registry-search','points-mgmt-tbody');
 }
 
 // ── МОДАЛКА: СТРАНИЦА САЛОНА ТОЧКИ ──────────────────────────────────
@@ -6211,6 +6234,7 @@ async function renderManagers() {
       '<td class="r"><button class="row-btn" ' + (Number(a.commission_unpaid || 0) <= 0 ? 'disabled style="opacity:.45;cursor:not-allowed;"' : '') + ' onclick="event.stopPropagation(); openPayoutApproval(\'manager_commission\',' + a.id + ')">✓ Выплатить 7%</button> <button class="row-btn" onclick="event.stopPropagation(); openManagerContractModal(' + a.id + ')">Договор</button> <button class="row-btn" onclick="event.stopPropagation(); resetPersonPassword(\'managers\', ' + a.id + ', \'' + a.full_name.replace(/'/g, "\\'") + '\')">Сбросить пароль</button> <button class="row-btn danger" onclick="event.stopPropagation(); deleteManager(' + a.id + ', \'' + a.full_name.replace(/'/g, "\\'") + '\')">✕ Удалить</button></td></tr>';
   }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Менеджеров пока нет</td></tr>';
 
+  filterNetworkTable('managers-registry-search','mgr-tbody');
   renderMgrPointsTable(null);
   renderManagerPayoutHistory(payoutData.payouts || []);
 }
@@ -6470,6 +6494,7 @@ async function renderOwners() {
         '<button class="row-btn danger" onclick="deleteSalonOwner(' + o.id + ', \'' + o.full_name.replace(/'/g, "\\'") + '\')">✕ Удалить</button></td>' +
       '</tr>';
   }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Владельцев пока нет</td></tr>';
+  filterNetworkTable('owners-registry-search','owners-tbody');
   renderOwnerPayoutHistory(payoutData.payouts || []);
 }
 
@@ -7245,9 +7270,6 @@ async function renderPartners() {
   const data = await responses[0].json();
   const payoutData = await responses[1].json();
   const referralData = responses[2].ok ? await responses[2].json() : null;
-  if (window.HvostAdminReferralControl) {
-    window.HvostAdminReferralControl.render(referralData);
-  }
   adminPartners = data.partners || [];
   document.getElementById('partners-count').textContent = adminPartners.length + ' шт.';
   document.getElementById('partners-earnings-heading').textContent = 'К выплате (комиссия + бонус)';
@@ -7271,21 +7293,6 @@ async function renderPartners() {
     riskBanner.style.display = 'none';
   }
 
-  const promoList = document.getElementById('partners-promo-list');
-  const partnersWithPromo = adminPartners.filter(function(p) { return p.first_purchase_promo_code; });
-  promoList.innerHTML = '<div class="card" style="margin-bottom:1rem;">' +
-    '<div class="card-title">Персональные промокоды грумеров на первую покупку</div>' +
-    '<p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Скидка на первую покупку применяется один раз по номеру телефона. С 01.12.2026 — 15%, ранее выданные коды тоже работают. Нажмите на код, чтобы скопировать.</p>' +
-    (partnersWithPromo.length ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.65rem;">' +
-      partnersWithPromo.map(function(p) {
-        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:.7rem;border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;background:#FAFBF8;">' +
-          '<div style="min-width:0;"><div style="font-weight:600;font-size:.84rem;">' + escapeOrderCell(p.full_name) + '</div>' +
-          '<div style="font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeOrderCell(p.point_name || 'Точка не указана') + (p.active ? '' : ' · отключён') + '</div></div>' +
-          '<button type="button" class="row-btn" style="margin:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(window.HvostFirstPurchasePromo.customerCode(p.first_purchase_promo_code)) + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)">' + escapeOrderCell(window.HvostFirstPurchasePromo.customerCode(p.first_purchase_promo_code)) + '</button>' +
-        '</div>';
-      }).join('') + '</div>' : '<p style="color:var(--muted);font-size:.82rem;">Промокодов пока нет.</p>') +
-    '</div>';
-
   document.getElementById('partners-tbody').innerHTML = adminPartners.length ? adminPartners.map(function(p) {
     const referrer = p.referred_by_partner_id ? byId[p.referred_by_partner_id] : null;
     const samePoint = p.point_id ? adminPartners.filter(function(x) { return x.id !== p.id && x.point_id === p.point_id; }) : [];
@@ -7298,7 +7305,6 @@ async function renderPartners() {
     const payableWithBonus = Number(p.current_earnings || 0) + pendingReferralBonus;
     return '<tr>' +
       '<td style="font-weight:500;">' + p.full_name + '<br><span style="font-size:.72rem;color:var(--muted);font-family:monospace;">' + p.partner_code + ' · ' + p.login + '</span></td>' +
-      '<td><button type="button" class="row-btn" style="margin-left:0;font-family:monospace;white-space:nowrap;" data-promo="' + escapeOrderCell(window.HvostFirstPurchasePromo.customerCode(p.first_purchase_promo_code || '')) + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + (p.first_purchase_promo_code ? escapeOrderCell(window.HvostFirstPurchasePromo.customerCode(p.first_purchase_promo_code)) : '—') + '</button></td>' +
       '<td>' + p.point_name + (p.point_address ? '<br><span style="font-size:.75rem;color:var(--muted);">' + p.point_address + '</span>' : '') +
         (samePoint.length ? '<br><span style="font-size:.72rem;color:var(--amber);">👥 Также на точке: ' + samePoint.map(function(x) { return x.full_name; }).join(', ') + '</span>' : '') + '</td>' +
       '<td class="r" style="font-weight:600;' + (isRisky ? 'color:#7A4A00;' : '') + '">' +
@@ -7312,8 +7318,9 @@ async function renderPartners() {
       '<td><span class="toggle-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '🟢 Активен' : '⏳ Ожидает') + '</span></td>' +
       '<td class="r"><button class="partner-actions-toggle" aria-label="Действия с партнёром" aria-expanded="false" onclick="openPartnerActions(' + p.id + ', this, event)">⋯</button></td>' +
       '</tr>';
-  }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem;">Партнёров пока нет</td></tr>';
+  }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">Партнёров пока нет</td></tr>';
 
+  filterNetworkTable('partners-registry-search','partners-tbody');
   renderPartnerPayoutHistory(payoutData.payouts || []);
 }
 

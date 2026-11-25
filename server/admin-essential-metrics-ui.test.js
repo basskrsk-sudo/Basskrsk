@@ -53,8 +53,12 @@ test('heavy operations check is opt-in on the admin dashboard',()=>{
   assert.match(dashboardLoader,/await loadAdminSalesSummary\(\)/);
   assert.doesNotMatch(dashboardLoader,/loadOrders|loadPointsInfo/);
   const pointsLoader=nav.split("if (id === 'points')")[1].split('\n')[0];
-  assert.match(pointsLoader,/loadAdminSalesSummary\(\), loadPointsInfo\(\)/);
-  assert.doesNotMatch(pointsLoader,/loadOrders/);
+  assert.match(pointsLoader,/renderPointsManagement/);
+  assert.doesNotMatch(pointsLoader,/loadOrders|loadAdminSalesSummary|renderPointsOverview/);
+  const pointSalesLoader=nav.split("if (id === 'point-sales')")[1].split('\n')[0];
+  assert.match(pointSalesLoader,/loadAdminSalesSummary\(\), loadPointsInfo\(\)/);
+  assert.match(pointSalesLoader,/renderPointsOverview/);
+  assert.doesNotMatch(pointSalesLoader,/loadOrders|renderPointsManagement/);
   assert.match(html,/id="ops-check-now" onclick="loadOperationsCenter\(\)"/);
   assert.match(html,/Проверка проблем запускается только по запросу/);
 });
