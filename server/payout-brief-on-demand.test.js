@@ -61,7 +61,7 @@ test('payout default request produces CSV and never batch-renders personal PDFs'
     .split('function accountRoleText(')[0];
   assert.match(personal,/recipientKey/);
   assert.match(personal,/expectedTotal/);
-  assert.match(personal,/collectPayoutBrief\(new Date\(\), \{recipientKey:params.recipientKey\}\)/);
+  assert.match(personal,/collectPayoutBrief\(new Date\(\), \{recipientKey:params.recipientKey,monthly:true\}\)/);
   assert.match(personal,/renderPayoutBriefPdf\(report, \{ recipient: person \}\)/);
   assert.match(src,/if\(type==='payoutpdf'\)return sendIndividualPayoutPdf\(chatId,params\)/);
   assert.match(src,/show_alert:!allowed/,'only an authorized private admin may request a payee');
@@ -98,15 +98,20 @@ const partnerId=Number(db.prepare('INSERT INTO partners(partner_code,login,passw
  .run('P-CONFIRM','partner-confirm','hash',name,phone,'payout-point','Тестовый салон',0.2).lastInsertRowid);
 const ownerId=Number(db.prepare('INSERT INTO salon_owners(login,password_hash,full_name,phone,point_id,commission_rate) VALUES(?,?,?,?,?,?)')
  .run('owner-confirm','hash',name,phone,'payout-point',0.05).lastInsertRowid);
+const testCycle=require('./payout-brief').monthlyPayoutPeriod(new Date());
+const bonusDate=testCycle.start.slice(0,19).replace('T',' ');
 const bonusId=Number(db.prepare('INSERT INTO manager_points(manager_id,point_id,point_name,point_type,commission_rate,bonus_paid,bonus_manager_amount,bonus_accrued_at,referred_groomer_id,referred_groomer_amount,referred_owner_id,referred_owner_amount,referral_bonus_accrued_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)')
- .run(managerId,'payout-point','Тестовый салон','Груминг',0.07,1,2000,'2026-11-01 10:00:00',partnerId,1000,ownerId,1000,'2026-11-01 10:00:00').lastInsertRowid);
+ .run(managerId,'payout-point','Тестовый салон','Груминг',0.07,1,2000,bonusDate,partnerId,1000,ownerId,1000,bonusDate).lastInsertRowid);
 function sale(code,amount,refund=0){
- return Number(db.prepare('INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,partner_id,subtotal,total,payment_method,status,commission_rate,refund_status,refunded_amount) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)')
- .run(code,'Клиент','79001112233','Тестовый салон','payout-point',partnerId,amount,amount,'sbp','paid',0.2,refund?'partial':'none',refund).lastInsertRowid);
+ const id=Number(db.prepare('INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,partner_id,subtotal,total,payment_method,status,commission_rate,refund_status,refunded_amount) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)')
+  .run(code,'Клиент','79001112233','Тестовый салон','payout-point',partnerId,amount,amount,'sbp','paid',0.2,refund?'partial':'none',refund).lastInsertRowid);
+ const cycle=require('./payout-brief').monthlyPayoutPeriod(new Date());
+ db.prepare('UPDATE orders SET created_at=? WHERE id=?').run(cycle.start.slice(0,19).replace('T',' '),id);
+ return id;
 }
 const tables=['partner_payouts','owner_payouts','manager_commission_payouts','manager_launch_bonus_payouts','referral_bonus_payouts','payout_reports'];
 const counts=()=>tables.map(t=>db.prepare('SELECT COUNT(*) n FROM '+t).get().n);
-function reportNow(){const report=collectPayoutBrief();const person=report.people.find(p=>p.roles.includes('partner')&&p.roles.includes('owner')&&p.roles.includes('manager'));assert.ok(person);return{report,person};}
+function reportNow(){const report=collectPayoutBrief(new Date(),{monthly:true});const person=report.people.find(p=>p.roles.includes('partner')&&p.roles.includes('owner')&&p.roles.includes('manager'));assert.ok(person);return{report,person};}
 function draft(){const {report,person}=reportNow();return{person,...confirmations.registerPayoutBrief('777001',person,report.generated_at)};}
 const act=(id,action,chat='777001')=>confirmations.handlePayoutConfirmation(chat,'payout:'+action+':'+id);
 test('PDF payout confirmation is bound to an active admin, and cancel never records money',()=>{

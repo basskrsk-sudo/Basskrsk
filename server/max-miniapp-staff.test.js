@@ -18,6 +18,7 @@ const router=new Router();
 const sentReports=[];
 let renderCount=0,denyBeforeSend=false;
 const rewardReports=require('./max-reward-reports').createMaxRewardReports(db,{
+ now:()=>new Date('2026-11-25T07:10:00Z'),
  renderBrief:async(report,options)=>{renderCount++;assert.equal(report.people.length,1);assert.equal(options.recipient.name,'Получатель отчёта');return Buffer.from('%PDF-test');},
  renderPeriod:async report=>{renderCount++;assert.equal(report.recipient.name,'Получатель отчёта');return Buffer.from('%PDF-period');},
  sendFile:async args=>{if(denyBeforeSend)db.prepare("UPDATE admins SET active=0 WHERE phone='79135550999'").run();args.authorize();sentReports.push(args);return {messageId:'test-mid'};},
@@ -214,6 +215,8 @@ test('MAX reward reports require active admin, same signed private chat and send
  assert.equal(list.status,200,JSON.stringify(list.json));
  const selected=list.json.recipients.find(p=>p.name==='Получатель отчёта');
  assert.ok(selected);assert.equal(selected.amount,75);
+ assert.equal(list.json.period.label,'25.10.2026 — 24.11.2026');
+ assert.equal((await api(sendPath,{init_data,kind:'unpaid',key:selected.key,expected_total:75,expected_period:'24.10.2026'},token)).status,409);
  assert.equal((await api(sendPath,{init_data,kind:'unpaid',key:selected.key,expected_total:76},token)).status,409);
  const before=db.prepare('SELECT COUNT(*) AS n FROM partner_payouts').get().n;
  const snapshots=db.prepare('SELECT COUNT(*) AS n FROM payout_reports').get().n;
@@ -222,8 +225,8 @@ test('MAX reward reports require active admin, same signed private chat and send
  assert.equal(sent.status,200,JSON.stringify(sent.json));
  assert.equal(sentReports.length,1);
  assert.equal(sentReports[0].userId,String(userId));
- assert.match(sentReports[0].caption,/Даты начислений: 19\.11\.2026/);
- assert.match(sentReports[0].caption,/Срез начислений: \d{2}\.\d{2}\.\d{4},?\s+\d{2}:\d{2} \(Красноярск\)/);
+ assert.match(sentReports[0].caption,/Период: 25\.10\.2026 — 24\.11\.2026/);
+ assert.match(sentReports[0].caption,/Срез начислений: 25\.11\.2026,?\s+14:10 \(Красноярск\)/);
  assert.match(sentReports[0].caption,/К выплате: 75 ₽$/);
  assert.doesNotMatch(sentReports[0].caption,/предварительная|не зафиксирована|Перешлите/i);
  const periods=await api(optionsPath,{init_data,kind:'period'},token);

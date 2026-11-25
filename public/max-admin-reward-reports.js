@@ -22,7 +22,7 @@
     var form=get('maxRewardForm'),kind=get('maxRewardKind'),recipient=get('maxRewardRecipient'),dates=get('maxRewardDates');
     var start=get('maxRewardStart'),end=get('maxRewardEnd'),send=get('maxRewardSend'),status=get('maxRewardStatus');
     var refresh=get('maxRewardRefresh'),back=get('maxRewardBack');
-    var options=[],epoch=0;
+    var options=[],epoch=0,periodKey=null;
     var today=new Date().toISOString().slice(0,10);
     start.value=today.slice(0,8)+'01';end.value=today;
     function valid(){return form.isConnected&&config.isValid();}
@@ -36,12 +36,12 @@
       if(!valid()||sending)return;
       var n=++epoch,mode=kind.value;
       dates.hidden=mode!=='period';start.required=end.required=mode==='period';
-      options=[];recipient.replaceChildren();recipient.disabled=true;
+      options=[];periodKey=null;recipient.replaceChildren();recipient.disabled=true;
       status.textContent='Загружаем получателей…';controls();
       try{
         var result=await config.identity.rewardReportOptions({kind:mode},config.token);
         if(!valid()||n!==epoch)return;
-        options=result.recipients||[];
+        options=result.recipients||[];periodKey=result.period?.key||null;
         var placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='— Выберите получателя —';recipient.append(placeholder);
         options.forEach(function(r,i){
           var option=document.createElement('option');option.value=String(i);
@@ -50,7 +50,7 @@
           recipient.append(option);
         });
         recipient.disabled=false;
-        status.textContent=options.length?'':'Нет получателей для этого вида отчёта.';
+        status.textContent=(result.period?'Расчётный период: '+result.period.label+'. ':'')+(options.length?'':'Нет получателей для этого вида отчёта.');
       }catch(error){if(valid()&&n===epoch)status.textContent=error.message;}
       finally{if(valid()&&n===epoch)controls();}
     }
@@ -61,7 +61,7 @@
       event.preventDefault();
       if(!valid()||sending||recipient.value==='')return;
       var r=options[Number(recipient.value)];if(!r)return;
-      var body=kind.value==='unpaid'?{kind:'unpaid',key:r.key,expected_total:r.amount}:
+      var body=kind.value==='unpaid'?{kind:'unpaid',key:r.key,expected_total:r.amount,expected_period:periodKey}:
         {kind:'period',role:r.role,recipient_id:r.id,start:start.value,end:end.value};
       if(body.kind==='period'&&(!body.start||!body.end||body.start>body.end)){status.textContent='Укажите корректный период.';return;}
       sending=true;recipient.disabled=true;controls();

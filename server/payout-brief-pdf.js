@@ -55,7 +55,7 @@ function payoutBriefPdfPages(report,font,options={}){
       }
       text(60,y,person.roles_label+(continuation?' (продолжение)':''),19,'#52695A');
       y+=39;
-      text(60,y,'Даты начислений: '+(person.period?.label || 'не указаны'),20,'#1C3A2F');
+      text(60,y,(person.monthly?'Расчётный период: ':'Даты начислений: ')+(person.period?.label || 'не указаны'),20,'#1C3A2F');
       y+=29;
       text(60,y,'Дата продажи — по времени создания оплаченного заказа.',16,'#64766B');
       y+=35;
@@ -93,6 +93,7 @@ function payoutBriefPdfPages(report,font,options={}){
   if(!options.recipient){
   startPage(null);
   paragraph('Ведомость · '+report.people.length+' получателей', '#1C3A2F',27);
+  if(report.period)paragraph('Расчётный период: '+report.period.label,'#1C3A2F',23);
   line('Всего к выплате (предварительно)',report.total,'total');
   line('Комиссионные начисления',report.commission);
   line('Невыплаченные бонусы',report.bonus);
@@ -108,6 +109,13 @@ function payoutBriefPdfPages(report,font,options={}){
     line('Общая сумма к выплате',recipient.total,'total');
     line('Комиссии со всех ролей',recipient.commission);
     if(recipient.bonus)line('Бонусы',recipient.bonus);
+    if(recipient.monthly){
+      line('Начислено за период',recipient.period_accrued);
+      if(recipient.prior_accrued)line('Долг прошлых периодов',recipient.prior_accrued);
+      if(recipient.undated_accrued)line('Начисления без даты (ранее)',recipient.undated_accrued);
+      if(recipient.adjustments_applied)line('Корректировки',-recipient.adjustments_applied);
+      if(recipient.deferred_commission)line('Комиссия перенесена',-recipient.deferred_commission);
+    }
     for(const section of recipient.statements){
       ensure(140);
       y+=20;
@@ -116,10 +124,11 @@ function payoutBriefPdfPages(report,font,options={}){
       // Each order gets its own legible block with the original item snapshot,
       // full paid sale value, recorded rate and its exact payable commission.
       const sales=section.sales||[];
-      if(!sales.length)paragraph('Нет продаж в этом расчётном периоде.');
+      if(!sales.length||(recipient.monthly&&!sales.some(s=>s.period_part==='current')))paragraph('Нет продаж к выплате за расчётный период.');
       for(const sale of sales){
         ensure(95);
         const heading='Дата продажи: '+(sale.date||'не указана')+' · '+clean(sale.point,45);
+        if(sale.period_part==='prior'||sale.period_part==='undated')paragraph(sale.period_part==='prior'?'Долг прошлого периода':'Начисление без даты','#52695A',16);
         const headerRows=wrap(heading,86);
         for(const item of headerRows){
           ensure(35);
@@ -152,7 +161,7 @@ function payoutBriefPdfPages(report,font,options={}){
       for(const x of section.refund_review||[])paragraph('Проверка исторической ставки · '+x.order_code+' · возврат '+money(x.refunded_amount),'#A33D32',17);
       if(section.refund_adjustments?.length||section.refund_carried)line('Комиссия к перечислению',section.commission,'total');
       for(const bonus of section.bonuses){
-        line((bonus.type==='launch_bonus'?'Бонус за запуск':'Реферальный бонус')+' · '+bonus.point,bonus.amount);
+        line((bonus.type==='launch_bonus'?'Бонус за запуск':'Реферальный бонус')+' · '+bonus.point+(bonus.period_part==='prior'?' · долг прошлого периода':bonus.period_part==='undated'?' · без даты':''),bonus.amount);
       }
       if(section.held_orders)paragraph('Исторических возвратов без подтверждённой ставки: '+section.held_orders+'. Автоматическое удержание не выполняется.','#A33D32',17);
     }

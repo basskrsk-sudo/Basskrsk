@@ -662,6 +662,7 @@ function payoutBriefMenu(report, requestedPage = 0) {
   return {
     message: '📄 Персональные PDF-справки: выберите получателя (' +
       (page + 1) + '/' + pages + ').\n' +
+      (report.period?'Расчётный период: '+report.period.label+'\n':'')+
       'После выбора нужно отдельно подтвердить формирование в Telegram.',
     reply_markup: { inline_keyboard: keyboard },
   };
@@ -674,7 +675,7 @@ async function sendPayoutBriefs(chatId) {
   }
   let report;
   try {
-    report = collectPayoutBrief();
+    report = collectPayoutBrief(new Date(),{monthly:true});
     await replyToChat(chatId, formatPayoutBriefMessage(report));
   } catch (error) {
     console.error('Ошибка расчёта справок для выплат:', error.message);
@@ -700,13 +701,14 @@ async function sendPayoutBriefs(chatId) {
 async function sendIndividualPayoutPdf(chatId, params = {}) {
   if (!adminCanReadSales(chatId)) throw new Error('Нет доступа к выплатам');
   if (!/^[0-9a-f]{16}$/.test(String(params.recipientKey || ''))) throw new Error('Некорректный выбор получателя');
-  const report = collectPayoutBrief(new Date(), {recipientKey:params.recipientKey});
+  const report = collectPayoutBrief(new Date(), {recipientKey:params.recipientKey,monthly:true});
   const person = report.people.find(item => item.selection_key === params.recipientKey);
   // A person could be merged into a different account or receive a payout
   // while the approval is pending. Refuse stale confirmations instead of
   // delivering a PDF for a different person or incorrect amount.
   if (!person || person.name !== params.recipientName ||
-      Number(person.total) !== Number(params.expectedTotal)) {
+      Number(person.total) !== Number(params.expectedTotal) ||
+      (params.expectedPeriod&&report.period?.key!==params.expectedPeriod)) {
     const error = new Error('Сумма или получатель изменились. Запросите новую сводку командой /payouts.');
     error.publicMessage = true;
     throw error;
@@ -925,7 +927,7 @@ async function processUpdate(update) {
       if(!allowed)return;
       try {
         const isPage=callback.data.startsWith('payout:page:');
-        const report=collectPayoutBrief(new Date(),isPage?{}:{recipientKey:callback.data.slice('payout:pick:'.length)});
+        const report=collectPayoutBrief(new Date(),{monthly:true,...(isPage?{summaryOnly:true}:{recipientKey:callback.data.slice('payout:pick:'.length)})});
         if(isPage){
           const menu=payoutBriefMenu(report,Number(callback.data.slice('payout:page:'.length)));
           await replyToChat(chat.id,menu.message,menu.reply_markup);
@@ -937,7 +939,7 @@ async function processUpdate(update) {
           }else{
             await requestBotReport(chat.id,'payoutpdf',{
               recipientKey:person.selection_key,recipientName:person.name,
-              expectedTotal:person.total,
+              expectedTotal:person.total,expectedPeriod:report.period.key,
             });
           }
         }

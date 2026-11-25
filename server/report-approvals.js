@@ -89,6 +89,7 @@ function details(params){
   const items=[];
   if(params.recipientName)items.push('Получатель: '+escapeHtml(String(params.recipientName).slice(0,100)));
   if(params.expectedTotal!==undefined)items.push('К выплате: '+escapeHtml(params.expectedTotal)+' ₽');
+  if(params.expectedPeriod)items.push('Окончание расчётного периода: '+escapeHtml(params.expectedPeriod));
   if(params.year)items.push('Год: '+escapeHtml(params.year));
   if(params.days)items.push('Период: '+escapeHtml(params.days)+' дней');
   if(params.citySelector)items.push('Город: '+escapeHtml(params.citySelector));
