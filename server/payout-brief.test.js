@@ -88,7 +88,8 @@ test('CSV and PDF both include one combined personal section and explicit role b
   assert.match(csv,/ИТОГО/);
   assert.match(csv,/Менеджер/);
   assert.match(csv,/Грумер/);
-  assert.match(text,/1. Иван Иванов/);
+  assert.match(text,/Получатели по способам:/);
+  assert.match(text,/• Иван Иванов — .*Грумер \+ Менеджер/);
   assert.ok(pages.length>=1+report.people.length,'summary and at least one page for each payee');
   const combined=pages.filter(p=>p.includes('Грумер + Менеджер')).join('\n');
   assert.ok(combined);
