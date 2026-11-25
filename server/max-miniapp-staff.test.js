@@ -11,11 +11,18 @@ process.env.DATA_DIR=fs.mkdtempSync(path.join(os.tmpdir(),'hm-max-roles-'));
 process.env.TOKEN_SECRET='hm-max-staff-test-token';
 const db=require('./db');
 const {Router}=require('./http-utils');
-const {verifyToken}=require('./auth');
+const {verifyToken,signToken}=require('./auth');
 const {registerMaxMiniAppRoutes,verifyMaxBridgeContact}=require('./max-miniapp');
 const BOT_TOKEN='hm-max-test-bot';
 const router=new Router();
-registerMaxMiniAppRoutes(router,{token:()=>BOT_TOKEN});
+const sentReports=[];
+let renderCount=0,denyBeforeSend=false;
+const rewardReports=require('./max-reward-reports').createMaxRewardReports(db,{
+ renderBrief:async(report,options)=>{renderCount++;assert.equal(report.people.length,1);assert.equal(options.recipient.name,'Получатель отчёта');return Buffer.from('%PDF-test');},
+ renderPeriod:async report=>{renderCount++;assert.equal(report.recipient.name,'Получатель отчёта');return Buffer.from('%PDF-period');},
+ sendFile:async args=>{if(denyBeforeSend)db.prepare("UPDATE admins SET active=0 WHERE phone='79135550999'").run();args.authorize();sentReports.push(args);return {messageId:'test-mid'};},
+});
+registerMaxMiniAppRoutes(router,{token:()=>BOT_TOKEN,rewardReports});
 const NOW=Math.floor(Date.now()/1000);
 
 function signedLaunch(userId=812345,chatId='8877700',date=NOW) {
@@ -36,7 +43,7 @@ function signedContact(userId=812345,phone='+79135550101',date=NOW){
   const hash=crypto.createHmac('sha256',BOT_TOKEN).update(value).digest('hex');
   return {authDate,phone,hash};
 }
-async function api(path,body={}){
+async function api(path,body={},token){
   const match=router.match('POST',path);
   assert.ok(match,path);
   const res={status:0,json:null,headers:{},
@@ -44,7 +51,7 @@ async function api(path,body={}){
     setHeader(k,v){this.headers[k]=v;},
     end(data){this.json=data?JSON.parse(data):null;},
   };
-  await match.handler({headers:{}},res,{body,query:{},params:match.params});
+  await match.handler({headers:token?{authorization:'Bearer '+token}:{}},res,{body,query:{},params:match.params});
   return res;
 }
 let next=0;
@@ -181,4 +188,51 @@ test('MAX user switch cannot reuse earlier phone verification',async()=>{
 test.after(()=>{
   try{db.close()}catch(_){}
   fs.rmSync(process.env.DATA_DIR,{recursive:true,force:true});
+});
+
+test('MAX reward reports require active admin, same signed private chat and send only to requester',async()=>{
+ const phone='79135550999',userId=829999,chat='8877999',salon='max-reward-test';
+ point(salon);
+ const pid=partner('79135550888',{chat:'8877888',point:salon});
+ db.prepare("UPDATE partners SET full_name='Получатель отчёта',commission_rate=.15 WHERE id=?").run(pid);
+ db.prepare(`INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,partner_id,subtotal,total,payment_method,status,commission_rate)
+ VALUES('MAX-REPORT-ORDER','Клиент','79130000000','Точка',?,?,500,500,'sbp','paid',.15)`).run(salon,pid);
+ const adm=admin(phone,chat),init_data=signedLaunch(userId,chat);
+ const optionsPath='/api/max/miniapp/reward-reports/options',sendPath='/api/max/miniapp/reward-reports/send';
+ const token=signToken({role:'admin',id:adm,adminRole:'super',miniappAuthVersion:0});
+ assert.equal((await api(optionsPath,{init_data,kind:'unpaid'},token)).status,403);
+ await api('/api/max/miniapp/verify-phone',{init_data,contact:signedContact(userId,phone)});
+ assert.equal((await api(optionsPath,{init_data,kind:'unpaid'})).status,401);
+ assert.equal((await api(optionsPath,{init_data,kind:'unpaid'},signToken({role:'partner',id:pid}))).status,401);
+ assert.equal((await api(optionsPath,{init_data:signedLaunch(userId,'8877555'),kind:'unpaid'},token)).status,403);
+ assert.equal((await api(optionsPath,{init_data:signedLaunch(987777,chat),kind:'unpaid'},token)).status,403);
+ const other=admin('79135550998','8877998');
+ assert.equal((await api(optionsPath,{init_data,kind:'unpaid'},signToken({role:'admin',id:other,adminRole:'super'}))).status,403);
+ const list=await api(optionsPath,{init_data,kind:'unpaid'},token);
+ assert.equal(list.status,200,JSON.stringify(list.json));
+ const selected=list.json.recipients.find(p=>p.name==='Получатель отчёта');
+ assert.ok(selected);assert.equal(selected.amount,75);
+ assert.equal((await api(sendPath,{init_data,kind:'unpaid',key:selected.key,expected_total:76},token)).status,409);
+ const before=db.prepare('SELECT COUNT(*) AS n FROM partner_payouts').get().n;
+ const snapshots=db.prepare('SELECT COUNT(*) AS n FROM payout_reports').get().n;
+ const sent=await api(sendPath,{init_data,kind:'unpaid',key:selected.key,expected_total:75,
+   chat_id:'8877888',user_id:'12345678',target_user_id:'12345678'},token);
+ assert.equal(sent.status,200,JSON.stringify(sent.json));
+ assert.equal(sentReports.length,1);
+ assert.equal(sentReports[0].userId,String(userId));
+ assert.match(sentReports[0].caption,/К выплате: 75 ₽/);
+ const periods=await api(optionsPath,{init_data,kind:'period'},token);
+ assert.ok(periods.json.recipients.some(x=>x.role==='partner'&&x.id===pid));
+ const date=db.prepare("SELECT substr(created_at,1,10) AS d FROM orders WHERE order_code='MAX-REPORT-ORDER'").get().d;
+ const period=await api(sendPath,{init_data,kind:'period',role:'partner',recipient_id:pid,start:date,end:date},token);
+ assert.equal(period.status,200,JSON.stringify(period.json));assert.equal(sentReports.length,2);
+ assert.equal(sentReports[1].userId,String(userId));
+ assert.equal(db.prepare('SELECT COUNT(*) AS n FROM partner_payouts').get().n,before);
+ assert.equal(db.prepare('SELECT COUNT(*) AS n FROM payout_reports').get().n,snapshots);
+ denyBeforeSend=true;
+ const denied=await api(sendPath,{init_data,kind:'unpaid',key:selected.key,expected_total:75},token);
+ assert.equal(denied.status,403);assert.equal(sentReports.length,2);
+ assert.equal(renderCount,3);
+ denyBeforeSend=false;
+ assert.equal((await api(optionsPath,{init_data,kind:'unpaid'},token)).status,401);
 });

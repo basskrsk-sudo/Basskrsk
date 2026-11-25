@@ -1725,6 +1725,9 @@
       'data-work-action="admin-health-check">🔎 Проверить сервер и Mini App</button></div>';
     html += '<div id="workAdminHealthResults" aria-live="polite">' +
       '<p class="work-note">Диагностика загружается только по запросу.</p></div>';
+    if(isMaxMiniApp&&adminRegisterAuthorized())html += surface('💸 Отчёты вознаграждений',
+      '<button class="work-primary" type="button" data-work-action="max-reward-reports">📄 Получить PDF в MAX</button>'+
+      '<p class="work-note">Только в ваш личный чат с ботом. Пересылку партнёру выполняете самостоятельно.</p>');
     html += surface('🏷️ Каталог товаров',
       '<button class="work-primary" type="button" data-work-action="admin-product-create">' +
       '➕ Создать новый товар</button>' +
@@ -1912,6 +1915,9 @@
       if (activeRole) chooseRole(activeRole);
       else renderAll();
     });
+    if(action==='max-reward-reports'&&isMaxMiniApp&&adminRegisterAuthorized()&&window.HvostMaxRewardReports)
+      return window.HvostMaxRewardReports.open({root,identity,token:getToken('admin'),isValid:adminRegisterAuthorized,
+        onBack:function(){return chooseRole('admin');}});
     if (action === 'admin-wh-open' && activeRole === 'admin' && adminRegisterAuthorized() &&
         window.HvostAdminWarehouse) return window.HvostAdminWarehouse.open({
           token:getToken('admin'),isValid:adminRegisterAuthorized,

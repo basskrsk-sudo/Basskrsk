@@ -120,3 +120,20 @@ test('shared work module scopes MAX role keys; Telegram keeps original storage k
   assert.match(work,/role === 'founder'/);
   assert.match(work,/if \(isMaxMiniApp\) return;/);
 });
+
+test('MAX reward report UI is admin-only, explicit, and never exposes forwarding targets',async()=>{
+ const panel=fs.readFileSync(path.join(root,'public/max-admin-reward-reports.js'),'utf8');
+ assert.match(html,/max-admin-reward-reports\.js/);
+ assert.match(work,/if\(isMaxMiniApp&&adminRegisterAuthorized\(\)\)html \+= surface\('💸 Отчёты вознаграждений'/);
+ assert.match(work,/action==='max-reward-reports'&&isMaxMiniApp&&adminRegisterAuthorized\(\)/);
+ assert.match(panel,/Текущая справка к выплате/);
+ assert.match(panel,/Расчёт за выбранный период/);
+ assert.match(panel,/Отправить PDF мне в MAX/);
+ assert.match(panel,/sendRewardReport\(body,config.token\)/);
+ assert.doesNotMatch(panel,/target_user_id|chat_id|confirm_transferred/);
+ const h=harness();
+ await h.api.init({id:123},'signed-max-initData');
+ await h.api.requestContact();
+ await assert.rejects(()=>h.api.rewardReportOptions({kind:'unpaid'},'max-session-token'),/администратора/);
+ assert.equal(h.sent.some(x=>x.pathname.includes('reward-reports')),false);
+});
