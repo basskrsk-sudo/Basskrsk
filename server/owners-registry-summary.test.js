@@ -17,7 +17,9 @@ function fixture(){
       id INTEGER PRIMARY KEY,point_id TEXT,status TEXT,total REAL,created_at TEXT);
     CREATE INDEX idx_orders_point_status_created ON orders(point_id,status,created_at);
     CREATE TABLE owner_payout_items(
-      id INTEGER PRIMARY KEY,order_id INTEGER UNIQUE,commission_amount INTEGER);
+      id INTEGER PRIMARY KEY,order_id INTEGER UNIQUE,commission_amount INTEGER,payout_id INTEGER,order_code TEXT);
+    CREATE TABLE owner_payouts(id INTEGER PRIMARY KEY,owner_id INTEGER);
+    CREATE TABLE payout_reports(role TEXT,payout_id INTEGER,snapshot_json TEXT);
     INSERT INTO points VALUES ('a','Первый салон'),('b','Второй салон');
     INSERT INTO partners VALUES (1,'Грумер 1');
     INSERT INTO salon_owners VALUES
@@ -36,6 +38,8 @@ function fixture(){
       (8,'a','paid',0,datetime('now','-2 days'));
     INSERT INTO owner_payout_items(order_id,commission_amount) VALUES(2,18),(6,15);
   `);
+  db.exec("ALTER TABLE orders ADD COLUMN refund_status TEXT DEFAULT 'none'; ALTER TABLE orders ADD COLUMN refunded_amount REAL;");
+  require('./commission-refunds').initializeRefundOffsets(db);
   return db;
 }
 function originalRegistry(database){

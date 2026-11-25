@@ -141,7 +141,7 @@ function formatSale(account,order,getItems){
 }
 
 const {isPayable,planCommission}=require('./commission-refunds');
-function roleStatement(account,refundQuery,getItems,detail=true){
+function roleStatement(account,getItems,detail=true){
   const pending=pendingOrders(account);
   const eligible=pending.filter(isPayable);
   const returned=pending.filter(o=>o.return_amount>0||o.refund_status==='refunded');
@@ -207,12 +207,11 @@ function formatMoment(iso){
     month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(iso));
 }
 function collectPayoutBrief(now=new Date(),{recipientKey=null}={}){
-  const refundQuery=null;
   let entries=[];
   const getItems=createOrderItemReader();
   for(const account of accounts()){
-    const statement=roleStatement(account,refundQuery,getItems,!recipientKey);
-    if(statement.total>0||statement.held_orders||statement.refund_carried||statement.refund_orders.length)entries.push({account,statement});
+    const statement=roleStatement(account,getItems,!recipientKey);
+    if(statement.total>0||statement.held_orders||statement.refund_carried)entries.push({account,statement});
   }
   // Determine the exact current grouping from unpaid totals first (including
   // newly active roles/refunds). Only then read product details for the chosen
@@ -221,7 +220,7 @@ function collectPayoutBrief(now=new Date(),{recipientKey=null}={}){
     const selected=groupStatements(entries).find(person=>person.selection_key===recipientKey);
     const roles=new Set((selected?.statements||[]).map(s=>s.role+':'+s.account_id));
     entries=entries.filter(e=>roles.has(e.account.role+':'+e.account.id))
-      .map(e=>({account:e.account,statement:roleStatement(e.account,refundQuery,getItems)}));
+      .map(e=>({account:e.account,statement:roleStatement(e.account,getItems)}));
   }
   const people=groupStatements(entries);
   const sum=key=>people.reduce((result,p)=>result+num(p[key]),0);
@@ -312,6 +311,7 @@ function formatRecipientPayoutMessage(person,generatedAt){
     if(returned.size<=3)output.push('↩️ Заказ '+r.order_code+': возврат '+money(r.refunded_amount)+', осталось '+money(r.net));
    }
    for(const x of (section.refund_adjustments||[]).slice(0,3))output.push('➖ Корректировка ('+section.role_label+') '+x.order_code+': −'+money(x.amount));
+   for(const x of (section.refund_review||[]).slice(0,2))output.push('⚠️ '+x.order_code+': возврат '+money(x.refunded_amount)+', историческая ставка не сохранена.');
    if(section.refund_carried)output.push('Перенос корректировки ('+section.role_label+'): '+money(section.refund_carried));
   }
   output.push('',
@@ -343,6 +343,7 @@ function buildPayoutBriefCsv(report){
       }
       for(const r of section.refund_orders||[])if(r.net<=0)rows.push([person.name,section.role_label,person.period.label,'',r.order_code,section.point,'Полный возврат '+money(r.refunded_amount),0,'',0,'Возврат'].map(csvCell).join(';'));
       for(const x of section.refund_adjustments||[])rows.push([person.name,section.role_label,person.period.label,'',x.order_code,section.point,'Возврат ранее выплаченной комиссии','','',-x.amount,'Корректировка'].map(csvCell).join(';'));
+      if(section.refund_carried)for(const x of section.refund_outstanding||[])rows.push([person.name,section.role_label,person.period.label,'',x.order_code,section.point,'Перенос корректировки '+money(x.amount),'','','','Не удержано'].map(csvCell).join(';'));
       for(const x of section.refund_review||[])rows.push([person.name,section.role_label,person.period.label,'',x.order_code,section.point,'Историческая ставка не сохранена','','','','Проверка'].map(csvCell).join(';'));
       for(const bonus of section.bonuses||[]){
         rows.push([person.name,section.role_label,person.period.label,

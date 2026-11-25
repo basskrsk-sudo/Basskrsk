@@ -65,6 +65,7 @@ function payoutPdfPages(report, font) {
   for(const item of report.items||[]) {
     const names=itemNames(item).flatMap(name=>wrap(name,62));
     const detail=(report.role==='manager' && item.point) ? wrap('Точка: '+item.point,62) : [];
+    if(item.refunded_amount>0)detail.push(...wrap('Возврат '+rub(item.refunded_amount)+' из '+rub(item.original_total),62));
     const height=Math.max(88,57+names.length*27+detail.length*24);
     if(y+height>1590) { page(); paragraph('Проданные товары (продолжение)',21); }
     rect(58,y-25,1120,height,(report.items.indexOf(item)%2)?'#F5F7F5':'#FFFFFF');
@@ -94,7 +95,7 @@ function payoutPdfPages(report, font) {
     }
   }
   totalLine('Всего начислено',report.accrued);
-  if(report.refund_adjustment_total>0)totalLine('Корректировка возвратов',-report.refund_adjustment_total);
+  if(report.refund_adjustment_total>0)for(const x of report.refund_adjustments||[]){paragraph('Корректировка возврата · '+x.order_code,17);totalLine('Удержано',-x.amount);}
   if(report.kind === 'payout') totalLine('Сумма выплаты',report.payout_amount,true);
   else {
     totalLine('Уже выплачено',report.already_paid);

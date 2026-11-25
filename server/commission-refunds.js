@@ -22,12 +22,12 @@ function netOrder(order){
   return_amount:Math.max(0,gross-net),commission_amount:Math.round(net*Number(order.commission_rate||0))};
 }
 function isPayable(order){return !(order.return_amount>0 && order.total<=0)&&!(order.refund_status==='refunded'&&order.total<=0);}
-function corrections(db,role,id){
+function corrections(db,role,id=null){
  const config=CONFIG[role];if(!config)throw Error('Invalid payout role');
  const [items,payouts,recipient]=config;
  // Only paid ledger rows whose source order was returned; preserve the frozen
  // commission, not the recipient's mutable current rate. No background writes.
- const rows=db.prepare(`SELECT i.id AS item_id,i.payout_id AS original_payout_id,i.order_code,
+ const rows=db.prepare(`SELECT p.${recipient} AS recipient_id,i.id AS item_id,i.payout_id AS original_payout_id,i.order_code,
   i.commission_amount AS paid_commission,${role==='manager'?'i.commission_rate':'NULL'} AS stored_rate,
   o.id AS order_id,o.total,o.refund_status,o.refunded_amount,
   r.snapshot_json,
@@ -35,8 +35,8 @@ function corrections(db,role,id){
     WHERE x.role=? AND x.original_item_id=i.id),0) AS recovered
   FROM ${payouts} p JOIN ${items} i ON i.payout_id=p.id JOIN orders o ON o.id=i.order_id
   LEFT JOIN payout_reports r ON r.role=? AND r.payout_id=p.id
-  WHERE p.${recipient}=? AND (o.refund_status='refunded' OR COALESCE(o.refunded_amount,0)>0)
-  ORDER BY i.id`).all(role,role,id);
+  WHERE ${id==null?'p.'+recipient+' IS NOT NULL':'p.'+recipient+'=?'} AND (o.refund_status='refunded' OR COALESCE(o.refunded_amount,0)>0)
+  ORDER BY i.id`).all(role,role,...(id==null?[]:[id]));
  const due=[],review=[];
  for(const row of rows){
   const net=netPaidRevenue(row),returned=Math.max(0,Number(row.total||0)-net);
@@ -46,7 +46,7 @@ function corrections(db,role,id){
     if(saved?.rate!=null)rate=Number(saved.rate);
    }catch(_){}
   }
-  const base={item_id:row.item_id,original_payout_id:row.original_payout_id,order_id:row.order_id,
+  const base={recipient_id:row.recipient_id,item_id:row.item_id,original_payout_id:row.original_payout_id,order_id:row.order_id,
    order_code:row.order_code,refunded_amount:returned,paid_commission:Number(row.paid_commission),recovered:Number(row.recovered)};
   if(net>0&&(rate==null||!Number.isFinite(Number(rate))||Number(rate)<0)){
    if(base.paid_commission>base.recovered)review.push(base);continue;
@@ -57,6 +57,11 @@ function corrections(db,role,id){
   if(amount>0)due.push({...base,corrected_commission:corrected,amount});
  }
  return {due,review};
+}
+function debtByRecipient(db,role){
+ const result=new Map();
+ for(const x of corrections(db,role).due)result.set(Number(x.recipient_id),(result.get(Number(x.recipient_id))||0)+x.amount);
+ return result;
 }
 function planCommission(db,role,id,orders){
  const gross=orders.reduce((s,o)=>s+Number(o.commission_amount||0),0);
@@ -82,4 +87,4 @@ function recordOffsets(db,role,id,payoutId,plan){
  VALUES(?,?,?,?,?,?,?,?)`);
  for(const x of plan.adjustments)insert.run(role,id,x.item_id,x.original_payout_id,x.order_code,payoutId,x.amount,x.refunded_amount);
 }
-module.exports={initializeRefundOffsets,netOrder,isPayable,corrections,planCommission,verifyPlan,recordOffsets};
+module.exports={initializeRefundOffsets,netOrder,isPayable,corrections,debtByRecipient,planCommission,verifyPlan,recordOffsets};

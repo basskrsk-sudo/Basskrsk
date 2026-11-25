@@ -43,4 +43,16 @@ test('all three ledgers recover prior commission once, using original rates and 
   assert.throws(()=>pay(id,admin),{code:'NOTHING_TO_PAY'});
  }
 });
+test('unknown historical partial rate is not guessed; full refund uses the paid commission',()=>{
+ const legacy=sale('LEGACY-REFUND',1000,400);
+ const id=Number(db.prepare('INSERT INTO owner_payouts(owner_id,owner_name,amount,orders_count) VALUES(?,?,?,1)').run(owner,'Owner',50).lastInsertRowid);
+ db.prepare('INSERT INTO owner_payout_items(payout_id,order_id,order_code,commission_amount) VALUES(?,?,?,?)').run(id,legacy,'LEGACY-REFUND',50);
+ const first=corrections(db,'owner',owner);
+ assert.ok(first.review.some(x=>x.order_code==='LEGACY-REFUND'));
+ assert.ok(!first.due.some(x=>x.order_code==='LEGACY-REFUND'));
+ db.prepare('UPDATE orders SET refunded_amount=1000 WHERE id=?').run(legacy);
+ const second=corrections(db,'owner',owner);
+ assert.ok(!second.review.some(x=>x.order_code==='LEGACY-REFUND'));
+ assert.equal(second.due.find(x=>x.order_code==='LEGACY-REFUND').amount,50);
+});
 test.after(()=>{db.close();fs.rmSync(process.env.DATA_DIR,{recursive:true,force:true});});

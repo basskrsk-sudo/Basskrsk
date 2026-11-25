@@ -65,6 +65,7 @@ function printableReport(report) {
   const rows = (report.items || []).map(order => '<tr><td>' + esc(localDateTime(order.date)) +
     '</td><td>' + itemNames(order).map(esc).join('<br>') +
     (report.role === 'manager' && order.point ? '<small>Точка: ' + esc(order.point) + '</small>' : '') +
+    (order.refunded_amount>0?'<small>Возврат: '+esc(rub(order.refunded_amount))+' из '+esc(rub(order.original_total))+'</small>':'')+
     '</td><td class="number">' + esc(rub(order.base)) + '</td><td class="number">' + esc(rate(order.rate)) +
     '</td><td class="number"><b>' + esc(rub(order.amount)) + '</b></td></tr>').join('');
   const bonusLines = (report.bonuses || []).map(b => line('Бонус · ' + (b.point || b.point_name || 'за точку'), b.amount, false)).join('');
@@ -79,7 +80,7 @@ function printableReport(report) {
     line('Вознаграждение с продаж', view.commission, false),
     bonusLines ? '<h2>Бонусы</h2>' + bonusLines : '',
     line('Всего начислено', view.accrued, false),
-    ...(report.refund_adjustment_total>0?[line('Корректировка ранее выплаченной комиссии',-report.refund_adjustment_total,false)]:[]),
+    ...(report.refund_adjustment_total>0?report.refund_adjustments.map(x=>line('Корректировка возврата · '+x.order_code,-x.amount,false)):[]),
     isPayout ? line('Сумма выплаты' + (report.paid_at ? ' (' + shortDate(report.paid_at) + ')' : ''), view.payoutAmount, true) :
       line('Уже выплачено', view.alreadyPaid, false) + line('Осталось выплатить', view.unpaid, true),
     report.lifetime_earned == null ? '' : line('Заработано всего (за всё время)', report.lifetime_earned, false),

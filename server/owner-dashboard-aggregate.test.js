@@ -16,7 +16,9 @@ function fixture(){
     CREATE INDEX idx_orders_point_status_created ON orders(point_id,status,created_at);
     CREATE TABLE partners(id INTEGER PRIMARY KEY,point_id TEXT,full_name TEXT,commission_rate REAL,active INTEGER);
     CREATE TABLE salon_owners(id INTEGER PRIMARY KEY,point_id TEXT,commission_rate REAL);
-    CREATE TABLE owner_payout_items(id INTEGER PRIMARY KEY,order_id INTEGER,commission_amount INTEGER);
+    CREATE TABLE owner_payout_items(id INTEGER PRIMARY KEY,order_id INTEGER,commission_amount INTEGER,payout_id INTEGER,order_code TEXT);
+    CREATE TABLE owner_payouts(id INTEGER PRIMARY KEY,owner_id INTEGER);
+    CREATE TABLE payout_reports(role TEXT,payout_id INTEGER,snapshot_json TEXT);
     INSERT INTO partners VALUES
       (1,'a','Анна',0.15,1),(2,'a','Борис',0.20,0),(3,'b','Чужой грумер',0.10,1),
       (4,'a','Новый грумер',0.15,1);
@@ -35,6 +37,7 @@ function fixture(){
       (11,'a','paid','none',NULL,120,1,0.15,0,'sbp','2026-10-23 12:00:00');
     INSERT INTO owner_payout_items(order_id,commission_amount) VALUES(1,13),(8,50);
   `);
+  require('./commission-refunds').initializeRefundOffsets(db);
   return db;
 }
 function legacyDashboard(db,pointId,ownerId,monthStart){
@@ -65,8 +68,9 @@ function legacyDashboard(db,pointId,ownerId,monthStart){
   }).sort((a,b)=>b.revenue-a.revenue);
   const owner=db.prepare('SELECT commission_rate FROM salon_owners WHERE id=?').get(ownerId);
   const unpaid=db.prepare(`
-    SELECT o.total FROM orders o LEFT JOIN owner_payout_items pi ON pi.order_id=o.id
+    SELECT CASE WHEN o.refund_status='refunded' AND COALESCE(o.refunded_amount,0)<=0 THEN 0 ELSE MAX(0,o.total-COALESCE(o.refunded_amount,0)) END AS total FROM orders o LEFT JOIN owner_payout_items pi ON pi.order_id=o.id
     WHERE o.point_id=? AND o.status='paid' AND pi.order_id IS NULL
+      AND (o.refund_status<>'refunded' OR (o.refunded_amount>0 AND o.refunded_amount<o.total))
   `).all(pointId);
   return {
     totals:{revenue,orders:orders.length,
@@ -95,8 +99,8 @@ test('owner dashboard SQL exactly matches historical dashboard behavior',()=>{
     assert.equal(actual.groomers[0].commission_earned,150);
     assert.equal(actual.groomers.find(x=>x.id===2).revenue,450);
     assert.equal(actual.groomers.find(x=>x.id===4).orders_count,0);
-    assert.equal(actual.unpaid.amount,78,'payouts still round each gross order separately');
-    assert.equal(actual.unpaid.orders_count,8,'refunded paid orders remain in existing payout review');
+    assert.equal(actual.unpaid.amount,68,'round each remaining paid amount separately');
+    assert.equal(actual.unpaid.orders_count,6,'full returns excluded, partial included');
   } finally {db.close();}
 });
 test('owner and groomer data cannot leak across salons',()=>{
