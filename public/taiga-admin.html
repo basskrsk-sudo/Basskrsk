@@ -134,6 +134,40 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 .network-history[open] summary { margin-bottom:.7rem; }
 .network-history table { min-width:560px; }
 #points-mgmt-tbody tr[hidden],#partners-tbody tr[hidden],#owners-tbody tr[hidden],#mgr-tbody tr[hidden] { display:none; }
+.network-compact-table { width:100%; table-layout:fixed; }
+.network-compact-table th:first-child { width:32%; }
+.network-compact-table th:last-child { width:90px; }
+.network-compact-table td { overflow-wrap:anywhere; vertical-align:top; }
+.network-main-cell { font-weight:600; }
+.network-primary-link { color:var(--forest); background:none; border:0; text-align:left; font:inherit; font-weight:600; cursor:pointer; padding:0; overflow-wrap:anywhere; }
+.network-primary-link:hover { text-decoration:underline; }
+.network-secondary { display:block; margin-top:.23rem; font-size:.76rem; font-weight:400; color:var(--muted); line-height:1.4; }
+.network-row-detail { margin-top:.4rem; font-size:.75rem; font-weight:400; color:var(--muted); }
+.network-row-detail summary { cursor:pointer; color:var(--deep); font-weight:500; }
+.network-row-detail > div { margin-top:.35rem; line-height:1.55; }
+.network-action-cell { text-align:right; }
+.network-compact-table .network-action-button { min-height:36px; width:auto; padding:.35rem .55rem; margin:0; font-size:.73rem; }
+.network-primary-link:focus-visible,.network-action-button:focus-visible,.partner-actions-item:focus-visible { outline:2px solid var(--deep); outline-offset:2px; }
+.network-compact-table .network-amount { color:var(--deep); font-weight:700; }
+.network-compact-table .network-placeholder { text-align:center;color:var(--muted);padding:1.5rem; }
+.network-point-settings summary { font-weight:600; cursor:pointer; color:var(--forest); }
+.network-point-settings[open] summary { margin-bottom:.8rem; }
+@media (max-width: 768px) {
+  .network-compact-table { display:block; min-width:0!important; }
+  .network-compact-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .network-compact-table tbody { display:block; }
+  .network-compact-table tbody tr { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.4rem .55rem; border:1px solid var(--border); border-radius:9px; padding:.7rem; margin:.55rem 0; }
+  .network-compact-table tbody tr[hidden] { display:none!important; }
+  .network-compact-table tbody td { display:block; min-width:0; padding:0; border:0; }
+  .network-compact-table .network-main-cell { grid-area:1/1/2/2; font-size:.87rem; }
+  .network-compact-table .network-action-cell { grid-area:1/2/2/3; align-self:start; }
+  .network-compact-table .network-value-cell { grid-column:1/-1; display:grid; grid-template-columns:minmax(78px,.7fr) minmax(0,1.3fr); gap:.5rem; align-items:start; }
+  .network-compact-table .network-value-cell::before { content:attr(data-label); color:var(--muted); font-size:.72rem; font-weight:500; }
+  .network-compact-table .network-value-cell > div { min-width:0; overflow-wrap:anywhere; }
+  .network-compact-table .network-placeholder { grid-column:1/-1; padding:.7rem; }
+  .network-compact-table .network-action-button { min-height:44px; }
+  .network-compact-table .network-primary-link { min-height:32px; }
+}
 
 /* ── KPI CARDS ── */
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
@@ -349,14 +383,14 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
   border-color: var(--deep); color: var(--deep); background: #F7F8F4;
 }
 .partner-actions-popover {
-  position: fixed; z-index: 700; display: none; width: 210px;
+  position: fixed; z-index: 700; display: none; width: min(260px, calc(100vw - 20px)); max-height: calc(100dvh - 20px); overflow-y: auto;
   padding: .35rem; border: 1px solid var(--border); border-radius: 10px;
   background: var(--white); box-shadow: 0 12px 34px rgba(28,58,47,.2);
 }
 .partner-actions-item {
   display: block; width: 100%; padding: .58rem .7rem; border: 0;
   border-radius: 7px; background: transparent; color: var(--text);
-  text-align: left; font: 500 .78rem/1.25 'Inter', sans-serif; cursor: pointer;
+  text-align: left; min-height:40px; font: 500 .82rem/1.25 'Inter', sans-serif; cursor: pointer;
 }
 .partner-actions-item:hover { background: #F4F2EC; color: var(--deep); }
 .partner-actions-item:disabled { color: #B8B0A4; cursor: not-allowed; background: transparent; }
@@ -1469,14 +1503,15 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </select>
         </div>
         <div class="network-registry-search"><input type="search" id="points-registry-search" aria-label="Поиск точки по названию или адресу" placeholder="Поиск точки по названию или адресу" oninput="filterNetworkTable('points-registry-search','points-mgmt-tbody')"><span id="points-registry-search-status" role="status"></span></div>
-        <table class="tbl">
-          <thead>
-            <tr><th>Точка</th><th>Дата создания</th><th>Промокод на первую покупку</th><th>Город</th><th>Адрес</th><th>Тип</th><th>Открытие</th><th>Оснащение</th><th>Статус</th><th class="r">Действие</th></tr>
-          </thead>
+        <table class="tbl network-compact-table" role="table">
+          <thead><tr><th scope="col">Точка</th><th scope="col">Открытие</th><th scope="col">Статус</th><th scope="col">Действия</th></tr></thead>
           <tbody id="points-mgmt-tbody"></tbody>
         </table>
       </div>
 
+    </div>
+
+    <!-- Point dialogs are shared by the registry and point workspace. -->
       <!-- Восстановление даты создания старой карточки без исторической метки. -->
       <div id="point-created-modal" style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.55);align-items:center;justify-content:center;z-index:120;padding:1rem;">
         <div role="dialog" aria-modal="true" aria-labelledby="point-created-title" style="background:white;border-radius:12px;padding:1.5rem;max-width:450px;width:100%;">
@@ -1612,8 +1647,6 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
 
-    </div>
-
     <!-- Sales summary loads separately from the point registry. -->
     <div id="sec-point-sales" style="display:none;">
       <div class="grid-3" id="point-cards-full"></div>
@@ -1747,10 +1780,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
         <p style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;">В колонке «К выплате» показано вознаграждение по оплаченным заказам, которые ещё не включались в выплату. После подтверждения выплаты операция сохранится в истории.</p>
         <div class="network-registry-search"><input type="search" id="owners-registry-search" aria-label="Поиск владельца, точки или телефона" placeholder="Поиск владельца, точки или телефона" oninput="filterNetworkTable('owners-registry-search','owners-tbody')"><span id="owners-registry-search-status" role="status"></span></div>
-        <table class="tbl">
-          <thead>
-            <tr><th>ФИО</th><th>Логин</th><th>Телефон</th><th>Точка</th><th class="r">К выплате</th><th>Статус</th><th class="r">Действие</th></tr>
-          </thead>
+        <table class="tbl network-compact-table" role="table">
+          <thead><tr><th scope="col">Владелец</th><th scope="col">Точка</th><th scope="col">К выплате</th><th scope="col">Статус</th><th scope="col">Действия</th></tr></thead>
           <tbody id="owners-tbody"></tbody>
         </table>
       </div>
@@ -2264,9 +2295,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </div>
         </div>
         <div style="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;">
-          <button class="row-btn" onclick="openCurrentPointPageSettings()">Страница точки</button>
-          <button class="row-btn" onclick="openCurrentPointQr()">QR товаров</button>
-          <button class="row-btn" onclick="showSection('points')">Управление</button>
+          <button type="button" class="row-btn network-action-button" aria-expanded="false" onclick="openCurrentPointActions(this,event)">Действия ▾</button>
           <span class="point-badge badge-active" style="font-size:.75rem;padding:.3rem .8rem;">Активна</span>
         </div>
       </div>
@@ -2280,6 +2309,30 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <button class="tab-btn" id="tab-qr" type="button" role="tab" aria-selected="false" onclick="switchPointTab('qr')">QR и акции</button>
       </div>
       <div id="pt-tab-overview" class="point-tab-panel">
+      <!-- KPI row for point -->
+      <div class="kpi-grid" style="margin-bottom:1rem;">
+        <div class="kpi-card">
+          <div class="kpi-label">Выручка</div>
+          <div class="kpi-value" id="pt-kpi-rev">—</div>
+          <div class="kpi-delta delta-up" id="pt-kpi-rev-d"></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Заказов</div>
+          <div class="kpi-value" id="pt-kpi-ord">—</div>
+          <div class="kpi-delta delta-up" id="pt-kpi-ord-d"></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Средний чек</div>
+          <div class="kpi-value" id="pt-kpi-avg">—</div>
+          <div class="kpi-delta" id="pt-kpi-avg-d"></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Доля от всех продаж</div>
+          <div class="kpi-value" id="pt-kpi-pct">—</div>
+          <div class="kpi-delta" id="pt-kpi-pct-d"></div>
+        </div>
+      </div>
+
       <!-- Чек-лист открытия конкретной точки -->
       <div class="card launch-checklist-card" id="point-launch-checklist-card">
         <div class="launch-checklist-head">
@@ -2293,6 +2346,24 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <div id="point-launch-checklist-body" style="font-size:.78rem;color:var(--muted);">Загрузка чек-листа…</div>
       </div>
 
+      <!-- Sales chart for point -->
+      <div class="grid-2" style="margin-bottom:1rem;">
+        <div class="card">
+          <div class="card-title">Выручка по дням</div>
+          <div style="position:relative;height:200px;">
+            <canvas id="chartPointSales" role="img" aria-label="Выручка точки по дням"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Топ товаров в точке <span>по выручке</span></div>
+          <div style="position:relative;height:200px;">
+            <canvas id="chartPointProducts" role="img" aria-label="Топ товаров в точке"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <details class="card network-point-settings" style="margin-bottom:1rem;">
+        <summary>Настройки точки · оборудование и координаты</summary>
       <div class="card" style="margin-bottom:1rem;">
         <div class="card-title">🏪 Оборудование при запуске</div>
         <p style="font-size:.78rem;color:var(--muted);">Большая стойка — 5 000 ₽, маленькая — 2 500 ₽, без стойки и полки — 0 ₽. Данные влияют на расчёт окупаемости.</p>
@@ -2319,46 +2390,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         </div>
       </div>
 
-      <!-- KPI row for point -->
-      <div class="kpi-grid" style="margin-bottom:1rem;">
-        <div class="kpi-card">
-          <div class="kpi-label">Выручка</div>
-          <div class="kpi-value" id="pt-kpi-rev">—</div>
-          <div class="kpi-delta delta-up" id="pt-kpi-rev-d"></div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Заказов</div>
-          <div class="kpi-value" id="pt-kpi-ord">—</div>
-          <div class="kpi-delta delta-up" id="pt-kpi-ord-d"></div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Средний чек</div>
-          <div class="kpi-value" id="pt-kpi-avg">—</div>
-          <div class="kpi-delta" id="pt-kpi-avg-d"></div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Доля от всех продаж</div>
-          <div class="kpi-value" id="pt-kpi-pct">—</div>
-          <div class="kpi-delta" id="pt-kpi-pct-d"></div>
-        </div>
-      </div>
-
-      <!-- Sales chart for point -->
-      <div class="grid-2" style="margin-bottom:1rem;">
-        <div class="card">
-          <div class="card-title">Выручка по дням</div>
-          <div style="position:relative;height:200px;">
-            <canvas id="chartPointSales" role="img" aria-label="Выручка точки по дням"></canvas>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-title">Топ товаров в точке <span>по выручке</span></div>
-          <div style="position:relative;height:200px;">
-            <canvas id="chartPointProducts" role="img" aria-label="Топ товаров в точке"></canvas>
-          </div>
-        </div>
-      </div>
-
+      </details>
       </div><!-- /pt-tab-overview -->
 
       <!-- Sales orders table -->
@@ -2703,13 +2735,8 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           <span>Грумеры и рекомендатели <span id="partners-count" style="font-weight:400;color:var(--muted);font-size:.75rem;"></span></span>
         </div>
         <div class="network-registry-search"><input type="search" id="partners-registry-search" aria-label="Поиск по имени, точке или коду партнёра" placeholder="Поиск по имени, точке или коду партнёра" oninput="filterNetworkTable('partners-registry-search','partners-tbody')"><span id="partners-registry-search-status" role="status"></span></div>
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th>Партнёр</th><th>Точка</th><th class="r">Тариф</th><th>Формат</th>
-              <th>Рекомендатель</th><th class="r" id="partners-earnings-heading">К выплате</th><th>Статус</th><th class="r">Действия</th>
-            </tr>
-          </thead>
+        <table class="tbl network-compact-table" role="table">
+          <thead><tr><th scope="col">Партнёр</th><th scope="col">Точка и тариф</th><th scope="col"><span id="partners-earnings-heading">К выплате</span></th><th scope="col">Статус</th><th scope="col">Действия</th></tr></thead>
           <tbody id="partners-tbody"></tbody>
         </table>
       </div>
@@ -2829,33 +2856,22 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </select>
         </div>
         <div class="network-registry-search"><input type="search" id="managers-registry-search" aria-label="Поиск менеджера, города или телефона" placeholder="Поиск менеджера, города или телефона" oninput="filterNetworkTable('managers-registry-search','mgr-tbody')"><span id="managers-registry-search-status" role="status"></span></div>
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th>Менеджер</th>
-              <th>Город</th>
-              <th>Код</th>
-              <th class="r">Точек</th>
-              <th class="r">Актив.</th>
-              <th class="r">Оборот точек</th>
-              <th class="r">7% к выплате</th>
-              <th class="r">Бонусы к выплате</th>
-              <th>Статус</th>
-              <th class="r">Действие</th>
-            </tr>
-          </thead>
+        <table class="tbl network-compact-table" role="table">
+          <thead><tr><th scope="col">Менеджер</th><th scope="col">Точки и оборот</th><th scope="col">К выплате</th><th scope="col">Статус</th><th scope="col">Действия</th></tr></thead>
           <tbody id="mgr-tbody"></tbody>
         </table>
       </div>
 
       <!-- Per-manager points breakdown -->
-      <div class="card">
-        <div class="card-title">Точки по менеджерам <span>кликните на менеджера выше для фильтра</span></div>
+      <details class="card network-history" id="manager-point-breakdown">
+        <summary>Точки менеджеров и бонусы за запуск</summary>
+        <div style="margin:.6rem 0;"><button type="button" class="row-btn" onclick="filterMgrPoints(null)">Показать все точки</button></div>
         <table class="tbl">
           <thead>
             <tr>
               <th>Точка</th>
               <th>Менеджер</th>
+              <th>Промокод точки</th>
               <th>Тип</th>
               <th class="r">Оборот</th>
               <th class="r">Начислено 7%</th>
@@ -2865,7 +2881,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </thead>
           <tbody id="mgr-points-tbody"></tbody>
         </table>
-      </div>
+      </details>
 
       <details class="card network-history" style="margin-top:1rem;overflow-x:auto;">
         <summary>История выплат менеджерам <span id="manager-payouts-count"></span></summary>
@@ -5476,7 +5492,47 @@ async function savePointCreationDate() {
   }
 }
 
+// Compact network records: primary information, expandable details, shared actions.
+function networkSecondary(value) {
+  return value==null||value===''?'':'<span class="network-secondary">'+escapeOrderCell(value)+'</span>';
+}
+function networkCell(label,markup) {
+  return '<td class="network-value-cell" data-label="'+escapeOrderCell(label)+'"><div>'+markup+'</div></td>';
+}
+function networkDetails(markup) {
+  return '<details class="network-row-detail"><summary>Подробнее</summary><div>'+markup+'</div></details>';
+}
+function networkActionButton(role,id) {
+  return '<td class="network-action-cell"><button type="button" class="row-btn network-action-button" aria-expanded="false" data-role="'+escapeOrderCell(role)+'" data-id="'+escapeOrderCell(id)+'" onclick="openNetworkActions(this.dataset.role,this.dataset.id,this,event)">Действия ▾</button></td>';
+}
+function networkNameButton(role,id,name) {
+  return '<button type="button" class="network-primary-link" data-role="'+escapeOrderCell(role)+'" data-id="'+escapeOrderCell(id)+'" onclick="openNetworkRecord(this.dataset.role,this.dataset.id)">'+escapeOrderCell(name||'—')+'</button>';
+}
+function networkAmount(amount) {
+  return '<span class="network-amount">'+Number(amount||0).toLocaleString('ru-RU')+' ₽</span>';
+}
+function networkStatus(active,yes,no) {
+  return '<span class="toggle-pill '+(active?'stock-ok':'stock-low')+'">'+(active?yes:no)+'</span>';
+}
+function networkPayoutPreference(person) {
+  return networkSecondary('Способ выплаты: '+actualPayoutMethodLabel(person.payout_method));
+}
+async function openNetworkRecord(role,id) {
+  if(role==='point'){
+    await loadPointsInfo();
+    const idx=POINTS_INFO.findIndex(p=>String(p.id)===String(id));
+    if(idx<0){alert('Карточка доступна для активной точки. Сначала включите точку.');return;}
+    await showPoint(idx);
+  }else if(role==='manager'){
+    const manager=lastMgrData.find(p=>String(p.id)===String(id));
+    if(manager)filterMgrPoints(manager.mgr_code);
+  }else if(role==='owner'||role==='partner'){
+    await openAccountProfileEditor(role,Number(id));
+  }
+}
+
 async function renderPointsManagement() {
+  closePartnerActions();
   const filterSel = document.getElementById('points-city-filter');
   const currentFilterValue = filterSel.value; // читаем ДО перезагрузки списка городов, иначе выбор потеряется
   await loadCitiesIntoSelect('points-city-filter');
@@ -5510,40 +5566,22 @@ async function renderPointsManagement() {
       : null;
     const createdSource = p.created_at_source === 'manager_action_log' ? 'по журналу менеджера' :
       p.created_at_source === 'manual_date_only' ? 'дата внесена вручную' : 'зафиксирована при создании';
-    const dateCell = createdAt
-      ? '<span title="' + escapeOrderCell(createdSource) + '">' + escapeOrderCell(createdAt) + '</span>' +
-        (p.created_at_source !== 'recorded' && p.created_at_source
-          ? '<br><span style="font-size:.68rem;color:var(--muted);">' + escapeOrderCell(createdSource) + '</span>'
-          : '')
-      : '<span style="color:var(--muted);font-size:.76rem;">Неизвестна</span>' +
-        (currentAdminRole === 'super' ? '<br><button class="row-btn" data-point-id="' +
-          escapeOrderCell(p.id) + '" onclick="openPointCreationDateModal(this.dataset.pointId)">Уточнить</button>' : '');
+    const dateCell=createdAt ? escapeOrderCell(createdAt)+' · '+escapeOrderCell(createdSource) : 'Неизвестна';
     const launchCell = launch
       ? '<span class="launch-progress-pill ' + (launch.ready ? 'ready' : 'pending') + '">' +
         (launch.ready ? '✓ Готова' : launch.percent + '% · осталось ' + launch.remaining) + '</span>'
       : '<span style="color:var(--muted);">—</span>';
-    return '<tr>' +
-      '<td style="font-weight:500;">' + escapeOrderCell(p.icon + ' ' + p.name) + '</td>' +
-      '<td style="font-size:.79rem;">' + dateCell + '</td>' +
-      '<td><button type="button" class="row-btn" data-promo="' + escapeOrderCell(window.HvostFirstPurchasePromo.customerCode(p.first_purchase_promo_code || '')) + '" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)"' + (!p.first_purchase_promo_code ? ' disabled' : '') + '>' + escapeOrderCell(window.HvostFirstPurchasePromo.customerCode(p.first_purchase_promo_code || '—')) + '</button></td>' +
-      '<td style="font-size:.82rem;color:var(--muted);">' + cityName(p.city_id) + '</td>' +
-      '<td style="font-size:.82rem;color:var(--muted);">' + p.addr + '</td>' +
-      '<td style="font-size:.8rem;">' + type + '</td>' +
-      '<td>' + launchCell + '</td>' +
-      '<td><button class="row-btn" type="button" data-equip-id="' + escapeOrderCell(p.id) +
-        '" data-equip-name="' + escapeOrderCell(p.name) +
-        '" onclick="HvostPointEquipmentUI.open(this.dataset.equipId,this.dataset.equipName)">' +
-        escapeOrderCell(window.HvostPointEquipmentUI.equipmentLabel(equipment)) + '</button></td>' +
-      '<td><span class="toggle-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '🟢 Активна' : '⚪ Отключена') + '</span></td>' +
-      '<td class="r">' +
-        (p.active ? '<button class="row-btn" onclick="openPointChecklistById(\'' + p.id + '\')">Карточка / чек-лист</button> ' : '') +
-        '<button class="row-btn" onclick="openAssignManagerModal(\'' + p.id + '\')">👤 Менеджер</button> ' +
-        '<button class="row-btn" onclick="openSalonPageModal(\'' + p.id + '\', \'' + p.name.replace(/'/g, "\\'") + '\')">🏠 Страница</button> ' +
-        '<button class="row-btn" onclick="togglePointActive(\'' + p.id + '\')">' + (p.active ? 'Отключить' : 'Включить') + '</button> ' +
-        '<button class="row-btn danger" onclick="deletePoint(\'' + p.id + '\')">✕ Удалить</button>' +
-      '</td>' +
-      '</tr>';
-  }).join('');
+    const name=(p.icon||'')+' '+p.name;
+    const promo=p.first_purchase_promo_code
+      ? '<button type="button" class="row-btn" data-promo="'+escapeOrderCell(window.HvostFirstPurchasePromo.customerCode(p.first_purchase_promo_code))+'" onclick="copyAdminPartnerPromoCode(this.dataset.promo,this)">'+escapeOrderCell(window.HvostFirstPurchasePromo.customerCode(p.first_purchase_promo_code))+'</button>'
+      : '—';
+    const details=networkDetails('Создана: '+dateCell+'<br>Тип: '+escapeOrderCell(type)+
+      '<br>Оснащение: '+escapeOrderCell(window.HvostPointEquipmentUI.equipmentLabel(equipment))+'<br>Промокод точки: '+promo);
+    return '<tr><td class="network-main-cell">'+(p.active?networkNameButton('point',p.id,name):escapeOrderCell(name))+
+      networkSecondary([cityName(p.city_id),p.addr].filter(Boolean).join(' · '))+details+'</td>'+
+      networkCell('Открытие',launchCell)+networkCell('Статус',networkStatus(p.active,'Активна','Отключена'))+
+      networkActionButton('point',p.id)+'</tr>';
+  }).join('') || '<tr><td colspan="4" class="network-placeholder">Точек пока нет</td></tr>';
   filterNetworkTable('points-registry-search','points-mgmt-tbody');
 }
 
@@ -6176,6 +6214,7 @@ async function rejectStockMovement(id) {
 let lastMgrData = [];
 
 async function renderManagers() {
+  closePartnerActions();
   const filterSel = document.getElementById('managers-city-filter');
   const currentFilterValue = filterSel ? filterSel.value : '';
   if (filterSel) {
@@ -6221,18 +6260,14 @@ async function renderManagers() {
   document.getElementById('mgr-table-count').textContent = totalMgr + ' чел.';
 
   document.getElementById('mgr-tbody').innerHTML = mgrData.length ? mgrData.map(function(a) {
-    return '<tr style="cursor:pointer" onclick="filterMgrPoints(\'' + a.mgr_code + '\')">' +
-      '<td style="font-weight:500">' + a.full_name + '<br><span style="font-size:.72rem;color:var(--muted)">' + a.phone + '</span></td>' +
-      '<td style="font-size:.82rem;color:var(--muted)">' + cityName(a.city_id) + '</td>' +
-      '<td style="font-family:monospace;font-size:.76rem;color:var(--muted)">' + a.mgr_code + '</td>' +
-      '<td class="r">' + a.pts.length + '</td>' +
-      '<td class="r" style="font-weight:600;color:var(--deep)">' + a.activePts.length + '</td>' +
-      '<td class="r">' + a.totalRev.toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td class="r" style="font-weight:600;color:var(--amber)">' + Number(a.commission_unpaid || 0).toLocaleString('ru-RU') + ' ₽<br><span style="font-size:.68rem;color:var(--muted);">' + Number(a.commission_unpaid_orders || 0) + ' заказов</span></td>' +
-      '<td class="r">' + Number(a.launch_bonus_unpaid || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td><span class="stock-pill ' + (a.active ? 'stock-ok' : 'stock-low') + '">' + (a.active ? 'Активен' : 'Приостановлен') + '</span></td>' +
-      '<td class="r"><button class="row-btn" ' + (Number(a.commission_unpaid || 0) <= 0 ? 'disabled style="opacity:.45;cursor:not-allowed;"' : '') + ' onclick="event.stopPropagation(); openPayoutApproval(\'manager_commission\',' + a.id + ')">✓ Выплатить 7%</button> <button class="row-btn" onclick="event.stopPropagation(); openManagerContractModal(' + a.id + ')">Договор</button> <button class="row-btn" onclick="event.stopPropagation(); resetPersonPassword(\'managers\', ' + a.id + ', \'' + a.full_name.replace(/'/g, "\\'") + '\')">Сбросить пароль</button> <button class="row-btn danger" onclick="event.stopPropagation(); deleteManager(' + a.id + ', \'' + a.full_name.replace(/'/g, "\\'") + '\')">✕ Удалить</button></td></tr>';
-  }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem;">Менеджеров пока нет</td></tr>';
+    const name=networkNameButton('manager',a.id,a.full_name)+networkSecondary([cityName(a.city_id),a.phone].filter(Boolean).join(' · '))+
+      networkDetails('Код менеджера: '+escapeOrderCell(a.mgr_code||'—'));
+    const points='<strong>'+a.activePts.length+' / '+a.pts.length+'</strong> активных'+networkSecondary('Оборот: '+Number(a.totalRev||0).toLocaleString('ru-RU')+' ₽');
+    const payout=networkAmount(a.commission_unpaid)+networkSecondary('7% · '+Number(a.commission_unpaid_orders||0)+' заказов')+
+      networkSecondary('Бонусы: '+Number(a.launch_bonus_unpaid||0).toLocaleString('ru-RU')+' ₽');
+    return '<tr><td class="network-main-cell">'+name+'</td>'+networkCell('Точки',points)+networkCell('К выплате',payout)+
+      networkCell('Статус',networkStatus(a.active,'Активен','Приостановлен'))+networkActionButton('manager',a.id)+'</tr>';
+  }).join('') : '<tr><td colspan="5" class="network-placeholder">Менеджеров пока нет</td></tr>';
 
   filterNetworkTable('managers-registry-search','mgr-tbody');
   renderMgrPointsTable(null);
@@ -6257,6 +6292,8 @@ function renderManagerPayoutHistory(payouts) {
 
 function filterMgrPoints(mgrCode) {
   renderMgrPointsTable(mgrCode);
+  const details=document.getElementById('manager-point-breakdown');
+  if(details){details.open=true;details.scrollIntoView({block:'nearest',behavior:'smooth'});}
 }
 
 function renderMgrPointsTable(filterCode) {
@@ -6462,6 +6499,7 @@ async function saveAccountProfileEditor() {
 let adminOwners = [];
 
 async function renderOwners() {
+  closePartnerActions();
   const responses = await Promise.all([
     authFetch('/api/salon-owners'),
     authFetch('/api/owner-payouts?limit=100'),
@@ -6475,25 +6513,14 @@ async function renderOwners() {
   document.getElementById('owners-count').textContent = adminOwners.length + ' чел. · к выплате ' + ownersUnpaidTotal.toLocaleString('ru-RU') + ' ₽';
   document.getElementById('owners-tbody').innerHTML = adminOwners.length ? adminOwners.map(function(o) {
     const commissionPercent = Math.round(Number(o.commission_rate || 0) * 100);
-    return '<tr>' +
-      '<td style="font-weight:500;">' + o.full_name + '</td>' +
-      '<td style="font-family:monospace;font-size:.78rem;">' + o.login + '</td>' +
-      '<td>' + o.phone + '</td>' +
-      '<td>' + (o.point_name || '<span style="color:var(--muted);">— не назначена —</span>') +
-        '<br><small style="font-size:.72rem;color:var(--muted);">Грумер-владелец: ' +
-          (o.groomer_partner_name ? escapeOrderCell(o.groomer_partner_name) : 'по телефону / не задан') + '</small></td>' +
-      '<td class="r" style="white-space:nowrap;"><strong style="color:var(--deep);">' + Number(o.current_earnings || 0).toLocaleString('ru-RU') + ' ₽</strong>' +
-        '<br><span style="font-size:.7rem;color:var(--muted);">' + Number(o.unpaid_orders_count || 0) + ' невыпл. заказов</span>' +
-        '<br><span style="font-size:.7rem;color:var(--muted);">за месяц начислено ' + Number(o.month_earnings || 0).toLocaleString('ru-RU') + ' ₽ · ' + commissionPercent + '%</span></td>' +
-      '<td><span class="toggle-pill ' + (o.active ? 'stock-ok' : 'stock-low') + '">' + (o.active ? '🟢 Активен' : '⚪ Отключён') + '</span></td>' +
-      '<td class="r"><button class="row-btn" ' + (Number(o.current_earnings || 0) <= 0 ? 'disabled style="opacity:.45;cursor:not-allowed;"' : '') + ' onclick="markOwnerPayoutPaid(' + o.id + ')">✓ Выплачено</button> ' +
-        '<button class="row-btn" onclick="toggleOwnerActive(' + o.id + ')">' + (o.active ? 'Отключить' : 'Включить') + '</button> ' +
-        '<button class="row-btn" onclick="openAccountProfileEditor(\'owner\',' + o.id + ')">✎ Редактировать</button> ' +
-        '<button class="row-btn" onclick="openOwnerGroomerModal(' + o.id + ')">Грумер-владелец</button> ' +
-        '<button class="row-btn" onclick="resetPersonPassword(\'salon-owners\', ' + o.id + ', \'' + o.full_name.replace(/'/g, "\\'") + '\')">Сбросить пароль</button> ' +
-        '<button class="row-btn danger" onclick="deleteSalonOwner(' + o.id + ', \'' + o.full_name.replace(/'/g, "\\'") + '\')">✕ Удалить</button></td>' +
-      '</tr>';
-  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Владельцев пока нет</td></tr>';
+    const name=networkNameButton('owner',o.id,o.full_name)+networkSecondary(o.phone)+
+      networkDetails('Логин: '+escapeOrderCell(o.login||'—')+networkPayoutPreference(o));
+    const point=escapeOrderCell(o.point_name||'Не назначена')+networkSecondary('Грумер-владелец: '+(o.groomer_partner_name||'по телефону / не задан'));
+    const payout=networkAmount(o.current_earnings)+networkSecondary(Number(o.unpaid_orders_count||0)+' невыпл. заказов')+
+      networkSecondary('За месяц: '+Number(o.month_earnings||0).toLocaleString('ru-RU')+' ₽ · '+commissionPercent+'%');
+    return '<tr><td class="network-main-cell">'+name+'</td>'+networkCell('Точка',point)+networkCell('К выплате',payout)+
+      networkCell('Статус',networkStatus(o.active,'Активен','Отключён'))+networkActionButton('owner',o.id)+'</tr>';
+  }).join('') : '<tr><td colspan="5" class="network-placeholder">Владельцев пока нет</td></tr>';
   filterNetworkTable('owners-registry-search','owners-tbody');
   renderOwnerPayoutHistory(payoutData.payouts || []);
 }
@@ -7293,32 +7320,33 @@ async function renderPartners() {
     riskBanner.style.display = 'none';
   }
 
+  const pointPartners=new Map();
+  adminPartners.forEach(function(p){
+    if(!p.point_id)return;
+    if(!pointPartners.has(p.point_id))pointPartners.set(p.point_id,[]);
+    pointPartners.get(p.point_id).push(p);
+  });
   document.getElementById('partners-tbody').innerHTML = adminPartners.length ? adminPartners.map(function(p) {
-    const referrer = p.referred_by_partner_id ? byId[p.referred_by_partner_id] : null;
-    const samePoint = p.point_id ? adminPartners.filter(function(x) { return x.id !== p.id && x.point_id === p.point_id; }) : [];
-    const formatIcons = p.partner_type==='referrer'
-      ? '🤝 Без стойки · рекомендатель'
-      : [p.display_stand && '🧺 Стойка', p.display_basket && '🧺 Корзинка', p.display_poster && '🖼️ Картинка']
-        .filter(Boolean).join('<br>') || '<span style="color:var(--muted)">—</span>';
-    const isRisky = p.active && p.commission_rate >= 0.18;
-    const pendingReferralBonus = Number(referralData?.bonus_by_partner?.[p.id] || 0);
-    const payableWithBonus = Number(p.current_earnings || 0) + pendingReferralBonus;
-    return '<tr>' +
-      '<td style="font-weight:500;">' + p.full_name + '<br><span style="font-size:.72rem;color:var(--muted);font-family:monospace;">' + p.partner_code + ' · ' + p.login + '</span></td>' +
-      '<td>' + p.point_name + (p.point_address ? '<br><span style="font-size:.75rem;color:var(--muted);">' + p.point_address + '</span>' : '') +
-        (samePoint.length ? '<br><span style="font-size:.72rem;color:var(--amber);">👥 Также на точке: ' + samePoint.map(function(x) { return x.full_name; }).join(', ') + '</span>' : '') + '</td>' +
-      '<td class="r" style="font-weight:600;' + (isRisky ? 'color:#7A4A00;' : '') + '">' +
-        (p.partner_type==='referrer'?'Только бонусы':Math.round(p.commission_rate * 100) + '%'+(isRisky ? ' ⚠️' : '')) + '</td>' +
-      '<td style="font-size:.78rem;">' + formatIcons + '</td>' +
-      '<td style="font-size:.8rem;">' + (referrer ? referrer.full_name + ' (' + referrer.partner_code + ')' : '—') + '</td>' +
-      '<td class="r" style="white-space:nowrap;"><strong style="color:var(--deep);">' + payableWithBonus.toLocaleString('ru-RU') + ' ₽</strong>' +
-        (pendingReferralBonus ? '<br><span style="font-size:.7rem;color:var(--deep);">в т. ч. реферальный бонус ' + pendingReferralBonus.toLocaleString('ru-RU') + ' ₽</span>' : '') +
-        '<br><span style="font-size:.7rem;color:var(--muted);">' + Number(p.unpaid_orders_count || 0) + ' невыпл. заказов</span>' +
-        '<br><span style="font-size:.7rem;color:var(--muted);">за ' + days + ' дней начислено ' + Number(p.period_earnings || 0).toLocaleString('ru-RU') + ' ₽</span></td>' +
-      '<td><span class="toggle-pill ' + (p.active ? 'stock-ok' : 'stock-low') + '">' + (p.active ? '🟢 Активен' : '⏳ Ожидает') + '</span></td>' +
-      '<td class="r"><button class="partner-actions-toggle" aria-label="Действия с партнёром" aria-expanded="false" onclick="openPartnerActions(' + p.id + ', this, event)">⋯</button></td>' +
-      '</tr>';
-  }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">Партнёров пока нет</td></tr>';
+    const referrer=p.referred_by_partner_id?byId[p.referred_by_partner_id]:null;
+    const samePoint=(pointPartners.get(p.point_id)||[]).filter(x=>x.id!==p.id);
+    const format=p.partner_type==='referrer'?'Без стойки · рекомендатель':
+      [p.display_stand&&'Стойка',p.display_basket&&'Корзинка',p.display_poster&&'Картинка'].filter(Boolean).join(', ')||'—';
+    const isRisky=p.active&&p.commission_rate>=0.18;
+    const pendingReferralBonus=Number(referralData?.bonus_by_partner?.[p.id]||0);
+    const payableWithBonus=Number(p.current_earnings||0)+pendingReferralBonus;
+    const details=networkDetails('Код: '+escapeOrderCell(p.partner_code||'—')+
+      '<br>Логин: '+escapeOrderCell(p.login||'—')+'<br>Формат: '+escapeOrderCell(format)+
+      '<br>Рекомендатель: '+escapeOrderCell(referrer?referrer.full_name+' ('+referrer.partner_code+')':'—')+
+      (samePoint.length?'<br>Также на точке: '+escapeOrderCell(samePoint.map(x=>x.full_name).join(', ')):'')+networkPayoutPreference(p));
+    const name=networkNameButton('partner',p.id,p.full_name)+networkSecondary(p.phone||(p.partner_type==='referrer'?'Рекомендатель':'Грумер'))+details;
+    const rate=p.partner_type==='referrer'?'Только бонусы':Math.round(Number(p.commission_rate||0)*100)+'%'+(isRisky?' ⚠️':'');
+    const point=escapeOrderCell(p.point_name||'Без точки')+networkSecondary(p.point_address||'')+networkSecondary('Тариф: '+rate);
+    const payout=networkAmount(payableWithBonus)+(pendingReferralBonus?networkSecondary('В т. ч. бонус: '+pendingReferralBonus.toLocaleString('ru-RU')+' ₽'):'')+
+      networkSecondary(Number(p.unpaid_orders_count||0)+' невыпл. заказов')+
+      networkSecondary('За '+days+' дней: '+Number(p.period_earnings||0).toLocaleString('ru-RU')+' ₽');
+    return '<tr><td class="network-main-cell">'+name+'</td>'+networkCell('Точка и тариф',point)+networkCell('К выплате',payout)+
+      networkCell('Статус',networkStatus(p.active,'Активен','Ожидает'))+networkActionButton('partner',p.id)+'</tr>';
+  }).join('') : '<tr><td colspan="5" class="network-placeholder">Партнёров пока нет</td></tr>';
 
   filterNetworkTable('partners-registry-search','partners-tbody');
   renderPartnerPayoutHistory(payoutData.payouts || []);
@@ -7369,60 +7397,110 @@ function closePartnerActions() {
   partnerActionsTrigger = null;
 }
 
-function openPartnerActions(id, trigger, event) {
-  event.preventDefault();
-  event.stopPropagation();
-  if (partnerActionsTrigger === trigger) {
-    closePartnerActions();
-    return;
+function getNetworkActions(role,id) {
+  if(role==='point'){
+    const p=adminAllPoints.find(x=>String(x.id)===String(id));
+    if(!p)return [];
+    const actions=[
+      {label:'Открыть карточку',disabled:!p.active,run:()=>openNetworkRecord('point',p.id)},
+      {label:'Чек-лист открытия',disabled:!p.active,run:()=>openPointChecklistById(p.id)},
+      {label:'Назначить менеджера',run:()=>openAssignManagerModal(p.id)},
+      {label:'Оснащение точки',run:()=>HvostPointEquipmentUI.open(p.id,p.name)},
+      {label:'Страница точки',run:()=>openSalonPageModal(p.id,p.name)},
+    ];
+    if(!p.created_at&&currentAdminRole==='super')actions.push({label:'Уточнить дату создания',run:()=>openPointCreationDateModal(p.id)});
+    actions.push({label:p.active?'Отключить точку':'Включить точку',run:()=>togglePointActive(p.id)},
+      {label:'Удалить точку',danger:true,run:()=>deletePoint(p.id)});
+    return actions;
   }
+  if(role==='owner'){
+    const o=adminOwners.find(x=>String(x.id)===String(id));if(!o)return [];
+    return [
+      {label:'Редактировать анкету',run:()=>openAccountProfileEditor('owner',o.id)},
+      {label:'✓ Вознаграждение выплачено',disabled:Number(o.current_earnings||0)<=0,run:()=>markOwnerPayoutPaid(o.id)},
+      {label:'Грумер-владелец',run:()=>openOwnerGroomerModal(o.id)},
+      {label:o.active?'Отключить владельца':'Активировать владельца',run:()=>toggleOwnerActive(o.id)},
+      {label:'Сбросить пароль',run:()=>resetPersonPassword('salon-owners',o.id,o.full_name)},
+      {label:'Удалить владельца',danger:true,run:()=>deleteSalonOwner(o.id,o.full_name)},
+    ];
+  }
+  if(role==='manager'){
+    const a=lastMgrData.find(x=>String(x.id)===String(id));if(!a)return [];
+    return [
+      {label:'Точки менеджера / бонусы',run:()=>filterMgrPoints(a.mgr_code)},
+      {label:'Договор',run:()=>openManagerContractModal(a.id)},
+      {label:'✓ Выплатить 7%',disabled:Number(a.commission_unpaid||0)<=0,run:()=>openPayoutApproval('manager_commission',a.id)},
+      {label:'Сбросить пароль',run:()=>resetPersonPassword('managers',a.id,a.full_name)},
+      {label:'Удалить менеджера',danger:true,run:()=>deleteManager(a.id,a.full_name)},
+    ];
+  }
+  if(role==='partner'){
+    const partner=adminPartners.find(x=>String(x.id)===String(id));if(!partner)return [];
+    const pid=partner.id;
+    return [
+      {label:'Редактировать анкету',run:()=>openAccountProfileEditor('partner',pid)},
+      {label:'✓ Вознаграждение выплачено',disabled:Number(partner.current_earnings||0)<=0,run:()=>markPartnerPayoutPaid(pid)},
+      {label:'Изменить точку',run:()=>openLinkPointModal(pid)},
+      {label:'Изменить формат',run:()=>openDisplayFormatModal(pid)},
+      {label:'Изменить тариф',run:()=>openTierModal(pid)},
+      {label:partner.active?'Отключить партнёра':'Активировать партнёра',run:()=>togglePartnerActive(pid)},
+      {label:'Сбросить пароль',run:()=>resetPersonPassword('partners',pid,partner.full_name)},
+      {label:'Удалить партнёра',danger:true,run:()=>deletePartner(pid,partner.full_name)},
+    ];
+  }
+  return [];
+}
+function openNetworkActions(role,id,trigger,event) {
+  showNetworkActionMenu(getNetworkActions(role,id),trigger,event);
+}
+function openPartnerActions(id,trigger,event) {
+  openNetworkActions('partner',id,trigger,event);
+}
+function openCurrentPointActions(trigger,event) {
+  const p=POINTS_INFO[currentPointIdx];
+  if(!p)return;
+  showNetworkActionMenu([
+    {label:'Страница точки',run:()=>openCurrentPointPageSettings()},
+    {label:'QR товаров',run:()=>openCurrentPointQr()},
+    {label:'Оснащение точки',run:()=>HvostPointEquipmentUI.open(p.id,p.name)},
+    {label:'Вернуться в реестр точек',run:()=>showSection('points')},
+  ],trigger,event);
+}
+function showNetworkActionMenu(actions,trigger,event) {
+  event.preventDefault();event.stopPropagation();
+  if(partnerActionsTrigger===trigger){closePartnerActions();return;}
   closePartnerActions();
-  const partner = adminPartners.find(function(p) { return Number(p.id) === Number(id); });
-  if (!partner) return;
-
-  const actions = [
-    { label: '✓ Вознаграждение выплачено', disabled: Number(partner.current_earnings || 0) <= 0, run: function() { markPartnerPayoutPaid(id); } },
-    { label: partner.active ? 'Отключить партнёра' : 'Активировать партнёра', run: function() { togglePartnerActive(id); } },
-    { label: '✎ Редактировать анкету', run: function() { openAccountProfileEditor('partner', id); } },
-    { label: 'Изменить точку', run: function() { openLinkPointModal(id); } },
-    { label: 'Изменить формат', run: function() { openDisplayFormatModal(id); } },
-    { label: 'Изменить тариф', run: function() { openTierModal(id); } },
-    { label: 'Сбросить пароль', run: function() { resetPersonPassword('partners', id, partner.full_name); } },
-    { label: 'Удалить партнёра', danger: true, run: function() { deletePartner(id, partner.full_name); } },
-  ];
-  const popover = document.createElement('div');
-  popover.className = 'partner-actions-popover';
-  popover.setAttribute('role', 'menu');
-  actions.forEach(function(action) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'partner-actions-item' + (action.danger ? ' danger' : '');
-    button.textContent = action.label;
-    button.disabled = !!action.disabled;
-    button.onclick = function(e) {
-      e.stopPropagation();
-      closePartnerActions();
-      action.run();
-    };
+  if(!actions.length)return;
+  const popover=document.createElement('div');
+  popover.className='partner-actions-popover';
+  popover.setAttribute('role','group');
+  popover.setAttribute('aria-label','Действия');
+  actions.forEach(function(action){
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='partner-actions-item'+(action.danger?' danger':'');
+    button.textContent=action.label;
+    button.disabled=!!action.disabled;
+    button.onclick=function(e){e.stopPropagation();closePartnerActions();action.run();};
     popover.appendChild(button);
   });
   document.body.appendChild(popover);
-  partnerActionsPopover = popover;
-  partnerActionsTrigger = trigger;
-  trigger.setAttribute('aria-expanded', 'true');
-  popover.style.display = 'block';
-
-  const triggerRect = trigger.getBoundingClientRect();
-  const popoverRect = popover.getBoundingClientRect();
-  const left = Math.max(10, Math.min(window.innerWidth - popoverRect.width - 10, triggerRect.right - popoverRect.width));
-  const roomBelow = window.innerHeight - triggerRect.bottom;
-  const top = roomBelow >= popoverRect.height + 8
-    ? triggerRect.bottom + 5
-    : Math.max(10, triggerRect.top - popoverRect.height - 5);
-  popover.style.left = left + 'px';
-  popover.style.top = top + 'px';
+  partnerActionsPopover=popover;partnerActionsTrigger=trigger;
+  trigger.setAttribute('aria-expanded','true');
+  popover.style.display='block';
+  const t=trigger.getBoundingClientRect(),p=popover.getBoundingClientRect();
+  const left=Math.max(10,Math.min(window.innerWidth-p.width-10,t.right-p.width));
+  const top=window.innerHeight-t.bottom>=p.height+8?t.bottom+5:Math.max(10,t.top-p.height-5);
+  popover.style.left=left+'px';
+  popover.style.top=top+'px';
+  const first=popover.querySelector('button:not(:disabled)');
+  if(first)first.focus({preventScroll:true});
 }
-
+document.addEventListener('keydown',function(event){
+  if(event.key==='Escape'&&partnerActionsTrigger){
+    const trigger=partnerActionsTrigger;closePartnerActions();trigger.focus({preventScroll:true});
+  }
+});
 document.addEventListener('click', closePartnerActions);
 window.addEventListener('resize', closePartnerActions);
 document.querySelector('.main').addEventListener('scroll', closePartnerActions);

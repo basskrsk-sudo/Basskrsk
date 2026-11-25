@@ -221,3 +221,49 @@ test('network navigation groups only relevant screens and retains all workflows'
   filterNetworkTable('query','body');
   assert.deepEqual(rows.map(row=>row.hidden),[false,false]);
 });
+
+test('compact network registries keep all actions and payout guards',()=>{
+  const html=fs.readFileSync(path.join(__dirname,'../public/taiga-admin.html'),'utf8');
+  assert.equal((html.match(/class="tbl network-compact-table"/g)||[]).length,4);
+  for(const [id,count] of [['points-mgmt-tbody',4],['partners-tbody',5],['owners-tbody',5],['mgr-tbody',5]]){
+    const end=html.indexOf('<tbody id="'+id+'"');
+    const start=html.lastIndexOf('<table class="tbl network-compact-table"',end);
+    assert.ok(start>=0&&end>start,id);
+    assert.equal((html.slice(start,end).match(/<th scope="col">/g)||[]).length,count,id);
+  }
+  assert.match(html,/\.network-compact-table \{ display:block; min-width:0!important;/);
+  assert.match(html,/\.network-compact-table tbody tr\[hidden\] \{ display:none!important;/);
+  assert.ok(html.indexOf('id="pt-kpi-rev"')<html.indexOf('id="point-launch-checklist-card"'));
+  assert.match(html,/<details class="card network-point-settings"/);
+  const dialogs=html.slice(html.indexOf('<!-- Point dialogs are shared'),html.indexOf('id="sec-point-sales"'));
+  assert.match(dialogs,/id="point-equip-modal"/);
+  assert.match(dialogs,/id="salon-page-modal"/);
+  assert.ok(html.slice(html.indexOf('id="sec-points"'),html.indexOf('<!-- Point dialogs are shared')).trimEnd().endsWith('</div>'));
+  const source=html.slice(html.indexOf('function getNetworkActions('),html.indexOf('function openNetworkActions('));
+  const calls=[];
+  const people={
+    adminAllPoints:[{id:"p'1",name:'Точка',active:true,created_at:null}],
+    adminOwners:[{id:2,full_name:'Владелец',active:true,current_earnings:0}],
+    adminPartners:[{id:3,full_name:'Грумер',active:false,current_earnings:15}],
+    lastMgrData:[{id:4,mgr_code:'M1',full_name:'Менеджер',commission_unpaid:4}],
+    currentAdminRole:'super',
+    markPartnerPayoutPaid:id=>calls.push(['partner',id]),
+    openPayoutApproval:(role,id)=>calls.push([role,id]),
+    openPointCreationDateModal:id=>calls.push(['point-date',id]),
+  };
+  const get=new Function(...Object.keys(people),source+';return getNetworkActions;')(...Object.values(people));
+  for(const [role,id,count] of [['point',"p'1",8],['owner','2',6],['partner','3',8],['manager','4',5]]){
+    const actions=get(role,id);
+    assert.equal(actions.length,count,role);
+    assert.equal(actions.at(-1).danger,true,role);
+  }
+  assert.equal(get('owner',2)[1].disabled,true);
+  get('partner',3)[1].run();
+  get('manager',4)[2].run();
+  get('point',"p'1").find(x=>x.label==='Уточнить дату создания').run();
+  assert.deepEqual(calls,[['partner',3],['manager_commission',4],['point-date',"p'1"]]);
+  assert.deepEqual(get('unknown',1),[]);
+  assert.match(html,/openCurrentPointActions\(this,event\)/);
+  assert.match(html,/networkPayoutPreference\(o\)/);
+  assert.match(html,/networkPayoutPreference\(p\)/);
+});
