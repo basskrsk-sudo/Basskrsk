@@ -418,6 +418,11 @@ function registerProductRoutes(router) {
     }
 
 
+    // The point and its stock/referral data are committed. Queue a private
+    // Club draft now, not after the first groomer or sale. Publication is moderated.
+    try { require('./routes-partner-club').welcomeNewPoint({id:candidate}); }
+    catch(error){console.error('[partner-club] Welcome draft failed:',error.message);}
+
     const creatorLine = payload.role === 'manager'
       ? '👤 Создал менеджер: ' + payload.login
       : '👤 Создал администратор: ' + payload.login;

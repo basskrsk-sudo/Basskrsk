@@ -290,6 +290,14 @@ function registerManagerRoutes(router) {
 
     let pointId = null;
     if (address) {
+      // This legacy route has no city input and creates points in the default
+      // city (krsk). Prevent a repeated registration from making a second
+      // point and therefore another welcome draft.
+      const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase('ru-RU')
+        .replace(/[.,;]+/g,' ').replace(/\s+/g,' ').trim();
+      if(db.prepare("SELECT name,addr FROM points WHERE city_id='krsk'").all()
+        .some(p=>normalize(p.name)===normalize(point_name)&&normalize(p.addr)===normalize(address)))
+        return sendJson(res,409,{error:'Минимаркет с таким названием и адресом уже зарегистрирован.'});
       const { slugify } = require('./routes-warehouse');
       let base = slugify(point_name);
       let candidate = base, i = 1;
@@ -310,6 +318,11 @@ function registerManagerRoutes(router) {
       INSERT INTO manager_points (manager_id, point_id, point_name, point_type, revenue, commission_rate, active, bonus_paid)
       VALUES (?, ?, ?, ?, 0, ?, 1, 0)
     `).run(ctx.params.id, pointId, point_name, point_type, computeManagerCommissionRate());
+    // A manager-only lead without a real retail point is not a registration.
+    if(pointId){
+      try { require('./routes-partner-club').welcomeNewPoint({id:pointId}); }
+      catch(error){console.error('[partner-club] Welcome draft failed:',error.message);}
+    }
     if (payload.role === 'manager') {
       logManagerAction(payload.id, 'Создание точки', {
         type: 'point', id: pointId || info.lastInsertRowid, name: point_name,

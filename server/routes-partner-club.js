@@ -1,5 +1,5 @@
-// Partner Club: persistent configuration, paid-sale drafts, analytics and previews.
-// Deliberately NO Telegram integration or outbound network activity.
+// Partner Club: persistent configuration, moderated drafts, analytics and previews.
+// Automated events queue drafts only; the configured moderator approves group publication.
 'use strict';
 const { trackSync, trackAsync } = require('./runtime-diagnostics');
 const db = require('./db');
@@ -52,21 +52,29 @@ function venueType(point) {
   if(/грум|groom/.test(raw))return 'Грумерский салон';
   return 'Партнёрская точка';
 }
+function welcomePointMessage(name,type,city){
+  return [
+    '🎉 Новый партнёр ХвостМаркета!',
+    '',
+    '🏪 '+type+': «'+safeText(name)+'»',
+    ...(city?['📍 Город: '+safeText(city)]:[]),
+    '',
+    '🐾 Наша сеть растёт! Желаем команде успешного запуска, довольных клиентов и счастливых хвостиков!',
+    '',
+    '💚 Добро пожаловать в Клуб партнёров!'
+  ].join('\n');
+}
 function welcomeNewPoint(point) {
   if (!point || !point.id) return false;
   const config=settings();
   if(!config.enabled || !config.chat_id || !config.club_started_at || !config.new_points) return false;
-  const name = safeText(point.name || 'Новый минимаркет');
-  const city = point.city_id ? db.prepare('SELECT name FROM cities WHERE id=?').get(point.city_id)?.name : null;
-  const message = [
-    '🎉 Приветствуем нового партнёра ХвостМаркета!',
-    '🏪 '+venueType(point)+': «' + name + '»',
-    city ? '📍 Город: ' + safeText(city) : '',
-    '🐾 Наша сеть растёт! Желаем команде успешного старта, довольных клиентов и счастливых питомцев!',
-    '💚 Добро пожаловать в Клуб партнёров!'
-  ].filter(Boolean).join('\n');
-  // Permanent idempotency key: further groomers at this point won't cause repeats.
-  return queue('welcome:point:' + String(point.id), 'new_points', message);
+  const registered=db.prepare('SELECT id,name,city_id,active,is_hub FROM points WHERE id=?').get(String(point.id));
+  if(!registered||!registered.active||registered.is_hub)return false;
+  const name=safeText(registered.name || 'Новый минимаркет');
+  const city=registered.city_id ? db.prepare('SELECT name FROM cities WHERE id=?').get(registered.city_id)?.name : null;
+  const message=welcomePointMessage(name,venueType(registered),city);
+  // Keep the previous permanent idempotency key, including rejected/sent drafts.
+  return queue('welcome:point:' + String(registered.id), 'new_points', message);
 }
 // Broadcast a new all-time record in a separate moderated partner-club draft.
 // The first eligible customer payment sets the baseline; ties are not records.
@@ -197,7 +205,7 @@ function preview(type,data={}){
   case 'daily':return '☀️ Итоги вчерашнего дня\n🐾 Продаж: '+count+'\n💚 Выручка: '+money(amount)+'\nСпасибо партнёрам!';
   case 'weekly':return '🏆 Итоги недели\n🐾 Продаж: '+count+'\nОтмечаем достижения без публичного сравнения неактивных партнёров.';
   case 'milestones':return '🎉 Новый рекорд: '+count+' продаж!';
-  case 'new_points':return '🎉 Новый партнёр сети — партнёрская точка: «'+point+'»!';
+  case 'new_points':return welcomePointMessage(point,'Партнёрская точка',data.city||'Красноярск');
   case 'tips':return '💡 Совет: предложите лакомство после груминга.';
   case 'new_products':return '🦴 Новинка: '+item+'!';
   case 'top_products_week':return topProductsMessage('week').message;
@@ -340,7 +348,7 @@ function clubMessageHtml(event){
    return saleMessageHtml(changed || event.message);
  }
  // Older drafts and first sales keep the same paragraph spacing and bold salon.
- if (event.event_type === 'first_sale' || event.event_type === 'record_check' || event.event_type === 'record_day') return saleMessageHtml(event.message);
+ if (event.event_type === 'first_sale' || event.event_type === 'record_check' || event.event_type === 'record_day' || event.event_type === 'new_points') return saleMessageHtml(event.message);
  return safeMarkdownHtml(event.message);
 }
 
@@ -422,6 +430,14 @@ async function handleClubCallback(chatId,data){
  }
  const c=settings();
  if(!c.chat_id || (!c.enabled && row.event_type!=='manual'))return {ok:false,message:'Рассылка выключена в админке'};
+ // A registration draft is no longer publishable if the point was removed or archived.
+ if(row.event_type==='new_points'){
+   if(!c.new_points)return {ok:false,message:'Публикации о новых точках выключены в настройках Клуба партнёров.'};
+   const pointId=String(row.event_key).startsWith('welcome:point:')?String(row.event_key).slice('welcome:point:'.length):'';
+   const point=db.prepare('SELECT active,is_hub FROM points WHERE id=?').get(pointId);
+   if(!point||!point.active||point.is_hub)
+     return {ok:false,message:'Публикация заблокирована: точка удалена или отключена.'};
+ }
  // A refunded or deleted record-holder must not be celebrated after approval.
  if(row.event_type==='record_check'){
    const recordedOrderId=Number(String(row.event_key).replace(/^record-check:/,''));
