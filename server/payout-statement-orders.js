@@ -7,16 +7,15 @@ function staleStatement(){
 function selectStatementOrders(db,pending,expected){
   if(!Array.isArray(expected)||!expected.length)throw staleStatement();
   const byId=new Map(pending.map(o=>[Number(o.id),o])),seen=new Set();
-  const refund=db.prepare('SELECT refund_status,refunded_amount FROM orders WHERE id=?');
   return expected.map(line=>{
     const id=Number(line.order_id),order=byId.get(id);
     if(!Number.isSafeInteger(id)||seen.has(id)||!order||
       Number(order.total)!==Number(line.sale_total)||
+      Number(order.return_amount||0)!==Number(line.refunded_amount||0)||
       Number(order.commission_rate)!==Number(line.commission_rate)||
       Number(order.commission_amount)!==Number(line.commission_amount)||
       String(order.created_at||'')!==String(line.created_at||''))throw staleStatement();
-    const status=refund.get(id);
-    if(!status||status.refund_status==='refunded'||Number(status.refunded_amount||0)>0)throw staleStatement();
+    if(!require('./commission-refunds').isPayable(order))throw staleStatement();
     seen.add(id);
     return order;
   });

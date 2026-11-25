@@ -2,14 +2,14 @@
 'use strict';
 
 const db = require('./db');
+const {netOrder,isPayable,planCommission,verifyPlan,recordOffsets}=require('./commission-refunds');
 const { snapshotPayout, snapshotBonusPayout } = require('./payout-reports');
 
 function getManagerUnpaidOrders(managerId) {
   // Every paid order can accrue commission ONCE. manager_points is a
   // historical/referral ledger: joining all its rows duplicates a sale when a
   // point was reassigned/recreated. Use the latest relevant rate only.
-  // Returned orders are held for review (same rule as payout-brief.js), never
-  // paid automatically. Existing payout snapshots are not modified.
+  // Calculate net commission; existing payout snapshots are never modified.
   return db.prepare(`
     SELECT o.id, o.order_code, o.total, o.point_id, o.created_at,
            o.refund_status, o.refunded_amount,
@@ -24,16 +24,12 @@ function getManagerUnpaidOrders(managerId) {
     LEFT JOIN manager_commission_payout_items pi ON pi.order_id = o.id
     WHERE o.status = 'paid' AND pi.id IS NULL
     ORDER BY o.created_at, o.id
-  `).all(managerId).map((order) => ({
-    ...order,
-    commission_amount: Math.round(Number(order.total || 0) * Number(order.commission_rate || 0)),
-  }));
+  `).all(managerId).map(netOrder);
 }
 
-// A refund is held for administrative reconciliation. Keep such rows visible
-// to payout-brief.js, while excluding them from sums and actual transfer flows.
+// Full returns have no commission; partial returns use the remaining paid amount.
 function isManagerOrderPayable(order) {
-  return order.refund_status !== 'refunded' && Number(order.refunded_amount || 0) === 0;
+  return isPayable(order);
 }
 
 function getManagerPayableOrders(managerId) {
@@ -42,8 +38,9 @@ function getManagerPayableOrders(managerId) {
 
 function getManagerUnpaidSummary(managerId) {
   const orders = getManagerPayableOrders(managerId);
+  const plan=planCommission(db,'manager',managerId,orders);
   return {
-    amount: orders.reduce((sum, order) => sum + order.commission_amount, 0),
+    amount: plan.amount,
     revenue: orders.reduce((sum, order) => sum + Number(order.total || 0), 0),
     orders_count: orders.length,
   };
@@ -134,7 +131,8 @@ function createManagerCommissionPayout(managerId, adminPayload, options = {}) {
     if (!manager) throw Object.assign(new Error('Менеджер не найден'), { code: 'MANAGER_NOT_FOUND' });
     const pending = getManagerPayableOrders(managerId);
     const orders = options.statementOrders ? require('./payout-statement-orders').selectStatementOrders(db,pending,options.statementOrders) : pending;
-    const amount = orders.reduce((sum, order) => sum + order.commission_amount, 0);
+    const plan=verifyPlan(planCommission(db,'manager',manager.id,orders),options);
+    const amount=plan.amount;
     if (!orders.length || amount <= 0) {
       throw Object.assign(new Error('У менеджера нет невыплаченного вознаграждения 7%'), { code: 'NOTHING_TO_PAY' });
     }
@@ -155,8 +153,9 @@ function createManagerCommissionPayout(managerId, adminPayload, options = {}) {
       payoutId, order.id, order.order_code, order.point_id, order.point_name,
       order.commission_rate, order.commission_amount
     ));
+    recordOffsets(db,'manager',manager.id,payoutId,plan);
     const payout=db.prepare('SELECT * FROM manager_commission_payouts WHERE id = ?').get(payoutId);
-    const report=snapshotPayout(db,'manager',{...manager,code:manager.mgr_code},orders,payout,adminPayload.id);
+    const report=snapshotPayout(db,'manager',{...manager,code:manager.mgr_code},orders,payout,adminPayload.id,plan.adjustments);
     if(!options.inTransaction) db.exec('COMMIT');
     return {...payout,report_id:report.id};
   } catch (error) {

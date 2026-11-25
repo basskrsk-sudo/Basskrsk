@@ -94,6 +94,7 @@ function payoutPdfPages(report, font) {
     }
   }
   totalLine('Всего начислено',report.accrued);
+  if(report.refund_adjustment_total>0)totalLine('Корректировка возвратов',-report.refund_adjustment_total);
   if(report.kind === 'payout') totalLine('Сумма выплаты',report.payout_amount,true);
   else {
     totalLine('Уже выплачено',report.already_paid);

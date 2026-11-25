@@ -79,6 +79,7 @@ function printableReport(report) {
     line('Вознаграждение с продаж', view.commission, false),
     bonusLines ? '<h2>Бонусы</h2>' + bonusLines : '',
     line('Всего начислено', view.accrued, false),
+    ...(report.refund_adjustment_total>0?[line('Корректировка ранее выплаченной комиссии',-report.refund_adjustment_total,false)]:[]),
     isPayout ? line('Сумма выплаты' + (report.paid_at ? ' (' + shortDate(report.paid_at) + ')' : ''), view.payoutAmount, true) :
       line('Уже выплачено', view.alreadyPaid, false) + line('Осталось выплатить', view.unpaid, true),
     report.lifetime_earned == null ? '' : line('Заработано всего (за всё время)', report.lifetime_earned, false),

@@ -58,6 +58,7 @@ function lowStockCount(pointId) {
   return Number(row.count || 0);
 }
 
+const {isPayable,planCommission}=require('./commission-refunds');
 function summarize(orders) {
   const amount = orders.reduce((sum, order) => sum + Number(order.commission_amount || 0), 0);
   const revenue = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
@@ -86,6 +87,7 @@ function partnerMessage(partner, summary, paidAt) {
     'Учтено оплаченных заказов: ' + summary.orders_count,
     'Выручка этих заказов: ' + money(summary.revenue),
     'Средний чек: ' + money(summary.average_check),
+    ...(summary.adjustment>0?['Корректировка возвратов: −'+money(summary.adjustment)]:[]),
     'Ваш уровень: ' + partnerTierName(partner.commission_rate) + ' · ' + Math.round(Number(partner.commission_rate || 0) * 100) + '%',
   ];
   if (progress && progress.nextTier) {
@@ -133,6 +135,7 @@ function ownerMessage(owner, summary, paidAt) {
     'Учтено оплаченных заказов: ' + summary.orders_count,
     'Выручка этих заказов: ' + money(summary.revenue),
     'Средний чек: ' + money(summary.average_check),
+    ...(summary.adjustment>0?['Корректировка возвратов: −'+money(summary.adjustment)]:[]),
     '',
     'За текущий месяц: ' + Number(month.orders_count || 0) + ' заказов · ' + money(month.revenue),
   ];
@@ -158,6 +161,7 @@ function managerCommissionMessage(manager, summary, paidAt) {
     'Учтено оплаченных заказов: ' + summary.orders_count,
     'Выручка этих заказов: ' + money(summary.revenue),
     'Средний чек: ' + money(summary.average_check),
+    ...(summary.adjustment>0?['Корректировка возвратов: −'+money(summary.adjustment)]:[]),
     '',
     'Открыть кабинет: ' + cabinetUrl('/taiga-manager.html'),
   ].join('\n');
@@ -205,7 +209,9 @@ function getManagerAccount(managerId) {
 function previewPartnerPayout(partnerId) {
   const account = getPartnerAccount(partnerId);
   if (!account) return null;
-  const summary = summarize(getUnpaidOrders(partnerId));
+  const orders=getUnpaidOrders(partnerId).filter(isPayable);
+  const plan=planCommission(db,'partner',partnerId,orders);
+  const summary={...summarize(orders),amount:plan.amount,adjustment:plan.gross-plan.amount};
   return {
     recipient_name: account.full_name,
     payout_method: account.payout_method || null,
@@ -220,7 +226,9 @@ function previewPartnerPayout(partnerId) {
 function previewOwnerPayout(ownerId) {
   const account = getOwnerAccount(ownerId);
   if (!account) return null;
-  const summary = summarize(getOwnerUnpaidOrders(ownerId));
+  const orders=getOwnerUnpaidOrders(ownerId).filter(isPayable);
+  const plan=planCommission(db,'owner',ownerId,orders);
+  const summary={...summarize(orders),amount:plan.amount,adjustment:plan.gross-plan.amount};
   return {
     recipient_name: account.full_name,
     payout_method: account.payout_method || null,
@@ -235,7 +243,9 @@ function previewOwnerPayout(ownerId) {
 function previewManagerCommissionPayout(managerId) {
   const account = getManagerAccount(managerId);
   if (!account) return null;
-  const summary = summarize(getManagerPayableOrders(managerId));
+  const orders=getManagerPayableOrders(managerId).filter(isPayable);
+  const plan=planCommission(db,'manager',managerId,orders);
+  const summary={...summarize(orders),amount:plan.amount,adjustment:plan.gross-plan.amount};
   return {
     recipient_name: account.full_name,
     amount: summary.amount,
@@ -324,7 +334,7 @@ async function deliver(role, account, payoutId, channel, message) {
 async function sendPartnerPayoutNotification(partnerId, payout, approvedMessage) {
   const account = getPartnerAccount(partnerId);
   if (!account) return [];
-  const message = approvedMessage || partnerMessage(account, paidPartnerSummary(payout.id), payout.paid_at);
+  const message = approvedMessage || partnerMessage(account, {...paidPartnerSummary(payout.id),amount:payout.amount}, payout.paid_at);
   const deliveries = [];
   if (account.telegram_chat_id) deliveries.push(await deliver('partner', account, payout.id, 'telegram', message));
   if (account.max_chat_id) deliveries.push(await deliver('partner', account, payout.id, 'max', message));
@@ -334,7 +344,7 @@ async function sendPartnerPayoutNotification(partnerId, payout, approvedMessage)
 async function sendOwnerPayoutNotification(ownerId, payout, approvedMessage) {
   const account = getOwnerAccount(ownerId);
   if (!account) return [];
-  const message = approvedMessage || ownerMessage(account, paidOwnerSummary(payout.id), payout.paid_at);
+  const message = approvedMessage || ownerMessage(account, {...paidOwnerSummary(payout.id),amount:payout.amount}, payout.paid_at);
   const deliveries = [];
   if (account.telegram_chat_id) deliveries.push(await deliver('owner', account, payout.id, 'telegram', message));
   if (account.max_chat_id) deliveries.push(await deliver('owner', account, payout.id, 'max', message));

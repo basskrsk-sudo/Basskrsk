@@ -36,6 +36,7 @@ function fixture() {
       (5,'E','2026-09-10 12:00:00',1000,0.2,1,'a','refunded'),
       (6,'F','2026-09-10 12:00:00',1000,0.2,2,'b','paid');
   `);
+  db.exec("ALTER TABLE orders ADD COLUMN refund_status TEXT DEFAULT 'none'; ALTER TABLE orders ADD COLUMN refunded_amount REAL;");
   reports.initializeReports(db);
   return db;
 }

@@ -150,7 +150,7 @@ test('PDF payout confirmation is bound to an active admin, and cancel never reco
  assert.equal(act(duplicate.id,'paid').ok,true);
  assert.equal(act(duplicate.id,'confirm').ok,false);
  assert.deepEqual(counts(),completed);
- assert.equal(reportNow().person.total,160,'only the later order remains payable');
+ assert.equal(reportNow().person.total,288,'later order and net partial return remain payable');
 });
 test('a stale rate rolls back all roles even if a preceding role has already written',()=>{
  const {id}=draft();

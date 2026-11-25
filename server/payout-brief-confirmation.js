@@ -32,16 +32,20 @@ function snapshotPerson(person){
     if(keys.has(key))throw staleStatement();
     keys.add(key);
     const sales=(section.sales||[]).map(s=>({order_id:s.order_id,created_at:s.created_at,
-      sale_total:s.sale_total,commission_rate:s.commission_rate,commission_amount:s.commission_amount}));
+      sale_total:s.sale_total,refunded_amount:Number(s.refunded_amount||0),commission_rate:s.commission_rate,commission_amount:s.commission_amount}));
     const bonuses=(section.bonuses||[]).map(b=>({manager_point_id:b.manager_point_id,amount:b.amount,accrued_at:b.accrued_at||null}));
     if(sales.some(s=>!integer(s.commission_amount)||!Number.isSafeInteger(Number(s.order_id))||Number(s.order_id)<=0||
        !Number.isFinite(Number(s.sale_total))||!Number.isFinite(Number(s.commission_rate)))||
        bonuses.some(b=>!Number.isSafeInteger(Number(b.manager_point_id))||Number(b.manager_point_id)<=0||!integer(b.amount)||Number(b.amount)<=0)||
        new Set(sales.map(s=>Number(s.order_id))).size!==sales.length||
        new Set(bonuses.map(b=>Number(b.manager_point_id))).size!==bonuses.length)throw staleStatement();
-    const commission=sum(sales,'commission_amount'),bonus=sum(bonuses,'amount');
-    if(commission!==Number(section.commission)||bonus!==Number(section.bonus)||commission+bonus!==Number(section.total))throw staleStatement();
-    if(commission+bonus>0)statements.push({role:section.role,account_id:Number(section.account_id),name:section.name,commission,bonus,sales:commission>0?sales:[],bonuses});
+    const gross=sum(sales,'commission_amount'),bonus=sum(bonuses,'amount');
+    const adjustments=section.refund_adjustments||[];
+    if(!Array.isArray(adjustments)||adjustments.some(x=>!integer(x.amount)||Number(x.amount)<=0))throw staleStatement();
+    const commission=Number(section.commission);
+    if(!integer(commission)||commission!==Math.max(0,gross-sum(adjustments,'amount')-Number(section.refund_carried||0))||
+      bonus!==Number(section.bonus)||commission+bonus!==Number(section.total))throw staleStatement();
+    if(commission+bonus>0)statements.push({role:section.role,account_id:Number(section.account_id),name:section.name,commission,bonus,sales:commission>0?sales:[],adjustments,bonuses});
   }
   const amount=statements.reduce((n,s)=>n+s.commission+s.bonus,0);
   if(!Number.isSafeInteger(amount)||amount<=0||amount!==Number(person.total))throw staleStatement();
@@ -82,7 +86,7 @@ function applyStatement(snapshot,admin){
     const cleanName=v=>String(v||'').replace(/[\x00-\x1f\x7f]/g,' ').replace(/\s+/g,' ').trim().slice(0,120);
     if(!account||cleanName(account.full_name)!==section.name)throw staleStatement();
     if(section.commission>0){
-      const payout=create[role](accountId,admin,{...options,statementOrders:section.sales});
+      const payout=create[role](accountId,admin,{...options,statementOrders:section.sales,statementAdjustments:section.adjustments||[]});
       if(Number(payout.amount)!==section.commission)throw staleStatement();
       results.push({role,type:'commission',amount:payout.amount,payout_id:payout.id,report_id:payout.report_id});
     }
@@ -136,7 +140,7 @@ function handlePayoutConfirmation(chatId,data){
     if(!updated.changes)throw staleStatement();
     db.exec('COMMIT');
     return {ok:true,clear:true,documentMessageId:current.row.document_message_id,
-      message:'✅ Выплачено и зафиксировано в системе.\n\n'+current.row.recipient_name+' — '+rub(snapshot.amount)+'\nЗаписей в реестрах: '+results.length+'\nНовые начисления и спорные возвраты не закрыты.'};
+      message:'✅ Выплачено и зафиксировано в системе.\n\n'+current.row.recipient_name+' — '+rub(snapshot.amount)+'\nЗаписей в реестрах: '+results.length+'\nНовые начисления не закрыты. Корректировки зафиксированы только в составе этой выплаты.'};
   }catch(error){
     try{db.exec('ROLLBACK')}catch(_){}
     if(error.code!=='STALE_PAYOUT_BRIEF')console.error('[payout-brief-confirmation]',error.message);

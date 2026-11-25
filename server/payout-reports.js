@@ -36,6 +36,7 @@ function initializeReports(db) {
     UNIQUE(report_id, target_chat_id)
   )`);
   require('./report-bonuses').initializeBonusLedger(db);
+  require('./commission-refunds').initializeRefundOffsets(db);
 }
 
 function validDate(value) {
@@ -89,6 +90,7 @@ function buildReport(role, recipient, orders, options = {}) {
     base_total: knownBase ? sum('base') : null, accrued: sum('amount') + bonusAccrued,
     already_paid: sum('amount', items.filter((i) => i.already_paid)) + bonusPaid,
     unpaid: sum('amount', items.filter((i) => !i.already_paid)) + bonusAccrued - bonusPaid,
+    refund_adjustments:options.refund_adjustments||[],refund_adjustment_total:(options.refund_adjustments||[]).reduce((s,x)=>s+Number(x.amount),0),
     source_key: options.source_key || null, payout_type: options.payout_type || 'commission',
     bonus_payout_id: options.bonus_payout_id || null,
     payout_id: options.payout_id || null, paid_at: options.paid_at || null,
@@ -213,11 +215,11 @@ function saveReport(db, report, adminId) {
   return { ...report, id: Number(info.lastInsertRowid) };
 }
 
-function snapshotPayout(db, role, recipient, orders, payout, adminId) {
+function snapshotPayout(db, role, recipient, orders, payout, adminId, refund_adjustments=[]) {
   const dates = orders.map((o) => String(o.created_at || '').slice(0, 10)).filter(Boolean).sort();
   return saveReport(db, buildReport(role, recipient, attachOrderProducts(db, orders), {
     kind: 'payout', start: dates[0] || null, end: dates.at(-1) || null,
-    payout_id: payout.id, paid_at: payout.paid_at, payout_amount: payout.amount,
+    payout_id: payout.id, paid_at: payout.paid_at, payout_amount: payout.amount,refund_adjustments,
   }), adminId);
 }
 
