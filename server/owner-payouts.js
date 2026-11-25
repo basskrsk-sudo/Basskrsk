@@ -55,8 +55,8 @@ function listAllOwnerPayouts(limit = 100) {
   return db.prepare(payoutSelect('')).all(limit);
 }
 
-function createOwnerPayout(ownerId, adminPayload) {
-  db.exec('BEGIN IMMEDIATE');
+function createOwnerPayout(ownerId, adminPayload, options = {}) {
+  if(!options.inTransaction) db.exec('BEGIN IMMEDIATE');
   try {
     const owner = db.prepare(`
       SELECT so.id, so.full_name, so.owner_code, so.point_id, p.name AS point_name
@@ -70,7 +70,8 @@ function createOwnerPayout(ownerId, adminPayload) {
       throw error;
     }
 
-    const orders = getOwnerUnpaidOrders(owner.id);
+    const pending = getOwnerUnpaidOrders(owner.id);
+    const orders = options.statementOrders ? require('./payout-statement-orders').selectStatementOrders(db,pending,options.statementOrders) : pending;
     const amount = orders.reduce((sum, order) => sum + order.commission_amount, 0);
     if (!orders.length || amount <= 0) {
       const error = new Error('У владельца сейчас нет невыплаченного вознаграждения');
@@ -105,10 +106,10 @@ function createOwnerPayout(ownerId, adminPayload) {
     });
     const payout = db.prepare(payoutSelect('WHERE id = ?')).get(payoutId, 1);
     const report = snapshotPayout(db, 'owner', { ...owner, code: owner.owner_code }, orders, payout, adminPayload.id);
-    db.exec('COMMIT');
+    if(!options.inTransaction) db.exec('COMMIT');
     return { ...payout, report_id: report.id };
   } catch (error) {
-    try { db.exec('ROLLBACK'); } catch (_) { /* сохраняем исходную ошибку */ }
+    try { if(!options.inTransaction) db.exec('ROLLBACK'); } catch (_) { /* сохраняем исходную ошибку */ }
     throw error;
   }
 }

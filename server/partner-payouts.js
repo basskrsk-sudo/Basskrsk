@@ -58,8 +58,8 @@ function listAllPartnerPayouts(limit = 100) {
   return db.prepare(payoutSelect('')).all(limit);
 }
 
-function createPartnerPayout(partnerId, adminPayload) {
-  db.exec('BEGIN IMMEDIATE');
+function createPartnerPayout(partnerId, adminPayload, options = {}) {
+  if(!options.inTransaction) db.exec('BEGIN IMMEDIATE');
   try {
     const partner = db.prepare(`
       SELECT
@@ -77,7 +77,8 @@ function createPartnerPayout(partnerId, adminPayload) {
       throw error;
     }
 
-    const orders = getUnpaidOrders(partner.id);
+    const pending = getUnpaidOrders(partner.id);
+    const orders = options.statementOrders ? require('./payout-statement-orders').selectStatementOrders(db,pending,options.statementOrders) : pending;
     const amount = orders.reduce((sum, order) => sum + order.commission_amount, 0);
     if (!orders.length || amount <= 0) {
       const error = new Error('У партнёра нет невыплаченного вознаграждения');
@@ -112,10 +113,10 @@ function createPartnerPayout(partnerId, adminPayload) {
     });
     const payout = db.prepare(payoutSelect('WHERE id = ?')).get(payoutId, 1);
     const report = snapshotPayout(db, 'partner', { ...partner, code: partner.partner_code }, orders, payout, adminPayload.id);
-    db.exec('COMMIT');
+    if(!options.inTransaction) db.exec('COMMIT');
     return { ...payout, report_id: report.id };
   } catch (error) {
-    try { db.exec('ROLLBACK'); } catch (_) { /* сохраняем исходную ошибку */ }
+    try { if(!options.inTransaction) db.exec('ROLLBACK'); } catch (_) { /* сохраняем исходную ошибку */ }
     throw error;
   }
 }

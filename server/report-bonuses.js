@@ -60,12 +60,12 @@ function periodBonuses(db, role, id, start, end) {
   };
 }
 
-function createReferralBonusPayout(db, role, managerPointId, recipientId, expectedAmount, admin) {
+function createReferralBonusPayout(db, role, managerPointId, recipientId, expectedAmount, admin, options = {}) {
   const { roleConfig, snapshotBonusPayout } = require('./payout-reports');
   const c = roleConfig(role);
   if (!['owner','partner'].includes(role)) throw Object.assign(new Error('Некорректная роль'), {statusCode:400});
   const field = role === 'owner' ? 'referred_owner' : 'referred_groomer';
-  db.exec('BEGIN IMMEDIATE');
+  if(!options.inTransaction) db.exec('BEGIN IMMEDIATE');
   try {
     const point = db.prepare('SELECT * FROM manager_points WHERE id = ?').get(managerPointId);
     if (!point || point[field+'_id'] !== recipientId) throw Object.assign(new Error('Бонус получателя не найден'),{statusCode:404});
@@ -89,9 +89,9 @@ function createReferralBonusPayout(db, role, managerPointId, recipientId, expect
     const payout = db.prepare('SELECT * FROM referral_bonus_payouts WHERE id = ?').get(Number(info.lastInsertRowid));
     const report = snapshotBonusPayout(db,role,person,payout,admin.id,'referral_bonus',
       point.referral_bonus_accrued_at || point.bonus_accrued_at);
-    db.exec('COMMIT');
+    if(!options.inTransaction) db.exec('COMMIT');
     return { payout, report };
-  } catch(error) { try {db.exec('ROLLBACK');} catch(_) {} throw error; }
+  } catch(error) { try {if(!options.inTransaction) db.exec('ROLLBACK');} catch(_) {} throw error; }
 }
 
 module.exports = { initializeBonusLedger, getBonuses, periodBonuses, createReferralBonusPayout };

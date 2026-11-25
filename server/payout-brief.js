@@ -148,7 +148,7 @@ function roleStatement(account,refundQuery,getItems){
   }
   const bonuses=getBonuses(db,account.role,account.id).pending
     .filter(b=>Number.isFinite(Number(b.amount))&&Number(b.amount)>0)
-    .map(b=>({point:clean(b.point_name||account.point_name||'Точка'),
+    .map(b=>({manager_point_id:b.manager_point_id,point:clean(b.point_name||account.point_name||'Точка'),
       amount:num(b.amount),type:account.role==='manager'?'launch_bonus':'referral_bonus',
       accrued_at:b.accrued_at||null}));
   const commission=eligible.reduce((sum,o)=>sum+num(o.commission_amount),0);
