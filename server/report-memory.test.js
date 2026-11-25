@@ -47,3 +47,13 @@ test('all main PDF renderers share the slot; payout uses streaming assembly and 
   }
  }
 });
+
+test('active-only sampling captures memory between page checkpoints',async()=>{
+ const logs=[];let used=100;
+ const readMemory=()=>sample({'/sys/fs/cgroup/memory.current':used*MiB,'/sys/fs/cgroup/memory.max':256*MiB});
+ const gate=createPdfResourceGate({readMemory,log:s=>logs.push(s),sampleIntervalMs:5});
+ const slot=gate.acquire('personal');
+ try{used=180;await new Promise(resolve=>setTimeout(resolve,25));used=100;}
+ finally{slot.release();}
+ assert.match(logs[0],/sampled_peak_mb":180/);
+});

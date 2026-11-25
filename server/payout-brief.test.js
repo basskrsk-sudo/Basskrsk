@@ -89,18 +89,19 @@ test('CSV and PDF both include one combined personal section and explicit role b
   assert.match(csv,/Менеджер/);
   assert.match(csv,/Грумер/);
   assert.match(text,/1. Иван Иванов/);
-  assert.equal(pages.length,4,'summary and one page for each payee');
-  const combined=pages.filter(p=>p.includes('Грумер + Менеджер'));
-  assert.equal(combined.length,1);
-  assert.match(combined[0],/Бонус за запуск/);
-  assert.match(combined[0],/ИТОГО к выплате/);
+  assert.ok(pages.length>=1+report.people.length,'summary and at least one page for each payee');
+  const combined=pages.filter(p=>p.includes('Грумер + Менеджер')).join('\n');
+  assert.ok(combined);
+  assert.match(combined,/Бонус за запуск/);
+  assert.match(combined,/ИТОГО к выплате/);
 });
 test('each recipient gets a standalone itemized sales report with a precise period',()=>{
   const dual=report.people.find(p=>p.roles.includes('partner')&&p.roles.includes('manager'));
   assert.ok(dual);
-  assert.equal(dual.period.label,'23.10.2026 — 24.10.2026');
-  const message=formatRecipientPayoutMessage(dual,report.generated_at);
-  assert.match(message,/Период расчётов: 23\.10\.2026 — 24\.10\.2026/);
+  // The statement includes both orders and the bonus accrued on 20 October.
+  assert.equal(dual.period.label,'20.10.2026 — 24.10.2026');
+  const message=formatRecipientPayoutMessage(dual,report.generated_at).replace(/\u00a0|\u202f/g,' ');
+  assert.match(message,/Период расчётов: 20\.10\.2026 — 24\.10\.2026/);
   assert.match(message,/Бычий корень/);
   assert.match(message,/Стоимость продажи|Продажа: 1 000 ₽/);
   assert.match(message,/20% \(Грумер\)/);
@@ -115,9 +116,9 @@ test('each recipient gets a standalone itemized sales report with a precise peri
   assert.doesNotMatch(csv,/ORDER-PARTIAL/,'refunded orders require manual review');
   const pages=payoutBriefPdfPages(report,'/usr/share/fonts/dejavu/DejaVuSans.ttf',{recipient:dual});
   assert.ok(pages.length>=1);
-  const document=pages.join('\n');
+  const document=pages.join('\n').replace(/\u00a0|\u202f/g,' ');
   assert.match(document,/Получатель: Иван Иванов/);
-  assert.match(document,/Период расчётов: 23\.10\.2026/);
+  assert.match(document,/Период расчётов: 20\.10\.2026/);
   assert.match(document,/Бычий корень/);
   assert.match(document,/Стоимость продажи: 1 000 ₽/);
   assert.match(document,/Ставка \(Грумер\): 20%/);

@@ -63,7 +63,6 @@ function payoutBriefPdfPages(report,font,options={}){
   }
   function footer(){
     for(let i=0;i<pages.length;i++){
-      slot.checkpoint();
       const p=pages[i];
       p.push("font '"+esc(font)+"' font-size 15 fill '#66776A' text 60,1695 'Подготовлено в ХвостМаркете. Не является подтверждением перевода денег.'");
       p.push("font '"+esc(font)+"' font-size 15 fill '#66776A' text 1035,1695 'Лист "+(i+1)+" из "+pages.length+"'");
@@ -169,6 +168,7 @@ async function renderPayoutBriefPdf(report,options={}){
     try{await run(binary,['-version'],{timeout:4000});}catch{binary='magick';await run(binary,['-version'],{timeout:4000});}
     const images=[];
     for(let i=0;i<pages.length;i++){
+      slot.checkpoint();
       const source=path.join(dir,'page-'+i+'.mvg');
       const image=path.join(dir,'page-'+i+'.jpg');
       await fs.promises.writeFile(source,pages[i],{mode:0o600});
