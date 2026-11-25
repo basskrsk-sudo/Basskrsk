@@ -35,6 +35,7 @@ function redirectContinuation(order,payment,now=Date.now()){
     payment.confirmation?.type==='redirect'?safeProviderUrl(payment.confirmation.confirmation_url):null;
   return {return_path:path+'?payment_return='+encodeURIComponent(order.order_code),
     confirmation_url:url||null,reservation_expires_at:order.reservation_expires_at||null,
+    reservation_expired:order.status==='pending'&&Number.isFinite(expiry)&&expiry<=now,
     can_recover:!!(active&&!order.yookassa_payment_id)};
 }
 module.exports={redirectPaymentPath,safeProviderUrl,paymentMatchesOrder,redirectContinuation};

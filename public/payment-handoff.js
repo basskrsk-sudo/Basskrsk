@@ -4,7 +4,9 @@
   var el=function(id){return document.getElementById(id);};
   var code=new URLSearchParams(location.search).get('order');
   var valid=window.HvostAndroidPayment.codeValid(code);
-  var busy=false,finished=false,lastCheck=0,left=false,missing=false;
+  var busy=false,finished=false,lastCheck=0,left=false,missing=false,queuedCheck=false;
+  // Only explicit validation failures known to occur before creating a payment.
+  var editCodes=['ORDER_TOTAL_CHANGED','FIRST_PURCHASE_PROMO_INVALID','STOCK_UNAVAILABLE','VARIANT_NOT_FOUND','VARIANT_INACTIVE','POINT_UNAVAILABLE','ADVISOR_SELECTION_ERROR','ADVISOR_SELECTION_REQUIRED','PARTNER_POINT_MISMATCH','INVALID_QUANTITY','INVALID_CATALOG_PRICE','AMBIGUOUS_VARIANT','EMPTY_CART','TOO_MANY_LINES','CUSTOM_ITEM_NOT_ALLOWED','INVALID_ORDER_TOTAL','SELF_ORDER_BONES_FORBIDDEN'];
   function show(id,on){el(id).hidden=!on;}
   function safePath(path){
     try{
@@ -12,6 +14,22 @@
       return u.origin===location.origin&&u.searchParams.get('payment_return')===code&&
         (u.pathname==='/'||u.pathname==='/miniapp.html'||/^\/p\/[^/]+\/[^/]+\/?$/.test(u.pathname))?u.pathname+u.search:null;
     }catch(_){return null;}
+  }
+  function editPath(body){
+    var p=body.returnPath||'/';
+    return /^\/(?:miniapp\.html|p\/[^/?#]+\/[^/?#]+\/?)?$/.test(p)?p:'/';
+  }
+  function clearRejected(body,p){
+    // Only remove storage belonging to this exact rejected order; never clear the basket.
+    function clearMatch(store,key){
+      try{var v=JSON.parse(store.getItem(key)||'null');if(v&&v.orderId===code)store.removeItem(key);}catch(_){}
+    }
+    if(/^\/p\//.test(p)&&body.pointId!=null){
+      try{clearMatch(window.localStorage,'hm_qr_pending_v1:'+String(body.pointId));}catch(_){}
+      try{clearMatch(window.sessionStorage,'hvost_qr_payment:'+p);}catch(_){}
+    }
+    try{window.sessionStorage.removeItem('hvostmarket_success_'+code);}catch(_){}
+    window.HvostAndroidPayment.clear(code);
   }
   function providerLink(url){
     try{var u=new URL(url);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null;}catch(_){return null;}
@@ -47,44 +65,72 @@
     el('message').textContent=link?'На защищённой странице ЮKassa выберите СБП и свой банк или оплату картой. После оплаты вернитесь сюда.':
       'Подтверждения пока нет. Если вы уже оплатили в банке, не платите повторно — проверьте этот заказ.';
     if(link){el('payLink').href=link;show('payLink',true);}
-    show('recover',data.can_recover===true&&!link);
+    if(!link&&data.reservation_expired===true){
+      el('title').textContent='Время резерва истекло';
+      el('message').textContent='Проверяем окончательный статус платежа. Если деньги уже списаны, не платите повторно. Нажмите «Проверить оплату». Новый заказ можно оформить после подтверждённой отмены.';
+    }
+    show('recover',data.can_recover===true&&!link&&data.reservation_expired!==true);
   }
-  async function check(force){
-    if(!valid||busy||finished||(!force&&Date.now()-lastCheck<2000))return;
+  async function check(force,queueIfBusy){
+    if(!valid||finished)return;
+    if(busy){if(queueIfBusy)queuedCheck=true;return;}
+    if(!force&&Date.now()-lastCheck<2000)return;
     busy=true;lastCheck=Date.now();el('check').disabled=true;el('recover').disabled=true;
     show('payLink',false);show('recover',false);
     try{
       var result=await request('/api/order-payment-status/'+encodeURIComponent(code));
-      if(result.status===404){missing=true;error('Заказ пока не найден. Возможно, создание ещё не завершилось. Если запрос не дошёл до сервера, его можно повторить с тем же номером заказа из исходной вкладки.');var original=window.HvostAndroidPayment.snapshot(code);if(original){el('recover').textContent='Повторить запрос этого заказа';show('recover',true);}return;}
+      if(result.status===404){
+        missing=true;
+        var original=window.HvostAndroidPayment.snapshot(code);
+        error(original?'Заказ пока не найден. Возможно, создание ещё не завершилось. Можно повторить запрос с тем же номером заказа.':
+          'Заказ пока не найден, а данные покупки остались в исходной вкладке. Вернитесь туда (в том числе в Telegram) и откройте оплату в ней. Если вы уже оплатили, не создавайте новый заказ — проверьте статус ещё раз.');
+        if(original){el('recover').textContent='Повторить запрос этого заказа';show('recover',true);}
+        return;
+      }
       if(result.status!==200)throw Error('status');
       render(result.data||{});
     }catch(_){error('Проверьте интернет и повторите проверку этого заказа.');}
-    finally{busy=false;el('check').disabled=false;el('recover').disabled=false;}
+    finally{
+      busy=false;el('check').disabled=false;el('recover').disabled=false;
+      if(queuedCheck){queuedCheck=false;if(!finished)await check(true);}
+    }
   }
   async function recover(){
     if(!valid||busy||finished)return;
     busy=true;el('recover').disabled=true;el('check').disabled=true;
+    var skipFollowup=false;
     try{
       if(missing){
         var body=window.HvostAndroidPayment.snapshot(code);
         if(!body)return;
         var headers={'Content-Type':'application/json'};
-        if(Number(body.bonesUsed)>0){var token='';try{token=localStorage.getItem('taiga_customer_token')||'';}catch(_){}if(!token){el('message').textContent='Для оплаты косточками откройте исходную вкладку, в которой вы вошли в аккаунт.';return;}headers.Authorization='Bearer '+token;}
+        if(Number(body.bonesUsed)>0){var token='';try{token=localStorage.getItem('taiga_customer_token')||'';}catch(_){}if(!token){el('message').textContent='Для оплаты косточками откройте исходную вкладку, в которой вы вошли в аккаунт.';skipFollowup=true;return;}headers.Authorization='Bearer '+token;}
         var ac=new AbortController(),timer=setTimeout(function(){ac.abort();},12000);
         try{var response=await fetch('/api/create-payment',{method:'POST',headers:headers,body:JSON.stringify(body),cache:'no-store',signal:ac.signal});
           var data=await response.json();
-          if(data.demo===true){await check(true);return;}
-          if(!response.ok&&response.status<500&&data.code&&['ORDER_TOTAL_CHANGED','FIRST_PURCHASE_PROMO_INVALID','STOCK_UNAVAILABLE','VARIANT_NOT_FOUND','VARIANT_INACTIVE','POINT_UNAVAILABLE','ADVISOR_SELECTION_ERROR','INVALID_QUANTITY','INVALID_CATALOG_PRICE'].includes(data.code)){
-            // The request was rejected before payment. Do not silently change its total.
-            var p=body.returnPath||'/';if(!/^\/(?:miniapp\.html|p\/[^/]+\/[^/]+\/?)?$/.test(p))p='/';
+          if(data.demo===true)return;
+          if(!response.ok&&response.status>=400&&response.status<500&&editCodes.includes(data.code)){
+            // Never discard a payment on a timeout, unknown error or existing order.
+            var p=editPath(body);
             var probe=await request('/api/order-payment-status/'+encodeURIComponent(code));
-            if(probe.status===404){window.HvostAndroidPayment.clear(code);finished=true;el('title').textContent='Проверьте заказ';el('message').textContent=data.error||'Изменились условия заказа.';el('result').href=p;show('result',true);show('recover',false);show('check',false);return;}
+            if(probe.status===404){
+              clearRejected(body,p);finished=true;
+              el('title').textContent='Проверьте заказ';
+              el('message').textContent=data.error||'Изменились условия заказа.';
+              el('result').href=p;el('result').textContent='Вернуться к покупке →';
+              show('result',true);show('recover',false);show('check',false);show('payLink',false);show('foot',false);show('browserHelp',false);return;
+            }
+            if(probe.status===200){render(probe.data||{});skipFollowup=true;}
           }
         }finally{clearTimeout(timer);}
       }else await request('/api/redirect-payment/'+encodeURIComponent(code)+'/resume','POST');
     }
     catch(_){}
-    finally{busy=false;el('recover').disabled=false;el('check').disabled=false;await check(true);}
+    finally{
+      busy=false;el('recover').disabled=false;el('check').disabled=false;
+      var followup=queuedCheck||!skipFollowup;queuedCheck=false;
+      if(followup&&!finished)await check(true);
+    }
   }
   el('check').onclick=function(){check(true);};el('recover').onclick=recover;
   el('payLink').onclick=function(){left=true;};
@@ -94,10 +140,10 @@
     catch(_){el('copyValue').value=url;show('copyValue',true);el('copyValue').focus();el('copyValue').select();}
   };
   // iOS may restore the tab without a full page load, including a fast bank return.
-  function afterBankReturn(){if(document.hidden||!left)return;left=false;check(true);}
+  function afterBankReturn(){if(document.hidden||!left)return;left=false;check(true,true);}
   document.addEventListener('visibilitychange',function(){if(document.hidden){left=true;return;}afterBankReturn();});
   window.addEventListener('focus',afterBankReturn);
-  window.addEventListener('pageshow',function(e){if(e.persisted){left=false;check(true);}});
-  window.addEventListener('online',function(){if(!document.hidden)check(true);});
+  window.addEventListener('pageshow',function(e){if(e.persisted){left=false;check(true,true);}});
+  window.addEventListener('online',function(){if(!document.hidden)check(true,true);});
   if(valid)check(true);else error('Ссылка на оплату некорректна. Откройте заказ из ХвостМаркета.');
 })();

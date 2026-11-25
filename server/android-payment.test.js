@@ -52,13 +52,14 @@ test('Android detection, opaque IDs, tab-local request, matching cleanup and Tel
  assert.equal(h.navigations.length,0);
  a.clear(c);assert.equal(a.pending(),null);assert.equal(a.snapshot(c),null);
 });
-function harness(responses,withSnapshot=false,ua='Android Chrome'){
+function harness(responses,withSnapshot=false,ua='Android Chrome',extra={}){
  const h=helper(ua),els={},events={},requests=[];
  const document={hidden:false,getElementById(id){return els[id]||(els[id]={hidden:true,disabled:false,textContent:'',href:'',focus(){},select(){}});},addEventListener:(name,fn)=>events[name]=fn};
  h.window.addEventListener=(name,fn)=>events[name]=fn;
- const body={orderId:code,confirmationMode:'redirect',bonesUsed:0,cartItems:[{variantId:1,qty:2}]};
+ const body={orderId:code,confirmationMode:'redirect',bonesUsed:0,cartItems:[{variantId:1,qty:2}],...extra.body};
  h.api.remember(code,'qr',withSnapshot?body:null);
- const fetch=async(url,opts)=>{requests.push({url,method:opts.method,body:opts.body});const r=responses.shift();if(!r)throw Error('unexpected request');if(r.error)throw Error(r.error);return {status:r.status||200,ok:(r.status||200)<300,json:async()=>r.data||{}}};
+ if(extra.seed)extra.seed(h,body);
+ const fetch=async(url,opts)=>{requests.push({url,method:opts.method,body:opts.body});const r=responses.shift();if(!r)throw Error('unexpected request');if(r.wait)await r.wait;if(r.error)throw Error(r.error);return {status:r.status||200,ok:(r.status||200)<300,json:async()=>r.data||{}}};
  const context={window:h.window,document,location:{origin:'https://example.test',search:'?order='+code},URL,URLSearchParams,AbortController,Date,fetch,setTimeout,clearTimeout,navigator:{},localStorage:h.localStorage};
  vm.runInNewContext(source('payment-handoff.js'),context);
  return{...h,els,events,requests};
@@ -117,4 +118,96 @@ test('checkout scripts compile and the shared mobile hosted path has no iframe d
  assert.match(source('miniapp.html'),/HvostAndroidPayment\?\.external/);
  assert.match(source('p.html'),/HvostAndroidPayment\.remember\(saved\.orderId,'qr',saved\.body\)/);
  assert.match(source('pay.html'),/name="referrer" content="no-referrer"/);
+});
+
+test('reservation expiry is calculated by the server and does not imply payment cancellation',()=>{
+ const expired=redirectContinuation(order,payment,now+6*60000);
+ assert.equal(expired.reservation_expired,true);
+ assert.equal(expired.confirmation_url,null);
+ assert.equal(expired.can_recover,false);
+ assert.equal(redirectContinuation(order,payment,now).reservation_expired,false);
+ assert.equal(redirectContinuation({...order,status:'paid'},payment,now+6*60000).reservation_expired,false);
+});
+test('expired reservation remains unresolved until confirmed canceled or paid',async()=>{
+ const h=harness([{data:{status:'pending',reservation_expired:true,can_recover:false}},{data:{status:'failed',return_path:'/p/salon/lung?payment_return='+code}}]);
+ await flush();
+ assert.equal(h.els.title.textContent,'Время резерва истекло');
+ assert.equal(h.els.payLink.hidden,true);assert.equal(h.els.recover.hidden,true);
+ assert.equal(h.els.result.hidden,true);assert.equal(h.api.pending().code,code);
+ h.els.check.onclick();await flush();
+ assert.equal(h.els.title.textContent,'Платёж отменён');
+ assert.equal(h.els.result.hidden,false);assert.equal(h.api.pending(),null);
+ assert.ok(h.requests.every(r=>r.method==='GET'));
+});
+for(const errorCode of ['ADVISOR_SELECTION_REQUIRED','PARTNER_POINT_MISMATCH','FIRST_PURCHASE_PROMO_INVALID','ORDER_TOTAL_CHANGED','AMBIGUOUS_VARIANT','SELF_ORDER_BONES_FORBIDDEN']){
+ test('definitive '+errorCode+' and missing order allow editing without clearing basket',async()=>{
+  const basket='basket-stays';
+  const h=harness([{status:404},{status:409,data:{code:errorCode,error:'Проверьте данные заказа'}},{status:404}],true,'iPhone Safari',{
+   body:{pointId:'salon',returnPath:'/p/salon/lung',promoCode:'HV20'},
+   seed(h,body){
+    h.localStorage.setItem('hm_qr_pending_v1:salon',JSON.stringify({orderId:code,body}));
+    h.sessionStorage.setItem('hvost_qr_payment:/p/salon/lung',JSON.stringify({orderId:code,body}));
+    h.localStorage.setItem('hm_qr_pending_v1:other',JSON.stringify({orderId:'another'}));
+    h.localStorage.setItem('basket',basket);
+   }});
+  await flush();await h.els.recover.onclick();
+  assert.deepEqual(h.requests.map(r=>r.method),['GET','POST','GET']);
+  assert.equal(JSON.parse(h.requests[1].body).promoCode,'HV20');
+  assert.equal(h.api.pending(),null);assert.equal(h.api.snapshot(code),null);
+  assert.equal(h.localStorage.getItem('hm_qr_pending_v1:salon'),null);
+  assert.equal(h.sessionStorage.getItem('hvost_qr_payment:/p/salon/lung'),null);
+  assert.equal(h.localStorage.getItem('basket'),basket);
+  assert.ok(h.localStorage.getItem('hm_qr_pending_v1:other'));
+  assert.equal(h.els.result.href,'/p/salon/lung');assert.equal(h.els.result.hidden,false);
+  assert.equal(h.els.recover.hidden,true);assert.equal(h.els.check.hidden,true);
+ });
+}
+test('validation failure never removes another attempt or basket',async()=>{
+ const h=harness([{status:404},{status:409,data:{code:'PARTNER_POINT_MISMATCH'}},{status:404}],true,'Android Chrome',{
+  body:{pointId:'salon',returnPath:'/p/salon/lung'},seed(h){h.localStorage.setItem('hm_qr_pending_v1:salon',JSON.stringify({orderId:'newer'}));}
+ });
+ await flush();await h.els.recover.onclick();
+ assert.equal(JSON.parse(h.localStorage.getItem('hm_qr_pending_v1:salon')).orderId,'newer');
+});
+test('a validation error cannot discard an existing or paid order',async()=>{
+ const h=harness([{status:404},{status:409,data:{code:'PARTNER_POINT_MISMATCH'}},{data:{status:'pending',confirmation_url:payment.confirmation.confirmation_url}}],true);
+ await flush();await h.els.recover.onclick();
+ assert.equal(h.requests.length,3);
+ assert.equal(h.api.pending().code,code);assert.equal(h.els.payLink.hidden,false);
+});
+test('temporary or ambiguous failures preserve the original checkout',async()=>{
+ for(const response of [{status:503,data:{code:'PAYMENT_NOT_CONFIGURED'}},{status:409,data:{code:'PAYMENT_RETRY_MISMATCH'}},{error:'lost response'}]){
+  const h=harness([{status:404},response,{status:404}],true);
+  await flush();await h.els.recover.onclick();
+  assert.equal(h.api.pending().code,code);assert.ok(h.api.snapshot(code));
+  assert.equal(h.els.result.hidden,true);assert.equal(h.els.recover.hidden,false);
+  assert.deepEqual(h.requests.map(r=>r.method),['GET','POST','GET']);
+ }
+});
+test('missing order in another browser advises returning to original tab without a POST',async()=>{
+ const h=harness([{status:404},{status:404}],false,'iPhone Safari');
+ await flush();
+ assert.match(h.els.message.textContent,/Вернитесь туда/);
+ assert.equal(h.els.recover.hidden,true);
+ h.els.check.onclick();await flush();
+ assert.ok(h.requests.every(r=>r.method==='GET'));
+ assert.equal(h.api.pending().code,code);
+});
+test('bank return and reconnect during in-flight status check queue exactly one read-only check',async()=>{
+ let release;
+ const gate=new Promise(resolve=>{release=resolve;});
+ const h=harness([{wait:gate,data:{status:'pending',confirmation_url:payment.confirmation.confirmation_url}},{data:{status:'paid',paid:true,return_path:'/p/salon/lung?payment_return='+code}}],false,'iPhone Safari');
+ assert.equal(h.requests.length,1);
+ h.events.pageshow({persisted:true});h.events.online();h.events.online();
+ assert.equal(h.requests.length,1);
+ release();await flush();await flush();
+ assert.equal(h.requests.length,2);
+ assert.ok(h.requests.every(r=>r.method==='GET'));
+ assert.equal(h.els.payLink.hidden,true);assert.equal(h.els.result.hidden,false);
+});
+test('unconfirmed Telegram checkout prefers original tab instead of losing retry snapshot',()=>{
+ const mini=source('miniapp.html');
+ assert.match(mini,/originalNeeded=!!window\.HvostAndroidPayment\?\.snapshot\(code\)&&publicNumber===code/);
+ assert.match(mini,/originalNeeded\?'<a class="btn btn-gold" href="/);
+ assert.match(mini,/Открыть оплату в браузере/);
 });

@@ -315,9 +315,10 @@ function showResult(status,code,displayNumber){
  var msg=paid?'Спасибо за покупку! Заберите товар с полки выбранного минимаркета.':
    failed?'Этот платёж не состоялся. Вы можете вернуться к оформлению нового заказа.':
    'Если создание платежа прервалось, не нажимайте оплату повторно: сначала проверьте статус этого заказа.';
+ var originalNeeded=!!window.HvostAndroidPayment?.snapshot(code)&&publicNumber===code;
  var action=paid?'<button class="btn btn-gold" type="button" data-action="shop">Продолжить покупки</button>':
    failed?'<button class="btn btn-gold" type="button" data-action="shop">Вернуться в магазин</button>':
-   ((window.HvostAndroidPayment?.codeValid(code)?'<button class="btn btn-gold" id="androidOpenPayment" type="button">Открыть оплату в браузере →</button><p class="hint">Выберите СБП или карту. Вернитесь сюда после банка.</p><a class="btn btn-light" href="'+esc(window.HvostAndroidPayment.url(code))+'">Открыть здесь, если браузер не открылся</a>':'')+'<button class="btn btn-light" id="statusAgain" type="button">Проверить статус заказа</button>');
+   ((window.HvostAndroidPayment?.codeValid(code)?(originalNeeded?'<a class="btn btn-gold" href="'+esc(window.HvostAndroidPayment.url(code))+'">Проверить и продолжить оплату здесь →</a><p class="hint">Сначала восстановите заказ в этой вкладке, чтобы не потерять корзину и скидку.</p>':'<button class="btn btn-gold" id="androidOpenPayment" type="button">Открыть оплату в браузере →</button><p class="hint">Выберите СБП или карту. Вернитесь сюда после банка.</p><a class="btn btn-light" href="'+esc(window.HvostAndroidPayment.url(code))+'">Открыть здесь, если браузер не открылся</a>'):'')+'<button class="btn btn-light" id="statusAgain" type="button">Проверить статус заказа</button>');
  el('resultPage').innerHTML='<div class="block profile-hero" style="margin-top:30px">'+
    '<div style="font-size:59px">'+(paid?'✅':failed?'❌':'⏳')+'</div>'+
    '<h2>'+title+'</h2><p>'+msg+'</p><div class="ok" style="margin:17px 0">'+
