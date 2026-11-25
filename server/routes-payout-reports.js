@@ -63,7 +63,7 @@ function registerPayoutReportRoutes(router) {
   router.get('/api/payout-reports/recipients', handler((req, res, ctx) => {
     const role = ctx.query.role;
     const c = roleConfig(role);
-    const recipients = db.prepare(`SELECT id, full_name, ${c.code} AS code FROM ${c.table} ORDER BY full_name`).all();
+    const recipients = db.prepare(`SELECT id, full_name, ${c.code} AS code, ${role==='manager'?'NULL':'payout_method'} AS payout_method FROM ${c.table} ORDER BY full_name`).all();
     sendJson(res, 200, { recipients });
   }));
   router.get('/api/payout-reports/bonuses',handler((req,res,ctx)=>{
@@ -74,7 +74,7 @@ function registerPayoutReportRoutes(router) {
   router.post('/api/payout-reports/bonus-payouts',handler((req,res,ctx,admin)=>{
     const b=ctx.body||{};
     if(b.confirm_transferred !== true) throw Object.assign(new Error('Подтвердите фактический перевод'),{statusCode:400});
-    const result=createReferralBonusPayout(db,b.role,positiveId(b.manager_point_id),positiveId(b.recipient_id),positiveId(b.expected_amount),admin);
+    const result=createReferralBonusPayout(db,b.role,positiveId(b.manager_point_id),positiveId(b.recipient_id),positiveId(b.expected_amount),admin,{payout_method:b.payout_method});
     const report=withLifetime(result.report);
     sendJson(res,201,{...result,report,html:printableReport(report)});
   }));

@@ -84,8 +84,8 @@ function createReferralBonusPayout(db, role, managerPointId, recipientId, expect
     const person = db.prepare(`SELECT id, full_name, ${c.code} AS code FROM ${c.table} WHERE id = ?`).get(recipientId);
     if (!person) throw Object.assign(new Error('Получатель не найден'),{statusCode:404});
     const info = db.prepare(`INSERT INTO referral_bonus_payouts
-      (role,manager_point_id,recipient_id,recipient_name,recipient_code,point_id,point_name,amount,paid_by_admin_id,paid_by_admin_login)
-      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(role,managerPointId,recipientId,person.full_name,person.code,point.point_id,point.point_name,amount,admin.id||null,admin.login||null);
+      (role,manager_point_id,recipient_id,recipient_name,recipient_code,point_id,point_name,amount,paid_by_admin_id,paid_by_admin_login,payout_method)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(role,managerPointId,recipientId,person.full_name,person.code,point.point_id,point.point_name,amount,admin.id||null,admin.login||null,require('./payout-methods').parseActualPayoutMethod(options.payout_method));
     const payout = db.prepare('SELECT * FROM referral_bonus_payouts WHERE id = ?').get(Number(info.lastInsertRowid));
     const report = snapshotBonusPayout(db,role,person,payout,admin.id,'referral_bonus',
       point.referral_bonus_accrued_at || point.bonus_accrued_at);

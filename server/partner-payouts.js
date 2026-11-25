@@ -4,6 +4,7 @@
 const db = require('./db');
 const {netOrder,isPayable,planCommission,verifyPlan,recordOffsets}=require('./commission-refunds');
 const { snapshotPayout } = require('./payout-reports');
+const {parseActualPayoutMethod}=require('./payout-methods');
 
 function getUnpaidOrders(partnerId) {
   return db.prepare(`
@@ -37,7 +38,7 @@ function payoutSelect(whereClause) {
     SELECT
       id, partner_id, partner_name, partner_code,
       manager_id, manager_name, amount, orders_count,
-      paid_by_admin_id, paid_by_admin_login, paid_at
+      paid_by_admin_id, paid_by_admin_login, paid_at, payout_method
     FROM partner_payouts
     ${whereClause}
     ORDER BY paid_at DESC, id DESC
@@ -89,8 +90,8 @@ function createPartnerPayout(partnerId, adminPayload, options = {}) {
     const payoutInfo = db.prepare(`
       INSERT INTO partner_payouts
         (partner_id, partner_name, partner_code, manager_id, manager_name,
-         amount, orders_count, paid_by_admin_id, paid_by_admin_login)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         amount, orders_count, paid_by_admin_id, paid_by_admin_login,payout_method)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       partner.id,
       partner.full_name,
@@ -100,7 +101,8 @@ function createPartnerPayout(partnerId, adminPayload, options = {}) {
       amount,
       orders.length,
       adminPayload.id || null,
-      adminPayload.login || null
+      adminPayload.login || null,
+      parseActualPayoutMethod(options.payout_method)
     );
     const payoutId = Number(payoutInfo.lastInsertRowid);
     const insertItem = db.prepare(`

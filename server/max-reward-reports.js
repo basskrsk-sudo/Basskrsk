@@ -3,12 +3,14 @@
 // This is an on-demand, read-only export. The existing payout/confirmation
 // ledgers remain authoritative. No new payout, snapshot, or partner message.
 function fail(message,statusCode=400){return Object.assign(new Error(message),{statusCode,publicMessage:true});}
+const {payoutMethodLabel}=require('./payout-methods');
 const LABELS={partner:'Грумер / рекомендатель',owner:'Владелец салона',manager:'Менеджер'};
 function listRewardReports(db,kind,collect,now=new Date()){
   if(kind==='unpaid'){
     const report=(collect||require('./payout-brief').collectPayoutBrief)(now,{summaryOnly:true,monthly:true});
-    return {kind,period:report.period,recipients:report.people.map(p=>({key:p.selection_key,name:p.name,roles:p.roles_label,
-      points:[...new Set(p.statements.map(s=>s.point).filter(Boolean))].join(', '),amount:p.total}))};
+    return {kind,period:report.period,payout_method_groups:(report.payout_method_groups||[]).map(g=>({label:g.label,amount:g.amount})),recipients:report.people.map(p=>({key:p.selection_key,name:p.name,roles:p.roles_label,
+      points:[...new Set(p.statements.map(s=>s.point).filter(Boolean))].join(', '),amount:p.total,
+      payout_method_label:require('./payout-brief').payoutMethodDescription(p)}))};
   }
   if(kind!=='period')throw fail('Выберите вид отчёта');
   const recipients=[];
@@ -16,8 +18,9 @@ function listRewardReports(db,kind,collect,now=new Date()){
     const config=require('./payout-reports').roleConfig(role);
     const point=role==='manager'?"''":'COALESCE(p.name,\'\')';
     const join=role==='manager'?'':' LEFT JOIN points p ON p.id=r.point_id';
-    const rows=db.prepare('SELECT r.id,r.full_name AS name,'+point+' AS point FROM '+config.table+' r'+join+' ORDER BY r.full_name,r.id').all();
-    for(const row of rows)recipients.push({role,id:row.id,name:row.name,point:row.point,roles:LABELS[role]});
+    const method=role==='manager'?'NULL':'r.payout_method';
+    const rows=db.prepare('SELECT r.id,r.full_name AS name,'+point+' AS point,'+method+' AS payout_method FROM '+config.table+' r'+join+' ORDER BY r.full_name,r.id').all();
+    for(const row of rows)recipients.push({role,id:row.id,name:row.name,point:row.point,roles:LABELS[role],payout_method_label:payoutMethodLabel(row.payout_method)});
   }
   return {kind,recipients};
 }
@@ -43,9 +46,10 @@ function createMaxRewardReports(db,{collect,renderBrief,generatePeriod,renderPer
         if(rows>500)throw fail('Справка слишком объёмна. Используйте отчёт за более короткий период.',413);
         pdf=await (renderBrief||require('./payout-brief-pdf').renderPayoutBriefPdf)(report,{recipient:person});
         filename='HvostMarket_payout_'+body.key+'.pdf';
-        const {formatSaleDateTime,monthlyBreakdownLines}=require('./payout-brief');
+        const {formatSaleDateTime,monthlyBreakdownLines,payoutMethodDescription}=require('./payout-brief');
         caption=['ХвостМаркет — справка к выплате','Получатель: '+person.name,'Роли: '+person.roles_label,
           'Период: '+person.period.label,
+          'Способ выплаты: '+payoutMethodDescription(person),
           'Срез начислений: '+formatSaleDateTime(report.generated_at)+' (Красноярск)',
           ...((person.prior_accrued||person.undated_accrued||person.adjustments_applied||person.deferred_commission)?monthlyBreakdownLines(person):[]),
           'К выплате: '+money(person.total)].join('\n');
@@ -57,6 +61,7 @@ function createMaxRewardReports(db,{collect,renderBrief,generatePeriod,renderPer
         filename='HvostMarket_reward_'+body.role+'_'+body.recipient_id+'_'+body.start+'_'+body.end+'.pdf';
         caption=['ХвостМаркет — расчёт вознаграждения','Получатель: '+report.recipient.name,
           'Роль: '+LABELS[body.role],'Период: '+body.start+' — '+body.end,
+          'Способ выплаты: '+payoutMethodLabel(report.preferred_payout_method),
           'Начислено за период: '+money(report.accrued)].join('\n');
       }else throw fail('Выберите вид отчёта');
       authorize();

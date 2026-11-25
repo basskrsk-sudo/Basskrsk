@@ -7,7 +7,8 @@ const path=require('node:path');
 const {execFile}=require('node:child_process');
 const {promisify}=require('node:util');
 const run=promisify(execFile);
-const {money,clean,formatSaleDateTime}=require('./payout-brief');
+const {money,clean,formatSaleDateTime,payoutMethodGroups,payoutMethodDescription}=require('./payout-brief');
+const {payoutMethodLabel}=require('./payout-methods');
 
 const LABELS={partner:'Грумер',owner:'Владелец салона',manager:'Менеджер'};
 const W=1240,H=1754;
@@ -98,6 +99,11 @@ function payoutBriefPdfPages(report,font,options={}){
   line('Комиссионные начисления',report.commission);
   line('Невыплаченные бонусы',report.bonus);
   for(const role of ['partner','owner','manager'])line('В том числе: '+LABELS[role],report.role_totals[role]);
+  paragraph('По способам выплаты:','#1C3A2F',23);
+  for(const g of report.payout_method_groups||payoutMethodGroups(report.people)){
+    line(g.label,g.amount,'heading');
+    for(const payee of g.people)paragraph(payee.name+' · '+payee.roles.join(' + ')+' · '+money(payee.amount));
+  }
   if(report.held_orders)paragraph('Внимание: '+report.held_orders+' исторических возвратов требуют проверки сохранённой ставки.','#A33D32',18);
   if(report.identities_to_verify?.length)paragraph('Совпадающие ФИО без подтверждённой личности не объединены; проверьте в админке.','#A33D32',17);
   paragraph('На следующих листах — отдельная справка каждому получателю. Если человек одновременно грумер и менеджер, начисления представлены в одной справке с разбивкой по ролям.', '#52695A',18);
@@ -106,6 +112,7 @@ function payoutBriefPdfPages(report,font,options={}){
   const recipients=options.recipient ? [options.recipient] : report.people;
   for(const recipient of recipients){
     startPage(recipient);
+    paragraph('Способ выплаты: '+payoutMethodDescription(recipient),'#1C3A2F',20);
     line('Общая сумма к выплате',recipient.total,'total');
     line('Комиссии со всех ролей',recipient.commission);
     if(recipient.bonus)line('Бонусы',recipient.bonus);
@@ -120,6 +127,7 @@ function payoutBriefPdfPages(report,font,options={}){
       ensure(140);
       y+=20;
       paragraph(section.role_label+(section.point?' · '+section.point:''),'#1C3A2F',23);
+      paragraph('Способ выплаты: '+payoutMethodLabel(section.payout_method));
       line('Начислено с продаж ('+section.orders+' заказов)',section.gross_commission??section.commission,'heading');
       // Each order gets its own legible block with the original item snapshot,
       // full paid sale value, recorded rate and its exact payable commission.

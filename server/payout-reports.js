@@ -1,4 +1,5 @@
 'use strict';
+const {payoutMethodCode}=require('./payout-methods');
 
 const ROLES = {
   partner: { table: 'partners', code: 'partner_code', payouts: 'partner_payouts', items: 'partner_payout_items', id: 'partner_id', name: 'partner_name' },
@@ -36,6 +37,11 @@ function initializeReports(db) {
     UNIQUE(report_id, target_chat_id)
   )`);
   require('./report-bonuses').initializeBonusLedger(db);
+  // Nullable migration: historical payments remain unknown, never inferred.
+  for(const table of ['partner_payouts','owner_payouts','manager_commission_payouts','manager_launch_bonus_payouts','referral_bonus_payouts']){
+    const columns=db.prepare('PRAGMA table_info('+table+')').all();
+    if(columns.length&&!columns.some(c=>c.name==='payout_method'))db.exec('ALTER TABLE '+table+' ADD COLUMN payout_method TEXT');
+  }
   require('./commission-refunds').initializeRefundOffsets(db);
 }
 
@@ -84,6 +90,8 @@ function buildReport(role, recipient, orders, options = {}) {
   return {
     version: 2, role, recipient: { id: recipient.id || null, name: recipient.full_name, code: recipient.code || '', point: recipient.point_name || '', inn: recipient.inn || '' },
     kind: options.kind || 'period', period_start: options.start || null, period_end: options.end || null,
+    preferred_payout_method:options.kind==='payout'?null:payoutMethodCode(recipient.payout_method),
+    payout_method:options.kind==='payout'?payoutMethodCode(options.payout_method):null,
     date_basis: 'created_at_utc', generated_at: new Date().toISOString(),
     items, bonuses, bonus_payments: options.bonus_payments || [], undated_bonuses: options.undated_bonuses || [],
     point_totals: role === 'manager' ? summarizePoints(items) : [],
@@ -217,14 +225,14 @@ function snapshotPayout(db, role, recipient, orders, payout, adminId, refund_adj
   const dates = orders.map((o) => String(o.created_at || '').slice(0, 10)).filter(Boolean).sort();
   return saveReport(db, buildReport(role, recipient, attachOrderProducts(db, orders), {
     kind: 'payout', start: dates[0] || null, end: dates.at(-1) || null,
-    payout_id: payout.id, paid_at: payout.paid_at, payout_amount: payout.amount,refund_adjustments,
+    payout_id: payout.id, paid_at: payout.paid_at, payout_amount: payout.amount,refund_adjustments,payout_method:payout.payout_method,
   }), adminId);
 }
 
 function snapshotBonusPayout(db,role,person,payout,adminId,type='launch_bonus',accruedAt=null) {
   return saveReport(db,buildReport(role,person,[],{
     kind:'payout',source_key:role+':'+type+':'+payout.id,payout_type:type,bonus_payout_id:payout.id,
-    start:String(payout.paid_at).slice(0,10),end:String(payout.paid_at).slice(0,10),paid_at:payout.paid_at,payout_amount:payout.amount,
+    start:String(payout.paid_at).slice(0,10),end:String(payout.paid_at).slice(0,10),paid_at:payout.paid_at,payout_amount:payout.amount,payout_method:payout.payout_method,
     bonuses:[{manager_point_id:payout.manager_point_id,point_name:payout.point_name,amount:payout.amount,accrued_at:accruedAt,paid_at:payout.paid_at}],
   }),adminId);
 }
@@ -250,7 +258,7 @@ function fromPayout(db, role, payoutId, adminId, type='commission') {
   if (!payout) throw Object.assign(new Error('Выплата не найдена'), { statusCode: 404 });
   const orders = db.prepare(`SELECT order_code, commission_amount FROM ${c.items} WHERE payout_id = ? ORDER BY id`).all(payoutId);
   return saveReport(db, buildReport(role, { id: payout[c.id], full_name: payout[c.name], code: payout[role === 'partner' ? 'partner_code' : role === 'owner' ? 'owner_code' : 'manager_code'], point_name: payout.point_name }, attachOrderProducts(db, orders), {
-    kind: 'payout', payout_id: payoutId, paid_at: payout.paid_at, payout_amount: payout.amount, reconstructed: true,
+    kind: 'payout', payout_id: payoutId, paid_at: payout.paid_at, payout_amount: payout.amount, payout_method:payout.payout_method,reconstructed: true,
   }), adminId);
 }
 

@@ -4,6 +4,7 @@
 const db = require('./db');
 const {netOrder,isPayable,planCommission,verifyPlan,recordOffsets}=require('./commission-refunds');
 const { snapshotPayout, snapshotBonusPayout } = require('./payout-reports');
+const {parseActualPayoutMethod}=require('./payout-methods');
 
 function getManagerUnpaidOrders(managerId) {
   // Every paid order can accrue commission ONCE. manager_points is a
@@ -139,10 +140,10 @@ function createManagerCommissionPayout(managerId, adminPayload, options = {}) {
     const info = db.prepare(`
       INSERT INTO manager_commission_payouts
         (manager_id, manager_name, manager_code, amount, orders_count,
-         paid_by_admin_id, paid_by_admin_login)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+         paid_by_admin_id, paid_by_admin_login,payout_method)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(manager.id, manager.full_name, manager.mgr_code, amount, orders.length,
-      adminPayload.id || null, adminPayload.login || null);
+      adminPayload.id || null, adminPayload.login || null,parseActualPayoutMethod(options.payout_method));
     const payoutId = Number(info.lastInsertRowid);
     const insert = db.prepare(`
       INSERT INTO manager_commission_payout_items
@@ -174,12 +175,12 @@ function createManagerLaunchBonusPayout(managerPointId, adminPayload, options = 
     const info = db.prepare(`
       INSERT INTO manager_launch_bonus_payouts
         (manager_point_id, manager_id, manager_name, manager_code, point_id,
-         point_name, amount, paid_by_admin_id, paid_by_admin_login)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         point_name, amount, paid_by_admin_id, paid_by_admin_login,payout_method)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       bonus.manager_point_id, bonus.manager_id, bonus.manager_name, bonus.mgr_code,
       bonus.point_id || null, bonus.point_name, bonus.amount,
-      adminPayload.id || null, adminPayload.login || null
+      adminPayload.id || null, adminPayload.login || null,parseActualPayoutMethod(options.payout_method)
     );
     const payout=db.prepare('SELECT * FROM manager_launch_bonus_payouts WHERE id = ?').get(Number(info.lastInsertRowid));
     const report=snapshotBonusPayout(db,'manager',{id:bonus.manager_id,full_name:bonus.manager_name,code:bonus.mgr_code},payout,adminPayload.id,'launch_bonus',bonus.bonus_accrued_at);
@@ -195,11 +196,11 @@ function listManagerPayouts(limit = 100) {
   return db.prepare(`
     SELECT * FROM (
       SELECT id, 'commission' AS payout_type, manager_id, manager_name, manager_code,
-             NULL AS point_name, amount, orders_count, paid_by_admin_login, paid_at
+             NULL AS point_name, amount, orders_count, paid_by_admin_login, paid_at,payout_method
       FROM manager_commission_payouts
       UNION ALL
       SELECT id, 'launch_bonus' AS payout_type, manager_id, manager_name, manager_code,
-             point_name, amount, 0 AS orders_count, paid_by_admin_login, paid_at
+             point_name, amount, 0 AS orders_count, paid_by_admin_login, paid_at,payout_method
       FROM manager_launch_bonus_payouts
     ) ORDER BY paid_at DESC, id DESC LIMIT ?
   `).all(limit);

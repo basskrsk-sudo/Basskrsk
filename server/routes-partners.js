@@ -418,7 +418,7 @@ function registerPartnerRoutes(router) {
           preview,
         });
       }
-      const payout = createPartnerPayout(partnerId, payload);
+      const payout = createPartnerPayout(partnerId, payload,{payout_method:ctx.body?.payout_method});
       let deliveries = [];
       if (sendNotifications) {
         try {
@@ -430,6 +430,7 @@ function registerPartnerRoutes(router) {
       }
       sendJson(res, 201, { ok: true, payout, deliveries, notifications_skipped: !sendNotifications });
     } catch (error) {
+      if (error.statusCode===400&&error.publicMessage) return sendJson(res,400,{error:error.message});
       if (error.code === 'PARTNER_NOT_FOUND') return sendJson(res, 404, { error: error.message });
       if (error.code === 'NOTHING_TO_PAY') return sendJson(res, 409, { error: error.message });
       console.error('[partner-payout] Не удалось зафиксировать выплату:', error);
