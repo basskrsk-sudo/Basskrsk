@@ -210,7 +210,8 @@ test('network navigation groups only relevant screens and retains all workflows'
   const people=point.split('async function renderPointPeopleForCurrent()')[1].split('async function renderPointQrForCurrent()')[0];
   assert.doesNotMatch(people,/first_purchase_promo_code|Промокод/);
   assert.match(point.split('async function renderPointQrForCurrent()')[1],/first_purchase_promo_code/);
-  assert.equal((html.match(/<details class="card network-history"/g)||[]).length,3);
+  assert.equal((html.match(/<details class="card network-history" style=/g)||[]).length,3);
+  assert.match(html,/<details class="card network-history" id="manager-point-breakdown">/);
   const rows=[{textContent:'Лапочки Красноярск',cells:[{},{}],hidden:false},{textContent:'Дог Стиль',cells:[{},{}],hidden:false}];
   const elements={query:{value:'лапочки красноярск'},body:{rows},'query-status':{textContent:''}};
   doc.getElementById=id=>elements[id];
