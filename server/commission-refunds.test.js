@@ -6,10 +6,10 @@ const {netOrder,planCommission,corrections}=require('./commission-refunds');
 const {getUnpaidOrders,createPartnerPayout}=require('./partner-payouts');
 const {getOwnerUnpaidOrders,createOwnerPayout}=require('./owner-payouts');
 const {getManagerPayableOrders,createManagerCommissionPayout}=require('./manager-payouts');
-const manager=Number(db.prepare('INSERT INTO managers(mgr_code,login,password_hash,full_name) VALUES(?,?,?,?)').run('MR-REF','mr-ref','hash','Manager').lastInsertRowid);
+const manager=Number(db.prepare('INSERT INTO managers(mgr_code,login,password_hash,full_name,phone) VALUES(?,?,?,?,?)').run('MR-REF','mr-ref','hash','Manager','79990001001').lastInsertRowid);
 db.prepare('INSERT INTO points(id,name,addr,icon,manager_id) VALUES(?,?,?,?,?)').run('refund-test','Salon','Address','X',manager);
-const partner=Number(db.prepare('INSERT INTO partners(partner_code,login,password_hash,full_name,point_id,commission_rate) VALUES(?,?,?,?,?,?)').run('G-REF','g-ref','hash','Groomer','refund-test',0.2).lastInsertRowid);
-const owner=Number(db.prepare('INSERT INTO salon_owners(login,password_hash,full_name,point_id,commission_rate) VALUES(?,?,?,?,?)').run('o-ref','hash','Owner','refund-test',0.05).lastInsertRowid);
+const partner=Number(db.prepare('INSERT INTO partners(partner_code,login,password_hash,full_name,phone,point_id,point_name,commission_rate) VALUES(?,?,?,?,?,?,?,?)').run('G-REF','g-ref','hash','Groomer','79990001002','refund-test','Salon',0.2).lastInsertRowid);
+const owner=Number(db.prepare('INSERT INTO salon_owners(login,password_hash,full_name,phone,point_id,commission_rate) VALUES(?,?,?,?,?,?)').run('o-ref','hash','Owner','79990001003','refund-test',0.05).lastInsertRowid);
 const admin={id:1,login:'admin'};
 const roles=[['partner',partner,getUnpaidOrders,createPartnerPayout,200,80,120],['owner',owner,getOwnerUnpaidOrders,createOwnerPayout,50,20,30],['manager',manager,getManagerPayableOrders,createManagerCommissionPayout,70,28,42]];
 function sale(code,total,returned=0){return Number(db.prepare("INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,partner_id,subtotal,total,payment_method,status,commission_rate,refund_status,refunded_amount) VALUES(?,?,?,?,?,?,?,?,?,'paid',?,?,?)").run(code,'Client','79990000001','Salon','refund-test',partner,total,total,'sbp',0.2,returned?'refunded':'none',returned).lastInsertRowid);}
