@@ -128,13 +128,12 @@ function taskDigestPdfPages(report,font){
   return pages.map(commands=>commands.join('\n'));
 }
 
-let rendering=false;
+const {acquirePdfSlot}=require('./pdf-resource-gate');
 async function renderTaskDailyDigestPdf(report){
-  if(rendering)throw Error('Другой PDF поручений ещё формируется');
-  rendering=true;
+  const slot=acquirePdfSlot('task-digest');
   let dir;
   try{
-    const {findFont,writePdfFromJpegs}=require('./weekly-report');
+    const {findFont,writePdfFromJpegsAsync}=require('./weekly-report-pdf');
     const pages=taskDigestPdfPages(report,findFont());
     dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'hvost-task-digest-'));
     let binary='convert';
@@ -142,20 +141,23 @@ async function renderTaskDailyDigestPdf(report){
     catch{binary='magick';await run(binary,['-version'],{timeout:4000});}
     const images=[];
     for(let i=0;i<pages.length;i++){
+      slot.checkpoint();
       const input=path.join(dir,'task-'+i+'.mvg');
       const output=path.join(dir,'task-'+i+'.jpg');
       await fs.promises.writeFile(input,pages[i],{mode:0o600});
-      await run(binary,['-limit','memory','128MiB','-limit','map','256MiB',
+      await run(binary,['-limit','memory','32MiB','-limit','map','32MiB','-limit','disk','256MiB','-limit','thread','1',
         'mvg:'+input,'-background','white','-alpha','remove','-strip','-quality','90',output],
         {timeout:25000,maxBuffer:1048576});
       images.push(output);
+      slot.checkpoint();
     }
     const output=path.join(dir,'tasks.pdf');
-    writePdfFromJpegs(images,output);
+    await writePdfFromJpegsAsync(images,output);
+    slot.checkpoint();
     return await fs.promises.readFile(output);
   }finally{
     try{if(dir)await fs.promises.rm(dir,{recursive:true,force:true});}
-    finally{rendering=false;}
+    finally{slot.release();}
   }
 }
 module.exports={taskDigestPdfPages,renderTaskDailyDigestPdf,wrap,cardParts};

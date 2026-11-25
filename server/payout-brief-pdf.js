@@ -63,6 +63,7 @@ function payoutBriefPdfPages(report,font,options={}){
   }
   function footer(){
     for(let i=0;i<pages.length;i++){
+      slot.checkpoint();
       const p=pages[i];
       p.push("font '"+esc(font)+"' font-size 15 fill '#66776A' text 60,1695 'Подготовлено в ХвостМаркете. Не является подтверждением перевода денег.'");
       p.push("font '"+esc(font)+"' font-size 15 fill '#66776A' text 1035,1695 'Лист "+(i+1)+" из "+pages.length+"'");
@@ -156,33 +157,34 @@ function payoutBriefPdfPages(report,font,options={}){
   return pages.map(commands=>commands.join('\n'));
 }
 
-let running=false;
+const {acquirePdfSlot}=require('./pdf-resource-gate');
 async function renderPayoutBriefPdf(report,options={}){
-  if(running)throw new Error('Другой PDF выплат уже формируется. Повторите запрос позже.');
-  running=true;
+  const slot=acquirePdfSlot('personal-payout');
   let dir;
   try{
-    const {findFont,writePdfFromJpegs}=require('./weekly-report');
+    const {findFont,writePdfFromJpegsAsync}=require('./weekly-report-pdf');
     dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'hvost-payout-brief-'));
     const pages=payoutBriefPdfPages(report,findFont(),options);
     let binary='convert';
-    try{await run(binary,['-version']);}catch{binary='magick';await run(binary,['-version']);}
+    try{await run(binary,['-version'],{timeout:4000});}catch{binary='magick';await run(binary,['-version'],{timeout:4000});}
     const images=[];
     for(let i=0;i<pages.length;i++){
       const source=path.join(dir,'page-'+i+'.mvg');
       const image=path.join(dir,'page-'+i+'.jpg');
       await fs.promises.writeFile(source,pages[i],{mode:0o600});
-      await run(binary,['-limit','memory','128MiB','-limit','map','256MiB',
+      await run(binary,['-limit','memory','32MiB','-limit','map','32MiB','-limit','disk','256MiB','-limit','thread','1',
         'mvg:'+source,'-background','white','-alpha','remove','-strip','-quality','91',image],
         {timeout:25000,maxBuffer:1048576});
       images.push(image);
+      slot.checkpoint();
     }
     const output=path.join(dir,'statement.pdf');
-    writePdfFromJpegs(images,output);
+    await writePdfFromJpegsAsync(images,output);
+    slot.checkpoint();
     return await fs.promises.readFile(output);
   }finally{
     try{if(dir)await fs.promises.rm(dir,{recursive:true,force:true});}
-    finally{running=false;}
+    finally{slot.release();}
   }
 }
 module.exports={payoutBriefPdfPages,renderPayoutBriefPdf,wrap};

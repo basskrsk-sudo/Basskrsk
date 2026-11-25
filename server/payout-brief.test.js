@@ -137,3 +137,12 @@ test.after(()=>{
   try{db.close();}catch(_){}
   fs.rmSync(temp,{recursive:true,force:true});
 });
+
+test('personal collection preserves amounts and merged roles without including other payees',()=>{
+ for(const person of report.people){
+  const selected=collectPayoutBrief(new Date(report.generated_at),{recipientKey:person.selection_key});
+  assert.equal(selected.people.length,1);
+  assert.deepEqual({...selected.people[0],index:person.index},person);
+ }
+ assert.deepEqual(collectPayoutBrief(new Date(report.generated_at),{recipientKey:'0000000000000000'}).people,[]);
+});

@@ -9,6 +9,7 @@ function createWeeklyPdfRunner({
   workerPath = path.join(__dirname, 'weekly-report-pdf-worker.js'),
   timeoutMs = 180000,
   maxQueued = 1,
+  acquireSlot = () => ({release(){}}),
 } = {}) {
   let running = false;
   const queue = [];
@@ -52,8 +53,11 @@ function createWeeklyPdfRunner({
     if (running || !queue.length) return;
     running = true;
     const task = queue.shift();
+    let slot;
+    try { slot=acquireSlot('weekly-report'); }
+    catch(error){ running=false;task.reject(error);drain();return; }
     runWorker(task.report, task.outputPath).then(task.resolve, task.reject)
-      .finally(() => { running = false; drain(); });
+      .finally(() => { try{slot.release();}finally{running = false; drain();} });
   }
 
   return function renderWeeklyPdf(report, outputPath) {
@@ -72,5 +76,5 @@ function createWeeklyPdfRunner({
     });
   };
 }
-const renderWeeklyPdf = createWeeklyPdfRunner();
+const renderWeeklyPdf = createWeeklyPdfRunner({acquireSlot:require('./pdf-resource-gate').acquirePdfSlot});
 module.exports = { createWeeklyPdfRunner, renderWeeklyPdf };
