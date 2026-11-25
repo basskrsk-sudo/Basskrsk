@@ -208,11 +208,11 @@ function formatMoment(iso){
   return new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Krasnoyarsk',day:'2-digit',
     month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(iso));
 }
-function collectPayoutBrief(now=new Date(),{recipientKey=null}={}){
+function collectPayoutBrief(now=new Date(),{recipientKey=null,summaryOnly=false}={}){
   let entries=[];
   const getItems=createOrderItemReader();
   for(const account of accounts()){
-    const statement=roleStatement(account,getItems,!recipientKey);
+    const statement=roleStatement(account,getItems,!recipientKey&&!summaryOnly);
     if(statement.total>0||statement.held_orders||statement.refund_carried)entries.push({account,statement});
   }
   // Determine the exact current grouping from unpaid totals first (including

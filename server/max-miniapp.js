@@ -225,7 +225,7 @@ function issueMaxStaffSession(userId, role, now = Math.floor(Date.now() / 1000))
   };
 }
 
-function registerMaxMiniAppRoutes(router, { token = () => process.env.MAX_BOT_TOKEN } = {}) {
+function registerMaxMiniAppRoutes(router, { token = () => process.env.MAX_BOT_TOKEN, rewardReports = require('./max-reward-reports').createMaxRewardReports(db) } = {}) {
   router.post('/api/max/miniapp/verify', (req, res, ctx) => {
     res.setHeader?.('Cache-Control', 'no-store');
     const botToken = token();
@@ -256,6 +256,49 @@ function registerMaxMiniAppRoutes(router, { token = () => process.env.MAX_BOT_TO
     }
     return user;
   }
+
+  // A payout report contains private partner data. Require a current admin
+  // JWT AND the signed MAX identity/own phone in that same private dialog.
+  // Never reuse a phone-matched chat from another account or accept a target
+  // user/chat from the request body. Revalidate before every outbound send.
+  function reportAdmin(req,res,ctx){
+    const user=signedMaxUser(ctx,res);
+    if(!user)return null;
+    const claims=require('./routes-auth').requireActiveAdmin(req,res,ctx);
+    if(!claims)return null;
+    const authorize=()=>{
+      const verified=verifiedMaxPhone(user.id);
+      const current=verified&&maxRoleMatches('admin',verified);
+      if(!user.chat_id||!verified?.chatId||verified.chatId!==user.chat_id||
+          !current||current.ambiguous||!current.allowed.some(a=>a.id===claims.id))
+        throw Object.assign(new Error('Для отчётов откройте личный чат с ботом MAX и заново подтвердите номер администратора.'),{statusCode:403,publicMessage:true});
+      const latest=db.prepare('SELECT active,role,miniapp_auth_version FROM admins WHERE id=?').get(claims.id);
+      if(!latest||Number(latest.active)!==1||
+          (claims.adminRole&&latest.role!==claims.adminRole)||
+          (Object.hasOwn(claims,'miniappAuthVersion')&&Number(latest.miniapp_auth_version||0)!==Number(claims.miniappAuthVersion)))
+        throw Object.assign(new Error('Доступ администратора изменён. Войдите заново.'),{statusCode:403,publicMessage:true});
+    };
+    try{authorize();}catch(error){sendJson(res,error.statusCode||403,{error:error.message});return null;}
+    return {userId:user.id,token:token(),authorize};
+  }
+  function reportError(res,error){
+    // Do not expose private document data, upload URLs or access tokens.
+    const code=Number(error.statusCode);
+    if(code>=400&&code<=599&&error.publicMessage)return sendJson(res,code,{error:error.message});
+    if(code===400||code===404)return sendJson(res,code,{error:'Проверьте получателя и период отчёта (не более 367 дней).'});
+    console.warn('[max-reward-report] export failed',error.name||'Error');
+    return sendJson(res,502,{error:'Не удалось подтвердить отправку PDF в MAX. Проверьте личный чат с ботом перед повтором.'});
+  }
+  router.post('/api/max/miniapp/reward-reports/options',(req,res,ctx)=>{
+    const access=reportAdmin(req,res,ctx);if(!access)return;
+    try{sendJson(res,200,rewardReports.options(ctx.body));}
+    catch(error){reportError(res,error);}
+  });
+  router.post('/api/max/miniapp/reward-reports/send',async(req,res,ctx)=>{
+    const access=reportAdmin(req,res,ctx);if(!access)return;
+    try{sendJson(res,200,await rewardReports.send(ctx.body,access));}
+    catch(error){reportError(res,error);}
+  });
 
   router.post('/api/max/miniapp/accounts',(req,res,ctx)=>{
     const user=signedMaxUser(ctx,res);

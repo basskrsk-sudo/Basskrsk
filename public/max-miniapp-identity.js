@@ -40,11 +40,11 @@
       localStorage.removeItem('hm_max_admin_role');
     } catch (_) {}
   }
-  function post(path,body) {
+  function post(path,body,token) {
     if(!rawInitData) return Promise.reject(new Error('Откройте мини-приложение из бота MAX.'));
     return fetch(path,{
       method:'POST',cache:'no-store',
-      headers:{'Content-Type':'application/json'},
+      headers:Object.assign({'Content-Type':'application/json'},token?{Authorization:'Bearer '+token}:{}),
       body:JSON.stringify(Object.assign({init_data:rawInitData},body||{})),
     }).then(async function(response){
       var data=await response.json().catch(function(){return {};});
@@ -148,7 +148,14 @@
     listeners.push(fn);
     return function(){listeners=listeners.filter(function(item){return item!==fn;});};
   }
+  function rewardReport(path,body,token){
+    if(!identity.verified||!identity.accounts.some(function(a){return a.role==='admin';})||!token)
+      return Promise.reject(new Error('Подтвердите кабинет администратора MAX.'));
+    return post('/api/max/miniapp/reward-reports/'+path,body,token);
+  }
   window.HvostMiniAppIdentity={
+    rewardReportOptions:function(body,token){return rewardReport('options',body,token);},
+    sendRewardReport:function(body,token){return rewardReport('send',body,token);},
     init:init,refresh:refresh,requestContact:requestContact,session:session,
     rememberRole:rememberRole,onChange:onChange,getStatus:copy,
   };
