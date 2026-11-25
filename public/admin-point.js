@@ -281,8 +281,7 @@ async function renderPointPeopleForCurrent(){
       role:'Владелец салона',name:a.full_name,active:a.active
     }));
     (data.groomers||[]).forEach(a=>rows.push({
-      role:'Грумер',name:a.full_name,active:a.active,
-      code:a.first_purchase_promo_code||''
+      role:'Грумер',name:a.full_name,active:a.active
     }));
     target.replaceChildren();
     if(!rows.length){
@@ -292,13 +291,13 @@ async function renderPointPeopleForCurrent(){
     const table=document.createElement('table');table.className='tbl';
     const thead=document.createElement('thead');
     const tr=document.createElement('tr');
-    ['Роль','ФИО','Промокод','Статус'].forEach(label=>{
+    ['Роль','ФИО','Статус'].forEach(label=>{
       const th=document.createElement('th');th.textContent=label;tr.append(th);
     });thead.append(tr);table.append(thead);
     const tbody=document.createElement('tbody');
     rows.forEach(item=>{
       const row=document.createElement('tr');
-      [item.role,item.name||'—',item.code||'—',item.active?'Активен':'Отключён']
+      [item.role,item.name||'—',item.active?'Активен':'Отключён']
         .forEach(value=>{const td=document.createElement('td');td.textContent=value;row.append(td);});
       tbody.append(row);
     });table.append(tbody);target.append(table);
