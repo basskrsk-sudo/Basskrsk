@@ -147,3 +147,45 @@ test('personal collection preserves amounts and merged roles without including o
  }
  assert.deepEqual(collectPayoutBrief(new Date(report.generated_at),{recipientKey:'0000000000000000'}).people,[]);
 });
+
+test('full returns are absent from groomer and owner remuneration reports; partial returns and actual corrections remain',()=>{
+ const code='ORDER-FULL-REFUND-HIDDEN',legacy='ORDER-LEGACY-REFUND-HIDDEN';
+ const id=insertOrder(code,groomer2,777,'paid',777);
+ const legacyId=insertOrder(legacy,groomer2,888,'paid');
+ db.prepare("UPDATE orders SET refund_status='refunded',created_at='2026-10-24 10:00:00' WHERE id IN (?,?)").run(id,legacyId);
+ db.prepare('INSERT INTO order_items(order_id,name,weight,price,qty) VALUES (?,?,?,?,?)').run(id,'ПОЛНОСТЬЮВОЗВРАЩЕННЫЙТОВАР','',777,1);
+ const fresh=collectPayoutBrief(new Date(report.generated_at));
+ assert.equal(fresh.total,report.total);
+ const owner=fresh.people.find(p=>p.roles.includes('owner'));
+ const groomer=fresh.people.find(p=>p.statements.some(s=>s.account_id===groomer2&&s.role==='partner'));
+ const manager=fresh.people.find(p=>p.roles.includes('manager'));
+ assert.ok(manager.statements.find(s=>s.role==='manager').refund_orders.some(o=>o.order_code===code));
+ for(const person of [owner,groomer]){
+   const r={...fresh,people:[person]};
+   const text=formatRecipientPayoutMessage(person,fresh.generated_at);
+   const csv=buildPayoutBriefCsv(r);
+   const pdf=payoutBriefPdfPages(r,'/usr/share/fonts/dejavu/DejaVuSans.ttf',{recipient:person}).join('\n');
+   for(const out of [text,csv,pdf]){assert.doesNotMatch(out,/ORDER-(FULL|LEGACY)-REFUND-HIDDEN|Полный возврат|ПОЛНОСТЬЮВОЗВРАЩЕННЫЙТОВАР/);}
+   assert.ok(person.statements.every(s=>s.refund_orders.every(o=>o.net>0)));
+ }
+ const {generatePeriodReport,printableReport}=require('./payout-reports');
+ const {payoutPdfPages}=require('./payout-report-pdf');
+ for(const [role,recipient] of [['owner',owner.statements[0].account_id],['partner',groomer2]]){
+   const period=generatePeriodReport(db,role,recipient,'2026-10-23','2026-10-24');
+   assert.ok(period.items.every(i=>i.order_code!==code&&i.order_code!==legacy));
+   assert.equal(period.accrued,role==='owner'?95:100);
+   if(role==='owner')assert.equal(period.items.find(i=>i.order_code==='ORDER-PARTIAL').refunded_amount,100);
+   // Simulate an older saved period report and a real deduction. Filtering
+   // the rendered rows must leave the underlying stored values unchanged.
+   const oldRow={order_code:code,base:0,amount:0,rate:.2,original_total:777,refunded_amount:777,products:[{name:'ПОЛНОСТЬЮВОЗВРАЩЕННЫЙТОВАР',qty:1}]};
+   const archived={...period,items:[...period.items,oldRow],refund_adjustments:[{order_code:'PAID-CORRECTION',amount:15,refunded_amount:777}],refund_adjustment_total:15};
+   const before=JSON.stringify(archived);
+   const html=printableReport(archived), pdf=payoutPdfPages(archived,'/test/font.ttf').join('\n');
+   for(const out of [html,pdf]){
+    assert.doesNotMatch(out,/ПОЛНОСТЬЮВОЗВРАЩЕННЫЙТОВАР|Корректировка возврата/);
+    assert.match(out,/Корректировка ранее выплаченной комиссии/);
+    assert.match(out,/PAID-CORRECTION/);
+   }
+   assert.equal(JSON.stringify(archived),before);
+ }
+});

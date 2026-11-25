@@ -148,7 +148,7 @@ function generatePeriodReport(db, role, id, start, end, meta) {
   const recipient = db.prepare(`SELECT r.*, r.${c.code} AS code${role === 'manager' ? '' : ', p.name AS point_name'}
     FROM ${c.table} r ${role === 'manager' ? '' : 'LEFT JOIN points p ON p.id = r.point_id'} WHERE r.id = ?`).get(id);
   if (!recipient) throw Object.assign(new Error('Получатель не найден'), { statusCode: 404 });
-  const {netOrder}=require('./commission-refunds');
+  const {netOrder,isPayable}=require('./commission-refunds');
   if (role === 'manager') {
     const orders = db.prepare(`SELECT o.order_code, o.created_at, o.total, mp.commission_rate,o.refund_status,o.refunded_amount,
       NULL AS paid_commission, 0 AS already_paid, NULL AS payout_id, p.name AS point_name, p.id AS point_id
@@ -172,7 +172,9 @@ function generatePeriodReport(db, role, id, start, end, meta) {
     LEFT JOIN ${c.items} pi ON pi.order_id = o.id
     WHERE ${condition} AND o.status = 'paid'
       AND o.created_at >= ? AND o.created_at < datetime(?, '+1 day')
-    ORDER BY o.created_at, o.id`).all(id, role === 'partner' ? id : recipient.point_id, start, end).map(order=>order.already_paid?{...order,commission_amount:order.paid_commission,total:null,commission_rate:null}:netOrder(order));
+    ORDER BY o.created_at, o.id`).all(id, role === 'partner' ? id : recipient.point_id, start, end).map(order=>order.already_paid?{...order,commission_amount:order.paid_commission,total:null,commission_rate:null}:netOrder(order))
+    // Historical paid lines are immutable; only omit unpaid full returns.
+    .filter(order=>order.already_paid||isPayable(order));
   return buildReport(role, recipient, attachOrderProducts(db,restoreSavedCalculations(db, role, orders)), { start, end, metadata: meta, ...require('./report-bonuses').periodBonuses(db,role,id,start,end) });
 }
 

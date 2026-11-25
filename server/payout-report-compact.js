@@ -1,10 +1,19 @@
 'use strict';
 
+// Omit zero-value full-return rows from partner/owner presentation, including
+// older saved period reports. Do not mutate stored snapshots or remove any
+// paid historical commission or adjustment from the financial calculation.
+function visibleRewardItems(report) {
+  const items=report.items||[];
+  if(report.role==='manager')return items;
+  return items.filter(item=>!(item.base!=null&&Number(item.base)===0&&Number(item.amount)===0&&Number(item.refunded_amount)>0));
+}
+
 // Presentation only. All compensation amounts are read from the original
 // report calculation: never recalculate them from grouped revenue.
 function summarizeCompensation(report) {
   const groups = new Map();
-  for (const item of report.items || []) {
+  for (const item of visibleRewardItems(report)) {
     const point = String(item.point || report.recipient?.point || 'Продажи').trim();
     const rate = item.rate == null ? null : Number(item.rate);
     const hasBase = item.base != null;
@@ -62,7 +71,8 @@ function printableReport(report) {
   const role = report.role === 'manager' ? 'Менеджер' : report.role === 'owner' ? 'Владелец салона' : 'Грумер';
   const isPayout = report.kind === 'payout';
   const line = (label, value, highlight) => '<div class="line' + (highlight ? ' total' : '') + '"><span>' + esc(label) + '</span><b>' + esc(rub(value)) + '</b></div>';
-  const rows = (report.items || []).map(order => '<tr><td>' + esc(localDateTime(order.date)) +
+  const items=visibleRewardItems(report);
+  const rows = items.map(order => '<tr><td>' + esc(localDateTime(order.date)) +
     '</td><td>' + itemNames(order).map(esc).join('<br>') +
     (report.role === 'manager' && order.point ? '<small>Точка: ' + esc(order.point) + '</small>' : '') +
     (order.refunded_amount>0?'<small>Возврат: '+esc(rub(order.refunded_amount))+' из '+esc(rub(order.original_total))+'</small>':'')+
@@ -76,11 +86,11 @@ function printableReport(report) {
     '<p class="meta">' + esc(role) + ': <b>' + esc(report.recipient.name) + '</b><br>Период: ' + esc(shortDate(report.period_start)) + ' — ' + esc(shortDate(report.period_end)) +
       (report.recipient.point ? '<br>Точка: ' + esc(report.recipient.point) : '') + (report.id ? '<br>Отчёт № ' + esc(report.id) : '') + '</p>',
     '<h2>Проданные товары <span class="sub">(дата и время создания оплаченного заказа, Красноярск)</span></h2>',
-    (report.items || []).length ? '<table><thead><tr><th>Дата и время</th><th>Товар</th><th class="number">Продажи</th><th class="number">%</th><th class="number">Вознаграждение</th></tr></thead><tbody>' + rows + '</tbody></table>' : '<p class="meta">Продаж в отчёте нет.</p>',
+    items.length ? '<table><thead><tr><th>Дата и время</th><th>Товар</th><th class="number">Продажи</th><th class="number">%</th><th class="number">Вознаграждение</th></tr></thead><tbody>' + rows + '</tbody></table>' : '<p class="meta">Продаж в отчёте нет.</p>',
     line('Вознаграждение с продаж', view.commission, false),
     bonusLines ? '<h2>Бонусы</h2>' + bonusLines : '',
     line('Всего начислено', view.accrued, false),
-    ...(report.refund_adjustment_total>0?report.refund_adjustments.map(x=>line('Корректировка возврата · '+x.order_code,-x.amount,false)):[]),
+    ...(report.refund_adjustment_total>0?report.refund_adjustments.map(x=>line((report.role==='manager'?'Корректировка возврата':'Корректировка ранее выплаченной комиссии')+' · '+x.order_code,-x.amount,false)):[]),
     isPayout ? line('Сумма выплаты' + (report.paid_at ? ' (' + shortDate(report.paid_at) + ')' : ''), view.payoutAmount, true) :
       line('Уже выплачено', view.alreadyPaid, false) + line('Осталось выплатить', view.unpaid, true),
     report.lifetime_earned == null ? '' : line('Заработано всего (за всё время)', report.lifetime_earned, false),
@@ -90,4 +100,4 @@ function printableReport(report) {
     '</body></html>'].join('');
 }
 
-module.exports = { summarizeCompensation, printableReport, localDateTime, shortDate, itemNames, rub, rate };
+module.exports = { visibleRewardItems, summarizeCompensation, printableReport, localDateTime, shortDate, itemNames, rub, rate };

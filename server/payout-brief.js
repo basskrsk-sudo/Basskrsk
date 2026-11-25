@@ -144,7 +144,9 @@ const {isPayable,planCommission}=require('./commission-refunds');
 function roleStatement(account,getItems,detail=true){
   const pending=pendingOrders(account);
   const eligible=pending.filter(isPayable);
-  const returned=pending.filter(o=>o.return_amount>0||o.refund_status==='refunded');
+  // Fully returned unpaid orders have no remuneration. Keep the manager's
+  // existing report, but do not list these orders for groomers or owners.
+  const returned=pending.filter(o=>(o.return_amount>0||o.refund_status==='refunded') && (account.role==='manager'||isPayable(o)));
   const plan=planCommission(db,account.role,account.id,eligible);
   const bonuses=getBonuses(db,account.role,account.id).pending
     .filter(b=>Number.isFinite(Number(b.amount))&&Number(b.amount)>0)
@@ -306,7 +308,7 @@ function formatRecipientPayoutMessage(person,generatedAt){
   }
   const returned=new Set();
   for(const section of person.statements){
-   for(const r of section.refund_orders||[])if(!returned.has(r.order_id)){
+   for(const r of section.refund_orders||[])if((section.role==='manager'||Number(r.net)>0)&&!returned.has(r.order_id)){
     returned.add(r.order_id);
     if(returned.size<=3)output.push('↩️ Заказ '+r.order_code+': возврат '+money(r.refunded_amount)+', осталось '+money(r.net));
    }
@@ -341,8 +343,8 @@ function buildPayoutBriefCsv(report){
           (sale.commission_rate*100).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%',
           sale.commission_amount,sale.refunded_amount?'Продажа после возврата '+money(sale.refunded_amount):'Продажа'].map(csvCell).join(';'));
       }
-      for(const r of section.refund_orders||[])if(r.net<=0)rows.push([person.name,section.role_label,person.period.label,'',r.order_code,section.point,'Полный возврат '+money(r.refunded_amount),0,'',0,'Возврат'].map(csvCell).join(';'));
-      for(const x of section.refund_adjustments||[])rows.push([person.name,section.role_label,person.period.label,'',x.order_code,section.point,'Возврат ранее выплаченной комиссии','','',-x.amount,'Корректировка'].map(csvCell).join(';'));
+      for(const r of section.refund_orders||[])if(section.role==='manager'&&r.net<=0)rows.push([person.name,section.role_label,person.period.label,'',r.order_code,section.point,'Полный возврат '+money(r.refunded_amount),0,'',0,'Возврат'].map(csvCell).join(';'));
+      for(const x of section.refund_adjustments||[])rows.push([person.name,section.role_label,person.period.label,'',x.order_code,section.point,(section.role==='manager'?'Возврат ранее выплаченной комиссии':'Корректировка ранее выплаченной комиссии'),'','',-x.amount,'Корректировка'].map(csvCell).join(';'));
       if(section.refund_carried)for(const x of section.refund_outstanding||[])rows.push([person.name,section.role_label,person.period.label,'',x.order_code,section.point,'Перенос корректировки '+money(x.amount),'','','','Не удержано'].map(csvCell).join(';'));
       for(const x of section.refund_review||[])rows.push([person.name,section.role_label,person.period.label,'',x.order_code,section.point,'Историческая ставка не сохранена','','','','Проверка'].map(csvCell).join(';'));
       for(const bonus of section.bonuses||[]){
