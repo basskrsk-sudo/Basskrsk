@@ -357,7 +357,7 @@ function registerOwnerRoutes(router) {
     const referralRows = db.prepare(`
       SELECT mp.point_name, mp.referred_owner_amount, mp.bonus_paid
       FROM manager_points mp
-      WHERE mp.referred_owner_id = ? AND mp.bonus_paid = 1
+      WHERE mp.referred_owner_id = ? AND mp.referred_owner_amount > 0
     `).all(owner.id);
     const referralTotal = referralRows.reduce((s, r) => s + (r.referred_owner_amount || 0), 0);
 

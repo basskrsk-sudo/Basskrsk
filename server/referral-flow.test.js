@@ -200,12 +200,14 @@ test('owner code also credits exactly one new point, never somebody else or agai
   assert.equal(correct.status,201,JSON.stringify(correct.body));
   assert.equal(db.prepare('SELECT referred_by_owner_id FROM partners WHERE id=?')
     .get(correct.body.id).referred_by_owner_id,ownerId);
-  paidOrder('REF-OWNER-PAID',point,correct.body.id,2000);
+  paidOrder('REF-OWNER-PAID',point,correct.body.id,999);
   await checkAndPayManagerBonus(point);
   assert.equal(referralSummary('owner',ownerId).awaiting,1000);
-  const early=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(point);
-  assert.equal(early.bonus_manager_amount,1000,'owner invitation reserves 1000 RUB even before owner referral accrues');
-  paidOrder('REF-OWNER-PAID-2',point,correct.body.id,3000);
+  paidOrder('REF-OWNER-PAID-2',point,correct.body.id,1);
+  await checkAndPayManagerBonus(point);
+  assert.equal(referralSummary('owner',ownerId).payable,1000);
+  assert.equal(db.prepare('SELECT bonus_paid FROM manager_points WHERE point_id=?').get(point).bonus_paid,0,'manager threshold remains 2000');
+  paidOrder('REF-OWNER-MANAGER',point,correct.body.id,1000);
   await checkAndPayManagerBonus(point);
   assert.equal(referralSummary('owner',ownerId).payable,1000);
   assert.equal(referralSummary('partner',groomerId).count,1);
@@ -230,7 +232,7 @@ test('manager bonus is triggered by 2000 RUB NET paid revenue, never by pending/
   }
   orderWithStatus('THRESHOLD-UNPAID',10000,'pending','none');
   orderWithStatus('THRESHOLD-REFUNDED',2000,'paid','refunded',2000);
-  orderWithStatus('THRESHOLD-PARTIAL',2500,'paid','partially_refunded',501);
+  orderWithStatus('THRESHOLD-PARTIAL',2500,'paid','refunded',501);
   assert.equal(require('./bonus-logic').computePointRevenueSoFar(pt),1999);
   await checkAndPayManagerBonus(pt);
   assert.equal(db.prepare('SELECT bonus_paid FROM manager_points WHERE id=?').get(mp).bonus_paid,0);

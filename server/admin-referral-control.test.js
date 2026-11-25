@@ -212,3 +212,58 @@ test('referral attachment is blocked after the 2000 RUB manager launch bonus was
   assert.equal(db.prepare('SELECT amount FROM manager_launch_bonus_payouts WHERE manager_point_id=?')
     .get(mgrPoint.id).amount,2000);
 });
+
+test('owner recommendation can be assigned retrospectively, with role-aware audit and same net threshold',async()=>{
+ const ownerId=Number(db.prepare('INSERT INTO salon_owners(login,password_hash,full_name,phone,point_id,owner_code,active) VALUES(?,?,?,?,?,?,1)')
+  .run('owner-ref-control','hash','Владелец рекомендатель','79131110007','original-ref-point','OWN-REF-CTL').lastInsertRowid);
+ const pointId='owner-invited-point';point(pointId,managerId);
+ const groomerId=partner('GR-INV-OWNER',pointId,'79131110008');
+ const route='/api/admin/referral-control/points/:id',body={inviter_role:'owner',inviter_id:ownerId,invited_partner_id:groomerId};
+ order('OWNER-REF-PARTIAL',pointId,1500,'paid',501);
+ db.prepare("UPDATE orders SET refund_status='refunded' WHERE order_code='OWNER-REF-PARTIAL'").run();
+ assert.equal((await request('PUT',route,'admin',adminId,{id:pointId},body)).body.code,'CONFIRM_HISTORICAL_SALES');
+ const linked=await request('PUT',route,'admin',adminId,{id:pointId},{...body,confirm_historical_sales:true});
+ assert.equal(linked.status,200,linked.body?.error);
+ assert.equal(linked.body.point.status,'awaiting');
+ assert.equal(linked.body.point.revenue,999);
+ assert.equal(linked.body.point.inviter_owner_id,ownerId);
+ assert.equal(storedReferral(pointId).role,'owner');
+ assert.equal(db.prepare('SELECT referred_by_owner_id FROM partners WHERE id=?').get(groomerId).referred_by_owner_id,ownerId);
+ const audit=db.prepare('SELECT * FROM point_referral_assignment_log WHERE point_id=?').get(pointId);
+ assert.equal(audit.inviter_role,'owner');assert.equal(audit.inviter_owner_id,ownerId);assert.equal(audit.inviter_partner_id,null);
+ assert.equal((await request('PUT',route,'admin',adminId,{id:pointId},{inviter_partner_id:inviter})).status,409);
+ order('OWNER-REF-LAST',pointId,1);
+ await checkAndPayManagerBonus(pointId);
+ const mp=db.prepare('SELECT * FROM manager_points WHERE point_id=?').get(pointId);
+ assert.equal(mp.referred_owner_id,ownerId);assert.equal(mp.bonus_paid,0);
+ assert.equal(referralSummary('owner',ownerId).payable,1000);
+ assert.equal(getBonuses(db,'owner',ownerId).pending.length,1);
+ db.prepare("UPDATE orders SET refunded_amount=502 WHERE order_code='OWNER-REF-PARTIAL'").run();
+ assert.equal(referralSummary('owner',ownerId).held,1000);
+ assert.equal(getBonuses(db,'owner',ownerId).pending.length,0);
+ assert.throws(()=>createReferralBonusPayout(db,'owner',mp.id,ownerId,1000,adm),/ниже 1 000/);
+ order('OWNER-REF-RECOVER',pointId,1);
+ const paid=createReferralBonusPayout(db,'owner',mp.id,ownerId,1000,adm);
+ assert.equal(paid.payout.amount,1000);
+ await checkAndPayManagerBonus(pointId);
+ assert.equal(referralSummary('owner',ownerId).paid,1000);
+ assert.equal(getBonuses(db,'owner',ownerId).pending.length,0);
+ assert.equal((await request('PUT',route,'admin',adminId,{id:pointId},body)).body.changed,false);
+ const legacy='legacy-owner-invited-point';point(legacy,managerId);
+ db.prepare("INSERT INTO point_referrals(point_id,point_name,role,recipient_id,amount,source) VALUES(?,?,'owner',?,1000,'legacy')").run(legacy,'Legacy salon',ownerId);
+ order('LEGACY-OWNER-REF',legacy,1000);
+ const {backfillOwnerReferrals}=require('./referral-policy');
+ assert.equal(backfillOwnerReferrals(db),1);
+ assert.equal(backfillOwnerReferrals(db),0);
+ assert.equal(referralSummary('owner',ownerId).payable,1000);
+});
+test('admin UI exposes all three recommender types and correct payout role',()=>{
+ const html=fs.readFileSync(path.join(__dirname,'../public/taiga-admin.html'),'utf8');
+ const js=fs.readFileSync(path.join(__dirname,'../public/admin-referral-control.js'),'utf8');
+ assert.match(html,/id="referral-inviter-role"/);
+ assert.match(html,/<option value="owner">Владелец салона/);
+ assert.match(html,/<option value="referrer">Рекомендатель без стойки/);
+ assert.match(html,/id="referral-historical-confirm"/);
+ assert.match(js,/data-ref-report-role/);
+ assert.doesNotMatch(fs.readFileSync(path.join(__dirname,'../public/taiga-owner.html'),'utf8'),/2 000 ₽ прямой прибыли/);
+});

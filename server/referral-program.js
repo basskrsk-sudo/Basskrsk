@@ -1,6 +1,6 @@
 'use strict';
 const db = require('./db');
-const AMOUNT = 1000;
+const {REFERRAL_SPLIT:AMOUNT,REFERRAL_REVENUE_THRESHOLD,computeReferralRevenue}=require('./referral-policy');
 function referralFromCode(raw) {
   const code = String(raw || '').trim().toUpperCase();
   if (!code || code.length > 80) return null;
@@ -119,8 +119,8 @@ function referralSummary(role,recipientId) {
     const eligible=(role==='owner' ?
       Number(row.referred_owner_id)===Number(recipientId) && row.referred_owner_amount===AMOUNT :
       Number(row.referred_groomer_id)===Number(recipientId) && row.referred_groomer_amount===AMOUNT);
-    const held=role==='partner' && eligible && !row.payout_id
-      && require('./bonus-logic').computePointRevenueSoFar(row.point_id)<1000;
+    const held=eligible && !row.payout_id
+      && computeReferralRevenue(db,row.point_id)<REFERRAL_REVENUE_THRESHOLD;
     return {
       point_id:row.point_id,point_name:row.point_name,amount:row.amount,
       recorded_at:row.recorded_at,source:row.source,

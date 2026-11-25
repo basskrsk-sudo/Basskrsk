@@ -951,7 +951,7 @@
         '<input class="work-register-input" id="workPointAddr" type="text" maxlength="240" required placeholder="ул. Молокова, 40">' +
         '<label class="work-register-label" for="workPointReferralLead">Заявка по реферальной ссылке</label>' +
         '<select class="work-register-input" id="workPointReferralLead"><option value="">Нет реферальной заявки</option>' + referralOptions + '</select>' +
-        '<p class="work-note">Если салон пришёл по ссылке партнёра, выберите его заявку. После создания точки за пригласившим фиксируется 1 000 ₽ ожидаемого бонуса.</p>' +
+        '<p class="work-note">Если салон пришёл по ссылке партнёра, выберите его заявку. После создания точки за пригласившим фиксируется ожидаемый бонус 1 000 ₽; начисление — после 1 000 ₽ оплаченной выручки за вычетом возвратов.</p>' +
         '<label class="work-register-label" for="workPointIcon">Значок точки (необязательно)</label>' +
         '<input class="work-register-input" id="workPointIcon" type="text" maxlength="8" placeholder="📍" autocomplete="off">' +
         '<p class="work-note">Адрес автоматически проверяется на карте. При ошибке точка не создаётся. Новая точка появится с нулевыми остатками.</p>' +
@@ -1419,7 +1419,7 @@
             return '<option value="' + esc(x.id) + '">' +
               esc(x.salon_name+' · '+x.referral_code) + '</option>';
           }).join('') + '</select>' +
-        '<p class="work-note">За пригласившим партнёром фиксируется ожидаемый бонус 1 000 ₽ после создания новой точки.</p>' +
+        '<p class="work-note">За пригласившим партнёром фиксируется ожидаемый бонус 1 000 ₽ после создания новой точки; начисление — после 1 000 ₽ оплаченной выручки за вычетом возвратов.</p>' +
         '<label class="work-register-label" for="workAdminPointIcon">Значок (необязательно)</label>' +
         '<input class="work-register-input" id="workAdminPointIcon" type="text" maxlength="8" placeholder="📍">' +
         '<label class="work-register-label" for="workAdminPointEquipment">Оборудование при запуске *</label>' +

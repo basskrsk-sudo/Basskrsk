@@ -2697,7 +2697,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </form>
         </details>
         <p style="font-size:.82rem;color:var(--muted);margin-bottom:.8rem;line-height:1.5;">
-          В карточке точки укажите пригласившего и приглашённого грумера. После 1 000 ₽ оплаченной выручки
+          В карточке точки выберите рекомендателя: грумера, владельца салона или рекомендателя без стойки. После 1 000 ₽ оплаченной выручки
           точки (за вычетом возвратов) пригласившему автоматически начисляется разовый бонус 1 000 ₽.
           Премия менеджеру за запуск рассчитывается отдельно.
         </p>
@@ -2710,19 +2710,22 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
           </table>
         </div>
         <p style="font-size:.76rem;color:var(--muted);margin-top:.8rem;line-height:1.5;">
-          Начисление включается в общий расчёт к выплате грумеру. Фактический перевод подтверждается отдельно:
+          Начисление включается в общий расчёт к выплате выбранному рекомендателю. Фактический перевод подтверждается отдельно:
           «Отчёты к договорам» → бонусы за привлечение точек. Повторная выплата не допускается.
         </p>
       </div>
       <div id="referral-control-dialog" role="dialog" aria-modal="true" aria-labelledby="referral-modal-title"
            style="display:none;position:fixed;inset:0;background:rgba(28,58,47,.58);z-index:1200;align-items:center;justify-content:center;padding:1rem;">
         <div style="background:#fff;border-radius:12px;padding:1.3rem;max-width:480px;width:100%;max-height:90vh;overflow:auto;">
-          <h3 id="referral-modal-title">Назначить пригласившего</h3>
+          <h3 id="referral-modal-title">Назначить рекомендателя</h3>
           <p id="referral-modal-point" style="font-weight:600;margin:.6rem 0;"></p>
-          <div class="admin-field"><label for="referral-inviter">Какой грумер пригласил</label>
+          <div class="admin-field"><label for="referral-inviter-role">Роль рекомендателя</label><select id="referral-inviter-role" class="pm-select"><option value="partner">Грумер</option><option value="owner">Владелец салона</option><option value="referrer">Рекомендатель без стойки</option></select></div>
+          <div class="admin-field"><label id="referral-inviter-label" for="referral-inviter">Грумер и его салон</label>
             <select id="referral-inviter" class="pm-select"></select></div>
-          <div class="admin-field"><label for="referral-invited">Кого он пригласил (грумер новой точки)</label>
+          <div class="admin-field"><label for="referral-invited">Приглашённый грумер новой точки (необязательно)</label>
             <select id="referral-invited" class="pm-select"></select></div>
+          <p style="font-size:.82rem;margin:.6rem 0;">Бонус 1 000 ₽ после 1 000 ₽ оплаченной выручки точки за вычетом возвратов.</p>
+          <label style="display:flex;gap:.5rem;align-items:center;font-size:.82rem;"><input type="checkbox" id="referral-historical-confirm"> Подтверждаю назначение задним числом, если точка уже продавала</label>
           <p id="referral-modal-note" style="font-size:.78rem;color:var(--muted);line-height:1.5;margin:.6rem 0;"></p>
           <p id="referral-modal-status" role="alert" style="font-size:.82rem;color:var(--red-text);margin:.6rem 0;"></p>
           <div style="display:flex;gap:.6rem;justify-content:flex-end;flex-wrap:wrap;">
@@ -2952,7 +2955,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="admin-point.js?v=2"></script>
 <script src="/admin-point-equipment.js?v=20261119"></script>
 <!-- Загружается только после открытия архива отчётов. -->
-<script src="/admin-referral-control.js"></script>
+<script src="/admin-referral-control.js?v=2"></script>
 <!-- Сравнение недель загружается только при открытии экрана. -->
 <script src="/first-purchase-promo-display.js?v=20261124-4"></script>
 <script>
@@ -7987,7 +7990,7 @@ function buildManagerContractHtml(mgr) {
 
     <h3>5. ВОЗНАГРАЖДЕНИЕ И ПОРЯДОК РАСЧЁТОВ</h3>
     <p>5.1. За оказанные Услуги Менеджер получает вознаграждение в размере 7% от розничной выручки всех привлечённых и/или курируемых Точек, реализованной в Отчётном периоде.</p>
-    <p>5.2. Дополнительно Менеджеру начисляется разовый бонус за запуск новой Точки после достижения ею 2 000 (двух тысяч) рублей оплаченной выручки за вычетом возвратов: 2 000 ₽, если пригласивший партнёр не закреплён, либо 1 000 ₽, если приглашение новой Точки официально закреплено за другим партнёром Компании. В последнем случае ещё 1 000 ₽ предусмотрена пригласившему партнёру по условиям действующей реферальной программы. Ранее подтверждённые фактические выплаты настоящим положением автоматически не пересчитываются.</p>
+    <p>5.2. Дополнительно Менеджеру начисляется разовый бонус за запуск новой Точки после достижения ею 2 000 (двух тысяч) рублей оплаченной выручки за вычетом возвратов: 2 000 ₽, если пригласивший партнёр не закреплён, либо 1 000 ₽, если приглашение новой Точки официально закреплено за другим партнёром Компании. В последнем случае ещё 1 000 ₽ начисляется пригласившему партнёру (грумеру, владельцу или рекомендателю без стойки) после 1 000 ₽ оплаченной выручки приглашённой точки за вычетом возвратов. Ранее подтверждённые фактические выплаты настоящим положением автоматически не пересчитываются.</p>
     <p>5.3. Выплата вознаграждения производится безналичным путём на реквизиты Менеджера не позднее 10 (десяти) рабочих дней по окончании Отчётного периода, на основании данных о продажах курируемых Точек за такой период.</p>
     <p>5.4. Вознаграждение включает все причитающиеся с Менеджера налоги. Компания не является налоговым агентом Менеджера.</p>
 
