@@ -54,6 +54,7 @@ function payoutPdfPages(report, font) {
   };
   page();
   paragraph((report.role === 'manager'?'Менеджер':report.role === 'owner'?'Владелец салона':'Грумер') + ': ' + report.recipient.name,25);
+  paragraph((report.kind==='payout'?'Фактический способ выплаты: ':'Способ выплаты: ')+require('./payout-methods').payoutMethodLabel(report.kind==='payout'?report.payout_method:report.preferred_payout_method),19);
   if (report.recipient.point) paragraph('Точка: ' + report.recipient.point,19);
   paragraph('Проданные товары · Красноярск',23);
   rect(58,y-25,1120,44,'#E8EFEA');

@@ -37,6 +37,7 @@ function fixture() {
       (6,'F','2026-09-10 12:00:00',1000,0.2,2,'b','paid');
   `);
   db.exec("ALTER TABLE orders ADD COLUMN refund_status TEXT DEFAULT 'none'; ALTER TABLE orders ADD COLUMN refunded_amount REAL;");
+  db.exec('ALTER TABLE partners ADD COLUMN payout_method TEXT; ALTER TABLE salon_owners ADD COLUMN payout_method TEXT;');
   reports.initializeReports(db);
   return db;
 }
@@ -298,4 +299,24 @@ test('mobile period presets use 14 complete days and previous closed half month'
   assert.equal(elements['pr-start'].value,'2026-09-23');assert.equal(elements['pr-end'].value,'2026-10-06');
   ctx.setReportPeriod('previous');
   assert.equal(elements['pr-start'].value,'2026-09-16');assert.equal(elements['pr-end'].value,'2026-09-30');
+});
+
+test('actual payment methods are immutable; legacy rows remain unknown',()=>{
+ const db=fixture();
+ db.exec("UPDATE partners SET payout_method='sbp' WHERE id=1;");
+ const period=reports.generatePeriodReport(db,'partner',1,'2026-09-01','2026-09-15');
+ assert.equal(period.preferred_payout_method,'sbp');assert.equal(period.payout_method,null);
+ const {createPartnerPayout}=loadWithDb('./partner-payouts',db);
+ const paid=createPartnerPayout(1,{id:7,login:'admin'},{payout_method:'cash'});
+ assert.equal(paid.payout_method,'cash');
+ const saved=reports.fromPayout(db,'partner',paid.id,7);
+ assert.equal(saved.payout_method,'cash');
+ db.exec("UPDATE partners SET payout_method='card' WHERE id=1");
+ assert.equal(reports.fromPayout(db,'partner',paid.id,7).payout_method,'cash');
+ assert.match(reports.printableReport(saved),/Фактический способ выплаты: Наличными/);
+ db.prepare("INSERT INTO partner_payouts(id,partner_id,partner_name,partner_code,amount,orders_count) VALUES(999,1,'Legacy','G1',12,1)").run();
+ const old=reports.fromPayout(db,'partner',999,7);
+ assert.equal(old.payout_method,null);
+ assert.match(reports.printableReport(old),/Фактический способ выплаты: Не указан/);
+ db.close();
 });

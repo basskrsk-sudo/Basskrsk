@@ -46,11 +46,11 @@
         options.forEach(function(r,i){
           var option=document.createElement('option');option.value=String(i);
           option.textContent=r.name+' · '+r.roles+(r.points||r.point?' · '+(r.points||r.point):'')+
-            (mode==='unpaid'?' · '+Number(r.amount||0).toLocaleString('ru-RU')+' ₽':'');
+            (mode==='unpaid'?' · '+Number(r.amount||0).toLocaleString('ru-RU')+' ₽':'')+' · '+(r.payout_method_label||'Не указан');
           recipient.append(option);
         });
         recipient.disabled=false;
-        status.textContent=(result.period?'Расчётный период: '+result.period.label+'. ':'')+(options.length?'':'Нет получателей для этого вида отчёта.');
+        status.textContent=(result.period?'Расчётный период: '+result.period.label+'. ':'')+(result.payout_method_groups||[]).map(g=>g.label+': '+Number(g.amount).toLocaleString('ru-RU')+' ₽').join(' · ')+(options.length?'':' Нет получателей для этого вида отчёта.');
       }catch(error){if(valid()&&n===epoch)status.textContent=error.message;}
       finally{if(valid()&&n===epoch)controls();}
     }

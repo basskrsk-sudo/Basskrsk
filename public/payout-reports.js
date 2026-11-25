@@ -86,7 +86,7 @@ async function openPayoutReports(role) {
   try {
     const data = await reportRequest('/api/payout-reports/recipients?role=' + role);
     if (epoch !== payoutReportEpoch) return;
-    document.getElementById('pr-recipient').innerHTML = data.recipients.map(r => `<option value="${Number(r.id)}">${reportEscape(r.full_name)} · ${reportEscape(r.code)}</option>`).join('');
+    document.getElementById('pr-recipient').innerHTML = data.recipients.map(r => `<option data-payout-method="${reportEscape(r.payout_method||'')}" value="${Number(r.id)}">${reportEscape(r.full_name)} · ${reportEscape(r.code)}</option>`).join('');
     await loadRecipientBonuses();
     await loadPayoutReportArchive();
   } catch (error) { document.getElementById('pr-error').textContent = error.message; }
@@ -106,6 +106,7 @@ function displayPayoutReport(data) {
   payoutReportData = r;
   document.getElementById('pr-result').innerHTML = `<h3>${reportEscape(r.recipient.name)} · ${reportEscape(r.period_start || 'по составу выплаты')} — ${reportEscape(r.period_end || '')}</h3>
   <div style="display:flex;gap:12px;flex-wrap:wrap;padding:16px;background:#edf5ef;border-radius:10px;margin:12px 0;"><span>Заказов: <strong>${r.items.length}</strong></span><span>Начислено: <strong>${Number(r.accrued).toLocaleString('ru-RU')} ₽</strong></span><span>${r.kind === 'payout' ? 'Выплата' : 'К выплате'}: <strong>${Number(r.kind === 'payout' ? r.payout_amount : r.unpaid).toLocaleString('ru-RU')} ₽</strong></span></div>
+  <p>${r.kind==='payout'?'Фактический способ выплаты: ':'Способ выплаты: '}<strong>${reportEscape(actualPayoutMethodLabel(r.kind==='payout'?r.payout_method:r.preferred_payout_method))}</strong></p>
   <p>${r.id ? 'Сохранён отчёт № ' + Number(r.id) + '. Расчёт зафиксирован.' : 'Предпросмотр. При скачивании PDF будет сформирован и сохранён актуальный расчёт.'}</p>
   <button class="row-btn" id="pr-pdf-download" onclick="downloadPayoutPdf()">${r.id ? 'Скачать PDF' : 'Сохранить и скачать PDF'}</button> <button class="row-btn" onclick="openPrintablePayoutReport()">Открыть для печати</button> <button class="row-btn" onclick="downloadPayoutReport()">Скачать HTML</button>
   ${r.id ? '<button class="row-btn" id="pr-telegram-send" onclick="sendPayoutReportToWorkTelegram()">Отправить PDF в рабочий ТГ-бот</button><p id="pr-telegram-status" role="status" style="font-size:.85rem;"></p>' : '<p style="font-size:.8rem;">Для отправки в рабочий ТГ-бот сначала сохраните отчёт.</p>'}
@@ -166,8 +167,10 @@ async function loadRecipientBonuses() {
     const held=(data.held||[]).map(b=>'<p>'+reportEscape(b.point_name)+' · '+
       Number(b.amount).toLocaleString('ru-RU')+' ₽ — временно недоступен к переводу ('+
       reportEscape(b.reason||'после возврата выручка ниже порога')+')</p>').join('');
-    const paid=data.paid.map(b=>`<p>${reportEscape(b.point_name)} · ${Number(b.amount).toLocaleString('ru-RU')} ₽ · ${reportEscape(b.paid_at)} <button class="row-btn" onclick="openPayoutReportForPayment('${role}',${Number(b.payout_id)},'${role==='manager'?'launch_bonus':'referral_bonus'}')">Отчёт по выплате</button></p>`).join('');
-    document.getElementById('pr-bonuses').innerHTML='<h3>Бонусы за привлечение точек</h3>'+ (pending||'<p>Готовых к выплате бонусов нет.</p>')+(held?'<h4>Ожидают восстановления выручки</h4>'+held:'')+paid+'<p style="font-size:.8rem">Фиксируйте только уже выполненный перевод. Эта кнопка не отправляет деньги или сообщения.</p>';
+    const paid=data.paid.map(b=>`<p>${reportEscape(b.point_name)} · ${Number(b.amount).toLocaleString('ru-RU')} ₽ · ${reportEscape(b.paid_at)} · ${reportEscape(actualPayoutMethodLabel(b.payout_method))} <button class="row-btn" onclick="openPayoutReportForPayment('${role}',${Number(b.payout_id)},'${role==='manager'?'launch_bonus':'referral_bonus'}')">Отчёт по выплате</button></p>`).join('');
+    document.getElementById('pr-bonuses').innerHTML='<h3>Бонусы за привлечение точек</h3>'+(role!=='manager'&&data.pending.length?'<label>Фактический способ выплаты бонуса <select id="pr-bonus-method"><option value="">Не указан</option><option value="sbp">СБП</option><option value="card">На карту</option><option value="bank_account">Безналичный расчёт по договору</option><option value="cash">Наличными</option></select></label>':'')+ (pending||'<p>Готовых к выплате бонусов нет.</p>')+(held?'<h4>Ожидают восстановления выручки</h4>'+held:'')+paid+'<p style="font-size:.8rem">Фиксируйте только уже выполненный перевод. Эта кнопка не отправляет деньги или сообщения.</p>';
+    const methodSelect=document.getElementById('pr-bonus-method');
+    if(methodSelect)methodSelect.value=document.getElementById('pr-recipient')?.selectedOptions?.[0]?.dataset?.payoutMethod||'';
   } catch(error) {document.getElementById('pr-error').textContent=error.message;}
 }
 
@@ -175,10 +178,11 @@ let referralBonusSaving=false;
 async function markReferralBonusPaid(managerPointId,amount) {
   if (referralBonusSaving) return;
   const select=document.getElementById('pr-recipient'), role=payoutReportRole,recipient=Number(select.value);
-  if (!confirm('Подтвердите, что '+amount.toLocaleString('ru-RU')+' ₽ уже переведены получателю '+select.options[select.selectedIndex].text+'. Записать выплату бонуса и сохранить отчёт?')) return;
+  const method=document.getElementById('pr-bonus-method')?.value||null;
+  if (!confirm('Подтвердите, что '+amount.toLocaleString('ru-RU')+' ₽ уже переведены получателю '+select.options[select.selectedIndex].text+'. Способ: '+actualPayoutMethodLabel(method)+'. Записать выплату бонуса и сохранить отчёт?')) return;
   referralBonusSaving=true;
   try {
-    const data=await reportRequest('/api/payout-reports/bonus-payouts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role,recipient_id:recipient,manager_point_id:managerPointId,expected_amount:amount,confirm_transferred:true})});
+    const data=await reportRequest('/api/payout-reports/bonus-payouts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role,recipient_id:recipient,manager_point_id:managerPointId,expected_amount:amount,confirm_transferred:true,payout_method:method})});
     displayPayoutReport(data); await loadRecipientBonuses(); await loadPayoutReportArchive();
   } catch(error) {document.getElementById('pr-error').textContent=error.message;}
   finally {referralBonusSaving=false;}

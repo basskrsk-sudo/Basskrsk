@@ -70,6 +70,7 @@ function printableReport(report) {
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const role = report.role === 'manager' ? 'Менеджер' : report.role === 'owner' ? 'Владелец салона' : 'Грумер';
   const isPayout = report.kind === 'payout';
+  const method=require('./payout-methods').payoutMethodLabel(isPayout?report.payout_method:report.preferred_payout_method);
   const line = (label, value, highlight) => '<div class="line' + (highlight ? ' total' : '') + '"><span>' + esc(label) + '</span><b>' + esc(rub(value)) + '</b></div>';
   const items=visibleRewardItems(report);
   const rows = items.map(order => '<tr><td>' + esc(localDateTime(order.date)) +
@@ -84,7 +85,7 @@ function printableReport(report) {
     '<button onclick="window.print()">Печать / сохранить PDF</button>',
     '<p class="brand">ХВОСТМАРКЕТ</p><h1>Расчёт вознаграждения</h1>',
     '<p class="meta">' + esc(role) + ': <b>' + esc(report.recipient.name) + '</b><br>Период: ' + esc(shortDate(report.period_start)) + ' — ' + esc(shortDate(report.period_end)) +
-      (report.recipient.point ? '<br>Точка: ' + esc(report.recipient.point) : '') + (report.id ? '<br>Отчёт № ' + esc(report.id) : '') + '</p>',
+      '<br>'+esc(isPayout?'Фактический способ выплаты: ':'Способ выплаты: ')+esc(method)+(report.recipient.point ? '<br>Точка: ' + esc(report.recipient.point) : '') + (report.id ? '<br>Отчёт № ' + esc(report.id) : '') + '</p>',
     '<h2>Проданные товары <span class="sub">(дата и время создания оплаченного заказа, Красноярск)</span></h2>',
     items.length ? '<table><thead><tr><th>Дата и время</th><th>Товар</th><th class="number">Продажи</th><th class="number">%</th><th class="number">Вознаграждение</th></tr></thead><tbody>' + rows + '</tbody></table>' : '<p class="meta">Продаж в отчёте нет.</p>',
     line('Вознаграждение с продаж', view.commission, false),

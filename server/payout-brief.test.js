@@ -239,3 +239,28 @@ test('closed monthly payout cycle is fixed on local 25th through 24th, independe
  const nextReport=collectPayoutBrief(new Date('2026-12-25T08:00:00Z'),{monthly:true,recipientKey:person.selection_key});
  assert.equal(nextReport.people[0].period_accrued,400);
 });
+
+test('payout preferences are grouped by role and reconcile to the net payable amount',()=>{
+ db.prepare("UPDATE partners SET payout_method='sbp' WHERE id=?").run(groomer1);
+ db.prepare("UPDATE partners SET payout_method='card' WHERE id=?").run(groomer2);
+ db.prepare("UPDATE salon_owners SET payout_method='bank_account' WHERE login='owner1'").run();
+ const fresh=collectPayoutBrief(new Date('2026-11-25T07:00:00Z'),{monthly:true});
+ const groups=fresh.payout_method_groups;
+ assert.equal(groups.reduce((s,g)=>s+g.amount,0),fresh.total);
+ assert.deepEqual(groups.map(g=>g.method),['sbp','card','bank_account',null]);
+ const dual=fresh.people.find(p=>p.roles.includes('partner')&&p.roles.includes('manager'));
+ assert.equal(dual.payout_method_groups.length,2);
+ assert.equal(dual.payout_method_groups.reduce((s,g)=>s+g.amount,0),dual.total);
+ const message=formatRecipientPayoutMessage(dual,fresh.generated_at);
+ assert.match(message,/Способ выплаты: СБП на номер телефона/);
+ assert.match(message,/Не указан/);
+ const csv=buildPayoutBriefCsv(fresh);
+ assert.match(csv,/"Способ выплаты"/);assert.match(csv,/"ИТОГО ПО СПОСОБУ"/);
+ assert.match(csv,/Безналичный расчёт по договору/);
+ const pdf=payoutBriefPdfPages(fresh,'/test/font.ttf',{recipient:dual}).join('\n');
+ assert.match(pdf,/Способ выплаты: СБП на номер телефона/);
+ assert.match(pdf,/Не указан/);
+ const summary=formatPayoutBriefMessage(fresh);
+ assert.match(summary,/По способам выплаты/);
+ assert.match(summary,/Безналичный расчёт по договору/);
+});
