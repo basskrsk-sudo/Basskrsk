@@ -87,7 +87,7 @@ function partnerMessage(partner, summary, paidAt) {
     'Учтено оплаченных заказов: ' + summary.orders_count,
     'Выручка этих заказов: ' + money(summary.revenue),
     'Средний чек: ' + money(summary.average_check),
-    ...(summary.adjustment>0?['Корректировка возвратов: −'+money(summary.adjustment)]:[]),
+    ...(summary.adjustment>0?['Корректировка ранее выплаченной комиссии: −'+money(summary.adjustment)]:[]),
     'Ваш уровень: ' + partnerTierName(partner.commission_rate) + ' · ' + Math.round(Number(partner.commission_rate || 0) * 100) + '%',
   ];
   if (progress && progress.nextTier) {
@@ -135,7 +135,7 @@ function ownerMessage(owner, summary, paidAt) {
     'Учтено оплаченных заказов: ' + summary.orders_count,
     'Выручка этих заказов: ' + money(summary.revenue),
     'Средний чек: ' + money(summary.average_check),
-    ...(summary.adjustment>0?['Корректировка возвратов: −'+money(summary.adjustment)]:[]),
+    ...(summary.adjustment>0?['Корректировка ранее выплаченной комиссии: −'+money(summary.adjustment)]:[]),
     '',
     'За текущий месяц: ' + Number(month.orders_count || 0) + ' заказов · ' + money(month.revenue),
   ];

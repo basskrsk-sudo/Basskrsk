@@ -28,7 +28,8 @@ function wrap(value, count) {
 }
 
 function payoutPdfPages(report, font) {
-  const { localDateTime, itemNames, rub, rate, shortDate } = require('./payout-report-compact');
+  const { localDateTime, itemNames, rub, rate, shortDate, visibleRewardItems } = require('./payout-report-compact');
+  const items=visibleRewardItems(report);
   const pages = [];
   let commands = [], y = 0;
   const esc = value => String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n\t]/g, ' ');
@@ -61,14 +62,14 @@ function payoutPdfPages(report, font) {
   write(930,y+4,'Ставка',17);
   write(1040,y+4,'Начислено',17);
   y+=43;
-  if(!(report.items||[]).length) paragraph('Продаж нет');
-  for(const item of report.items||[]) {
+  if(!items.length) paragraph('Продаж нет');
+  for(const item of items) {
     const names=itemNames(item).flatMap(name=>wrap(name,62));
     const detail=(report.role==='manager' && item.point) ? wrap('Точка: '+item.point,62) : [];
     if(item.refunded_amount>0)detail.push(...wrap('Возврат '+rub(item.refunded_amount)+' из '+rub(item.original_total),62));
     const height=Math.max(88,57+names.length*27+detail.length*24);
     if(y+height>1590) { page(); paragraph('Проданные товары (продолжение)',21); }
-    rect(58,y-25,1120,height,(report.items.indexOf(item)%2)?'#F5F7F5':'#FFFFFF');
+    rect(58,y-25,1120,height,(items.indexOf(item)%2)?'#F5F7F5':'#FFFFFF');
     write(70,y+3,localDateTime(item.date),18);
     write(790,y+3,rub(item.base),18);
     write(930,y+3,rate(item.rate),18);
@@ -95,7 +96,7 @@ function payoutPdfPages(report, font) {
     }
   }
   totalLine('Всего начислено',report.accrued);
-  if(report.refund_adjustment_total>0)for(const x of report.refund_adjustments||[]){paragraph('Корректировка возврата · '+x.order_code,17);totalLine('Удержано',-x.amount);}
+  if(report.refund_adjustment_total>0)for(const x of report.refund_adjustments||[]){paragraph((report.role==='manager'?'Корректировка возврата':'Корректировка ранее выплаченной комиссии')+' · '+x.order_code,17);totalLine('Удержано',-x.amount);}
   if(report.kind === 'payout') totalLine('Сумма выплаты',report.payout_amount,true);
   else {
     totalLine('Уже выплачено',report.already_paid);

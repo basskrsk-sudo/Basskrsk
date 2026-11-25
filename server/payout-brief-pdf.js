@@ -143,11 +143,11 @@ function payoutBriefPdfPages(report,font,options={}){
         if(sale.refunded_amount)paragraph('Возврат: '+money(sale.refunded_amount)+' из '+money(sale.original_total)+'; комиссия с остатка.','#A33D32',17);
         y+=10;
       }
-      for(const r of section.refund_orders||[])if(r.net<=0)paragraph('Полный возврат · '+r.order_code+' · '+money(r.refunded_amount)+' · комиссия 0 ₽.','#A33D32',17);
-      for(const x of section.refund_adjustments||[])paragraph('Корректировка ранее выплаченной комиссии · '+x.order_code+' · возврат '+money(x.refunded_amount)+' · удержание '+money(x.amount),'#A33D32',18);
+      for(const r of section.refund_orders||[])if(section.role==='manager'&&r.net<=0)paragraph('Полный возврат · '+r.order_code+' · '+money(r.refunded_amount)+' · комиссия 0 ₽.','#A33D32',17);
+      for(const x of section.refund_adjustments||[])paragraph('Корректировка ранее выплаченной комиссии · '+x.order_code+(section.role==='manager'?' · возврат '+money(x.refunded_amount):'')+' · удержание '+money(x.amount),'#A33D32',18);
       if(section.refund_carried){
         paragraph('Перенос до следующей положительной выплаты: '+money(section.refund_carried)+'. Бонусы не удерживаются.','#A33D32',17);
-        for(const x of section.refund_outstanding||[])paragraph('Заказ '+x.order_code+' · возврат '+money(x.refunded_amount)+' · ожидаемое удержание '+money(x.amount),'#A33D32',17);
+        for(const x of section.refund_outstanding||[])paragraph('Заказ '+x.order_code+(section.role==='manager'?' · возврат '+money(x.refunded_amount):'')+' · ожидаемое удержание '+money(x.amount),'#A33D32',17);
       }
       for(const x of section.refund_review||[])paragraph('Проверка исторической ставки · '+x.order_code+' · возврат '+money(x.refunded_amount),'#A33D32',17);
       if(section.refund_adjustments?.length||section.refund_carried)line('Комиссия к перечислению',section.commission,'total');
