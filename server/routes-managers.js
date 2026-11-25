@@ -310,6 +310,11 @@ function registerManagerRoutes(router) {
       INSERT INTO manager_points (manager_id, point_id, point_name, point_type, revenue, commission_rate, active, bonus_paid)
       VALUES (?, ?, ?, ?, 0, ?, 1, 0)
     `).run(ctx.params.id, pointId, point_name, point_type, computeManagerCommissionRate());
+    // A manager-only lead without a real retail point is not a registration.
+    if(pointId){
+      try { require('./routes-partner-club').welcomeNewPoint({id:pointId}); }
+      catch(error){console.error('[partner-club] Welcome draft failed:',error.message);}
+    }
     if (payload.role === 'manager') {
       logManagerAction(payload.id, 'Создание точки', {
         type: 'point', id: pointId || info.lastInsertRowid, name: point_name,
