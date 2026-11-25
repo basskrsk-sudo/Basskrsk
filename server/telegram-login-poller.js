@@ -622,20 +622,21 @@ async function sendBusinessPointsOnly(chatId, requestedYear) {
   }
 }
 
-async function sendPayoutBriefDocument(chatId, content, filename, caption, mime) {
+async function sendPayoutBriefDocument(chatId, content, filename, caption, mime, replyMarkup) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 50000);
   try {
     const form = new FormData();
     form.append('chat_id', String(chatId));
     form.append('caption', String(caption).slice(0, 900));
+    if(replyMarkup) form.append('reply_markup',JSON.stringify(replyMarkup));
     form.append('document', new Blob([content], { type: mime }), filename);
     const response = await fetch('https://api.telegram.org/bot' + TG_TOKEN + '/sendDocument', {
       method: 'POST', body: form, signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.description || 'Telegram HTTP ' + response.status);
-    return true;
+    return data.result || {};
   } finally {
     clearTimeout(timeout);
   }
@@ -713,11 +714,19 @@ async function sendIndividualPayoutPdf(chatId, params = {}) {
   const pdf = await require('./payout-brief-pdf').renderPayoutBriefPdf(report, { recipient: person });
   const fileName = 'HvostMarket_payout_' + person.selection_key + '_' +
     report.generated_at.slice(0, 10) + '.pdf';
-  await sendPayoutBriefDocument(chatId, pdf, fileName,
+  const confirmations=require('./payout-brief-confirmation');
+  const approval=confirmations.registerPayoutBrief(chatId,person,report.generated_at);
+  const document=await sendPayoutBriefDocument(chatId, pdf, fileName,
     'Справка: ' + person.name + ' · ' + person.roles_label + ' · ' +
     'период ' + (person.period?.label || 'не определён') +
-    ' · к выплате ' + person.total + ' ₽', 'application/pdf');
-  await replyToChat(chatId, formatRecipientPayoutMessage(person, report.generated_at));
+    ' · к выплате ' + person.total + ' ₽', 'application/pdf',approval?.reply_markup);
+  if(approval&&document.message_id){
+    try{confirmations.rememberDocument(chatId,approval.id,document.message_id);}
+    catch(error){console.warn('[payouts] document reference:',error.message);}
+  }
+  await replyToChat(chatId, formatRecipientPayoutMessage(person, report.generated_at)+
+    (approval?'\n\nПосле фактического перевода нажмите «Выплачено» под PDF и подтвердите фиксацию.':
+      person.total>0?'\n\nФиксация выплат доступна только в личном Telegram, привязанном к действующему администратору.':''));
 }
 
 function accountRoleText(role) {
@@ -876,6 +885,27 @@ async function processUpdate(update) {
         }
         if(result?.message)await replyToChat(chat.id,result.message);
       }
+      return;
+    }
+
+    if (/^payout:(?:paid|confirm|cancel):[0-9a-f]{32}$/.test(callback.data||'')) {
+      const chat=callback.message?.chat;
+      const allowed=chat?.type==='private'&&String(chat.id)===String(callback.from?.id);
+      let result;
+      try{
+        result=allowed?require('./payout-brief-confirmation').handlePayoutConfirmation(chat.id,callback.data):
+          {ok:false,message:'Подтвердите выплату только в своём личном чате с ботом.'};
+      }catch(error){
+        console.error('[payouts] confirmation:',error.message);
+        result={ok:false,message:'Не удалось обработать выплату. Проверьте реестр перед повтором.'};
+      }
+      try{await callBotApi('answerCallbackQuery',{callback_query_id:callback.id,text:result.ok?'Готово':'Проверьте сообщение',show_alert:!result.ok});}catch(_){}
+      if(!allowed)return;
+      if(result.clear){
+        const ids=new Set([callback.message?.message_id,result.documentMessageId].filter(Boolean));
+        for(const message_id of ids)try{await callBotApi('editMessageReplyMarkup',{chat_id:chat.id,message_id,reply_markup:{inline_keyboard:[]}});}catch(_){}
+      }
+      await replyToChat(chat.id,result.message,result.reply_markup);
       return;
     }
 

@@ -127,12 +127,13 @@ function getLaunchBonusSummary(managerPointId) {
   `).get(managerPointId);
 }
 
-function createManagerCommissionPayout(managerId, adminPayload) {
-  db.exec('BEGIN IMMEDIATE');
+function createManagerCommissionPayout(managerId, adminPayload, options = {}) {
+  if(!options.inTransaction) db.exec('BEGIN IMMEDIATE');
   try {
     const manager = db.prepare('SELECT id, full_name, mgr_code, inn FROM managers WHERE id = ?').get(managerId);
     if (!manager) throw Object.assign(new Error('Менеджер не найден'), { code: 'MANAGER_NOT_FOUND' });
-    const orders = getManagerPayableOrders(managerId);
+    const pending = getManagerPayableOrders(managerId);
+    const orders = options.statementOrders ? require('./payout-statement-orders').selectStatementOrders(db,pending,options.statementOrders) : pending;
     const amount = orders.reduce((sum, order) => sum + order.commission_amount, 0);
     if (!orders.length || amount <= 0) {
       throw Object.assign(new Error('У менеджера нет невыплаченного вознаграждения 7%'), { code: 'NOTHING_TO_PAY' });
@@ -156,16 +157,16 @@ function createManagerCommissionPayout(managerId, adminPayload) {
     ));
     const payout=db.prepare('SELECT * FROM manager_commission_payouts WHERE id = ?').get(payoutId);
     const report=snapshotPayout(db,'manager',{...manager,code:manager.mgr_code},orders,payout,adminPayload.id);
-    db.exec('COMMIT');
+    if(!options.inTransaction) db.exec('COMMIT');
     return {...payout,report_id:report.id};
   } catch (error) {
-    try { db.exec('ROLLBACK'); } catch (_) {}
+    try { if(!options.inTransaction) db.exec('ROLLBACK'); } catch (_) {}
     throw error;
   }
 }
 
-function createManagerLaunchBonusPayout(managerPointId, adminPayload) {
-  db.exec('BEGIN IMMEDIATE');
+function createManagerLaunchBonusPayout(managerPointId, adminPayload, options = {}) {
+  if(!options.inTransaction) db.exec('BEGIN IMMEDIATE');
   try {
     const bonus = getLaunchBonusSummary(managerPointId);
     if (!bonus) throw Object.assign(new Error('Точка менеджера не найдена'), { code: 'POINT_NOT_FOUND' });
@@ -183,10 +184,10 @@ function createManagerLaunchBonusPayout(managerPointId, adminPayload) {
     );
     const payout=db.prepare('SELECT * FROM manager_launch_bonus_payouts WHERE id = ?').get(Number(info.lastInsertRowid));
     const report=snapshotBonusPayout(db,'manager',{id:bonus.manager_id,full_name:bonus.manager_name,code:bonus.mgr_code},payout,adminPayload.id,'launch_bonus',bonus.bonus_accrued_at);
-    db.exec('COMMIT');
+    if(!options.inTransaction) db.exec('COMMIT');
     return {...payout,report_id:report.id};
   } catch (error) {
-    try { db.exec('ROLLBACK'); } catch (_) {}
+    try { if(!options.inTransaction) db.exec('ROLLBACK'); } catch (_) {}
     throw error;
   }
 }
