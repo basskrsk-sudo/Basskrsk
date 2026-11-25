@@ -7,7 +7,7 @@ const path=require('node:path');
 const {execFile}=require('node:child_process');
 const {promisify}=require('node:util');
 const run=promisify(execFile);
-const {money,clean}=require('./payout-brief');
+const {money,clean,formatSaleDateTime}=require('./payout-brief');
 
 const LABELS={partner:'Грумер',owner:'Владелец салона',manager:'Менеджер'};
 const W=1240,H=1754;
@@ -47,7 +47,7 @@ function payoutBriefPdfPages(report,font,options={}){
     rectangle(0,0,W,166,'#1C3A2F');
     text(60,69,'ХвостМаркет',36,'#FFFFFF');
     text(60,115,'Справка для подготовки выплат',29,'#FFFFFF');
-    text(60,147,'Невыплаченные начисления · '+report.generated_at.slice(0,10),18,'#FFFFFF');
+    text(60,147,'Срез начислений: '+formatSaleDateTime(report.generated_at)+' (Красноярск)',18,'#FFFFFF');
     y=218;
     if(person){
       for(const part of wrap('Получатель: '+clean(person.name,110),62)){
@@ -55,7 +55,7 @@ function payoutBriefPdfPages(report,font,options={}){
       }
       text(60,y,person.roles_label+(continuation?' (продолжение)':''),19,'#52695A');
       y+=39;
-      text(60,y,'Период расчётов: '+(person.period?.label || 'не указан'),20,'#1C3A2F');
+      text(60,y,'Даты начислений: '+(person.period?.label || 'не указаны'),20,'#1C3A2F');
       y+=29;
       text(60,y,'Дата продажи — по времени создания оплаченного заказа.',16,'#64766B');
       y+=35;

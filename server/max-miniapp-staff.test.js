@@ -197,6 +197,8 @@ test('MAX reward reports require active admin, same signed private chat and send
  db.prepare("UPDATE partners SET full_name='Получатель отчёта',commission_rate=.15 WHERE id=?").run(pid);
  db.prepare(`INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,partner_id,subtotal,total,payment_method,status,commission_rate)
  VALUES('MAX-REPORT-ORDER','Клиент','79130000000','Точка',?,?,500,500,'sbp','paid',.15)`).run(salon,pid);
+ // A last sale on an earlier day does not set the calculation cutoff.
+ db.prepare("UPDATE orders SET created_at='2026-11-19 07:00:00' WHERE order_code='MAX-REPORT-ORDER'").run();
  const adm=admin(phone,chat),init_data=signedLaunch(userId,chat);
  const optionsPath='/api/max/miniapp/reward-reports/options',sendPath='/api/max/miniapp/reward-reports/send';
  const token=signToken({role:'admin',id:adm,adminRole:'super',miniappAuthVersion:0});
@@ -220,13 +222,19 @@ test('MAX reward reports require active admin, same signed private chat and send
  assert.equal(sent.status,200,JSON.stringify(sent.json));
  assert.equal(sentReports.length,1);
  assert.equal(sentReports[0].userId,String(userId));
- assert.match(sentReports[0].caption,/К выплате: 75 ₽/);
+ assert.match(sentReports[0].caption,/Даты начислений: 19\.11\.2026/);
+ assert.match(sentReports[0].caption,/Срез начислений: \d{2}\.\d{2}\.\d{4},?\s+\d{2}:\d{2} \(Красноярск\)/);
+ assert.match(sentReports[0].caption,/К выплате: 75 ₽$/);
+ assert.doesNotMatch(sentReports[0].caption,/предварительная|не зафиксирована|Перешлите/i);
  const periods=await api(optionsPath,{init_data,kind:'period'},token);
  assert.ok(periods.json.recipients.some(x=>x.role==='partner'&&x.id===pid));
  const date=db.prepare("SELECT substr(created_at,1,10) AS d FROM orders WHERE order_code='MAX-REPORT-ORDER'").get().d;
  const period=await api(sendPath,{init_data,kind:'period',role:'partner',recipient_id:pid,start:date,end:date},token);
  assert.equal(period.status,200,JSON.stringify(period.json));assert.equal(sentReports.length,2);
  assert.equal(sentReports[1].userId,String(userId));
+ assert.match(sentReports[1].caption,/Период: 2026-11-19 — 2026-11-19/);
+ assert.match(sentReports[1].caption,/Начислено за период: 75 ₽$/);
+ assert.doesNotMatch(sentReports[1].caption,/Отчёт справочный|Перешлите/i);
  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM partner_payouts').get().n,before);
  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM payout_reports').get().n,snapshots);
  denyBeforeSend=true;

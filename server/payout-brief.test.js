@@ -118,7 +118,11 @@ test('each recipient gets a standalone itemized sales report with a precise peri
   assert.ok(pages.length>=1);
   const document=pages.join('\n').replace(/\u00a0|\u202f/g,' ');
   assert.match(document,/Получатель: Иван Иванов/);
-  assert.match(document,/Период расчётов: 20\.10\.2026/);
+  assert.match(document,/Даты начислений: 20\.10\.2026 — 24\.10\.2026/);
+  const cutoff='2026-11-24T18:30:00.000Z'; // Nov 25 in Krasnoyarsk, still Nov 24 UTC.
+  const cutoffPdf=payoutBriefPdfPages({...report,generated_at:cutoff},'/usr/share/fonts/dejavu/DejaVuSans.ttf',{recipient:dual}).join('\n');
+  assert.match(cutoffPdf,/Срез начислений: 25\.11\.2026,?\s+01:30 \(Красноярск\)/);
+  assert.match(cutoffPdf,/Даты начислений: 20\.10\.2026 — 24\.10\.2026/);
   assert.match(document,/Бычий корень/);
   assert.match(document,/Стоимость продажи: 1 000 ₽/);
   assert.match(document,/Ставка \(Грумер\): 20%/);
