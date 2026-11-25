@@ -465,7 +465,7 @@ function buildPdf(report, outputPath) {
         stdio: 'pipe',
         timeout: 60000,
         env: { ...process.env,
-          MAGICK_MEMORY_LIMIT: '128MiB', MAGICK_MAP_LIMIT: '256MiB',
+          MAGICK_MEMORY_LIMIT: '32MiB', MAGICK_MAP_LIMIT: '32MiB',
           MAGICK_DISK_LIMIT: '512MiB', MAGICK_THREAD_LIMIT: '1' },
       });
       pageJpegs.push(jpegPath);

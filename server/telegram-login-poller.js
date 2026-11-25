@@ -700,7 +700,7 @@ async function sendPayoutBriefs(chatId) {
 async function sendIndividualPayoutPdf(chatId, params = {}) {
   if (!adminCanReadSales(chatId)) throw new Error('Нет доступа к выплатам');
   if (!/^[0-9a-f]{16}$/.test(String(params.recipientKey || ''))) throw new Error('Некорректный выбор получателя');
-  const report = collectPayoutBrief();
+  const report = collectPayoutBrief(new Date(), {recipientKey:params.recipientKey});
   const person = report.people.find(item => item.selection_key === params.recipientKey);
   // A person could be merged into a different account or receive a payout
   // while the approval is pending. Refuse stale confirmations instead of
@@ -924,8 +924,9 @@ async function processUpdate(update) {
       }
       if(!allowed)return;
       try {
-        const report=collectPayoutBrief();
-        if(callback.data.startsWith('payout:page:')){
+        const isPage=callback.data.startsWith('payout:page:');
+        const report=collectPayoutBrief(new Date(),isPage?{}:{recipientKey:callback.data.slice('payout:pick:'.length)});
+        if(isPage){
           const menu=payoutBriefMenu(report,Number(callback.data.slice('payout:page:'.length)));
           await replyToChat(chat.id,menu.message,menu.reply_markup);
         }else{

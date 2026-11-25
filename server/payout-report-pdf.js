@@ -105,30 +105,32 @@ function payoutPdfPages(report, font) {
   return pages.map(p=>p.join('\n'));
 }
 
-let pdfRunning = false;
+const {acquirePdfSlot}=require('./pdf-resource-gate');
 async function renderPayoutPdf(report) {
-  if (pdfRunning) throw Object.assign(new Error('Другой PDF ещё формируется. Повторите через несколько секунд.'), { statusCode: 429 });
-  pdfRunning = true;
+  const slot=acquirePdfSlot('payout-report');
   let dir;
   try {
     const { findFont, writePdfFromJpegsAsync } = require('./weekly-report-pdf');
     const pages = payoutPdfPages(report, findFont());
     dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'hvost-payout-pdf-'));
     let command = 'convert';
-    try { await run(command, ['-version']); } catch { command = 'magick'; await run(command, ['-version']); }
+    try { await run(command, ['-version'], {timeout:4000}); } catch { command = 'magick'; await run(command, ['-version'], {timeout:4000}); }
     const images = [];
     for (let i = 0; i < pages.length; i++) {
+      slot.checkpoint();
       const input = path.join(dir, 'page-' + i + '.mvg'), output = path.join(dir, 'page-' + i + '.jpg');
       await fs.promises.writeFile(input, pages[i]);
-      await run(command, ['-limit','memory','128MiB','-limit','map','256MiB','mvg:' + input, '-background','white','-alpha','remove','-strip','-quality','94',output], { timeout:20000, maxBuffer:1024 * 1024 });
+      await run(command, ['-limit','memory','32MiB','-limit','map','32MiB','-limit','disk','256MiB','-limit','thread','1','mvg:' + input, '-background','white','-alpha','remove','-strip','-quality','94',output], { timeout:20000, maxBuffer:1024 * 1024 });
       images.push(output);
+      slot.checkpoint();
     }
     const output = path.join(dir, 'report.pdf');
     await writePdfFromJpegsAsync(images, output);
+    slot.checkpoint();
     return await fs.promises.readFile(output);
   } finally {
     try { if (dir) await fs.promises.rm(dir, { recursive:true, force:true }); }
-    finally { pdfRunning = false; }
+    finally { slot.release(); }
   }
 }
 

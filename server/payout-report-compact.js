@@ -28,6 +28,10 @@ function summarizeCompensation(report) {
 }
 
 const TIME_ZONE = 'Asia/Krasnoyarsk';
+const localFormatter = new Intl.DateTimeFormat('ru-RU', {
+  timeZone: TIME_ZONE, day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
 function localDateTime(value) {
   if (!value) return 'Не сохранено';
   const raw = String(value).trim();
@@ -36,10 +40,7 @@ function localDateTime(value) {
     : /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(raw) ? raw + 'Z' : raw;
   const date = new Date(normalized);
   if (!Number.isFinite(date.getTime())) return 'Не сохранено';
-  return new Intl.DateTimeFormat('ru-RU', {
-    timeZone: TIME_ZONE, day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).format(date).replace(',', '');
+  return localFormatter.format(date).replace(',', '');
 }
 function shortDate(value) {
   return value ? String(value).slice(0,10).split('-').reverse().join('.') : '—';

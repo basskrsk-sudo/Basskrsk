@@ -47,7 +47,8 @@ function alertCooldownMs(type) {
   return type === 'event_loop' ? LOOP_ALERT_COOLDOWN_MS : ALERT_COOLDOWN_MS;
 }
 const MAX_RECENT_EVENTS = 35;
-const WARNING_RSS_RATIO = 0.85;
+const WARNING_MEMORY_RATIO = 0.85;
+const {readContainerMemory,memoryMetrics}=require('./container-memory');
 const WARNING_DISK_BYTES = 100 * 1024 * 1024;
 let currentHealth = null;
 let lastHealthAt = 0;
@@ -87,18 +88,7 @@ db.exec("CREATE TABLE IF NOT EXISTS site_health_heartbeat (" +
 const bootId = String(BOOTED_AT) + '-' + process.pid;
 const healthWriter = createHealthWriteQueue({source:db.DB_PATH});
 function flushMonitoringWrites() { return healthWriter.flush(); }
-function limitMemory() {
-  const defined = Number(process.env.CONTAINER_MEMORY_LIMIT_MB || 0);
-  if (Number.isFinite(defined) && defined > 0) return Math.round(defined * 1024 * 1024);
-  try {
-    const raw = fs.readFileSync('/sys/fs/cgroup/memory.max', 'utf8').trim();
-    if (raw !== 'max') {
-      const n = Number(raw);
-      if (Number.isSafeInteger(n) && n > 0 && n < 1024 * 1024 * 1024 * 1024) return n;
-    }
-  } catch (_) {}
-  return null;
-}
+function limitMemory() { return readContainerMemory().limit; }
 async function storageFreeBytes() {
   try {
     if (typeof fs.promises.statfs !== 'function') return null;
@@ -185,13 +175,12 @@ function recentEvents(limit = MAX_RECENT_EVENTS) {
 async function metrics() {
   const mem = process.memoryUsage();
   const [health, free] = await Promise.all([healthProbe(), storageFreeBytes()]);
-  const limit = limitMemory();
+  const memory = memoryMetrics(readContainerMemory({mem}));
   return {
     ...health,
     timestamp:new Date().toISOString(),
     uptime_seconds:Math.floor((Date.now()-BOOTED_AT)/1000),
-    memory:{rss_mb:Math.round(mem.rss/1048576),heap_used_mb:Math.round(mem.heapUsed/1048576),
-      limit_mb:limit?Math.round(limit/1048576):null},
+    memory,
     storage_free_mb:Number.isFinite(free)?Math.round(free/1048576):null,
     // Read once on DB startup: no per-admin-request PRAGMA or disk I/O.
     database_journal_mode:db.JOURNAL_MODE,
@@ -300,6 +289,8 @@ async function sample() {
     loopState = nextLoopState(loopState, maxLoopDelayMs, p99LoopDelayMs);
     const memory = process.memoryUsage();
     const rssMb = Math.round(memory.rss / 1048576);
+    const container=readContainerMemory({mem:memory});
+    const ram=memoryMetrics(container);
     lastSample = {time:new Date(now).toISOString(),
       event_loop_delay_ms:maxLoopDelayMs,event_loop_max_ms:maxLoopDelayMs,
       event_loop_p99_ms:p99LoopDelayMs,sample_schedule_drift_ms:Math.round(delay),
@@ -338,9 +329,9 @@ async function sample() {
     };
     const currentBackup=backupStatus(false);
     const criticalSample=health.status!=='ok'||maxLoopDelayMs>=1500||
-      p99LoopDelayMs>=750||cpuPercent>=90;
+      p99LoopDelayMs>=750||cpuPercent>=90||(container.ratio!==null&&container.ratio>=WARNING_MEMORY_RATIO);
     healthHistory.record({
-      rss_mb:rssMb,heap_used_mb:Math.round(memory.heapUsed/1048576),
+      ...ram,
       cpu_percent:cpuPercent,event_loop_max_ms:maxLoopDelayMs,
       event_loop_p99_ms:p99LoopDelayMs,sqlite_ms:health.probe_sqlite_ms,
       storage_write_ms:health.probe_storage_ms,
@@ -351,7 +342,6 @@ async function sample() {
       backup_result:currentBackup?.result||null,
       backup_duration_ms:currentBackup?.duration_ms??null,
     },now,criticalSample);
-    const cap = limitMemory();
     // A one-minute histogram maximum is not enough to identify a culprit.
     // Include CPU consumed during the actual pause, and any known synchronous
     // job completed near it. A low CPU value does not distinguish host
@@ -366,8 +356,10 @@ async function sample() {
       now - Date.parse(entry.at) <= SAMPLE_INTERVAL_MS + 10000);
     transition('database',health.checks.database!=='ok','critical','SQLite не отвечает на проверку');
     transition('storage',health.checks.storage!=='ok','critical','Постоянное хранилище недоступно для записи');
-    transition('memory',!!(cap && memory.rss/cap>=WARNING_RSS_RATIO),'warning',
-      'Потребление памяти контейнера выше 85% доступного лимита');
+    transition('memory',container.ratio!==null&&container.ratio>=WARNING_MEMORY_RATIO,'warning',
+      (container.source==='node_rss'?'Память Node.js (RSS, весь контейнер недоступен)':'Рабочая память контейнера')+
+      ': '+ram.usage_percent+'% лимита ('+Math.round(container.working/1048576)+' из '+ram.limit_mb+
+      ' МБ); Node.js RSS '+rssMb+' МБ, heap '+ram.heap_used_mb+' МБ.');
     transition('disk',Number.isFinite(free)&&free<WARNING_DISK_BYTES,'warning',
       'В постоянном хранилище осталось менее 100 МБ');
     transition('cpu',highCpuSamples>=2,'warning',

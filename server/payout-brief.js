@@ -41,6 +41,10 @@ function sameRecipient(a,b){
 }
 
 const LOCAL_TIME_ZONE='Asia/Krasnoyarsk';
+const saleDateTimeFormatter=new Intl.DateTimeFormat('ru-RU',{timeZone:LOCAL_TIME_ZONE,
+  year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+const saleDateFormatter=new Intl.DateTimeFormat('ru-RU',{timeZone:LOCAL_TIME_ZONE,
+  year:'numeric',month:'2-digit',day:'2-digit'});
 function parseSaleMoment(input){
   const raw=String(input||'').trim();
   if(!raw)return null;
@@ -52,14 +56,11 @@ function parseSaleMoment(input){
 function formatSaleDateTime(input){
   const ms=parseSaleMoment(input);
   if(ms===null)return 'Дата не указана';
-  return new Intl.DateTimeFormat('ru-RU',{timeZone:LOCAL_TIME_ZONE,
-    year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',
-    hour12:false}).format(new Date(ms));
+  return saleDateTimeFormatter.format(new Date(ms));
 }
 function formatSaleDate(ms){
   if(ms===null || !Number.isFinite(ms))return 'не указана';
-  return new Intl.DateTimeFormat('ru-RU',{timeZone:LOCAL_TIME_ZONE,
-    year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ms));
+  return saleDateFormatter.format(new Date(ms));
 }
 function personPeriod(statements){
   const timestamps=[];
@@ -139,7 +140,7 @@ function formatSale(account,order,getItems){
   };
 }
 
-function roleStatement(account,refundQuery,getItems){
+function roleStatement(account,refundQuery,getItems,detail=true){
   const eligible=[],held=[];
   for(const order of pendingOrders(account)){
     const refund=refundQuery.get(order.id);
@@ -159,9 +160,9 @@ function roleStatement(account,refundQuery,getItems){
     orders:eligible.length,commission,bonus,total:commission+bonus,
     held_orders:held.length,held_order_ids:held.map(o=>o.id),
     held_amount:held.reduce((sum,o)=>sum+num(o.commission_amount),0),
-    points:groupedPoints(account,eligible),
-    sales:eligible.map(order=>formatSale(account,order,getItems)).sort((a,b)=>
-      String(a.created_at||'').localeCompare(String(b.created_at||'')) || a.order_id-b.order_id),
+    points:detail?groupedPoints(account,eligible):[],
+    sales:detail?eligible.map(order=>formatSale(account,order,getItems)).sort((a,b)=>
+      String(a.created_at||'').localeCompare(String(b.created_at||'')) || a.order_id-b.order_id):[],
     bonuses,
   };
 }
@@ -204,15 +205,24 @@ function formatMoment(iso){
   return new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Krasnoyarsk',day:'2-digit',
     month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(iso));
 }
-function collectPayoutBrief(now=new Date()){
+function collectPayoutBrief(now=new Date(),{recipientKey=null}={}){
   const fetchRefund=db.prepare('SELECT refund_status,refunded_amount FROM orders WHERE id=?');
   const cache=new Map();
   const refundQuery={get(id){if(!cache.has(id))cache.set(id,fetchRefund.get(id)||null);return cache.get(id)}};
-  const entries=[];
+  let entries=[];
   const getItems=createOrderItemReader();
   for(const account of accounts()){
-    const statement=roleStatement(account,refundQuery,getItems);
+    const statement=roleStatement(account,refundQuery,getItems,!recipientKey);
     if(statement.total>0||statement.held_orders)entries.push({account,statement});
+  }
+  // Determine the exact current grouping from unpaid totals first (including
+  // newly active roles/refunds). Only then read product details for the chosen
+  // recipient. This preserves selection keys and stale-approval protection.
+  if(recipientKey){
+    const selected=groupStatements(entries).find(person=>person.selection_key===recipientKey);
+    const roles=new Set((selected?.statements||[]).map(s=>s.role+':'+s.account_id));
+    entries=entries.filter(e=>roles.has(e.account.role+':'+e.account.id))
+      .map(e=>({account:e.account,statement:roleStatement(e.account,refundQuery,getItems)}));
   }
   const people=groupStatements(entries);
   const sum=key=>people.reduce((result,p)=>result+num(p[key]),0);

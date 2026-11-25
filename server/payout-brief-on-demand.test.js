@@ -61,6 +61,7 @@ test('payout default request produces CSV and never batch-renders personal PDFs'
     .split('function accountRoleText(')[0];
   assert.match(personal,/recipientKey/);
   assert.match(personal,/expectedTotal/);
+  assert.match(personal,/collectPayoutBrief\(new Date\(\), \{recipientKey:params.recipientKey\}\)/);
   assert.match(personal,/renderPayoutBriefPdf\(report, \{ recipient: person \}\)/);
   assert.match(src,/if\(type==='payoutpdf'\)return sendIndividualPayoutPdf\(chatId,params\)/);
   assert.match(src,/show_alert:!allowed/,'only an authorized private admin may request a payee');
