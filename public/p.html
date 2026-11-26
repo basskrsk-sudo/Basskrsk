@@ -144,6 +144,7 @@
 <script src="/config.js"></script>
 <script src="/first-purchase-promo-display.js?v=20261124-4"></script>
 <script src="/android-payment.js?v=20261124-5"></script>
+<script src="/physical-stock-confirmation.js?v=1"></script>
 <script src="/qr-cart.js"></script>
 <script src="/qr-cart-scanner.js"></script>
 <script>
@@ -343,6 +344,20 @@ async function runQrPayment(saved) {
     var result = await qrPaymentFetch(saved.body);
     var response = result.response;
     var data = result.data || {};
+    for(var round=0;!response.ok&&data.code==='STOCK_CONFIRMATION_REQUIRED'&&round<3;round++){
+      var next=await window.HvostPhysicalStock.resolve(data,saved.body);
+      if(!next){
+        clearPendingQrPayment(saved.orderId);
+        QR_PAYMENT_PREFILL=saved.body;
+        QR_CART_MESSAGE='Измените количество или выберите товар, который есть на стойке.';
+        await boot();
+        if(saved.cartRevision)await openQrCart(QR_CART_MESSAGE);
+        return;
+      }
+      saved.body=next;savePendingQrPayment(saved);
+      if(androidQrHandoff())window.HvostAndroidPayment.remember(saved.orderId,'qr',saved.body);
+      result=await qrPaymentFetch(saved.body);response=result.response;data=result.data||{};
+    }
     if (data.paid === true && response.ok) {
       if(saved.cartRevision&&typeof window!=='undefined')window.HvostQrCart.clearPaid(CTX.pointId,saved.cartRevision);
       clearPendingQrPayment(saved.orderId);
@@ -356,7 +371,7 @@ async function runQrPayment(saved) {
       return;
     }
     if (!response.ok) {
-      if (['PAYMENT_RETRY_REQUIRED','ORDER_TOTAL_CHANGED','FIRST_PURCHASE_PROMO_INVALID','STOCK_UNAVAILABLE','VARIANT_NOT_FOUND','VARIANT_INACTIVE','POINT_UNAVAILABLE','ADVISOR_SELECTION_REQUIRED','PARTNER_POINT_MISMATCH','INVALID_QUANTITY','INVALID_CATALOG_PRICE','PAYMENT_NOT_CONFIGURED'].indexOf(data.code)>=0) {
+      if (['PAYMENT_RETRY_REQUIRED','ORDER_TOTAL_CHANGED','FIRST_PURCHASE_PROMO_INVALID','STOCK_UNAVAILABLE','STOCK_CONFIRMATION_REQUIRED','VARIANT_NOT_FOUND','VARIANT_INACTIVE','POINT_UNAVAILABLE','ADVISOR_SELECTION_REQUIRED','PARTNER_POINT_MISMATCH','INVALID_QUANTITY','INVALID_CATALOG_PRICE','PAYMENT_NOT_CONFIGURED'].indexOf(data.code)>=0) {
         clearPendingQrPayment(saved.orderId);
         QR_PAYMENT_PREFILL = saved.body;
         QR_CART_MESSAGE = data.error || 'Предыдущий платёж не завершён. Проверьте заказ и попробуйте ещё раз.';
@@ -469,12 +484,8 @@ async function boot() {
     CTX.variants = (CTX.product.variants || []).filter(function(v) { return v.active; })
       .map(function(v) { return { id: v.id, weight: v.weight, price: v.price, qty: v.qty }; });
     var avail = CTX.variants.filter(function(v) { return v.qty > 0; });
-    if (!avail.length) {
-      if(window.HvostQrCart.get(CTX.pointId).items.length){await openQrCart('Этот товар закончился. Проверьте корзину.');return;}
-      failState('Сейчас нет на полке', 'Этот товар временно недоступен в данной точке.');
-      return;
-    }
-    CTX.selVariant = avail[0];
+    if (!CTX.variants.length) {failState('Товар недоступен','В каталоге нет доступных фасовок.');return;}
+    CTX.selVariant = avail[0] || CTX.variants[0];
     renderCard();
   } catch (error) {
     trackGoal('qr_product_load_error', { scenario: 'qr', type: error.name || 'network' });
@@ -522,14 +533,14 @@ function renderCard(message) {
   var avail = CTX.variants.filter(function(x) { return x.qty > 0; });
   if (CTX.variants.length > 1) {
     html += '<div class="variants">' + CTX.variants.map(function(x) {
-      var dis = x.qty > 0 ? '' : ' disabled';
+      var dis = '';
       var sel = x.id === v.id ? ' sel' : '';
       return '<button class="variant' + sel + '"' + dis + ' onclick="pickVariant(' + x.id + ')">' + esc(x.weight) + ' · ' + fmtPrice(x.price) + '</button>';
     }).join('') + '</div>';
   }
 
   html += '<div class="price-row"><div class="price">' + fmtPrice(v.price) + '</div></div>';
-  html += '<div class="stock-note' + (v.qty <= 2 ? ' low' : '') + '">' + (v.qty <= 2 ? '⚡ Осталось всего ' + v.qty + ' шт этой фасовки' : 'В наличии на полке') + '</div>';
+  html += '<div class="stock-note' + (v.qty <= 2 ? ' low' : '') + '">' + (v.qty <= 0 ? 'По учёту товара нет. Если упаковка у вас, продолжите покупку и подтвердите наличие.' : v.qty <= 2 ? '⚡ По учёту осталось ' + v.qty + ' шт.' : 'В наличии на полке') + '</div>';
   if(!basket.items.length)html += '<button class="cta" onclick="showPhoneStep(false)">Купить сейчас →</button>';
   html += '<button class="'+(basket.items.length?'cta':'qr-secondary')+'" onclick="addCurrentQrItem()">🛒 Добавить в корзину</button>';
   if(message)html += '<p class="qr-cart-message" role="status">'+esc(message)+'</p>';
@@ -548,7 +559,7 @@ function qrCartBar(b){
 }
 function addCurrentQrItem(){
   if(readPendingQrPayment()){showPendingQrPayment();return;}
-  var added=window.HvostQrCart.add(CTX.pointId,currentQrLine(),CTX.selVariant.qty);
+  var added=window.HvostQrCart.add(CTX.pointId,currentQrLine(),99);
   if(added.ok)trackGoal('add_to_cart',{scenario:'qr',point_id:CTX.pointId,product_id:CTX.product.id,price:CTX.selVariant.price});
   renderCard(added.ok?'✅ Добавлено! Можно сканировать следующую упаковку.':added.error);
 }
@@ -572,7 +583,7 @@ async function refreshQrBasket(){
   var changed=false;
   var items=b.items.map(function(i){
     var fresh=byId.get(i.variantId);
-    QR_CART_AVAILABLE[i.variantId]=fresh&&Number.isSafeInteger(fresh.price)&&fresh.price>0?Math.max(0,Number(fresh.available)||0):0;
+    QR_CART_AVAILABLE[i.variantId]=fresh&&Number.isSafeInteger(fresh.price)&&fresh.price>0?Math.max(0,Number(fresh.available)||0):null;
     if(!fresh||!Number.isSafeInteger(fresh.price)||fresh.price<1)return i;
     if(i.price!==fresh.price||i.name!==fresh.name||i.weight!==fresh.weight){
       changed=true;return Object.assign({},i,{price:fresh.price,name:fresh.name,weight:fresh.weight});
@@ -586,16 +597,16 @@ async function refreshQrBasket(){
 function renderQrCart(message){
   var api=window.HvostQrCart,b=api.get(CTX.pointId);
   QR_CHECKOUT_ITEMS=null; QR_CHECKOUT_REVISION='';
-  var blocked=!QR_CART_READY||b.items.some(function(i){return i.qty>(QR_CART_AVAILABLE[i.variantId]||0);});
+  var blocked=!QR_CART_READY||b.items.some(function(i){return QR_CART_AVAILABLE[i.variantId]==null;});
   var html='<div class="panel"><h2>🛒 Ваша корзина</h2>';
   if(message)html+='<p class="qr-cart-message" role="status">'+esc(message)+'</p>';
   if(!b.items.length)html+='<p class="small muted">Корзина пока пуста. Отсканируйте товар и добавьте его.</p>';
   b.items.forEach(function(i){
-    var available=QR_CART_AVAILABLE[i.variantId]||0;
+    var available=QR_CART_AVAILABLE[i.variantId];
     html+='<div class="qr-cart-line"><div><b>'+esc(i.name)+'</b><span class="small muted">'+esc(i.weight)+' · '+fmtPrice(i.price)+'/шт.</span>'+
-      (QR_CART_READY&&i.qty>available?'<p class="qr-cart-message">'+(available?'В наличии только '+available+' шт.':'Нет в наличии')+'</p>':'')+'</div><div class="qr-cart-qty">'+
+      (QR_CART_READY?(available==null?'<p class="qr-cart-message">Товар недоступен в каталоге. Удалите его.</p>':i.qty>available?'<p class="qr-cart-message">По учёту: '+available+' шт. При оплате подтвердите наличие.</p>':''):'')+'</div><div class="qr-cart-qty">'+
       '<button aria-label="Уменьшить количество" onclick="changeQrCart('+i.variantId+',-1)">−</button><b>'+i.qty+'</b>'+
-      '<button aria-label="Увеличить количество" '+(!QR_CART_READY||i.qty>=Math.min(99,available)?'disabled ':'')+'onclick="changeQrCart('+i.variantId+',1)">+</button></div></div>';
+      '<button aria-label="Увеличить количество" '+(!QR_CART_READY||available==null||i.qty>=99?'disabled ':'')+'onclick="changeQrCart('+i.variantId+',1)">+</button></div></div>';
   });
   if(b.items.length)html+='<div class="qr-cart-bar"><b>Итого</b><b>'+fmtPrice(api.total(b.items))+'</b></div>'+
     '<button class="cta" style="margin-top:14px" '+(blocked?'disabled ':'')+'onclick="checkoutQrBasket()">Оформить заказ →</button>';
@@ -618,13 +629,13 @@ async function openQrCart(message){
 }
 function changeQrCart(id,delta){
   if(readPendingQrPayment()){showPendingQrPayment();return;}
-  var result=window.HvostQrCart.change(CTX.pointId,id,delta,QR_CART_AVAILABLE[id]||0);
+  var result=window.HvostQrCart.change(CTX.pointId,id,delta,QR_CART_AVAILABLE[id]==null?0:99);
   renderQrCart(result.ok?'':result.error);
 }
 function checkoutQrBasket(){
   if(readPendingQrPayment()){showPendingQrPayment();return;}
   var b=window.HvostQrCart.get(CTX.pointId);
-  if(!QR_CART_READY||!b.items.length||b.items.some(function(i){return i.qty>(QR_CART_AVAILABLE[i.variantId]||0);})){openQrCart();return;}
+  if(!QR_CART_READY||!b.items.length||b.items.some(function(i){return QR_CART_AVAILABLE[i.variantId]==null;})){openQrCart();return;}
   QR_CHECKOUT_ITEMS=b.items;QR_CHECKOUT_REVISION=b.revision;
   showPhoneStep(true);
 }
@@ -640,7 +651,7 @@ function qrCheckoutSummary(items){
 
 function pickVariant(id) {
   var v = CTX.variants.find(function(x) { return x.id === id; });
-  if (v && v.qty > 0) { CTX.selVariant = v; renderCard(); }
+  if (v) { CTX.selVariant = v; renderCard(); }
 }
 
 /* ── Экран 2: телефон ── */
