@@ -274,3 +274,44 @@ test('payout preferences are grouped by role and reconcile to the net payable am
  assert.match(summary,/По способам выплаты/);
  assert.match(summary,/Безналичный расчёт по договору/);
 });
+
+
+test('batch payout projections agree with individual ledgers for every role and preserve refund corrections',()=>{
+  const {readUnpaidOrderBatch,readCorrectionBatch}=require('./payout-read-batches');
+  const {corrections,planCommission,planCommissionFromCorrections,isPayable}=require('./commission-refunds');
+  const {getBonuses,getPendingBonusesBatch}=require('./report-bonuses');
+  const roles=[
+    ['partner','partners',require('./partner-payouts').getUnpaidOrders],
+    ['owner','salon_owners',require('./owner-payouts').getOwnerUnpaidOrders],
+    ['manager','managers',require('./manager-payouts').getManagerUnpaidOrders],
+  ];
+  for(const [role,table,individual] of roles){
+    const ids=db.prepare('SELECT id FROM '+table+' ORDER BY id LIMIT 64').all().map(x=>x.id);
+    const orders=readUnpaidOrderBatch(db,role,ids),offsets=readCorrectionBatch(db,role,ids);
+    const bonuses=getPendingBonusesBatch(db,role,ids);
+    for(const id of ids){
+      assert.deepEqual(orders.get(id),individual(id));
+      assert.deepEqual(offsets.get(id),corrections(db,role,id));
+      assert.deepEqual(bonuses.get(id),getBonuses(db,role,id).pending.map(row=>({...row})));
+      assert.deepEqual(planCommissionFromCorrections(orders.get(id).filter(isPayable),offsets.get(id)),
+        planCommission(db,role,id,individual(id).filter(isPayable)));
+    }
+  }
+});
+test('summary query count grows by batches, not by individual inactive or empty recipients',()=>{
+  const now=new Date('2026-11-26T19:00:00Z');
+  function measure(){
+    const prepare=db.prepare;let queries=0;
+    db.prepare=function(sql){queries++;return prepare.call(this,sql);};
+    try{return {report:collectPayoutBrief(now,{summaryOnly:true}),queries:()=>queries};}
+    finally{db.prepare=prepare;}
+  }
+  const before=measure(),count=before.queries();
+  const insert=db.prepare('INSERT INTO partners(partner_code,login,password_hash,full_name,phone,point_name,active) VALUES(?,?,?,?,?,?,0)');
+  for(let i=0;i<70;i++)insert.run('BATCH-EMPTY-'+i,'batch-empty-'+i,'hash','Пустой аккаунт '+i,String(79009000000+i),'Пустая точка');
+  try{
+    const after=measure();
+    assert.deepEqual(after.report,before.report);
+    assert.ok(after.queries()-count<=6,'70 more accounts should require at most two additional three-query batches: '+(after.queries()-count));
+  }finally{db.prepare("DELETE FROM partners WHERE partner_code LIKE 'BATCH-EMPTY-%'").run();}
+});

@@ -25,6 +25,12 @@ function isPayable(order){return !(order.return_amount>0 && order.total<=0)&&!(o
 function corrections(db,role,id=null){
  const config=CONFIG[role];if(!config)throw Error('Invalid payout role');
  const [items,payouts,recipient]=config;
+ const batch=Array.isArray(id);
+ if(batch){
+  if(id.length>64||id.some(value=>!Number.isSafeInteger(value)||value<=0))throw Error('Invalid payout recipient batch');
+  if(!id.length)return {due:[],review:[]};
+ }
+ const recipientFilter=id==null?'p.'+recipient+' IS NOT NULL':batch?'p.'+recipient+' IN ('+id.map(()=>'?').join(',')+')':'p.'+recipient+'=?';
  // Only paid ledger rows whose source order was returned; preserve the frozen
  // commission, not the recipient's mutable current rate. No background writes.
  const rows=db.prepare(`SELECT p.${recipient} AS recipient_id,i.id AS item_id,i.payout_id AS original_payout_id,i.order_code,
@@ -35,8 +41,8 @@ function corrections(db,role,id=null){
     WHERE x.role=? AND x.original_item_id=i.id),0) AS recovered
   FROM ${payouts} p JOIN ${items} i ON i.payout_id=p.id JOIN orders o ON o.id=i.order_id
   LEFT JOIN payout_reports r ON r.role=? AND r.payout_id=p.id
-  WHERE ${id==null?'p.'+recipient+' IS NOT NULL':'p.'+recipient+'=?'} AND (o.refund_status='refunded' OR COALESCE(o.refunded_amount,0)>0)
-  ORDER BY i.id`).all(role,role,...(id==null?[]:[id]));
+  WHERE ${recipientFilter} AND (o.refund_status='refunded' OR COALESCE(o.refunded_amount,0)>0)
+  ORDER BY i.id`).all(role,role,...(id==null?[]:batch?id:[id]));
  const due=[],review=[];
  for(const row of rows){
   const net=netPaidRevenue(row),returned=Math.max(0,Number(row.total||0)-net);
@@ -64,8 +70,10 @@ function debtByRecipient(db,role){
  return result;
 }
 function planCommission(db,role,id,orders){
+ return planCommissionFromCorrections(orders,corrections(db,role,id));
+}
+function planCommissionFromCorrections(orders,{due,review}){
  const gross=orders.reduce((s,o)=>s+Number(o.commission_amount||0),0);
- const {due,review}=corrections(db,role,id);
  const debt=due.reduce((s,o)=>s+o.amount,0);
  // Do not create fictional zero or negative cash payments. If this role's
  // commission cannot cover the deduction, retain the entire balance until
@@ -87,4 +95,4 @@ function recordOffsets(db,role,id,payoutId,plan){
  VALUES(?,?,?,?,?,?,?,?)`);
  for(const x of plan.adjustments)insert.run(role,id,x.item_id,x.original_payout_id,x.order_code,payoutId,x.amount,x.refunded_amount);
 }
-module.exports={initializeRefundOffsets,netOrder,isPayable,corrections,debtByRecipient,planCommission,verifyPlan,recordOffsets};
+module.exports={initializeRefundOffsets,netOrder,isPayable,corrections,debtByRecipient,planCommission,planCommissionFromCorrections,verifyPlan,recordOffsets};

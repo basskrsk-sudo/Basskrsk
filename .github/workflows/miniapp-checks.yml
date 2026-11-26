@@ -64,6 +64,7 @@ on:
       - server/payout-brief.js
       - server/payout-brief-pdf.js
       - server/commission-refunds.js
+      - server/payout-read-batches.js
       - server/commission-refunds.test.js
       - server/partner-payouts.js
       - server/owner-payouts.js
@@ -765,6 +766,8 @@ jobs:
         run: node --test server/stock-inventory-transactions.test.js
       - name: Verify batched warehouse lists
         run: node --test server/warehouse-list-query.test.js
+      - name: Verify batched payout reports and exact recipient balances
+        run: node --test server/payout-brief.test.js server/commission-refunds.test.js
       - name: Verify audited payout cancellation and re-payment
         run: node --test server/payout-cancellations.test.js
       - name: Verify compact financial overview, payouts and expense pagination

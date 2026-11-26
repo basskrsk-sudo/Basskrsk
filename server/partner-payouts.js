@@ -5,23 +5,10 @@ const db = require('./db');
 const {netOrder,isPayable,planCommission,verifyPlan,recordOffsets}=require('./commission-refunds');
 const { snapshotPayout } = require('./payout-reports');
 const {parseActualPayoutMethod}=require('./payout-methods');
+const {unpaidOrderQuery}=require('./payout-read-batches');
 
 function getUnpaidOrders(partnerId) {
-  return db.prepare(`
-    SELECT
-      o.id,
-      o.order_code,
-      o.total, o.refund_status, o.refunded_amount,
-      o.created_at,
-      COALESCE(o.commission_rate, p.commission_rate, 0) AS commission_rate
-    FROM orders o
-    JOIN partners p ON p.id = o.partner_id
-    LEFT JOIN partner_payout_items pi ON pi.order_id = o.id
-    WHERE o.partner_id = ?
-      AND o.status = 'paid'
-      AND pi.id IS NULL
-    ORDER BY o.created_at, o.id
-  `).all(partnerId).map(netOrder);
+  return db.prepare(unpaidOrderQuery('partner')).all(partnerId).map(netOrder);
 }
 
 function getUnpaidSummary(partnerId) {

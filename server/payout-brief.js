@@ -4,7 +4,8 @@ const db=require('./db');
 const {getUnpaidOrders}=require('./partner-payouts');
 const {getOwnerUnpaidOrders}=require('./owner-payouts');
 const {getManagerUnpaidOrders}=require('./manager-payouts');
-const {getBonuses}=require('./report-bonuses');
+const {getBonuses,getPendingBonusesBatch}=require('./report-bonuses');
+const {RECIPIENT_BATCH_SIZE,readUnpaidOrderBatch,readCorrectionBatch}=require('./payout-read-batches');
 const {createHash}=require('node:crypto');
 const {PAYOUT_METHODS,payoutMethodCode,payoutMethodLabel}=require('./payout-methods');
 
@@ -164,15 +165,15 @@ function formatSale(account,order,getItems){
   };
 }
 
-const {isPayable,planCommission}=require('./commission-refunds');
-function roleStatement(account,getItems,detail=true,cycle=null){
-  const pending=pendingOrders(account).filter(o=>payoutPeriodPart(o.created_at,cycle)!=='future');
+const {isPayable,planCommission,planCommissionFromCorrections}=require('./commission-refunds');
+function roleStatement(account,getItems,detail=true,cycle=null,batch=null){
+  const pending=(batch?batch.orders.get(account.id):pendingOrders(account)).filter(o=>payoutPeriodPart(o.created_at,cycle)!=='future');
   const eligible=pending.filter(isPayable);
   // Fully returned unpaid orders have no remuneration. Keep the manager's
   // existing report, but do not list these orders for groomers or owners.
   const returned=pending.filter(o=>(o.return_amount>0||o.refund_status==='refunded') && (account.role==='manager'||isPayable(o)));
-  const plan=planCommission(db,account.role,account.id,eligible);
-  const bonuses=getBonuses(db,account.role,account.id).pending
+  const plan=batch?planCommissionFromCorrections(eligible,batch.corrections.get(account.id)):planCommission(db,account.role,account.id,eligible);
+  const bonuses=(batch?batch.bonuses.get(account.id):getBonuses(db,account.role,account.id).pending)
     .filter(b=>Number.isFinite(Number(b.amount))&&Number(b.amount)>0&&payoutPeriodPart(b.accrued_at,cycle)!=='future')
     .map(b=>({manager_point_id:b.manager_point_id,point:clean(b.point_name||account.point_name||'Точка'),
       amount:num(b.amount),type:account.role==='manager'?'launch_bonus':'referral_bonus',
@@ -271,9 +272,22 @@ function collectPayoutBrief(now=new Date(),{recipientKey=null,summaryOnly=false,
   const cycle=monthly?monthlyPayoutPeriod(now):null;
   let entries=[];
   const getItems=createOrderItemReader();
-  for(const account of accounts()){
-    const statement=roleStatement(account,getItems,!recipientKey&&!summaryOnly,cycle);
-    if(statement.total>0||statement.held_orders||statement.refund_carried)entries.push({account,statement});
+  const allAccounts=accounts();
+  // Preserve original role and account ordering. Do not cache financial data
+  // across requests or keep all unpaid orders in a single unbounded batch.
+  for(const role of Object.keys(ROLES)){
+    const roleAccounts=allAccounts.filter(a=>a.role===role);
+    for(let offset=0;offset<roleAccounts.length;offset+=RECIPIENT_BATCH_SIZE){
+      const group=roleAccounts.slice(offset,offset+RECIPIENT_BATCH_SIZE);
+      const ids=group.map(a=>a.id);
+      const batch={orders:readUnpaidOrderBatch(db,role,ids),
+        corrections:readCorrectionBatch(db,role,ids),
+        bonuses:getPendingBonusesBatch(db,role,ids)};
+      for(const account of group){
+        const statement=roleStatement(account,getItems,!recipientKey&&!summaryOnly,cycle,batch);
+        if(statement.total>0||statement.held_orders||statement.refund_carried)entries.push({account,statement});
+      }
+    }
   }
   // Determine the exact current grouping from unpaid totals first (including
   // newly active roles/refunds). Only then read product details for the chosen

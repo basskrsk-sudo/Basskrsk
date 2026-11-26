@@ -5,27 +5,14 @@ const db = require('./db');
 const {netOrder,isPayable,planCommission,verifyPlan,recordOffsets}=require('./commission-refunds');
 const { snapshotPayout, snapshotBonusPayout } = require('./payout-reports');
 const {parseActualPayoutMethod}=require('./payout-methods');
+const {unpaidOrderQuery}=require('./payout-read-batches');
 
 function getManagerUnpaidOrders(managerId) {
   // Every paid order can accrue commission ONCE. manager_points is a
   // historical/referral ledger: joining all its rows duplicates a sale when a
   // point was reassigned/recreated. Use the latest relevant rate only.
   // Calculate net commission; existing payout snapshots are never modified.
-  return db.prepare(`
-    SELECT o.id, o.order_code, o.total, o.point_id, o.created_at,
-           o.refund_status, o.refunded_amount,
-           p.name AS point_name,
-           COALESCE((
-             SELECT mp.commission_rate FROM manager_points mp
-             WHERE mp.point_id = p.id AND mp.manager_id = p.manager_id
-             ORDER BY mp.active DESC, mp.id DESC LIMIT 1
-           ), 0.07) AS commission_rate
-    FROM orders o
-    JOIN points p ON p.id = o.point_id AND p.manager_id = ?
-    LEFT JOIN manager_commission_payout_items pi ON pi.order_id = o.id
-    WHERE o.status = 'paid' AND pi.id IS NULL
-    ORDER BY o.created_at, o.id
-  `).all(managerId).map(netOrder);
+  return db.prepare(unpaidOrderQuery('manager')).all(managerId).map(netOrder);
 }
 
 // Full returns have no commission; partial returns use the remaining paid amount.

@@ -245,9 +245,21 @@ async function finalizePaidOrder(orderId) {
   const before = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!before || before.status === 'paid') return false;
 
+  // Customer counters and loyalty balances are part of the same atomic paid
+  // transition. A SQLite lock between two autocommit writes used to leave
+  // an irrecoverably paid order with missing or partially recorded rewards.
+  const afterCommit=[];
+  const onPaid=order=>{
+    recordCustomerOrder(
+      order.customer_phone,order.customer_name,order.customer_lname,order.total,
+      order.customer_email,order.referral_code,order.bones_used,!!order.is_partner_self_order,
+      {deferNotification:notify=>afterCommit.push(notify)}
+    );
+    return enqueuePaidClubSale(order);
+  };
   let finalized;
   if (before.reservation_status === 'active') {
-    finalized = consumeOrderReservation(before.id,{onPaid:order=>enqueuePaidClubSale(order)});
+    finalized = consumeOrderReservation(before.id,{onPaid});
     if (!finalized.consumed) return false;
   } else if (before.reservation_status === 'none') {
     finalized = withImmediateTransaction(() => {
@@ -269,7 +281,7 @@ async function finalizePaidOrder(orderId) {
         consumed: true,
         order: paidOrder,
         items,
-        afterPaid:enqueuePaidClubSale(paidOrder),
+        afterPaid:onPaid(paidOrder),
       };
     });
     if (!finalized.consumed) return false;
@@ -279,18 +291,12 @@ async function finalizePaidOrder(orderId) {
   }
 
   if(finalized.afterPaid)signalPaidClubSaleQueued();
-  // Commit the paid state BEFORE waiting on Telegram, email or bonus services.
-  // A slow notification must never keep the buyer on "Подтверждаем оплату".
-  try {
-    recordCustomerOrder(
-      finalized.order.customer_phone, finalized.order.customer_name, finalized.order.customer_lname,
-      finalized.order.total, finalized.order.customer_email, finalized.order.referral_code,
-      finalized.order.bones_used, !!finalized.order.is_partner_self_order
-    );
-  } catch (error) {
-    console.error('[paid-order] Не удалось обновить профиль покупателя:', error.message);
-  }
+  // All durable accounting has committed. External notifications still run
+  // outside the payment transaction and never delay the checkout response.
   setImmediate(() => {
+    for(const notify of afterCommit){
+      try{notify();}catch(error){console.warn('[paid-order] Referral notification:',error.message);}
+    }
     runPaidOrderSideEffects(finalized.order, finalized.items).catch((error) =>
       console.error('[paid-order] Ошибка фоновых уведомлений:', error.message));
   });

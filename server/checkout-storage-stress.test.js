@@ -271,7 +271,18 @@ test('checkout completes while unrelated persistent file operations take 5s, 10s
       const run=(async()=>{
         await entered;
         const body=orderBody(s.p);faults.set(body.orderId,s.fault);
-        const first=await post(body);
+        // A real brief DELETE-journal reader lock can coincide with the
+        // synthetic file delay. Retry only the explicit pre-reservation
+        // busy response; prove no order or provider operation was created.
+        const first=await untilResponse(async()=>{
+          const result=await post(body);
+          if(result.status===503&&result.body.code==='CHECKOUT_STORAGE_BUSY'){
+            assert.equal(orderCount(body),0);
+            assert.equal(postCalls.filter(call=>call.code===body.orderId).length,0);
+            assert.deepEqual(quantities(s.p),[20,20]);
+          }else assert.equal(result.status,202,JSON.stringify(result));
+          return result;
+        },r=>r.status===202&&r.body.status==='initializing');
         assert.equal(first.status,202,JSON.stringify(first));
         checkReserved(s.p,body);
         assert.equal(validateFirstPurchasePromo('HV15',body.customerPhone,s.p.id).valid,false,'unsettled claim held');
@@ -377,6 +388,28 @@ test('real SQLite writer lock for 20s: no partial order, no duplicate charge, ve
     if(!released)await lock.worker.terminate().catch(()=>{});
     await lock.done.catch(()=>{});
   }
+});
+
+test('customer accounting failure rolls back paid transition and retry records it exactly once',async()=>{
+  const p=point('stress-customer-atomic'),body=orderBody(p);
+  await untilResponse(()=>post(body),r=>[200,201].includes(r.status)&&!!r.body.payment_id);
+  const phone=body.customerPhone.replace(/\D/g,'');
+  providerStatus(body.orderId,'succeeded');
+  // Simulate failure at the customer write after reservation consumption.
+  // No timing or race is required to exercise the former loss window.
+  db.exec("CREATE TEMP TRIGGER fail_customer_accounting BEFORE INSERT ON customers WHEN NEW.phone='"+phone+"' BEGIN SELECT RAISE(ABORT,'test customer accounting failure'); END;");
+  try{
+    const status=await poll(body);
+    assert.equal(status.status,200);
+    assert.equal(status.body.paid,false);
+    checkReserved(p,body);
+    assert.equal(db.prepare('SELECT id FROM customers WHERE phone=?').get(phone),undefined);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM partner_club_sale_jobs WHERE order_id=?').get(order(body).id).n,0);
+  }finally{db.exec('DROP TRIGGER fail_customer_accounting');}
+  await settlePaid(body);
+  checkPaid(p,body);
+  await settlePaid(body);
+  checkPaid(p,body);
 });
 
 test('paid checkout survives stopped Club worker and produces one moderated draft after storage recovers',{timeout:12000},async()=>{
