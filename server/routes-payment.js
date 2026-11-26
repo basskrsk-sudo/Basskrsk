@@ -63,13 +63,6 @@ function releaseFailedOrderAndAlert(orderId, reason) {
 // точки. С действительным промокодом первой покупки комиссия равна 0;
 // без него применяется обычная ставка. Косточки всегда отключены.
 
-// Оплаченный демо-заказ опасен как неявный запасной сценарий: отсутствие или
-// опечатка в ключах ЮKassa не должны превращать неоплаченный заказ в продажу.
-// Тестовый режим включается только явно и только точным значением true.
-function isDemoModeEnabled() {
-  return process.env.DEMO_MODE === 'true';
-}
-
 function paymentReturnUrl(req, orderCode, requestedPath) {
   const configuredBase = String(process.env.PUBLIC_URL || '').trim().replace(/\/$/, '');
   // Быстрая покупка по товарному QR должна вернуться на тот же товар и ту же
@@ -213,7 +206,7 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
   });
 }
 
-async function runPaidOrderSideEffects(order, items, demo = false) {
+async function runPaidOrderSideEffects(order, items) {
   if (order.point_id) {
     try {
       await checkAndPayManagerBonus(order.point_id);
@@ -226,17 +219,16 @@ async function runPaidOrderSideEffects(order, items, demo = false) {
   } catch (e) {
     console.error('[paid-order] checkPartnerTierForOrder упал:', e);
   }
-  const prefix = demo ? '🧪 <b>ДЕМО-РЕЖИМ</b>\n\n' : '';
   // Служебный чат, email и три персональных Telegram-уведомления независимы:
   // сбой одного канала не отменяет оплаченную продажу и не блокирует другие.
   const notificationResults = await Promise.allSettled([
-    sendTelegram(prefix + buildOrderMessage(order, items)),
+    sendTelegram(buildOrderMessage(order, items)),
     sendEmail({
-      subject: (demo ? 'Новый заказ (демо) ' : 'Новый заказ ') + order.order_code,
-      text: (demo ? '[ДЕМО-РЕЖИМ]\n\n' : '') + buildOrderMessage(order, items).replace(/<\/?b>/g, ''),
+      subject: 'Новый заказ ' + order.order_code,
+      text: buildOrderMessage(order, items).replace(/<\/?b>/g, ''),
     }),
     sendPaidOrderNotifications(order, items),
-    sendSuperadminSaleProfit(db, order, {demo}),
+    sendSuperadminSaleProfit(db, order),
   ]);
   ['служебный Telegram', 'email', 'персональный Telegram', 'личный расчёт суперадмину'].forEach((channel, index) => {
     const result = notificationResults[index];
@@ -249,13 +241,13 @@ async function runPaidOrderSideEffects(order, items, demo = false) {
 // Идемпотентно завершает оплаченный заказ. Для pending-заказов, созданных до
 // появления резервов, оставлен прежний путь списания — обновление не ломает
 // платёж, который уже был открыт в браузере на момент деплоя.
-async function finalizePaidOrder(orderId, demo = false) {
+async function finalizePaidOrder(orderId) {
   const before = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!before || before.status === 'paid') return false;
 
   let finalized;
   if (before.reservation_status === 'active') {
-    finalized = consumeOrderReservation(before.id,{onPaid:order=>enqueuePaidClubSale(order,demo)});
+    finalized = consumeOrderReservation(before.id,{onPaid:order=>enqueuePaidClubSale(order)});
     if (!finalized.consumed) return false;
   } else if (before.reservation_status === 'none') {
     finalized = withImmediateTransaction(() => {
@@ -277,7 +269,7 @@ async function finalizePaidOrder(orderId, demo = false) {
         consumed: true,
         order: paidOrder,
         items,
-        afterPaid:enqueuePaidClubSale(paidOrder,demo),
+        afterPaid:enqueuePaidClubSale(paidOrder),
       };
     });
     if (!finalized.consumed) return false;
@@ -299,7 +291,7 @@ async function finalizePaidOrder(orderId, demo = false) {
     console.error('[paid-order] Не удалось обновить профиль покупателя:', error.message);
   }
   setImmediate(() => {
-    runPaidOrderSideEffects(finalized.order, finalized.items, demo).catch((error) =>
+    runPaidOrderSideEffects(finalized.order, finalized.items).catch((error) =>
       console.error('[paid-order] Ошибка фоновых уведомлений:', error.message));
   });
   return true;
@@ -683,8 +675,8 @@ function registerPaymentRoutes(router) {
     const adjustedDeliveryFee = authoritativeDeliveryFee - (bonesToDeduct - bonesAgainstGoods);
     const authoritativeReceiptItems = buildReceiptItems(pricedCart.items, adjustedGoodsTotal, adjustedDeliveryFee);
 
-    if (!yookassa.isConfigured() && !isDemoModeEnabled()) {
-      console.error(`[create-payment] Заказ ${orderId}: оплата заблокирована — ЮKassa не настроена, DEMO_MODE выключен`);
+    if (!yookassa.isConfigured()) {
+      console.error(`[create-payment] Заказ ${orderId}: оплата заблокирована — ЮKassa не настроена`);
       return sendJson(res, 503, {
         error: 'Оплата временно недоступна. Мы уже занимаемся настройкой — попробуйте позже.',
         code: 'PAYMENT_NOT_CONFIGURED',
@@ -743,15 +735,6 @@ function registerPaymentRoutes(router) {
     // separately, without continuous fast polling on an empty queue.
     wakeUnpaidOrderAlertScheduler();
     reservationCleanupScheduler.wake();
-
-    if (!yookassa.isConfigured() && isDemoModeEnabled()) {
-      // Явный тестовый режим проходит через ту же атомарную логику резерва,
-      // после чего сразу превращает резерв в оплаченное списание.
-      await finalizePaidOrder(orderRowId, true);
-      return sendJson(res, 200, { demo: true, order_id: orderRowId,
-        display_number: paymentSummary?.display_number,
-        is_partner_self_order: isSelfOrder });
-    }
 
     try {
       console.log(`[create-payment] Заказ ${orderId}: начинаем создание платежа в ЮKassa на ${authoritativeAmount} ₽`);

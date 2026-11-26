@@ -64,11 +64,6 @@ renameColumnIfNeeded('points', 'ambassador_id', 'manager_id');
 renameColumnIfNeeded('points', 'ambassador_code', 'manager_code');
 renameColumnIfNeeded('restock_requests', 'ambassador_id', 'manager_id');
 
-// Викторина теперь награждает косточками вместо промокода со скидкой —
-// переименовываем колонку под новый смысл (на новых базах CREATE TABLE ниже
-// уже создаст её сразу с правильным именем, это только для уже развёрнутых).
-renameColumnIfNeeded('quiz_prizes', 'discount_percent', 'bones_awarded');
-
 // Строковые значения-данные в уже существующих строках (не только имена колонок/таблиц) —
 // старые заявки/новости/токены могли быть сохранены со значением роли 'ambassador'.
 if (tableExists('restock_requests')) {
@@ -541,50 +536,6 @@ CREATE TABLE IF NOT EXISTS telegram_login_tokens (
 
 -- ── ВХОД В ЛИЧНЫЙ КАБИНЕТ ЧЕРЕЗ MAX ────────────────────────────────
 -- То же самое, что и для Telegram, но для мессенджера MAX.
--- Исторические таблицы игровых призов (викторина и шахматы) сохраняются для аудита.
--- Маршруты игр отключены, новые награды не начисляются. Существующие бонусы не аннулируются.
--- ── ПРИЗЫ ИЗ ВИКТОРИНЫ О СОБАКАХ ─────────────────────────────────────
--- Не даём выбивать призы чаще раза в сутки на один номер телефона.
-CREATE TABLE IF NOT EXISTS quiz_prizes (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  phone       TEXT NOT NULL,
-  correct_count INTEGER NOT NULL,
-  bones_awarded INTEGER NOT NULL,
-  promo_code  TEXT NOT NULL DEFAULT '', -- legacy, больше не используется (раньше приз был промокодом)
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
--- Рейтинг игроков — фиксируем КАЖДУЮ попытку (не только выигрышную, как
--- quiz_prizes выше), иначе рейтинг был бы нечестным и не показывал бы
--- реальный лучший результат тех, кто пока не набрал приз.
-CREATE TABLE IF NOT EXISTS quiz_attempts (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  phone       TEXT NOT NULL,
-  correct_count INTEGER NOT NULL,
-  total_questions INTEGER NOT NULL,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
--- Призы за победу в шахматах — начисляются только за УЛУЧШЕНИЕ результата
--- в течение недели (см. routes-chess.js), поэтому здесь не каждая победа,
--- а только те, что подняли лучший результат недели.
-CREATE TABLE IF NOT EXISTS chess_prizes (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  phone       TEXT NOT NULL,
-  difficulty  TEXT NOT NULL,
-  bones_awarded INTEGER NOT NULL,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
--- КАЖДАЯ победа в шахматах (не только те, что дали доплату косточками) —
--- для рейтинга лучших игроков, аналогично quiz_attempts у викторины.
-CREATE TABLE IF NOT EXISTS chess_wins (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  phone       TEXT NOT NULL,
-  difficulty  TEXT NOT NULL,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
 CREATE TABLE IF NOT EXISTS max_login_tokens (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   token       TEXT UNIQUE NOT NULL,
@@ -594,15 +545,6 @@ CREATE TABLE IF NOT EXISTS max_login_tokens (
   chat_id     TEXT,
   verified    INTEGER NOT NULL DEFAULT 0,
   expires_at  TEXT NOT NULL,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS sms_login_codes (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  phone       TEXT NOT NULL,
-  code        TEXT NOT NULL,
-  expires_at  TEXT NOT NULL,
-  used        INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

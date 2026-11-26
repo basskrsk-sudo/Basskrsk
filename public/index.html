@@ -6285,15 +6285,6 @@ async function launchYooKassaPaymentImpl() {
       confirmation_mode: confirmationMode,
     });
 
-    if (data.demo === true) {
-      if(androidHosted)window.HvostAndroidPayment.clear(orderId);
-      // Явный тестовый режим сервера (DEMO_MODE=true). В обычной среде без
-      // настроенной ЮKassa этот ответ никогда не возвращается.
-      isCurrentOrderSelfOrder = !!data.is_partner_self_order;
-      payBtn.disabled = false; payBtn.innerHTML = originalBtnHtml;
-      simulatePaymentSuccess(orderId, name, lname, phone, pickup, total, comment);
-      return;
-    }
     if(androidHosted){window.HvostAndroidPayment.go(orderId);return;}
     if (!data.confirmation_token) {
       if (confirmationMode === 'redirect' && data.confirmation_url) {
@@ -6530,42 +6521,6 @@ async function handleRedirectPaymentReturn() {
   }
 }
 
-function simulatePaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment) {
-  closeModal();
-
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;display:flex;align-items:center;justify-content:center;padding:1rem;';
-
-  const box = document.createElement('div');
-  box.style.cssText = 'background:#fff;border-radius:16px;padding:2.5rem 2rem;max-width:340px;width:100%;text-align:center;';
-
-  const spinner = document.createElement('div');
-  spinner.style.cssText = 'width:48px;height:48px;border:3px solid #FFF3D2;border-top-color:#0D5C46;border-radius:50%;margin:0 auto 1.25rem;animation:spin .8s linear infinite;';
-
-  const styleEl = document.createElement('style');
-  styleEl.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
-  document.head.appendChild(styleEl);
-
-  const title = document.createElement('div');
-  title.style.cssText = 'font-weight:700;font-size:1.05rem;color:#0A4A38;margin-bottom:.4rem;';
-  title.textContent = 'Обрабатываем оплату...';
-
-  const sub = document.createElement('div');
-  sub.style.cssText = 'font-size:.85rem;color:#8A7D6B;';
-  sub.textContent = 'Не закрывайте страницу';
-
-  box.appendChild(spinner);
-  box.appendChild(title);
-  box.appendChild(sub);
-  overlay.appendChild(box);
-  document.body.appendChild(overlay);
-
-  setTimeout(function() {
-    document.body.removeChild(overlay);
-    onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment);
-  }, 2000);
-}
-
 function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment) {
   // Экран результата расположен за модальным окном оплаты. Обязательно
   // закрываем модальное окно, иначе подтверждение будет отрисовано, но клиент
@@ -6579,9 +6534,7 @@ function onPaymentSuccess(orderId, name, lname, phone, pickup, subtotal, comment
   if (checkoutOrigin === 'repeat_order') {
     trackGoalOnce('repeat_order_completed', orderId, { scenario: 'catalog', order_id: orderId });
   }
-  // Уведомление о продаже в Telegram теперь отправляется СЕРВЕРОМ — в явно
-  // включённом демо-режиме или после вебхука ЮKassa (см. routes-payment.js).
-  // Раньше клиент тоже слал уведомление сам — это дублировало сообщения, убрано.
+  // Уведомления отправляются сервером после подтверждения оплаты ЮKassa.
 
   const paidFulfillmentType = fulfillmentType;
   const paidPointId = paidFulfillmentType === 'home_delivery' ? '' : document.getElementById('oPickupSelect').value;
