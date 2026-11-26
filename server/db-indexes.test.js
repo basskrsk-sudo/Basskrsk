@@ -63,3 +63,23 @@ test('expired reservation cleanup reads bounded ID pages, without client data',(
   assert.ok(explain.some(step=>String(step.detail).includes('idx_orders_pending_reservation_cleanup')),
     'The paged cleanup must use the partial ID index');
 });
+
+test('unforced payout lookups use recipient, rate and ledger-item indexes',()=>{
+  const cases=[
+    ['idx_orders_partner_status_created',`SELECT o.id,o.total,o.created_at
+      FROM orders o JOIN partners p ON p.id=o.partner_id
+      LEFT JOIN partner_payout_items pi ON pi.order_id=o.id
+      WHERE o.partner_id=? AND o.status='paid' AND pi.id IS NULL
+      ORDER BY o.created_at,o.id`,[1]],
+    ['idx_manager_points_rate_lookup',`SELECT mp.commission_rate FROM manager_points mp
+      WHERE mp.point_id=? AND mp.manager_id=? ORDER BY mp.active DESC,mp.id DESC LIMIT 1`,['point',1]],
+    ['idx_points_manager','SELECT id FROM points WHERE manager_id=? ORDER BY id',[1]],
+    ...['partner_payout_items','owner_payout_items','manager_commission_payout_items']
+      .map(table=>['idx_'+table+'_payout','SELECT * FROM '+table+' WHERE payout_id=? ORDER BY id',[1]])
+  ];
+  for(const [index,sql,params] of cases){
+    const plan=db.prepare('EXPLAIN QUERY PLAN '+sql).all(...params);
+    assert.ok(plan.some(row=>row.detail.includes(index)),JSON.stringify({index,plan}));
+    assert.ok(!plan.some(row=>row.detail.includes('USE TEMP B-TREE')),JSON.stringify(plan));
+  }
+});
