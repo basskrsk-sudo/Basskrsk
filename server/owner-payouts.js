@@ -7,23 +7,10 @@ const db = require('./db');
 const {netOrder,isPayable,planCommission,verifyPlan,recordOffsets}=require('./commission-refunds');
 const { snapshotPayout } = require('./payout-reports');
 const {parseActualPayoutMethod}=require('./payout-methods');
+const {unpaidOrderQuery}=require('./payout-read-batches');
 
 function getOwnerUnpaidOrders(ownerId) {
-  return db.prepare(`
-    SELECT
-      o.id,
-      o.order_code,
-      o.total, o.refund_status, o.refunded_amount,
-      o.created_at,
-      so.commission_rate
-    FROM salon_owners so
-    JOIN orders o ON o.point_id = so.point_id
-    LEFT JOIN owner_payout_items opi ON opi.order_id = o.id
-    WHERE so.id = ?
-      AND o.status = 'paid'
-      AND opi.id IS NULL
-    ORDER BY o.created_at, o.id
-  `).all(ownerId).map(netOrder);
+  return db.prepare(unpaidOrderQuery('owner')).all(ownerId).map(netOrder);
 }
 
 function getOwnerUnpaidSummary(ownerId) {

@@ -14,37 +14,66 @@ function initializeBonusLedger(db) {
   }
 }
 
-function getBonuses(db, role, recipientId) {
-  const manager = role === 'manager';
-  const field = role === 'owner' ? 'referred_owner' : 'referred_groomer';
-  const where = manager ? 'mp.manager_id' : `mp.${field}_id`;
-  const amount = manager ? 'COALESCE(mp.bonus_manager_amount, 2000)' : `mp.${field}_amount`;
-  const accruedAt = manager ? 'mp.bonus_accrued_at' : 'COALESCE(mp.referral_bonus_accrued_at,mp.bonus_accrued_at)';
-  const paidTable = manager ? 'manager_launch_bonus_payouts' : 'referral_bonus_payouts';
-  const paidCondition = manager ? '' : ' AND bp.role = ?';
-  const pending = db.prepare(`SELECT mp.id AS manager_point_id, mp.point_id, mp.point_name,
+// Keep financial rules shared with the individual bonus ledger.
+function bonusColumns(role){
+  const manager=role==='manager';
+  if(!manager&&role!=='owner'&&role!=='partner')throw Error('Invalid payout role');
+  const field=role==='owner'?'referred_owner':'referred_groomer';
+  return {manager,where:manager?'mp.manager_id':`mp.${field}_id`,
+    amount:manager?'COALESCE(mp.bonus_manager_amount, 2000)':`mp.${field}_amount`,
+    accruedAt:manager?'mp.bonus_accrued_at':'COALESCE(mp.referral_bonus_accrued_at,mp.bonus_accrued_at)',
+    paidTable:manager?'manager_launch_bonus_payouts':'referral_bonus_payouts',
+    paidCondition:manager?'':' AND bp.role = ?'};
+}
+function pendingBonusRows(db,role,ids,grouped){
+  const {manager,where,amount,accruedAt,paidTable,paidCondition}=bonusColumns(role);
+  const predicate=grouped?' IN ('+ids.map(()=>'?').join(',')+')':' = ?';
+  return db.prepare(`SELECT ${grouped?where+' AS recipient_id, ':''}mp.id AS manager_point_id, mp.point_id, mp.point_name,
     ${amount} AS amount, ${accruedAt} AS accrued_at
     FROM manager_points mp LEFT JOIN ${paidTable} bp ON bp.manager_point_id = mp.id${paidCondition}
-    WHERE ${where} = ? AND ${manager ? 'mp.bonus_paid = 1' : `${amount} > 0`} AND bp.id IS NULL AND ${amount} > 0
-    ORDER BY mp.id`).all(...(manager ? [recipientId] : [role, recipientId]));
-  // An accrued referral can become temporarily unpayable after a refund.
-  // Do not remove the historic accrual; separate it from payable balances.
-  const held = [];
-  const payable = [];
-  if (role === 'partner' || role === 'owner') {
-    const { computeReferralRevenue, REFERRAL_REVENUE_THRESHOLD } = require('./referral-policy');
-    for (const item of pending) {
-      if (item.point_id && computeReferralRevenue(db,item.point_id)<REFERRAL_REVENUE_THRESHOLD)
-        held.push({...item, reason:'После возвратов выручка ниже 1 000 ₽'});
-      else payable.push(item);
+    WHERE ${where}${predicate} AND ${manager ? 'mp.bonus_paid = 1' : `${amount} > 0`} AND bp.id IS NULL AND ${amount} > 0
+    ORDER BY ${grouped?where+', ':''}mp.id`).all(...(manager?ids:[role,...ids]));
+}
+function splitPendingBonuses(role,rows,revenueForPoint){
+  const held=[],pending=[];
+  const {REFERRAL_REVENUE_THRESHOLD}=require('./referral-policy');
+  for(const item of rows){
+    if(role!=='manager'&&item.point_id&&revenueForPoint(item.point_id)<REFERRAL_REVENUE_THRESHOLD)
+      held.push({...item,reason:'После возвратов выручка ниже 1 000 ₽'});
+    else pending.push(item);
+  }
+  return {pending,held};
+}
+function getPendingBonusesBatch(db,role,ids){
+  const {checkedRecipientIds,RECIPIENT_BATCH_SIZE,placeholders}=require('./payout-read-batches');
+  ids=checkedRecipientIds(ids);
+  const grouped=new Map(ids.map(id=>[id,[]]));
+  if(!ids.length)return grouped;
+  const rows=pendingBonusRows(db,role,ids,true);
+  for(const {recipient_id,...item} of rows)grouped.get(Number(recipient_id)).push(item);
+  const revenue=new Map();
+  if(role!=='manager'){
+    const {NET_PAID_REVENUE_SQL}=require('./net-paid-revenue');
+    const points=[...new Set(rows.map(row=>row.point_id).filter(Boolean))];
+    for(let offset=0;offset<points.length;offset+=RECIPIENT_BATCH_SIZE){
+      const batch=points.slice(offset,offset+RECIPIENT_BATCH_SIZE);
+      const totals=db.prepare(`SELECT point_id,COALESCE(SUM(${NET_PAID_REVENUE_SQL}),0) AS revenue FROM orders
+        WHERE status='paid' AND point_id IN (${placeholders(batch)}) GROUP BY point_id`).all(...batch);
+      for(const row of totals)revenue.set(row.point_id,Number(row.revenue||0));
     }
-  } else payable.push(...pending);
+  }
+  return new Map([...grouped].map(([id,items])=>[id,splitPendingBonuses(role,items,point=>revenue.get(point)||0).pending]));
+}
+function getBonuses(db, role, recipientId) {
+  const {manager,accruedAt,paidTable}=bonusColumns(role);
+  const {computeReferralRevenue}=require('./referral-policy');
+  const {pending,held}=splitPendingBonuses(role,pendingBonusRows(db,role,[recipientId],false),point=>computeReferralRevenue(db,point));
   const paid = db.prepare(`SELECT bp.*, ${accruedAt} AS accrued_at
     FROM ${paidTable} bp LEFT JOIN manager_points mp ON mp.id = bp.manager_point_id
     WHERE ${manager ? 'bp.manager_id = ?' : 'bp.role = ? AND bp.recipient_id = ?'} ORDER BY bp.paid_at, bp.id`)
     .all(...(manager ? [recipientId] : [role, recipientId]));
   return {
-    pending: payable,
+    pending,
     held,
     paid: paid.map(b => ({ ...b, payout_id: b.id, already_paid: true })),
   };
@@ -94,4 +123,4 @@ function createReferralBonusPayout(db, role, managerPointId, recipientId, expect
   } catch(error) { try {if(!options.inTransaction) db.exec('ROLLBACK');} catch(_) {} throw error; }
 }
 
-module.exports = { initializeBonusLedger, getBonuses, periodBonuses, createReferralBonusPayout };
+module.exports = { initializeBonusLedger, getBonuses, getPendingBonusesBatch, periodBonuses, createReferralBonusPayout };
