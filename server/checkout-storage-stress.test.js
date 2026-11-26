@@ -20,7 +20,6 @@ process.env.TOKEN_SECRET='checkout-stress-isolated';
 process.env.PUBLIC_URL='https://checkout-stress.invalid';
 process.env.YOOKASSA_SHOP_ID='isolated-fake-shop';
 process.env.YOOKASSA_SECRET_KEY='isolated-fake-secret';
-process.env.DEMO_MODE='false';
 delete process.env.TG_TOKEN;
 delete process.env.MAX_BOT_TOKEN;
 const originalFetch=global.fetch;
@@ -205,6 +204,29 @@ async function settlePaid(body){
   assert.equal(verified.body.items.length,2);
   assert.equal((await untilResponse(()=>post(body),r=>r.status===200&&r.body.paid===true)).body.paid,true);
 }
+
+test('a legacy demo flag cannot turn a missing YooKassa configuration into a paid order',async()=>{
+  const gateway=require('./yookassa');
+  const original=gateway.isConfigured;
+  const previous=process.env.DEMO_MODE;
+  const p=point('no-gateway-demo-flag'),body=orderBody(p);
+  const before=quantities(p),calls=postCalls.length;
+  try {
+    process.env.DEMO_MODE='true';
+    gateway.isConfigured=()=>false;
+    const result=await post(body);
+    assert.equal(result.status,503);
+    assert.equal(result.body.code,'PAYMENT_NOT_CONFIGURED');
+    assert.equal(orderCount(body),0);
+    assert.deepEqual(quantities(p),before);
+    assert.equal(postCalls.length,calls);
+    assert.equal(validateFirstPurchasePromo('HV15',body.customerPhone,p.id).valid,true);
+  } finally {
+    gateway.isConfigured=original;
+    if(previous===undefined)delete process.env.DEMO_MODE;
+    else process.env.DEMO_MODE=previous;
+  }
+});
 
 test('checkout completes while unrelated persistent file operations take 5s, 10s and 20s',{timeout:70000},async()=>{
   const scenarios=[

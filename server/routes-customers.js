@@ -177,6 +177,8 @@ function registerCustomerRoutes(router) {
       db.prepare('UPDATE customers SET referred_by_customer_id = NULL WHERE referred_by_customer_id = ?').run(customerId);
       deletePhoneRows('telegram_login_tokens', true);
       deletePhoneRows('max_login_tokens', false);
+      // Historical tables may still exist in upgraded databases; never recreate
+      // them, but honor existing customer-data deletion rules.
       deletePhoneRows('sms_login_codes', false);
       deletePhoneRows('quiz_prizes', false);
       deletePhoneRows('quiz_attempts', false);

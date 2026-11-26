@@ -1399,17 +1399,6 @@ async function processUpdate(update) {
       return;
     }
   }
-  // Retired pilot: acknowledge old Telegram commands cached by the client,
-  // but do not fetch sources, schedule jobs, or access news subscriber tables.
-  if (msg.chat.type === 'private' &&
-      /^\/news(?:_(?:refresh|sources|status|on|off|topics|topic))?(?:@\w+)?(?:\s|$)/i.test(text)) {
-    if (String(msg.from?.id) !== String(msg.chat.id)) {
-      await replyToChat(msg.chat.id, '🔒 Команда доступна только владельцу личного чата.');
-    } else {
-      await replyToChat(msg.chat.id, '📰 Сборщик новостей зоовендинга временно отключён. Обычные объявления ХвостМаркета продолжают работать.');
-    }
-    return;
-  }
   // Hidden diagnostics for an actively linked administrator: resync the
   // Telegram command menu without changing permissions or touching CRM data.
   if (msg.chat.type === 'private' && /^\/syncmenu(?:@\w+)?$/i.test(text)) {

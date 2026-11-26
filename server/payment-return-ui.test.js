@@ -8,7 +8,10 @@ const vm = require('node:vm');
 
 function source(file, start, end) {
   const text = fs.readFileSync(path.join(__dirname, '../public', file), 'utf8');
-  return text.slice(text.indexOf(start), text.indexOf(end, text.indexOf(start)));
+  const from = text.indexOf(start);
+  const to = text.indexOf(end, from + start.length);
+  assert.ok(from >= 0 && to > from, 'Test source boundaries must exist: ' + start + ' — ' + end);
+  return text.slice(from, to);
 }
 
 function catalogContext(status) {
@@ -34,7 +37,7 @@ function catalogContext(status) {
   vm.createContext(context);
   vm.runInContext(source('index.html', 'async function fetchWithTimeout(', '\nasync function sendTelegram('), context);
   vm.runInContext(source('index.html', 'async function checkConfirmedPayment(', '\nfunction successItemsFromCart('), context);
-  vm.runInContext(source('index.html', 'async function handleRedirectPaymentReturn()', '\nfunction simulatePaymentSuccess('), context);
+  vm.runInContext(source('index.html', 'async function handleRedirectPaymentReturn()', '\nfunction onPaymentSuccess('), context);
   return { context, elements, pages };
 }
 

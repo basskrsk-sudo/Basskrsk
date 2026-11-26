@@ -38,9 +38,26 @@ test('games API is no longer registered; existing customer rewards and ledger ar
   assert.match(rewards, /function awardBones\(/);
   assert.match(rewards, /function spendBones\(/);
   assert.match(rewards, /bone_transactions/);
-  assert.match(read('server/db.js'), /CREATE TABLE IF NOT EXISTS quiz_prizes/);
-  assert.match(read('server/db.js'), /CREATE TABLE IF NOT EXISTS chess_wins/);
+  const schema = read('server/db.js');
+  assert.doesNotMatch(schema, /CREATE TABLE IF NOT EXISTS (?:quiz_prizes|quiz_attempts|chess_prizes|chess_wins|sms_login_codes)\b/);
+  assert.doesNotMatch(schema, /renameColumnIfNeeded\('quiz_prizes'/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS bone_transactions/);
+  assert.match(schema, /bones_balance/);
+  assert.equal(fs.existsSync(path.join(root,'server/sms.js')),false);
+  // Existing historical records are preserved in upgraded databases.
+  assert.doesNotMatch(schema, /DROP TABLE(?: IF EXISTS)? (?:quiz_|chess_|sms_login_codes)/i);
+  assert.match(read('server/routes-customers.js'), /deletePhoneRows\('quiz_prizes', false\)/);
   assert.doesNotMatch(read('server/settings.js'), /quiz_tier\d|chess_win_bones|quiz_bones_balance_cap/);
   assert.equal(fs.existsSync(path.join(root,'server/routes-quiz.js')),false);
   assert.equal(fs.existsSync(path.join(root,'server/routes-chess.js')),false);
+});
+
+
+test('production checkout never simulates payment in the browser or server', () => {
+  const payment = read('server/routes-payment.js');
+  assert.doesNotMatch(payment, /DEMO_MODE|isDemoModeEnabled|demo:\s*true|finalizePaidOrder\([^\n]*,\s*true\)/);
+  assert.match(payment, /if \(!yookassa\.isConfigured\(\)\) \{[\s\S]*?code: 'PAYMENT_NOT_CONFIGURED'/);
+  const store = read('public/index.html');
+  assert.doesNotMatch(store, /simulatePaymentSuccess|data\.demo/);
+  assert.match(store, /function onPaymentSuccess\(/);
 });

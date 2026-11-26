@@ -13,7 +13,7 @@ test('pet news pilot, worker, sources and cron code are removed',()=>{
   ])assert.equal(fs.existsSync(path.join(root,file)),false,file);
   const bot=read('server/telegram-login-poller.js');
   assert.doesNotMatch(bot,/createPetNewsService|petNewsService|pet-news-digest|command: 'news/);
-  assert.match(bot,/Сборщик новостей зоовендинга временно отключён/);
+  assert.doesNotMatch(bot,/Сборщик новостей зоовендинга временно отключён|news\(\?:_\(\?:refresh/);
   const monitor=read('server/site-health.js');
   assert.doesNotMatch(monitor,/newsCollectorSnapshot|news_collector|pet_news_meta/);
   const ci=read('.github/workflows/miniapp-checks.yml');
