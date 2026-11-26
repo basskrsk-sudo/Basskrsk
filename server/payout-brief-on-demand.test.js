@@ -266,3 +266,99 @@ test('administrator can explicitly confirm a different actual method for a combi
  const count=counts();assert.match(act(id,'confirm-sbp').message,/уже зафиксирована/);assert.deepEqual(counts(),count);
 });
 test.after(()=>{try{db.close();}catch(_){}fs.rmSync(process.env.DATA_DIR,{recursive:true,force:true});});
+
+
+// Reference implementation frozen from the former report grouping. Compare
+// full group contents and warning order, not merely the totals.
+function legacyGroups(entries){
+  const {sameRecipient,clean}=require('./payout-brief');
+  const people=[];
+  for(const entry of entries){
+    const matches=people.filter(person=>person.accounts.some(other=>sameRecipient(other,entry.account)));
+    if(!matches.length){
+      people.push({name:clean(entry.account.full_name),accounts:[entry.account],statements:[entry.statement]});
+      continue;
+    }
+    const primary=matches[0];
+    primary.accounts.push(entry.account);primary.statements.push(entry.statement);
+    for(const extra of matches.slice(1)){
+      primary.accounts.push(...extra.accounts);primary.statements.push(...extra.statements);
+      people.splice(people.indexOf(extra),1);
+    }
+  }
+  return people;
+}
+function legacyWarnings(entries){
+  const {sameRecipient,clean}=require('./payout-brief');
+  const norm=value=>clean(value,200).toLowerCase().replace(/ё/g,'е')
+    .replace(/[^\p{L}\p{N} ]/gu,'').split(/\s+/).filter(Boolean).sort().join('|');
+  const labels=[];
+  for(let i=0;i<entries.length;i++)for(let j=i+1;j<entries.length;j++){
+    const a=entries[i].account,b=entries[j].account;
+    if(a.role===b.role)continue;
+    if(norm(a.full_name)===norm(b.full_name)&&!sameRecipient(a,b)){
+      const label=clean(a.full_name,60);
+      if(!labels.includes(label))labels.push(label);
+    }
+  }
+  return labels;
+}
+test('indexed identity candidates preserve exact legacy grouping, bridging and warning order',()=>{
+  const {groupRecipientEntries,identitiesToVerify}=require('./payout-brief');
+  const roles=['partner','owner','manager'];
+  function make(id,role,full_name,phone,telegram_chat_id,inn){
+    return {account:{id,role,full_name,phone,telegram_chat_id,inn},statement:{...statement(role,id+1),account_id:id}};
+  }
+  const bridge=[
+    make(1,'partner','Иван Иванов','+7 (999) 111-22-33',null,null),
+    make(2,'owner','Другое имя',null,'7771234',null),
+    make(3,'manager','Иванов Иван','89991112233','7771234',null),
+    make(4,'owner','Иван Иванов','79990000001',null,null),
+    make(5,'partner','Другое имя','79990000001',null,null),
+    make(6,'manager','Иван Иванов',null,null,'123456789012'),
+    make(7,'owner','Иванов Иван Петрович',null,null,'123456789012'),
+    make(8,'partner','',null,null,null),
+    make(9,'owner','',null,null,null),
+    make(10,'manager','Иван Иванов',null,'invalid','invalid'),
+  ];
+  const groups=groupRecipientEntries(bridge);
+  assert.deepEqual(groups,legacyGroups(bridge));
+  assert.deepEqual(groups[0].accounts.map(a=>a.id),[1,3,2]);
+  assert.deepEqual(identitiesToVerify(bridge),legacyWarnings(bridge));
+  let seed=113;
+  function next(n){seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed%n;}
+  const names=['Иван Иванов','Иванов Иван','Иван','Иван Иван','Иван Иванов Петрович','Пётр Сидоров','Петр Сидоров','','Анна Петрова'];
+  for(let run=0;run<20;run++){
+    const entries=Array.from({length:90},(_,i)=>make(i+1,roles[next(3)],names[next(names.length)],
+      [null,'+7 999 111 22 33','89991112233','79990000001','x'][next(5)],
+      [null,'7771234','7771235','bad'][next(4)],
+      [null,'123456789012','1234567890','bad'][next(4)]));
+    assert.deepEqual(groupRecipientEntries(entries),legacyGroups(entries));
+    assert.deepEqual(identitiesToVerify(entries),legacyWarnings(entries));
+  }
+});
+test('large recipient directory avoids all-pairs matching without changing report identity',()=>{
+  const {groupRecipientEntries,identitiesToVerify}=require('./payout-brief');
+  const {performance}=require('node:perf_hooks');
+  const entries=Array.from({length:1000},(_,i)=>{
+    const role=['partner','owner','manager'][i%3];
+    return {account:{id:i+1,role,full_name:'Получатель '+i,phone:String(79000000000+i)},
+      statement:{...statement(role,100),account_id:i+1}};
+  });
+  let t=performance.now();
+  const before=legacyGroups(entries),warnings=legacyWarnings(entries);
+  const previous=performance.now()-t;
+  t=performance.now();
+  const after=groupRecipientEntries(entries),nextWarnings=identitiesToVerify(entries);
+  const current=performance.now()-t;
+  assert.deepEqual(after,before);assert.deepEqual(nextWarnings,warnings);
+  assert.equal(after.length,1000);
+  console.log('[payout-identities] 1000 recipients: old='+previous.toFixed(2)+'ms indexed='+current.toFixed(2)+'ms');
+});
+test('very long all-time periods do not spread timestamps into function arguments',()=>{
+  const {personPeriod}=require('./payout-brief');
+  const sales=Array(150000).fill({created_at:'2026-10-01 07:00:00'});
+  sales.push({created_at:'2026-11-26 07:00:00'});
+  const period=personPeriod([{sales,bonuses:[{accrued_at:'2026-09-01 07:00:00'}]}]);
+  assert.equal(period.label,'01.09.2026 — 26.11.2026');
+});

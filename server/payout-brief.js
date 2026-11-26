@@ -88,19 +88,20 @@ function payoutPeriodPart(value,cycle){
   return 'current';
 }
 function personPeriod(statements){
-  const timestamps=[];
+  // Avoid a large timestamp array and argument-limit exceptions on long
+  // all-time reports. Keep the same date parsing and bounds.
+  let start=Infinity,end=-Infinity;
   for(const section of statements){
     for(const sale of section.sales||[]){
       const ms=parseSaleMoment(sale.created_at);
-      if(ms!==null)timestamps.push(ms);
+      if(ms!==null){start=Math.min(start,ms);end=Math.max(end,ms);}
     }
     for(const bonus of section.bonuses||[]){
       const ms=parseSaleMoment(bonus.accrued_at);
-      if(ms!==null)timestamps.push(ms);
+      if(ms!==null){start=Math.min(start,ms);end=Math.max(end,ms);}
     }
   }
-  if(!timestamps.length)return {start:null,end:null,label:'Дата начислений не указана'};
-  const start=Math.min(...timestamps),end=Math.max(...timestamps);
+  if(start===Infinity)return {start:null,end:null,label:'Дата начислений не указана'};
   return {start:new Date(start).toISOString(),end:new Date(end).toISOString(),
     label:formatSaleDate(start)+(formatSaleDate(start)===formatSaleDate(end)?'':' — '+formatSaleDate(end))};
 }
@@ -260,21 +261,90 @@ function payoutMethodDescription(person){
   if(groups.length===1)return groups[0].label;
   return groups.map(g=>g.label+' — '+money(g.amount)).join('; ');
 }
-function groupStatements(entries,cycle=null){
-  const people=[];
+// An identity is only a candidate key. Keep the original sameRecipient
+// predicate (including its name checks) for the actual merge. A group may
+// connect previously separate roles through a later account.
+function identityKeys(account){
+  const keys=[];
+  const chat=chatId(account.telegram_chat_id);
+  const phone=normalizePhone(account.phone);
+  const taxId=inn(account.inn);
+  if(chat)keys.push('tg:'+chat);
+  if(phone)keys.push('phone:'+phone);
+  if(taxId)keys.push('inn:'+taxId);
+  return keys;
+}
+function recipientRoot(group){
+  let root=group;
+  while(root.parent)root=root.parent;
+  while(group.parent&&group.parent!==root){
+    const next=group.parent;
+    group.parent=root;
+    group=next;
+  }
+  return root;
+}
+function groupRecipientEntries(entries){
+  const active=new Set(),identityIndex=new Map();
+  let ordinal=0;
   for(const entry of entries){
-    const matches=people.filter(person=>person.accounts.some(other=>sameRecipient(other,entry.account)));
-    if(!matches.length){
-      people.push({name:clean(entry.account.full_name),accounts:[entry.account],statements:[entry.statement]});
-      continue;
+    const keys=identityKeys(entry.account),matches=new Set();
+    for(const key of keys){
+      for(const candidate of identityIndex.get(key)||[]){
+        const root=recipientRoot(candidate.group);
+        if(!matches.has(root)&&sameRecipient(candidate.account,entry.account))matches.add(root);
+      }
     }
-    const primary=matches[0];
-    primary.accounts.push(entry.account);primary.statements.push(entry.statement);
-    for(const extra of matches.slice(1)){
-      primary.accounts.push(...extra.accounts);primary.statements.push(...extra.statements);
-      people.splice(people.indexOf(extra),1);
+    // Preserve the original first-created group's display name, and the
+    // exact order of statements even when a third account bridges groups.
+    const ordered=[...matches].sort((a,b)=>a.ordinal-b.ordinal);
+    const primary=ordered[0]||{
+      ordinal:ordinal++,parent:null,name:clean(entry.account.full_name),accounts:[],statements:[],
+    };
+    if(!ordered.length)active.add(primary);
+    primary.accounts.push(entry.account);
+    primary.statements.push(entry.statement);
+    for(const extra of ordered.slice(1)){
+      for(const account of extra.accounts)primary.accounts.push(account);
+      for(const statement of extra.statements)primary.statements.push(statement);
+      extra.parent=primary;
+      extra.accounts=[];extra.statements=[];
+      active.delete(extra);
+    }
+    const record={account:entry.account,group:primary};
+    for(const key of keys){
+      if(!identityIndex.has(key))identityIndex.set(key,[]);
+      identityIndex.get(key).push(record);
     }
   }
+  return [...active].map(({name,accounts,statements})=>({name,accounts,statements}));
+}
+// Only names that normalize to exactly the same token sequence can produce
+// the existing warning. Keep the old encounter order and warning labels.
+function identitiesToVerify(entries){
+  const accounts=entries.map(entry=>entry.account);
+  const names=accounts.map(account=>normalizeName(account.full_name).join('|'));
+  const buckets=new Map();
+  for(let i=0;i<names.length;i++){
+    if(!buckets.has(names[i]))buckets.set(names[i],[]);
+    buckets.get(names[i]).push(i);
+  }
+  const labels=new Set();
+  for(let i=0;i<accounts.length;i++){
+    const a=accounts[i],label=clean(a.full_name,60);
+    if(labels.has(label))continue;
+    for(const j of buckets.get(names[i])){
+      if(j<=i)continue;
+      const b=accounts[j];
+      if(a.role!==b.role&&!sameRecipient(a,b)){
+        labels.add(label);break;
+      }
+    }
+  }
+  return [...labels];
+}
+function groupStatements(entries,cycle=null){
+  const people=groupRecipientEntries(entries);
   return people.map(p=>{
     const roles=[...new Set(p.statements.map(s=>s.role))];
     const total=key=>p.statements.reduce((sum,s)=>sum+num(s[key]),0);
@@ -335,15 +405,7 @@ function collectPayoutBrief(now=new Date(),{recipientKey=null,summaryOnly=false,
   const sum=key=>people.reduce((result,p)=>result+num(p[key]),0);
   const role_totals={partner:0,owner:0,manager:0};
   for(const person of people)for(const section of person.statements)role_totals[section.role]+=section.total;
-  const identities_to_verify=[];
-  for(let i=0;i<entries.length;i++)for(let j=i+1;j<entries.length;j++){
-    const a=entries[i].account,b=entries[j].account;
-    if(a.role===b.role)continue;
-    if(normalizeName(a.full_name).join('|')===normalizeName(b.full_name).join('|')&&!sameRecipient(a,b)){
-      const label=clean(a.full_name,60);
-      if(!identities_to_verify.includes(label))identities_to_verify.push(label);
-    }
-  }
+  const identities_to_verify=identitiesToVerify(entries);
   return {
     generated_at:now.toISOString(),people,total:sum('total'),commission:sum('commission'),
     ...(cycle?{period:cycle,period_accrued:sum('period_accrued'),prior_accrued:sum('prior_accrued'),undated_accrued:sum('undated_accrued'),
@@ -496,5 +558,5 @@ function buildPayoutBriefCsv(report){
   return '\uFEFF'+rows.join('\r\n')+'\r\n';
 }
 module.exports={collectPayoutBrief,formatPayoutBriefMessage,buildPayoutBriefCsv,
-  groupStatements,recipientKeyForAccounts,sameRecipient,normalizePhone,namesCompatible,money,clean,
+  groupStatements,groupRecipientEntries,identitiesToVerify,recipientKeyForAccounts,sameRecipient,normalizePhone,namesCompatible,money,clean,
   formatRecipientPayoutMessage,formatSaleDateTime,personPeriod,itemListLabel,monthlyPayoutPeriod,monthlyBreakdownLines,payoutMethodGroups,payoutMethodDescription};
