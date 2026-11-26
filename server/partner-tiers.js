@@ -12,6 +12,8 @@
 
 const db = require('./db');
 const approvals = require('./partner-tier-approvals');
+const {queryTierReviewCandidates,readTierReviewCandidates}=require('./tier-review-reader');
+const {trackAsync}=require('./runtime-diagnostics');
 
 // Пороги — совпадают с тем, что показывается на странице регистрации
 // (taiga-register.html). Если меняете пороги там — не забудьте поменять и тут.
@@ -172,28 +174,46 @@ async function notifyTierChange(partner, tier, revenue, referralsCount, directio
 // daily safety job only needs to revisit elevated tiers (grace expiration),
 // and baseline partners with enough referrals to earn a higher tier without
 // an additional order. Skip unchanging baseline accounts entirely.
-function dailyTierReviewCandidates(database=db) {
+function tierReviewThresholds(){
   const baseline=TIERS[TIERS.length-1].rate;
   const referralThreshold=Math.min(...TIERS
     .filter(t=>t.rate>baseline && t.minReferrals>0).map(t=>t.minReferrals));
-  return database.prepare(`
-    SELECT id FROM partners
-    WHERE active=1 AND partner_type='groomer'
-      AND (commission_rate<>? OR commission_rate IS NULL)
-    UNION
-    SELECT p.id FROM partners p
-    JOIN partners invited ON invited.referred_by_partner_id=p.id
-    WHERE p.active=1 AND p.partner_type='groomer' AND p.commission_rate=?
-    GROUP BY p.id HAVING COUNT(invited.id)>=?
-  `).all(baseline,baseline,referralThreshold);
+  return {baseline,referralThreshold};
 }
-async function checkAllPartnerTiers() {
-  const candidates=dailyTierReviewCandidates();
-  for (const partner of candidates) {
-    try { await checkAndUpgradePartnerTier(partner.id); }
-    catch (e) { console.warn('Ошибка проверки уровня партнёра #' + partner.id + ':', e.message); }
+function dailyTierReviewCandidates(database=db) {
+  const {baseline,referralThreshold}=tierReviewThresholds();
+  return queryTierReviewCandidates(database,baseline,referralThreshold);
+}
+function createDailyTierReviewJob({
+  readCandidates=()=>{
+    const {baseline,referralThreshold}=tierReviewThresholds();
+    return readTierReviewCandidates(db.DB_PATH,baseline,referralThreshold);
+  },
+  isActive=id=>!!db.prepare("SELECT 1 FROM partners WHERE id=? AND active=1 AND partner_type='groomer'").get(id),
+  review=checkAndUpgradePartnerTier,
+  yieldTurn=()=>new Promise(resolve=>setImmediate(resolve)),
+  onError=(id,error)=>console.warn('Ошибка проверки уровня партнёра #'+id+':',error.message),
+}={}){
+  let inFlight=null;
+  async function perform(){
+    const candidates=await readCandidates();
+    for(const partner of candidates){
+      // Yield even when the business check resolves synchronously. A large
+      // review must not starve checkout callbacks between individual accounts.
+      await yieldTurn();
+      try{
+        // Worker results are only candidate IDs, never authority for a write.
+        if(isActive(partner.id))await review(partner.id);
+      }catch(error){onError(partner.id,error);}
+    }
   }
+  return function run(){
+    if(inFlight)return inFlight;
+    inFlight=trackAsync('daily_tier_review',perform).finally(()=>{inFlight=null;});
+    return inFlight;
+  };
 }
+const checkAllPartnerTiers=createDailyTierReviewJob();
 
 // Прогресс до следующего уровня — для отображения партнёру в кабинете.
 function getTierProgress(partnerId) {
@@ -258,4 +278,4 @@ function getTierProgress(partnerId) {
   return result;
 }
 
-module.exports = { checkAndUpgradePartnerTier, checkAllPartnerTiers, dailyTierReviewCandidates, getTierProgress, getPartnerStats, currentMonthKey, monthDiff, getEligibleTier, TIERS, notifyTierChange };
+module.exports = { checkAndUpgradePartnerTier, checkAllPartnerTiers, createDailyTierReviewJob, dailyTierReviewCandidates, getTierProgress, getPartnerStats, currentMonthKey, monthDiff, getEligibleTier, TIERS, notifyTierChange };

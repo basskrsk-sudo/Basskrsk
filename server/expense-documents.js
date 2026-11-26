@@ -136,17 +136,18 @@ function checkAccess(req,res,ctx,expense) {
   }
   return payload;
 }
-function cleanupAfterDeletedExpense(storageNames) {
+async function cleanupAfterDeletedExpense(storageNames) {
   for(const name of storageNames) {
     if(!/^[a-f0-9]{32}\.[a-z0-9]{2,5}$/.test(name))continue;
-    try{fs.unlinkSync(path.join(DOCUMENT_DIR,name));}catch(e) {
+    try{await fs.promises.unlink(path.join(DOCUMENT_DIR,name));}catch(e) {
       if(e.code!=='ENOENT')console.warn('Expense attachment cleanup failed:',e.code);
     }
   }
 }
 // Shared storage used by both the authenticated web UI and the verified
 // Telegram expense wizard; there is no unauthenticated file-serving endpoint.
-function storeExpenseDocument(expenseId,body,actor) {
+let documentWriteInFlight=false;
+async function storeExpenseDocument(expenseId,body,actor,{confirmAccess=()=>true}={}) {
   const expense=expenseForId(expenseId);
   if (!expense) {
     const err=new Error('Трата не найдена');
@@ -176,26 +177,48 @@ function storeExpenseDocument(expenseId,body,actor) {
     err.statusCode=409;
     throw err;
   }
-  fs.mkdirSync(DOCUMENT_DIR,{recursive:true,mode:0o700});
+  if(documentWriteInFlight)throw Object.assign(new Error('Загрузка документа занята. Повторите попытку.'),{statusCode:503});
+  documentWriteInFlight=true;
   const storageName=crypto.randomBytes(16).toString('hex')+'.'+parsed.ext;
   const filePath=path.join(DOCUMENT_DIR,storageName);
-  fs.writeFileSync(filePath,parsed.buffer,{flag:'wx',mode:0o600});
+  let created=false,retained=false,handle=null;
   try {
+    await fs.promises.mkdir(DOCUMENT_DIR,{recursive:true,mode:0o700});
+    handle=await fs.promises.open(filePath,'wx',0o600);
+    created=true;
+    await handle.writeFile(parsed.buffer);
+    await handle.close();
+    handle=null;
+    // No SQLite transaction spans a disk await. Revalidate the expense,
+    // session and capacity immediately before publishing its metadata.
+    const current=expenseForId(expense.id);
+    if(!current)throw Object.assign(new Error('Трата не найдена'),{statusCode:404});
+    if(!confirmAccess(current))throw Object.assign(new Error('Доступ к загрузке документа изменился'),{statusCode:403});
+    const duplicate=db.prepare('SELECT * FROM expense_documents WHERE expense_id=? AND sha256=?').get(expense.id,hash);
+    if(duplicate)return {document:safeDocument(duplicate),already_exists:true};
+    const currentCount=db.prepare('SELECT COUNT(*) AS n FROM expense_documents WHERE expense_id=?').get(expense.id).n;
+    if(currentCount>=MAX_FILES_PER_EXPENSE)throw Object.assign(new Error('К одной трате можно прикрепить не более 12 файлов'),{statusCode:409});
     const result=db.prepare(
       'INSERT INTO expense_documents(expense_id,filename,storage_name,mime_type,size_bytes,sha256,uploaded_by_role,uploaded_by_id) ' +
       'VALUES(?,?,?,?,?,?,?,?)'
     ).run(expense.id,parsed.filename,storageName,parsed.mime_type,
       parsed.buffer.length,hash,actor.role,Number(actor.id));
+    retained=true;
     const row=db.prepare('SELECT * FROM expense_documents WHERE id=?').get(result.lastInsertRowid);
     return {document:safeDocument(row),already_exists:false};
   } catch(error) {
-    try{fs.unlinkSync(filePath);}catch(_){}
-    if(error.code==='SQLITE_CONSTRAINT_UNIQUE'){
+    // SQLite's unique constraint remains the last line of duplicate defense.
+    if(error.code==='SQLITE_CONSTRAINT_UNIQUE'||error.code==='ERR_SQLITE_ERROR'){
       const duplicate=db.prepare('SELECT * FROM expense_documents WHERE expense_id=? AND sha256=?')
         .get(expense.id,hash);
       if(duplicate)return {document:safeDocument(duplicate),already_exists:true};
     }
     throw error;
+  } finally {
+    try{
+      if(handle)await handle.close().catch(()=>{});
+      if(created&&!retained)await cleanupAfterDeletedExpense([storageName]);
+    }finally{documentWriteInFlight=false;}
   }
 }
 
@@ -208,20 +231,26 @@ function registerExpenseDocumentRoutes(router) {
     const grouped=listExpenseDocuments([expense.id]);
     sendJson(res,200,{expense_id:expense.id,documents:grouped[expense.id]});
   });
-  router.post('/api/expenses/:id/documents',(req,res,ctx)=>{
+  router.post('/api/expenses/:id/documents',async(req,res,ctx)=>{
     const expense=expenseForId(ctx.params.id);
     const payload=checkAccess(req,res,ctx,expense);
     if(!payload)return;
     if(!expense)return sendJson(res,404,{error:'Трата не найдена'});
     let saved;
-    try { saved=storeExpenseDocument(expense.id,ctx.body,payload); }
+    try {
+      saved=await storeExpenseDocument(expense.id,ctx.body,payload,{confirmAccess:current=>{
+        if(payload.role==='admin')return !!db.prepare('SELECT id FROM admins WHERE id=? AND active=1').get(payload.id);
+        const founder=activeFounder(payload.id);
+        return !!founder&&current.investor_name===founder.full_name;
+      }});
+    }
     catch(error) {
       if(error.statusCode)return sendJson(res,error.statusCode,{error:error.message});
       throw error;
     }
     sendJson(res,saved.already_exists?200:201,{ok:true,...saved});
   });
-  router.get('/api/expense-documents/:id/download',(req,res,ctx)=>{
+  router.get('/api/expense-documents/:id/download',async(req,res,ctx)=>{
     const id=idNumber(ctx.params.id);
     const doc=id?db.prepare(
       'SELECT d.*,e.investor_name FROM expense_documents d JOIN expenses e ON e.id=d.expense_id WHERE d.id=?'
@@ -231,8 +260,12 @@ function registerExpenseDocumentRoutes(router) {
     if(!doc)return sendJson(res,404,{error:'Файл не найден'});
     const filePath=path.join(DOCUMENT_DIR,doc.storage_name);
     let stat;
-    try{stat=fs.statSync(filePath);}catch(_) {return sendJson(res,404,{error:'Файл не найден в хранилище'});}
+    try{stat=await fs.promises.stat(filePath);}catch(_) {return sendJson(res,404,{error:'Файл не найден в хранилище'});}
     if(!stat.isFile())return sendJson(res,404,{error:'Файл не найден'});
+    // Access may have changed while the asynchronous stat was pending.
+    const current=db.prepare('SELECT d.storage_name,e.investor_name FROM expense_documents d JOIN expenses e ON e.id=d.expense_id WHERE d.id=?').get(doc.id);
+    if(!current||current.storage_name!==doc.storage_name)return sendJson(res,404,{error:'Файл не найден'});
+    if(!checkAccess(req,res,ctx,current))return;
     const fallback='evidence-'+doc.id+path.extname(doc.filename).toLowerCase();
     res.writeHead(200,{
       'Content-Type':'application/octet-stream',
@@ -242,7 +275,7 @@ function registerExpenseDocumentRoutes(router) {
     });
     fs.createReadStream(filePath).on('error',()=>res.destroy()).pipe(res);
   });
-  router.delete('/api/expense-documents/:id',(req,res,ctx)=>{
+  router.delete('/api/expense-documents/:id',async(req,res,ctx)=>{
     const id=idNumber(ctx.params.id);
     const doc=id?db.prepare(
       'SELECT d.*,e.investor_name FROM expense_documents d JOIN expenses e ON e.id=d.expense_id WHERE d.id=?'
@@ -255,7 +288,7 @@ function registerExpenseDocumentRoutes(router) {
       return sendJson(res,403,{error:'Удаление этого документа доступно администратору'});
     }
     db.prepare('DELETE FROM expense_documents WHERE id=?').run(doc.id);
-    cleanupAfterDeletedExpense([doc.storage_name]);
+    await cleanupAfterDeletedExpense([doc.storage_name]);
     sendJson(res,200,{ok:true});
   });
 }

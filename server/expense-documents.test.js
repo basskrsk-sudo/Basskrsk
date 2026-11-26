@@ -92,3 +92,44 @@ test('private receipts are not accessible through another founder or a salon own
   assert.equal(listing.body.expenses.find(x=>x.id===first).documents[0].filename,'receipt.pdf');
   assert.equal(listing.body.expenses.find(x=>x.id===first).documents[0].storage_name,undefined);
 });
+
+test('slow persistent upload does not block HTTP turns or publish after access is revoked',async()=>{
+  const {storeExpenseDocument}=require('./expense-documents');
+  const id=Number(db.prepare('INSERT INTO expenses(expense_date,category,amount,investor_name,city_id) VALUES(?,?,?,?,?)')
+    .run('2026-11-04','Тест доступа',100,'Лакомых Алексей','krsk').lastInsertRowid);
+  const original=fs.promises.open;
+  let entered,release,allowed=true,createdPath;
+  const ready=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  fs.promises.open=async function(file,...args){
+    const handle=await original.call(this,file,...args);
+    if(String(file).startsWith(DOCUMENT_DIR+path.sep)){
+      createdPath=String(file);
+      return {close:()=>handle.close(),writeFile:async buffer=>{
+        entered();await gate;return handle.writeFile(buffer);
+      }};
+    }
+    return handle;
+  };
+  const file={filename:'slow.pdf',data_base64:pdf.toString('base64')};
+  let pending;
+  try{
+    pending=storeExpenseDocument(id,file,{role:'admin',id:981},{confirmAccess:()=>allowed});
+    await ready;
+    await new Promise(resolve=>setImmediate(resolve));
+    await assert.rejects(storeExpenseDocument(id,file,{role:'admin',id:981}),e=>e.statusCode===503);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_documents WHERE expense_id=?').get(id).n,0);
+    allowed=false;
+    release();
+    await assert.rejects(pending,e=>e.statusCode===403);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_documents WHERE expense_id=?').get(id).n,0);
+    assert.equal(fs.existsSync(createdPath),false,'unpublished private file is removed');
+    fs.promises.open=original;
+    const recovered=await storeExpenseDocument(id,file,{role:'admin',id:981});
+    assert.equal(recovered.already_exists,false);
+  }finally{
+    release();
+    if(pending)await pending.catch(()=>{});
+    fs.promises.open=original;
+  }
+});

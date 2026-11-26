@@ -309,3 +309,32 @@ test.after(()=>{
   try{db.close();}catch(_){}
   fs.rmSync(tmp,{recursive:true,force:true});
 });
+
+test('daily read-only worker selects the same candidate IDs as the live query',async()=>{
+  const {readTierReviewCandidates}=require('./tier-review-reader');
+  const expected=tiers.dailyTierReviewCandidates().map(row=>row.id);
+  const rows=await readTierReviewCandidates(db.DB_PATH,0.15,3);
+  assert.deepEqual(rows.map(row=>row.id),expected);
+});
+test('daily tier scan is single flight, yields and rechecks account status after its read',async()=>{
+  let release,scans=0,yields=0;
+  const seen=[];
+  const job=tiers.createDailyTierReviewJob({
+    readCandidates:()=>{scans++;return new Promise(resolve=>{release=resolve;});},
+    isActive:id=>id!==2,
+    review:async id=>{seen.push(id);},
+    yieldTurn:async()=>{yields++;await new Promise(resolve=>setImmediate(resolve));},
+  });
+  const first=job(),second=job();
+  assert.equal(first,second);
+  assert.equal(scans,1);
+  let timerRan=false;
+  await new Promise(resolve=>setImmediate(()=>{timerRan=true;resolve();}));
+  assert.equal(timerRan,true);
+  release([{id:1},{id:2},{id:3}]);
+  await first;
+  assert.deepEqual(seen,[1,3]);
+  assert.equal(yields,3);
+  const next=job();assert.equal(scans,2);
+  release([]);await next;
+});

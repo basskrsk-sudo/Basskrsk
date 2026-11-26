@@ -13,8 +13,19 @@ const INFO_FILE = path.join(__dirname, '..', 'build-info.json');
 const LAST_FILE = path.join(DATA_DIR, 'last-notified-build.json');
 const LAST_TG_FILE = path.join(DATA_DIR, 'last-telegram-deploy-build.json');
 
-function readJson(file) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; }
+async function readJson(file) {
+  try { return JSON.parse(await fs.promises.readFile(file, 'utf8')); } catch (_) { return null; }
+}
+async function writeNotificationMarker(file,record){
+  await fs.promises.mkdir(path.dirname(file),{recursive:true});
+  const temporary=file+'.tmp-'+process.pid+'-'+require('node:crypto').randomUUID();
+  try{
+    await fs.promises.writeFile(temporary,JSON.stringify(record),{flag:'wx',mode:0o600});
+    await fs.promises.rename(temporary,file);
+  }finally{
+    try{await fs.promises.unlink(temporary);}
+    catch(error){if(error.code!=='ENOENT')console.warn('Deploy marker cleanup:',error.code||'error');}
+  }
 }
 
 function healthCheck(port) {
@@ -129,14 +140,13 @@ async function listDeploymentChanges(sha, previous) {
 
 function escapeHtml(v) { return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
 
-async function notifyDeployment(port) {
-  const info = readJson(INFO_FILE);
+async function performDeploymentNotification(port) {
+  const info = await readJson(INFO_FILE);
   if (!info || !info.build_id) {
     console.warn('Deploy email: build-info.json отсутствует; уведомление пропущено');
     return;
   }
-  const previous = readJson(LAST_FILE);
-  const telegramPrevious = readJson(LAST_TG_FILE);
+  const [previous,telegramPrevious]=await Promise.all([readJson(LAST_FILE),readJson(LAST_TG_FILE)]);
   if (previous?.build_id === info.build_id && telegramPrevious?.build_id === info.build_id) {
     console.log('Deploy email: эта сборка уже подтверждена письмом');
     return;
@@ -202,10 +212,7 @@ async function notifyDeployment(port) {
     try {
       const sent = await sendTelegram(telegramText);
       if (sent.ok) {
-        fs.mkdirSync(DATA_DIR,{recursive:true});
-        const tmp = LAST_TG_FILE+'.tmp-'+process.pid;
-        fs.writeFileSync(tmp,JSON.stringify({build_id:info.build_id,git_commit:sha,sent_at:now.toISOString()}));
-        fs.renameSync(tmp,LAST_TG_FILE);
+        await writeNotificationMarker(LAST_TG_FILE,{build_id:info.build_id,git_commit:sha,sent_at:now.toISOString()});
         console.log('Deploy Telegram: уведомление отправлено',info.build_id);
       } else console.warn('Deploy Telegram: отправка не подтверждена',sent.error||'');
     } catch(e) {console.error('Deploy Telegram: ошибка',e.message);}
@@ -222,14 +229,17 @@ async function notifyDeployment(port) {
   }
   // Persist only after SMTP confirms acceptance. Restarting same build won't spam.
   try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    const tmp = LAST_FILE + '.tmp-' + process.pid;
-    fs.writeFileSync(tmp, JSON.stringify({ build_id: info.build_id, git_commit: sha, sent_at: now.toISOString() }));
-    fs.renameSync(tmp, LAST_FILE);
+    await writeNotificationMarker(LAST_FILE,{build_id:info.build_id,git_commit:sha,sent_at:now.toISOString()});
     console.log('Deploy email: уведомление отправлено', info.build_id);
   } catch (e) {
     console.error('Deploy email: не удалось сохранить отметку', e.message);
   }
 }
 
-module.exports = { notifyDeployment, healthCheck };
+let notificationInFlight=null;
+function notifyDeployment(port){
+  if(notificationInFlight)return notificationInFlight;
+  notificationInFlight=performDeploymentNotification(port).finally(()=>{notificationInFlight=null;});
+  return notificationInFlight;
+}
+module.exports = { notifyDeployment, healthCheck, readJson, writeNotificationMarker };
