@@ -121,7 +121,11 @@ async function handleExpenseAttachmentMessage(channel,chatId,message,fetchImpl=f
        current.actor.role!==state.actor.role || Number(current.actor.id)!==Number(state.actor.id)){
       return {ok:false,message:'Сессия прикрепления завершилась. Файл не сохранён.'};
     }
-    const saved=storeExpenseDocument(state.expenseId,data,state.actor);
+    const saved=await storeExpenseDocument(state.expenseId,data,state.actor,{confirmAccess:()=>{
+      const latest=activeExpenseAttachment(channel,chatId);
+      return !!latest&&!latest.denied&&latest.expenseId===state.expenseId&&
+        latest.actor.role===state.actor.role&&Number(latest.actor.id)===Number(state.actor.id);
+    }});
     markPendingAttachmentStored(channel,chatId,state.expenseId,file.fileId);
     const total=attachmentCount(state.expenseId);
     return {ok:true,attached:true,expenseId:state.expenseId,document:saved.document,
@@ -152,7 +156,12 @@ async function processPendingExpenseAttachments(channel,chatId,fetchImpl=fetch) 
       if(!current || current.expenseId!==session.expenseId ||
         current.actor.role!==session.actor.role || Number(current.actor.id)!==Number(session.actor.id) ||
         !current.files.some(entry=>entry.fileId===file.fileId))break;
-      const saved=storeExpenseDocument(session.expenseId,data,current.actor);
+      const saved=await storeExpenseDocument(session.expenseId,data,current.actor,{confirmAccess:()=>{
+        const latest=pendingSavedExpenseAttachments(channel,chatId);
+        return !!latest&&latest.expenseId===session.expenseId&&
+          latest.actor.role===session.actor.role&&Number(latest.actor.id)===Number(session.actor.id)&&
+          latest.files.some(entry=>entry.fileId===file.fileId);
+      }});
       markPendingAttachmentStored(channel,chatId,session.expenseId,file.fileId);
       attached++;
       results.push('✅ '+(saved.already_exists?'Уже прикреплён: ':'Прикреплён: ')+saved.document.filename);

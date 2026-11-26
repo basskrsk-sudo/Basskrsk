@@ -77,3 +77,31 @@ test('upload and salon mutation endpoints contain no blocking filesystem calls',
   assert.match(code,/await fs\.promises\.writeFile\(tempPath, buffer\)/);
   assert.match(code,/The authoritative DB write succeeded/);
 });
+
+test('deployment markers use atomic async filesystem I/O and keep the previous version until rename',async()=>{
+  const {readJson,writeNotificationMarker}=require('./deployment-notification');
+  const marker=path.join(dir,'test-deploy-marker.json');
+  await writeNotificationMarker(marker,{build_id:'before'});
+  const original=fs.promises.rename;
+  let entered,release;
+  const ready=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  fs.promises.rename=async function(from,to){
+    if(to===marker){entered();await gate;}
+    return original.call(this,from,to);
+  };
+  let task;
+  try{
+    task=writeNotificationMarker(marker,{build_id:'after'});
+    await ready;
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(await readJson(marker),{build_id:'before'});
+    release();
+    await task;
+    assert.deepEqual(await readJson(marker),{build_id:'after'});
+  }finally{release();if(task)await task.catch(()=>{});fs.promises.rename=original;}
+  for(const file of ['expense-documents.js','deployment-notification.js']){
+    const source=fs.readFileSync(path.join(__dirname,file),'utf8');
+    assert.doesNotMatch(source,/fs\.(?:writeFile|readFile|unlink|rename|mkdir|stat|exists|open)Sync\(/,file);
+  }
+});

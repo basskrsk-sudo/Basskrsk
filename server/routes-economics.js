@@ -208,12 +208,12 @@ function registerEconomicsRoutes(router) {
   });
 
   // DELETE /api/economics/expenses/:id — удалить ошибочную запись
-  router.delete('/api/economics/expenses/:id', (req, res, ctx) => {
+  router.delete('/api/economics/expenses/:id', async (req, res, ctx) => {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
     const documents=db.prepare('SELECT storage_name FROM expense_documents WHERE expense_id=?').all(ctx.params.id);
     db.prepare('DELETE FROM expenses WHERE id = ?').run(ctx.params.id);
-    cleanupAfterDeletedExpense(documents.map(doc=>doc.storage_name));
+    await cleanupAfterDeletedExpense(documents.map(doc=>doc.storage_name));
     sendJson(res, 200, { ok: true });
   });
 }
