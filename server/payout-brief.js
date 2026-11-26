@@ -165,6 +165,40 @@ function formatSale(account,order,getItems){
 }
 
 const {isPayable,planCommission}=require('./commission-refunds');
+function monthlyComparison(account,cycle,bonuses){
+  if(!cycle||!['partner','owner'].includes(account.role))return [];
+  const previous=monthlyPayoutPeriod(new Date(Date.parse(cycle.start)-1));
+  const partner=account.role==='partner';
+  const sql=partner
+    ? `SELECT o.*, COALESCE(o.commission_rate,p.commission_rate,0) AS commission_rate, pt.name AS point_name
+       FROM orders o JOIN partners p ON p.id=o.partner_id LEFT JOIN points pt ON pt.id=o.point_id
+       WHERE p.id=? AND o.status='paid' AND o.created_at>=? AND o.created_at<?`
+    : `SELECT o.*, so.commission_rate, pt.name AS point_name
+       FROM salon_owners so JOIN orders o ON o.point_id=so.point_id LEFT JOIN points pt ON pt.id=o.point_id
+       WHERE so.id=? AND o.status='paid' AND o.created_at>=? AND o.created_at<?`;
+  const rows=new Map();
+  function add(pointId,name,part,amount){
+    const key=String(pointId||account.point_id||name||'');
+    if(!rows.has(key))rows.set(key,{point:clean(name||account.point_name||'Без точки'),current:0,previous:0,previous_label:previous.label});
+    rows.get(key)[part]+=num(amount);
+  }
+  const {netOrder}=require('./commission-refunds');
+  // Include both paid-out and pending orders, by sale date, not payout date.
+  const lower=previous.start.slice(0,10),upper=cycle.end_exclusive.slice(0,10)+'T23:59:59Z';
+  for(const raw of db.prepare(sql).all(account.id,lower,upper)){
+    const ms=parseSaleMoment(raw.created_at);
+    if(ms===null||ms<Date.parse(previous.start)||ms>=Date.parse(cycle.end_exclusive))continue;
+    const order=netOrder(raw);
+    if(isPayable(order))add(raw.point_id,raw.point_name,ms<Date.parse(cycle.start)?'previous':'current',order.commission_amount);
+  }
+  for(const b of [...bonuses.pending,...bonuses.paid]){
+    const ms=parseSaleMoment(b.accrued_at);
+    if(ms===null||ms<Date.parse(previous.start)||ms>=Date.parse(cycle.end_exclusive))continue;
+    add(b.point_id,b.point_name,ms<Date.parse(cycle.start)?'previous':'current',b.amount);
+  }
+  if(!rows.size)add(account.point_id,account.point_name,'current',0);
+  return [...rows.values()];
+}
 function roleStatement(account,getItems,detail=true,cycle=null){
   const pending=pendingOrders(account).filter(o=>payoutPeriodPart(o.created_at,cycle)!=='future');
   const eligible=pending.filter(isPayable);
@@ -172,7 +206,8 @@ function roleStatement(account,getItems,detail=true,cycle=null){
   // existing report, but do not list these orders for groomers or owners.
   const returned=pending.filter(o=>(o.return_amount>0||o.refund_status==='refunded') && (account.role==='manager'||isPayable(o)));
   const plan=planCommission(db,account.role,account.id,eligible);
-  const bonuses=getBonuses(db,account.role,account.id).pending
+  const bonusLedger=getBonuses(db,account.role,account.id);
+  const bonuses=bonusLedger.pending
     .filter(b=>Number.isFinite(Number(b.amount))&&Number(b.amount)>0&&payoutPeriodPart(b.accrued_at,cycle)!=='future')
     .map(b=>({manager_point_id:b.manager_point_id,point:clean(b.point_name||account.point_name||'Точка'),
       amount:num(b.amount),type:account.role==='manager'?'launch_bonus':'referral_bonus',
@@ -187,6 +222,7 @@ function roleStatement(account,getItems,detail=true,cycle=null){
   return {
     role:account.role,role_label:ROLES[account.role],account_id:account.id,
     name:clean(account.full_name),point:clean(account.point_name),
+    ...(cycle&&detail?{monthly_comparison:monthlyComparison(account,cycle,bonusLedger)}:{}),
     payout_method:payoutMethodCode(account.payout_method),payout_method_label:payoutMethodLabel(account.payout_method),
     orders:eligible.length,commission,bonus,total:commission+bonus,
     ...(cycle?{period_accrued:breakdown.current,prior_accrued:breakdown.prior,undated_accrued:breakdown.undated,
@@ -356,12 +392,19 @@ function formatRecipientPayoutMessage(person,generatedAt){
     '💸 ХвостМаркет — справка к выплате',
     '👤 '+clean(person.name,75),
     'Роли: '+person.roles.map(role=>ROLES[role]).join(' + '),
+    '🏪 Салон: '+([...new Set(person.statements.flatMap(s=>[s.point,...(s.monthly_comparison||[]).map(r=>r.point),...(s.sales||[]).map(r=>r.point)]).filter(Boolean))].join(', ')||'Не указан'),
     '📅 Период расчётов: '+person.period.label,
     'Способ выплаты: '+payoutMethodDescription(person),
     'Срез начислений: '+formatSaleDateTime(generatedAt)+' (Красноярск)',
     'Дата продажи указана по времени создания оплаченного заказа.',
     person.monthly?'Основа: невыплаченные начисления до конца периода; старые долги отдельно.':'Основа: все ещё невыплаченные заказы и бонусы.',
     '',
+    ...person.statements.flatMap(s=>(s.monthly_comparison||[]).map(r=>{
+      const delta=r.current-r.previous;
+      const sign=delta>0?'+':delta<0?'−':'';
+      const pct=r.previous?' ('+sign+Math.abs(delta/r.previous*100).toLocaleString('ru-RU',{maximumFractionDigits:1})+'%)':'';
+      return '📊 '+r.point+' · '+s.role_label+'\\nНачислено за период: '+money(r.current)+'\\nПредыдущий период ('+r.previous_label+'): '+money(r.previous)+'\\nИзменение: '+sign+money(Math.abs(delta))+pct;
+    })),
     '🛒 Продажи:',
   ];
   const messageBudget=3500;let shown=0,totalSales=0;
