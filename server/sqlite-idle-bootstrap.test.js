@@ -14,8 +14,8 @@ function bootstrap(dataDir=directory){
   const script=[
     "const {DatabaseSync}=require('node:sqlite');",
     "const actualPrepare=DatabaseSync.prototype.prepare;",
-    "let pragmaTableInfoCalls=0,legacyOrderScans=0;",
-    "DatabaseSync.prototype.prepare=function(sql,...args){if(/^PRAGMA\\s+table_info\\(/i.test(String(sql)))pragmaTableInfoCalls++;if(String(sql).includes(\"SELECT customer_phone, created_at FROM orders WHERE status != 'pending'\"))legacyOrderScans++;return actualPrepare.call(this,sql,...args);};",
+    "let pragmaTableInfoCalls=0,legacyOrderScans=0,ownerReferralScans=0;",
+    "DatabaseSync.prototype.prepare=function(sql,...args){if(/^PRAGMA\\s+table_info\\(/i.test(String(sql)))pragmaTableInfoCalls++;if(String(sql).includes(\"SELECT customer_phone, created_at FROM orders WHERE status != 'pending'\"))legacyOrderScans++;if(String(sql).includes(\"SELECT mp.id,pr.recipient_id\"))ownerReferralScans++;return actualPrepare.call(this,sql,...args);};",
     "const db=require('./server/db');",
     "const version=db.prepare('PRAGMA schema_version').get().schema_version;",
     "const changes=db.prepare('SELECT total_changes() AS changes').get().changes;",
@@ -23,7 +23,7 @@ function bootstrap(dataDir=directory){
     "const exportedMode=db.JOURNAL_MODE;",
     "const names=['trg_partner_first_purchase_promo_insert','trg_point_first_purchase_promo_insert'];",
     "const triggers=names.map(name=>db.prepare(\"SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?\").get(name)?.sql||null);",
-    "console.log('BOOT_RESULT:'+JSON.stringify({version,changes,mode,exportedMode,triggers,pragmaTableInfoCalls,legacyOrderScans}));",
+    "console.log('BOOT_RESULT:'+JSON.stringify({version,changes,mode,exportedMode,triggers,pragmaTableInfoCalls,legacyOrderScans,ownerReferralScans}));",
     "db.close();",
   ].join('\n');
   const result=spawnSync(process.execPath,['-e',script],{
@@ -56,6 +56,8 @@ test('a second SQLite startup preserves schema and performs zero data changes',(
   assert.equal(second.mode,'delete','a restart must not enable WAL');
   assert.equal(second.exportedMode,second.mode);
   assert.equal(second.legacyOrderScans,0,'one-time legacy customer scan must not repeat');
+  assert.equal(first.ownerReferralScans,1,'legacy owner threshold repair runs once');
+  assert.equal(second.ownerReferralScans,0,'completed owner threshold repair must not repeat');
   assert.ok(second.pragmaTableInfoCalls<=70,
     'startup should read each table schema once (23 tables, not 151 PRAGMA queries): '+
     second.pragmaTableInfoCalls);

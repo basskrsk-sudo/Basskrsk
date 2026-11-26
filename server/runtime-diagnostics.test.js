@@ -59,3 +59,66 @@ test('slow synchronous operations are time-stamped, bounded and contain no paylo
   assert.deepEqual(Object.keys(recent[0]).sort(),['at','duration_ms','name']);
   assert.throws(()=>noteSlowSync('secret:order-123',1900),/Invalid operation name/);
 });
+
+test('SQLite instrumentation keeps native behavior, transactions, statements and iterators',()=>{
+  const {DatabaseSync}=require('node:sqlite');
+  const {createSqliteDiagnostics}=require('./sqlite-runtime-diagnostics');
+  let clock=0;
+  const d=createSqliteDiagnostics({now:()=>clock++,thresholdMs:500});
+  const db=new DatabaseSync(':memory:'),preparePrototype=DatabaseSync.prototype.prepare;
+  assert.equal(d.instrument(db),db);
+  assert.equal(d.instrument(db),db);
+  assert.equal(DatabaseSync.prototype.prepare,preparePrototype);
+  try{
+    db.exec('CREATE TABLE t(id INTEGER PRIMARY KEY,v TEXT)');
+    db.exec('BEGIN');
+    const insert=db.prepare('INSERT INTO t(v) VALUES($value)');
+    assert.equal(Number(insert.run({$value:'private data'}).changes),1);
+    db.exec('COMMIT');
+    const stmt=db.prepare('SELECT id,v FROM t ORDER BY id');
+    assert.equal(stmt.get().v,'private data');
+    assert.equal(stmt.all().length,1);
+    assert.equal(stmt.sourceSQL,'SELECT id,v FROM t ORDER BY id');
+    assert.equal([...stmt.iterate()][0].id,1);
+    assert.throws(()=>db.prepare('SELECT FROM'));
+    assert.equal(d.snapshot().length,0);
+  }finally{db.close();}
+});
+test('slow SQLite operations retain only bounded timing and safe source, including failed calls',()=>{
+  const {createSqliteDiagnostics,selectSqliteOperation}=require('./sqlite-runtime-diagnostics');
+  let clock=0,wall=Date.parse('2026-11-25T22:03:40.000Z');
+  const d=createSqliteDiagnostics({now:()=>clock,wallNow:()=>wall,getSource:()=> 'routes-orders.js:42',maxEvents:3});
+  assert.equal(d.observe('sqlite_get',()=>{clock+=499;return 7}),7);
+  assert.equal(d.snapshot().length,0);
+  for(let i=0;i<4;i++){
+    wall+=10000;
+    assert.throws(()=>d.observe('sqlite_run',()=>{clock+=800+i;throw Error('private SQL and token')}),/private SQL/);
+  }
+  const rows=d.snapshot();
+  assert.equal(rows.length,3);
+  assert.equal(rows[0].duration_ms,803);
+  assert.equal(rows[0].source,'routes-orders.js:42');
+  assert.doesNotMatch(JSON.stringify(rows),/private SQL|token/);
+  assert.deepEqual(Object.keys(rows[0]).sort(),['at','duration_ms','name','source','started_at']);
+  const match=selectSqliteOperation(rows,{at:rows[1].at,sample_window_ms:1000});
+  assert.equal(match.duration_ms,802);
+  assert.equal(selectSqliteOperation(rows,{at:'2025-01-01T00:00:00Z',sample_window_ms:1000}),null);
+  rows[0].source='changed';
+  assert.equal(d.snapshot()[0].source,'routes-orders.js:42');
+});
+test('real slow statement records source and preserves the native error',()=>{
+  const {DatabaseSync}=require('node:sqlite');
+  const {createSqliteDiagnostics}=require('./sqlite-runtime-diagnostics');
+  const db=new DatabaseSync(':memory:');
+  const d=createSqliteDiagnostics({thresholdMs:0});
+  try{
+    d.instrument(db);
+    db.prepare('SELECT 1 AS n').get();
+    assert.throws(()=>db.prepare('SELECT FROM'));
+    const rows=d.snapshot();
+    assert.equal(rows[0].name,'sqlite_prepare');
+    assert.ok(rows.some(r=>r.name==='sqlite_get'));
+    assert.ok(rows.some(r=>/^runtime-diagnostics\.test\.js:\d+$/.test(r.source||'')));
+    assert.doesNotMatch(JSON.stringify(rows),/SELECT FROM|SELECT 1/);
+  }finally{db.close();}
+});

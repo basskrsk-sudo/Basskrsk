@@ -15,7 +15,8 @@ const { snapshotApiPerformance } = require('./api-performance');
 const { sampleCpuThrottling, snapshotOperations, snapshotSlowSyncOperations } = require('./runtime-diagnostics');
 const { eventLoopStallProfiler } = require('./event-loop-stall-profiler');
 const { createHealthHistory } = require('./health-history');
-const { correlateBackupWithHealth } = require('./backup-load-correlation');
+const { correlateBackupWithHealth, describeBackupStall } = require('./backup-load-correlation');
+const {snapshotSlowSqlite,selectSqliteOperation}=require('./sqlite-runtime-diagnostics');
 const { createHealthWriteQueue } = require('./health-write-queue');
 // Backup module is loaded lazily to avoid initializing its scheduler during
 // lightweight public readiness checks. Sampling never reads its SQLite state.
@@ -37,6 +38,7 @@ const RESTART_GAP_THRESHOLD_MS = HEARTBEAT_INTERVAL_MS + 3 * 60 * 1000;
 // probe only once in five minutes. Errors and forced checks bypass the cache.
 const PERSISTENT_PROBE_INTERVAL_MS = 5 * 60 * 1000;
 const TEMP_PROBE_INTERVAL_MS = 15 * 60 * 1000;
+const STORAGE_CAPACITY_INTERVAL_MS = 5 * 60 * 1000;
 const TEMP_COMPARISON_FRESH_MS = 2 * 60 * 1000;
 // No new timers or persistent metric writes: a bounded 5-minute snapshot is
 // added to the existing one-minute health sample, with an extra row on spikes.
@@ -62,6 +64,7 @@ let previousSampleAt = BOOTED_AT;
 let previousCpuUsage = process.cpuUsage();
 let lastTemporaryStorageProbe = null;
 let lastTemporaryStorageProbeAt = 0;
+let lastCapacityProbe=null,lastCapacityProbeAt=0,capacityInFlight=null;
 let highCpuSamples = 0;
 // Long pauses (>750ms p99, >1500ms max) are still measured accurately with
 // a 100ms sampling resolution instead of a continuous 20ms timer.
@@ -95,6 +98,24 @@ async function storageFreeBytes() {
     const stat = await fs.promises.statfs(DATA_DIR);
     return Number(stat.bavail) * Number(stat.bsize);
   } catch (_) { return null; }
+}
+// Healthy capacity checks can be shared by admin views and the existing
+// sampler. On a stalled mount keep at most one statfs in flight.
+async function storageCapacityProbe(force=false){
+  const now=Date.now();
+  if(capacityInFlight)return capacityInFlight;
+  if(!force&&lastCapacityProbe&&lastCapacityProbe.free!==null&&
+    now>=lastCapacityProbeAt&&now-lastCapacityProbeAt<STORAGE_CAPACITY_INTERVAL_MS)
+    return {...lastCapacityProbe,durationMs:null,cached:true};
+  capacityInFlight=(async()=>{
+    const started=performance.now();
+    const free=await storageFreeBytes();
+    lastCapacityProbe={free,durationMs:Math.round(performance.now()-started),cached:false};
+    lastCapacityProbeAt=Date.now();
+    return lastCapacityProbe;
+  })();
+  try{return await capacityInFlight;}
+  finally{capacityInFlight=null;}
 }
 function appendEvent(type, severity, detail) {
   // All keys/details are server-created, bounded strings. No HTTP input is saved.
@@ -174,7 +195,8 @@ function recentEvents(limit = MAX_RECENT_EVENTS) {
 }
 async function metrics() {
   const mem = process.memoryUsage();
-  const [health, free] = await Promise.all([healthProbe(), storageFreeBytes()]);
+  const [health, capacity] = await Promise.all([healthProbe(), storageCapacityProbe()]);
+  const free=capacity.free;
   const memory = memoryMetrics(readContainerMemory({mem}));
   return {
     ...health,
@@ -197,6 +219,7 @@ async function metrics() {
     cpu_throttle:lastSample ? lastSample.cpu_throttle : null,
     slow_operations:snapshotOperations(),
     recent_slow_sync_operations:snapshotSlowSyncOperations(),
+    recent_slow_sqlite_operations:snapshotSlowSqlite(),
     event_loop_stalls:eventLoopStallProfiler.snapshot(),
   };
 }
@@ -311,9 +334,10 @@ async function sample() {
       lastTemporaryStorageProbeAt=Date.now();
     }
     lastSample.cpu_throttle = cpuThrottle;
-    const statStarted = performance.now();
-    const free = await storageFreeBytes();
-    const statMs = Math.round(performance.now() - statStarted);
+    const forceCapacity=health.status!=='ok'||Number(health.probe_storage_ms)>=1500||
+      Number(health.probe_sqlite_ms)>=1500||maxLoopDelayMs>=1500||p99LoopDelayMs>=750||delay>=1500;
+    const capacity=await storageCapacityProbe(forceCapacity);
+    const free=capacity.free,statMs=capacity.durationMs;
     const freshTemp=isTemporaryProbeFresh(Date.now(),lastTemporaryStorageProbeAt);
     lastSample.io_probe = {
       sqlite_ms: health.probe_sqlite_ms,
@@ -326,6 +350,7 @@ async function sample() {
       temp_sampled_at: lastTemporaryStorageProbeAt ?
         new Date(lastTemporaryStorageProbeAt).toISOString() : null,
       storage_stat_ms: statMs,
+      storage_stat_cached:capacity.cached,
     };
     const currentBackup=backupStatus(false);
     const criticalSample=health.status!=='ok'||maxLoopDelayMs>=1500||
@@ -354,6 +379,7 @@ async function sample() {
     const recentSync = snapshotSlowSyncOperations().find(entry =>
       now - Date.parse(entry.at) >= 0 &&
       now - Date.parse(entry.at) <= SAMPLE_INTERVAL_MS + 10000);
+    const recentSqlite=selectSqliteOperation(snapshotSlowSqlite(),recentStall,now,SAMPLE_INTERVAL_MS+10000);
     transition('database',health.checks.database!=='ok','critical','SQLite не отвечает на проверку');
     transition('storage',health.checks.storage!=='ok','critical','Постоянное хранилище недоступно для записи');
     transition('memory',container.ratio!==null&&container.ratio>=WARNING_MEMORY_RATIO,'warning',
@@ -373,8 +399,8 @@ async function sample() {
       'Проверки: SQLite '+health.probe_sqlite_ms+' мс, /data '+
       (health.probe_storage_ms==null?'нет свежей пробы':health.probe_storage_ms+' мс')+', /tmp '+
       (lastSample.io_probe.temp_write_ms==null?'нет свежих данных':
-        lastSample.io_probe.temp_write_ms+' мс')+', statfs '+statMs+
-      ' мс. '+
+        lastSample.io_probe.temp_write_ms+' мс')+', statfs '+(statMs==null?'кэш':statMs+' мс')+
+      '. '+
       (recentStall
         ? 'Снимок паузы: '+recentStall.at+', лаг '+recentStall.late_by_ms+
           ' мс, CPU процесса '+recentStall.process_cpu_ms+' мс ('+
@@ -384,6 +410,11 @@ async function sample() {
         ? 'Медленная отслеживаемая синхронная операция: '+
           recentSync.name+' '+recentSync.duration_ms+' мс. '
         : '')+
+      (recentSqlite
+        ? 'SQLite в '+(recentStall?'окне паузы':'окне наблюдения')+': '+recentSqlite.name+' '+
+          recentSqlite.duration_ms+' мс'+(recentSqlite.source?' ('+recentSqlite.source+')':'')+'. '
+        : 'Медленных операций основной SQLite в этом окне не зафиксировано. ')+
+      describeBackupStall(currentBackup,recentStall,{now:Date.now()})+
       describeIoSpike(lastSample.io_probe));
     if (shouldWriteHeartbeat(now,lastHeartbeatAt)) {
       // A stalled persistent volume must never synchronously freeze checkout
@@ -468,4 +499,4 @@ module.exports={registerSiteHealthRoutes,healthProbe,metrics,recentEvents,
   TEMP_COMPARISON_FRESH_MS,isTemporaryProbeFresh,describeIoSpike,
   shouldWriteHeartbeat,isRestartGap,HEARTBEAT_INTERVAL_MS,RESTART_GAP_THRESHOLD_MS,
   shouldProbePersistentStorage,PERSISTENT_PROBE_INTERVAL_MS,
-  flushMonitoringWrites,alertCooldownMs};
+  flushMonitoringWrites,alertCooldownMs,storageCapacityProbe,STORAGE_CAPACITY_INTERVAL_MS};

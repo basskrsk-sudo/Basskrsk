@@ -99,6 +99,8 @@ test('only active admin can inspect process metrics and persistent restart log',
   assert.ok(r.data.api_performance);
   assert.ok(Array.isArray(r.data.slow_operations));
   assert.ok(Array.isArray(r.data.recent_slow_sync_operations));
+  assert.ok(Array.isArray(r.data.recent_slow_sqlite_operations));
+  assert.ok(r.data.recent_slow_sqlite_operations.length<=32);
   assert.ok(Array.isArray(r.data.event_loop_stalls));
   assert.ok(r.data.event_loop_stalls.length<=8);
   assert.ok(Array.isArray(r.data.health_history));
@@ -296,4 +298,23 @@ test('monitoring event and heartbeat actually persist via worker',async()=>{
   const rows=db.prepare("SELECT event_type,detail FROM site_health_events WHERE detail=?").all('health-worker-persist-test');
   assert.equal(rows.length,1);
   assert.equal(rows[0].event_type,'event_loop');
+});
+
+test('capacity statfs checks share healthy cache and force fresh samples only when requested',async()=>{
+  const {storageCapacityProbe,STORAGE_CAPACITY_INTERVAL_MS}=require('./site-health');
+  assert.equal(STORAGE_CAPACITY_INTERVAL_MS,300000);
+  const original=fs.promises.statfs;
+  let calls=0;
+  fs.promises.statfs=async()=>{calls++;return {bavail:100000,bsize:4096}};
+  try{
+    const fresh=await storageCapacityProbe(true);
+    const cached=await storageCapacityProbe();
+    assert.equal(fresh.cached,false);
+    assert.equal(cached.cached,true);
+    assert.equal(cached.durationMs,null);
+    assert.equal(cached.free,fresh.free);
+    assert.equal(calls,1);
+    await Promise.all([storageCapacityProbe(true),storageCapacityProbe(true)]);
+    assert.equal(calls,2,'overlapping statfs checks share one in-flight request');
+  }finally{fs.promises.statfs=original;}
 });
