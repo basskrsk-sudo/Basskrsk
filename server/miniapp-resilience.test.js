@@ -67,8 +67,55 @@ test('Mini App loads reliability before auth and prevents blind payment retries'
  assert.ok(html.indexOf('src="/miniapp-reliability.js"')<html.indexOf('src="/miniapp-identity.js"'));
  assert.match(html,/registerRecovery\(refreshReadOnlyAfterReconnect\)/);
  assert.match(html,/paymentUncertain/);
- assert.match(html,/state\.pendingCode=orderCode;state\.pendingPublicNumber=null;paymentRequestStarted=true;var data=await api/);
+ const payment=html.slice(html.indexOf('async function payImpl()'),html.indexOf('function showCheckoutError('));
+ assert.match(payment,/state\.pendingCode=orderCode;state\.pendingPublicNumber=null;paymentRequestStarted=true;var data;for\(var round=0;round<4;round\+\+\)\{try\{data=await api/);
+ assert.match(payment,/if\(error\.code!=='STOCK_CONFIRMATION_REQUIRED'\|\|round===3\)throw error/);
+ assert.match(payment,/var next=await window\.HvostPhysicalStock\.resolve\(\{code:error\.code,details:error\.details\},paymentBody\)/);
+ assert.match(payment,/if\(!next\)\{[^}]*state\.pendingCode='';state\.paymentUncertain=false;setView\('cart'\);return;/);
+ assert.match(payment,/paymentBody=next;if\(androidHosted\)window\.HvostAndroidPayment\.remember\(orderCode,'miniapp',paymentBody\)/);
  assert.match(html,/if\(paymentRequestStarted&&e&&\['timeout','network','offline','server'\]/);
+});
+test('Mini App only resubmits the same payment after explicit physical-stock confirmation',async()=>{
+ const payment=html.slice(html.indexOf('async function payImpl()'),html.indexOf('function showCheckoutError('));
+ for(const scenario of ['yes','no','network']){
+  const calls=[],views=[],results=[],remembered=[],cleared=[];
+  const fields={buyerName:{value:'Test'},buyerPhone:{value:'+79990001122'},advisorSelect:{value:'self'},promoInput:{value:''},payButton:{}};
+  const state={verified:true,pointId:'salon',cart:[{variantId:1,qty:2}],email:'',pendingCode:'',paymentUncertain:false};
+  const code='TMA-1795670000000-abcdef1234567890';
+  const error=Object.assign(Error('Stock mismatch'),{code:'STOCK_CONFIRMATION_REQUIRED',details:{pointId:'salon',items:[{variantId:1,requestedQty:2,name:'Test'}]}});
+  const context={state,window:{HvostAndroidPayment:{hosted:()=>true,newCode:()=>code,remember:(id,flow,body)=>remembered.push({id,flow,body}),clear:id=>cleared.push(id)},HvostPhysicalStock:{resolve:async(data,body)=>{
+   assert.equal(data.code,'STOCK_CONFIRMATION_REQUIRED');
+   return scenario==='yes'?{...body,physicalStockConfirmation:{pointId:'salon',items:[{variantId:1,qty:2}]}}:null;
+  }}},currentPoint:()=>({id:'salon',name:'Salon'}),el:id=>fields[id],
+  cleanPhone:x=>x,reloadStock:async()=>true,checkoutTotal:()=>500,money:String,
+  api:async(url,opts)=>{assert.equal(url,'/api/create-payment');const body=JSON.parse(opts.body);calls.push(body);
+   if(calls.length===1)throw scenario==='network'?Object.assign(Error('Connection lost'),{code:'network'}):error;
+   return {display_number:'HM-1',confirmation_url:'https://bank.example'};
+  },
+  setView:v=>views.push(v),showResult:(...args)=>results.push(args),showCheckoutError:msg=>{throw Error(msg)},toast(){},Date,Math};
+  vm.createContext(context);vm.runInContext(payment,context);await context.payImpl();
+  assert.equal(calls.length,scenario==='yes'?2:1);
+  assert.equal(calls[0].orderId,code);
+  if(scenario==='yes'){
+   assert.equal(calls[1].orderId,code);
+   assert.equal(calls[1].amount,calls[0].amount);
+   assert.deepEqual(calls[1].cartItems,calls[0].cartItems);
+   assert.deepEqual(calls[1].physicalStockConfirmation,{pointId:'salon',items:[{variantId:1,qty:2}]});
+   assert.equal(remembered.length,2);
+   assert.equal(state.paymentUncertain,true);
+   assert.equal(results[0][0],'pending');
+  }else if(scenario==='no'){
+   assert.deepEqual(views,['cart']);
+   assert.equal(state.pendingCode,'');
+   assert.deepEqual(cleared,[code]);
+   assert.equal(state.cart.length,1);
+  }else{
+   assert.equal(state.paymentUncertain,true);
+   assert.equal(results[0][0],'pending');
+   assert.equal(remembered.length,1);
+   assert.equal(cleared.length,0);
+  }
+ }
 });
 test('SW never intercepts HTML, APIs, config or unversioned JS',()=>{
  const events={},self={location:{origin:'https://test.local'},

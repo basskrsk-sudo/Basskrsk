@@ -64,7 +64,7 @@ function resolveInventorySource({ fulfillmentType, pointId, needsDelivery, cityI
     : { type: 'point', id: point.id };
 }
 
-function reserveInventory(source, items) {
+function reserveInventory(source, items, orderId, confirmation) {
   const reservePoint = db.prepare(`
     UPDATE stock SET qty = qty - ?
     WHERE point_id = ? AND variant_id = ? AND qty >= ?
@@ -74,17 +74,54 @@ function reserveInventory(source, items) {
     WHERE city_id = ? AND variant_id = ? AND qty >= ?
   `);
 
+  const shortages=[];
+  // Fast path: same conditional stock decrement as before, no extra read.
   for (const item of items) {
     const stmt = source.type === 'point' ? reservePoint : reserveWarehouse;
     const result = stmt.run(item.qty, source.id, item.variantId, item.qty);
-    if (result.changes !== 1) {
+    if (result.changes === 1) continue;
+    if(source.type!=='point'){
       throw reservationError(
-        `«${item.name} (${item.weight})» уже закончился или нужного количества нет. Выберите другую точку или уменьшите количество.`,
-        'STOCK_UNAVAILABLE',
-        409,
-        { variantId: item.variantId, requestedQty: item.qty }
-      );
+        '«'+item.name+' ('+item.weight+')» уже закончился или нужного количества нет. Уменьшите количество.',
+        'STOCK_UNAVAILABLE',409,{variantId:item.variantId,requestedQty:item.qty});
     }
+    const available=Number(db.prepare('SELECT qty FROM stock WHERE point_id=? AND variant_id=?')
+      .get(source.id,item.variantId)?.qty??0);
+    if(!Number.isSafeInteger(available)||available<0)
+      throw reservationError('Остаток требует проверки сотрудником. Попробуйте другой товар.','STOCK_UNAVAILABLE');
+    // Do not treat units already reserved by a different customer as a stock
+    // discrepancy. This also serializes concurrent shortage confirmations.
+    const competing=db.prepare("SELECT 1 FROM orders o JOIN order_items i ON i.order_id=o.id "+
+      "WHERE o.point_id=? AND o.id<>? AND o.status='pending' AND o.reservation_status='active' "+
+      "AND o.inventory_source_type='point' AND o.inventory_source_id=? AND i.variant_id=? LIMIT 1")
+      .get(source.id,orderId,source.id,item.variantId);
+    if(competing)throw reservationError('Этот товар сейчас зарезервирован другой покупкой. Повторите через несколько минут или измените корзину.',
+      'STOCK_UNAVAILABLE',409,{variantId:item.variantId,requestedQty:item.qty});
+    shortages.push({variantId:item.variantId,name:item.name,weight:item.weight,requestedQty:item.qty,availableQty:available});
+  }
+  if(!shortages.length)return;
+  // Confirmation is scoped to the selected physical point and exact
+  // purchased quantities. Client cannot choose how many units to add.
+  const approved=new Map();
+  if(confirmation&&confirmation.pointId===source.id&&Array.isArray(confirmation.items)&&confirmation.items.length<=50){
+    for(const entry of confirmation.items){
+      if(entry&&Number.isSafeInteger(entry.variantId)&&Number.isSafeInteger(entry.qty)&&entry.qty>0&&entry.qty<=99)
+        approved.set(entry.variantId,entry.qty);
+    }
+  }
+  if(shortages.some(item=>approved.get(item.variantId)!==item.requestedQty)){
+    throw reservationError('По учёту товара недостаточно. Подтвердите, что все указанные упаковки действительно у вас на руках.',
+      'STOCK_CONFIRMATION_REQUIRED',409,{pointId:source.id,items:shortages});
+  }
+  const mark=db.prepare('UPDATE order_items SET physical_stock_added_qty=? WHERE order_id=? AND variant_id=? AND is_custom=0');
+  for(const item of shortages){
+    const missing=item.requestedQty-item.availableQty;
+    if(item.availableQty>0&&reservePoint.run(item.availableQty,source.id,item.variantId,item.availableQty).changes!==1)
+      throw Error('Physical stock changed inside reservation transaction');
+    // Only the actual recorded stock is reserved now. The customer-confirmed
+    // shortfall is a pending adjustment, not available inventory.
+    if(mark.run(missing,orderId,item.variantId).changes!==1)
+      throw Error('Cannot mark confirmed stock adjustment');
   }
 }
 
@@ -118,8 +155,8 @@ function restoreInventory(sourceType, sourceId, items) {
 }
 
 // Вызывается внутри уже открытой транзакции сразу после вставки заказа/items.
-function reserveForOrder(orderId, source, items, bonesCustomerId, bonesAmount) {
-  reserveInventory(source, items);
+function reserveForOrder(orderId, source, items, bonesCustomerId, bonesAmount, physicalStockConfirmation) {
+  reserveInventory(source, items, orderId, physicalStockConfirmation);
   if (bonesAmount > 0) {
     const reserved = reserveBones(bonesCustomerId, bonesAmount, orderId, 'Резерв косточек на время оплаты');
     if (reserved !== bonesAmount) {
@@ -135,7 +172,9 @@ function releaseOrderReservationInTransaction(orderId, nextOrderStatus = 'failed
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!order || order.reservation_status !== 'active' || order.status === 'paid') return { released: false, order };
   const items = db.prepare('SELECT * FROM order_items WHERE order_id = ? AND is_custom = 0').all(order.id);
-  restoreInventory(order.inventory_source_type, order.inventory_source_id, items);
+  // A cancelled, unpaid order must not manufacture new available stock.
+  const recordedItems=items.map(item=>({...item,qty:item.qty-Number(item.physical_stock_added_qty||0)})).filter(item=>item.qty>0);
+  restoreInventory(order.inventory_source_type, order.inventory_source_id, recordedItems);
   releaseReservedBones(order.id, reason);
   db.prepare(`
     UPDATE orders SET reservation_status = 'released',
@@ -158,6 +197,26 @@ function consumeOrderReservation(orderId, {onPaid}={}) {
   return withImmediateTransaction(() => {
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
     if (!order || order.reservation_status !== 'active') return { consumed: false, order };
+    const items=db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id);
+    // The physically observed missing units are received and immediately
+    // consumed only once, together with the verified paid transition.
+    // No warehouse transfer is fabricated. The order line keeps the audit.
+    if(order.inventory_source_type==='point'&&order.inventory_source_id){
+      const adjusted=items.filter(item=>Number(item.physical_stock_added_qty)>0);
+      if(adjusted.length){
+        const receive=db.prepare("INSERT INTO stock(variant_id,point_id,qty) VALUES(?,?,?) "+
+          "ON CONFLICT(variant_id,point_id) DO UPDATE SET qty=qty+excluded.qty");
+        const deduct=db.prepare("UPDATE stock SET qty=qty-? WHERE variant_id=? AND point_id=?");
+        for(const item of adjusted){
+          const qty=Number(item.physical_stock_added_qty);
+          if(!Number.isSafeInteger(qty)||qty<1||qty>item.qty||!item.variant_id||item.is_custom)
+            throw Error('Invalid confirmed stock adjustment');
+          receive.run(item.variant_id,order.inventory_source_id,qty);
+          if(deduct.run(qty,item.variant_id,order.inventory_source_id).changes!==1)
+            throw Error('Cannot consume confirmed stock adjustment');
+        }
+      }
+    }
     consumeReservedBones(order.id, 'Оплата заказа ' + order.order_code);
     db.prepare(`
       UPDATE orders SET reservation_status = 'consumed', status = 'paid'
@@ -168,7 +227,7 @@ function consumeOrderReservation(orderId, {onPaid}={}) {
     return {
       consumed: true,
       order: paidOrder,
-      items: db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id),
+      items,
       afterPaid,
     };
   });

@@ -368,3 +368,80 @@ test('paid checkout survives stopped Club worker and produces one moderated draf
     db.prepare('DELETE FROM partner_club_settings WHERE id=1').run();
   }
 });
+
+// A prior payment's cleanup reader can briefly hold a shared lock in
+// DELETE journal mode. Fixture setup must be atomic and retry the lock,
+// just as the real checkout requests do; never retry assertion failures.
+async function physicalStockFixture(id){
+  const {withImmediateTransaction}=require('./reservations');
+  for(let attempt=0;attempt<40;attempt++){
+    try{
+      return withImmediateTransaction(()=>{
+        const p=point(id);
+        db.prepare('UPDATE stock SET qty=1 WHERE point_id=? AND variant_id=1').run(p.id);
+        db.prepare('DELETE FROM stock WHERE point_id=? AND variant_id=2').run(p.id);
+        return p;
+      });
+    }catch(error){
+      if(attempt===39||!/database (?:table )?is locked|database is busy/i.test(error.message))throw error;
+      await sleep(50);
+    }
+  }
+}
+test('physical shelf confirmation permits zero and partial stock without creating fake available inventory',{timeout:15000},async()=>{
+  const p=await physicalStockFixture('stress-physical-stock');
+  const body=orderBody(p);
+  const initial=await untilResponse(()=>post(body),r=>r.status===409&&r.body.code==='STOCK_CONFIRMATION_REQUIRED');
+  assert.equal(initial.status,409,JSON.stringify(initial));
+  assert.equal(initial.body.code,'STOCK_CONFIRMATION_REQUIRED');
+  assert.equal(initial.body.details.pointId,p.id);
+  assert.deepEqual(initial.body.details.items.map(i=>[i.variantId,i.requestedQty,i.availableQty]),[[1,2,1],[2,1,0]]);
+  assert.equal(orderCount(body),0);assert.equal(payments.has(body.orderId),false);
+  assert.deepEqual(quantities(p),[1]);
+  assert.equal(validateFirstPurchasePromo('HV15',body.customerPhone,p.id).valid,true);
+  const wrong={...body,physicalStockConfirmation:{pointId:'other',items:[{variantId:1,qty:2},{variantId:2,qty:1}]}};
+  assert.equal((await untilResponse(()=>post(wrong),r=>r.status===409&&r.body.code==='STOCK_CONFIRMATION_REQUIRED')).body.code,'STOCK_CONFIRMATION_REQUIRED');
+  const approved={...body,physicalStockConfirmation:{pointId:p.id,items:[{variantId:1,qty:2},{variantId:2,qty:1}]}};
+  const created=await untilResponse(()=>post(approved),r=>[200,201].includes(r.status)&&!!r.body.payment_id);
+  assert.equal(created.body.payment_id,gatewayPayment(body.orderId).payment.id);
+  const row=order(body);
+  const adjusted=()=>db.prepare('SELECT variant_id,qty,physical_stock_added_qty FROM order_items WHERE order_id=? ORDER BY variant_id').all(row.id).map(i=>[i.variant_id,i.qty,i.physical_stock_added_qty]);
+  assert.deepEqual(adjusted(),[[1,2,1],[2,1,1]]);
+  assert.deepEqual(quantities(p),[0],'pending correction is not available');
+  const other=orderBody(p);
+  other.physicalStockConfirmation=approved.physicalStockConfirmation;
+  assert.equal((await untilResponse(()=>post(other),r=>r.status===409&&r.body.code==='STOCK_UNAVAILABLE')).body.code,'STOCK_UNAVAILABLE','never steal another active reservation');
+  assert.equal(orderCount(other),0);assert.equal(payments.has(other.orderId),false);
+  await settlePaid(approved);
+  assert.equal(order(body).status,'paid');
+  assert.deepEqual(quantities(p),[0,0],'shortfall received then immediately consumed');
+  assert.deepEqual(adjusted(),[[1,2,1],[2,1,1]]);
+  await settlePaid(approved);
+  assert.equal(orderCount(body),1);
+  assert.deepEqual(quantities(p),[0,0]);
+  const customer=db.prepare('SELECT orders_count,total_spent FROM customers WHERE phone=?').get(body.customerPhone.replace(/\D/g,''));
+  assert.equal(customer.orders_count,1);assert.equal(customer.total_spent,680);
+  assert.equal(promoCount(body),1);
+  const message=require('./telegram').buildOrderMessage(order(body),db.prepare('SELECT * FROM order_items WHERE order_id=?').all(row.id));
+  assert.match(message,/Расхождение остатков/);
+  assert.match(message,/\+1 шт\., сразу списано/);
+});
+test('cancellation restores only originally recorded units and leaves first-order promo usable',{timeout:15000},async()=>{
+  const p=await physicalStockFixture('stress-physical-cancel');
+  const body=orderBody(p);
+  body.physicalStockConfirmation={pointId:p.id,items:[{variantId:1,qty:2},{variantId:2,qty:1}]};
+  await untilResponse(()=>post(body),r=>[200,201].includes(r.status)&&!!r.body.payment_id);
+  providerStatus(body.orderId,'canceled');
+  await Promise.all([hook(body),hook(body),poll(body)]);
+  await untilResponse(()=>poll(body),r=>r.status===200&&r.body.status==='failed');
+  assert.deepEqual(quantities(p),[1]);assert.equal(promoCount(body),0);
+  assert.equal(validateFirstPurchasePromo('HV15',body.customerPhone,p.id).valid,true);
+  assert.equal((await untilResponse(()=>post(body),r=>r.status===409)).status,409);
+  assert.deepEqual(quantities(p),[1]);
+});
+test('physical confirmation never overrides warehouse delivery shortages',()=>{
+  const {reserveForOrder,withImmediateTransaction}=require('./reservations');
+  assert.throws(()=>withImmediateTransaction(()=>reserveForOrder(999999,{type:'warehouse',id:'krsk'},
+    [{variantId:1,name:'Лёгкое',weight:'50 г',qty:99}],null,0,
+    {pointId:'krsk',items:[{variantId:1,qty:99}]})),e=>e.code==='STOCK_UNAVAILABLE');
+});

@@ -2729,6 +2729,7 @@
 
 <script src="/first-purchase-promo-display.js?v=20261124-4"></script>
 <script src="/android-payment.js?v=20261124-5"></script>
+<script src="/physical-stock-confirmation.js?v=1"></script>
 <script>
 // ── DATA ──────────────────────────────────────────────
 let products = [];
@@ -4377,7 +4378,7 @@ function selectCatalogPoint(pointId, options) {
       else if (action.type === 'cart') addProductToCartFromCatalog(action.id);
       else if (action.type === 'detail-buy' || action.type === 'detail-cart') {
         const variant = productVariantsForCatalog(product).find(v => String(v.id) === String(action.variantId));
-        if (!variant || variantStockAtCatalogPoint(variant) < action.qty) {
+        if (!variant) {
           showToast('Выбранного варианта сейчас нет в этом минимаркете — посмотрите доступные варианты.');
           openDetail(action.id);
         } else {
@@ -4424,7 +4425,8 @@ function productMinVariant(p) {
 // которого на этой конкретной стойке нет.
 function productMinVariantForCatalog(p) {
   const filtered = productVariantsForCatalog(p);
-  const pool = filtered.length ? filtered : productVariants(p);
+  const stocked = currentCatalogPointFilter ? filtered.filter(v=>variantStockAtCatalogPoint(v)>0) : filtered;
+  const pool = stocked.length ? stocked : filtered.length ? filtered : productVariants(p);
   return pool.reduce((min, v) => v.price < min.price ? v : min);
 }
 
@@ -4434,7 +4436,7 @@ function productMinVariantForCatalog(p) {
 function productVariantsForCatalog(p) {
   const all = productVariants(p);
   if (!currentCatalogPointFilter) return all;
-  return all.filter((v) => (v.stock && v.stock[currentCatalogPointFilter] > 0));
+  return all.slice().sort((a,b)=>Number(variantStockAtCatalogPoint(b)>0)-Number(variantStockAtCatalogPoint(a)>0));
 }
 
 function variantStockAtCatalogPoint(v) {
@@ -4487,7 +4489,7 @@ function updateCatalogPointUi() {
   if (changeButton) changeButton.textContent = currentCatalogPointFilter ? 'Изменить' : 'Выбрать точку';
   if (currentCatalogPointFilter) {
     const point = SITE_POINTS.find((p) => String(p.id) === String(currentCatalogPointFilter));
-    if (hint) hint.textContent = 'Показаны только товары, которые реально есть в выбранном минимаркете.';
+    if (hint) hint.textContent = 'Остатки указаны по учёту. Если товар есть на стойке, можно подтвердить его наличие при оплате.';
     if (bannerText) bannerText.textContent = '📍 Вы покупаете в минимаркете: ' + (point ? point.name : currentCatalogPointFilter);
     if (bannerAddress) bannerAddress.textContent = point && point.addr ? point.addr : 'Адрес уточняется';
   } else {
@@ -4527,7 +4529,7 @@ function renderProductCard(p) {
   const stock = productStockAtCatalogPoint(p);
   const inStock = stock === null || stock > 0;
   const availabilityHtml = stock === null ? '' : stock <= 0
-    ? '<div class="product-availability"><span class="product-low-stock">Нет в наличии</span></div>'
+    ? '<div class="product-availability"><span class="product-low-stock">Нет по учёту · проверьте стойку</span></div>'
     : `
     <div class="product-availability">
       <span class="product-in-stock">✓ Есть в выбранном минимаркете</span>
@@ -4559,8 +4561,8 @@ function renderProductCard(p) {
           <span class="price">${priceLabel}</span>
         </div>
         <div class="product-card-actions">
-          ${inStock ? `<button class="add-btn" onclick="event.stopPropagation(); buyProductNow(${p.id})">Купить сейчас</button>
-          <button class="add-btn secondary" onclick="event.stopPropagation(); addProductToCartFromCatalog(${p.id})">В корзину</button>` : '<span style="font-size:.8rem;color:var(--muted);">Товар временно отсутствует</span>'}
+          <button class="add-btn" onclick="event.stopPropagation(); buyProductNow(${p.id})">${inStock?'Купить сейчас':'Есть на стойке? Купить'}</button>
+          <button class="add-btn secondary" onclick="event.stopPropagation(); addProductToCartFromCatalog(${p.id})">В корзину</button>
         </div>
         ${!currentCatalogPointFilter || productVariants(p).some(v => !(Number(v.stock?.[currentCatalogPointFilter]) > 0)) ? `<button class="add-btn secondary" style="margin-top:.6rem;" onclick="event.stopPropagation();openCustomerRestockModal(${p.id})">📦 Заказать довоз в мой минимаркет</button>` : ''}
       </div>
@@ -4706,7 +4708,7 @@ function renderFeatured() {
   if (!grid) return;
   let featured = products.slice();
   if (currentCatalogPointFilter) {
-    featured = featured.filter(p => productVariantsForCatalog(p).length > 0);
+    featured = featured.filter(p => productStockAtCatalogPoint(p) > 0);
   }
 
   // Вначале — реально продававшиеся товары с фотографиями. Если статистики
@@ -4811,6 +4813,7 @@ function updateDetailPrice() {
   const stock = variantStockAtCatalogPoint(v);
   document.getElementById('detailAvailability').innerHTML = stock === null
     ? ''
+    : stock <= 0 ? '<span class="low">Нет по учёту. Если упаковка у вас, подтвердите наличие при оплате.</span>'
     : `<span>✓ Есть в выбранном минимаркете</span>${stock <= 2 ? `<span class="low">Осталось ${stock}</span>` : ''}`;
 }
 
@@ -4822,7 +4825,7 @@ function changeDetailQty(d) {
   const p = products.find(x => x.id === currentDetailId);
   const v = p ? detailVariantsFor(p)[currentVariantIdx] : null;
   const stock = variantStockAtCatalogPoint(v);
-  detailQty = Math.max(1, stock === null ? detailQty + d : Math.min(stock, detailQty + d));
+  detailQty = Math.max(1, Math.min(99,detailQty+d));
   document.getElementById('detailQty').textContent = detailQty;
 }
 
@@ -4830,7 +4833,6 @@ function addDetailToCart() {
   const p = products.find(x => x.id === currentDetailId);
   const v = detailVariantsFor(p)[currentVariantIdx];
   if (requireCatalogPoint('detail-cart', p.id, v.id, detailQty)) return;
-  if (variantStockAtCatalogPoint(v) < detailQty) { showToast('В выбранном минимаркете этого товара недостаточно'); return; }
   addToCartQty(p, detailQty, v);
   showToast(`${p.icon} «${p.name}» (${v.weight}) добавлено в корзину`);
 }
@@ -4839,7 +4841,6 @@ function buyDetailNow() {
   const p = products.find(x => x.id === currentDetailId);
   const v = detailVariantsFor(p)[currentVariantIdx];
   if (requireCatalogPoint('detail-buy', p.id, v.id, detailQty)) return;
-  if (variantStockAtCatalogPoint(v) < detailQty) { showToast('В выбранном минимаркете этого товара недостаточно'); return; }
   checkoutOrigin = 'buy_now';
   trackGoal('buy_now_clicked', {
     scenario: 'catalog', source: 'product_detail', product_id: p.id,
@@ -5182,7 +5183,7 @@ function addToCartQty(p, qty, variant) {
   const v = variant || productMinVariant(p);
   const cartKey = p.id + '::' + v.weight;
   const existing = cart.find(x => x.cartKey === cartKey);
-  if (existing) existing.qty += qty;
+  if (existing) existing.qty = Math.min(99,existing.qty+qty);
   else cart.push({ id: p.id, variantId: v.id, cartKey, name: p.name, icon: p.icon, weight: v.weight, price: v.price, qty });
   updateCartCount();
   trackGoal('add_to_cart', { product_name: p.name, price: v.price });
@@ -5236,7 +5237,7 @@ function removeFromCart(cartKey) {
 function changeCartQty(cartKey, d) {
   const item = cart.find(x => x.cartKey === cartKey);
   if (!item) return;
-  item.qty = Math.max(1, item.qty + d);
+  item.qty = Math.max(1, Math.min(99,item.qty+d));
   renderCart();
 }
 
@@ -6172,7 +6173,7 @@ async function launchYooKassaPaymentImpl() {
     const bonesHeaders = bonesToUse > 0 && getAccountToken()
       ? { 'Authorization': 'Bearer ' + getAccountToken() }
       : {};
-    const paymentBody = {
+    let paymentBody = {
         amount: total,
         orderId,
         method: checkoutPaymentMethod,
@@ -6198,15 +6199,30 @@ async function launchYooKassaPaymentImpl() {
         confirmationMode,
         cartItems: cart.map((i) => ({ variantId: i.variantId, qty: i.qty })),
       };
-    const requestOptions={method:'POST',headers:{'Content-Type':'application/json',...bonesHeaders},body:JSON.stringify(paymentBody)};
     let res,data;
-    if(androidHosted){
-      window.HvostAndroidPayment.remember(orderId,'catalog',paymentBody);
-      res=await fetchWithTimeout('/api/create-payment',requestOptions,12000);
-      try{data=JSON.parse(res.body||'null');}catch(_){data=null;}
-      if(!data||!res.status||res.status>=500||res.status===202){window.HvostAndroidPayment.go(orderId);return;}
-      if(!res.ok){if(['PAYMENT_RETRY_MISMATCH','PAYMENT_RETRY_REQUIRED','RESERVATION_CLOSED'].includes(data.code)){window.HvostAndroidPayment.go(orderId);return;}window.HvostAndroidPayment.clear(orderId);}
-    }else{res=await fetch('/api/create-payment',requestOptions);data=await res.json();}
+    for(let round=0;round<4;round++){
+      const requestOptions={method:'POST',headers:{'Content-Type':'application/json',...bonesHeaders},body:JSON.stringify(paymentBody)};
+      if(androidHosted){
+        window.HvostAndroidPayment.remember(orderId,'catalog',paymentBody);
+        res=await fetchWithTimeout('/api/create-payment',requestOptions,12000);
+        try{data=JSON.parse(res.body||'null');}catch(_){data=null;}
+        if(!data||!res.status||res.status>=500||res.status===202){window.HvostAndroidPayment.go(orderId);return;}
+      }else{res=await fetch('/api/create-payment',requestOptions);data=await res.json();}
+      if(res.ok||data?.code!=='STOCK_CONFIRMATION_REQUIRED'||round===3)break;
+      const next=await window.HvostPhysicalStock.resolve(data,paymentBody);
+      if(!next){
+        if(androidHosted)window.HvostAndroidPayment.clear(orderId);
+        clearPendingSuccess(orderId);backToStep1();
+        payBtn.disabled=false;payBtn.innerHTML=originalBtnHtml;
+        showToast('Измените количество товаров в корзине.');
+        return;
+      }
+      paymentBody=next;
+    }
+    if(androidHosted&&!res.ok){
+      if(['PAYMENT_RETRY_MISMATCH','PAYMENT_RETRY_REQUIRED','RESERVATION_CLOSED'].includes(data.code)){window.HvostAndroidPayment.go(orderId);return;}
+      window.HvostAndroidPayment.clear(orderId);
+    }
 
     if (!res.ok) {
       if (data && data.code === 'ORDER_TOTAL_CHANGED' && data.pricing && Array.isArray(data.pricing.items)) {

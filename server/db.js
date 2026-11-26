@@ -1156,6 +1156,8 @@ runStartupBackfillOnce('orders_legacy_partner_name_v1', () => {
 });
 ensureColumn('orders', 'fulfillment_type', "TEXT NOT NULL DEFAULT 'pickup'");
 ensureColumn('order_items', 'variant_id', 'INTEGER REFERENCES product_variants(id)');
+// Physically confirmed missing units are not available for resale before payment.
+ensureColumn('order_items', 'physical_stock_added_qty', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'delivery_address', 'TEXT');
 ensureColumn('orders', 'delivery_fee', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'referral_code', 'TEXT');

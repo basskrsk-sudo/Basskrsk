@@ -6,7 +6,7 @@
   var valid=window.HvostAndroidPayment.codeValid(code);
   var busy=false,finished=false,lastCheck=0,left=false,missing=false,queuedCheck=false;
   // Only explicit validation failures known to occur before creating a payment.
-  var editCodes=['ORDER_TOTAL_CHANGED','FIRST_PURCHASE_PROMO_INVALID','STOCK_UNAVAILABLE','VARIANT_NOT_FOUND','VARIANT_INACTIVE','POINT_UNAVAILABLE','ADVISOR_SELECTION_ERROR','ADVISOR_SELECTION_REQUIRED','PARTNER_POINT_MISMATCH','INVALID_QUANTITY','INVALID_CATALOG_PRICE','AMBIGUOUS_VARIANT','EMPTY_CART','TOO_MANY_LINES','CUSTOM_ITEM_NOT_ALLOWED','INVALID_ORDER_TOTAL','SELF_ORDER_BONES_FORBIDDEN'];
+  var editCodes=['ORDER_TOTAL_CHANGED','FIRST_PURCHASE_PROMO_INVALID','STOCK_UNAVAILABLE','STOCK_CONFIRMATION_REQUIRED','VARIANT_NOT_FOUND','VARIANT_INACTIVE','POINT_UNAVAILABLE','ADVISOR_SELECTION_ERROR','ADVISOR_SELECTION_REQUIRED','PARTNER_POINT_MISMATCH','INVALID_QUANTITY','INVALID_CATALOG_PRICE','AMBIGUOUS_VARIANT','EMPTY_CART','TOO_MANY_LINES','CUSTOM_ITEM_NOT_ALLOWED','INVALID_ORDER_TOTAL','SELF_ORDER_BONES_FORBIDDEN'];
   function show(id,on){el(id).hidden=!on;}
   function safePath(path){
     try{
@@ -106,8 +106,21 @@
         var headers={'Content-Type':'application/json'};
         if(Number(body.bonesUsed)>0){var token='';try{token=localStorage.getItem('taiga_customer_token')||'';}catch(_){}if(!token){el('message').textContent='Для оплаты косточками откройте исходную вкладку, в которой вы вошли в аккаунт.';skipFollowup=true;return;}headers.Authorization='Bearer '+token;}
         var ac=new AbortController(),timer=setTimeout(function(){ac.abort();},12000);
-        try{var response=await fetch('/api/create-payment',{method:'POST',headers:headers,body:JSON.stringify(body),cache:'no-store',signal:ac.signal});
-          var data=await response.json();
+        try{var response,data;
+          for(var round=0;round<4;round++){
+            clearTimeout(timer);ac=new AbortController();timer=setTimeout(function(){ac.abort();},12000);
+            response=await fetch('/api/create-payment',{method:'POST',headers:headers,body:JSON.stringify(body),cache:'no-store',signal:ac.signal});
+            data=await response.json();clearTimeout(timer);
+            if(response.ok||data.code!=='STOCK_CONFIRMATION_REQUIRED'||round===3)break;
+            var next=await window.HvostPhysicalStock.resolve(data,body);
+            if(!next)break;
+            body=next;var pointer=window.HvostAndroidPayment.pending();
+            window.HvostAndroidPayment.remember(code,pointer?pointer.flow:'qr',body);
+            if(/^\/p\//.test(editPath(body))){
+              try{var key='hm_qr_pending_v1:'+String(body.pointId),saved=JSON.parse(window.localStorage.getItem(key)||'null');
+                if(saved&&saved.orderId===code){saved.body=body;window.localStorage.setItem(key,JSON.stringify(saved));}}catch(_){}
+            }
+          }
           if(data.demo===true)return;
           if(!response.ok&&response.status>=400&&response.status<500&&editCodes.includes(data.code)){
             // Never discard a payment on a timeout, unknown error or existing order.
