@@ -432,7 +432,7 @@ async function handleClubCallback(chatId,data){
  if(String(chatId)!==reviewerForClub())return {message:'Недостаточно прав',ok:false};
  const [,action,idText]=data.split(':');const id=Number(idText);
  const row=db.prepare("SELECT e.*,r.state,r.edited_message FROM partner_club_events e JOIN partner_club_reviews r ON r.event_id=e.id WHERE e.id=?").get(id);
- if(!row||row.state==='sent'||row.state==='rejected')return {message:'Этот черновик уже обработан',ok:false};
+ if(!row||row.state==='sent'||row.state==='rejected')return {message:'Этот черновик уже обработан',ok:false,finished:true};
  if(row.state==='sending')return {message:'Публикация уже обрабатывается. Проверьте сообщения группы.',ok:false};
  if(clubPhotos.currentPhotoDraft(chatId)?.event_id===id)
    return {ok:false,message:'Сначала завершите прикрепление фотографий кнопкой «📷 Готово» либо отмените добавление.'};
@@ -459,7 +459,7 @@ async function handleClubCallback(chatId,data){
  if(action==='reject'){
    db.prepare("UPDATE partner_club_reviews SET state='rejected' WHERE event_id=? AND state IN ('pending','editing')").run(id);
    cancelClubInput(chatId);
-   return {ok:true,message:'🚫 Публикация отклонена.'};
+   return {ok:true,finished:true,message:'🚫 Публикация отклонена.'};
  }
  const c=settings();
  if(!c.chat_id || (!c.enabled && row.event_type!=='manual'))return {ok:false,message:'Рассылка выключена в админке'};
@@ -509,7 +509,7 @@ async function handleClubCallback(chatId,data){
  db.prepare("UPDATE partner_club_reviews SET state='sent' WHERE event_id=?").run(id);
  db.prepare("INSERT OR IGNORE INTO partner_club_delivery_log(event_id) VALUES(?)").run(id);
  cancelClubInput(chatId);
- return {ok:true,message:'✅ Опубликовано в группе.'};
+ return {ok:true,finished:true,message:'✅ Опубликовано в группе.'};
 }
 async function handleClubEdit(chatId,text,entities=[]){
  const match=String(text||'').match(/^\/clubtext(?:@\w+)?\s+(\d+)\s+([\s\S]+)$/i);
