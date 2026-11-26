@@ -369,12 +369,29 @@ test('paid checkout survives stopped Club worker and produces one moderated draf
   }
 });
 
+// A prior payment's cleanup reader can briefly hold a shared lock in
+// DELETE journal mode. Fixture setup must be atomic and retry the lock,
+// just as the real checkout requests do; never retry assertion failures.
+async function physicalStockFixture(id){
+  const {withImmediateTransaction}=require('./reservations');
+  for(let attempt=0;attempt<40;attempt++){
+    try{
+      return withImmediateTransaction(()=>{
+        const p=point(id);
+        db.prepare('UPDATE stock SET qty=1 WHERE point_id=? AND variant_id=1').run(p.id);
+        db.prepare('DELETE FROM stock WHERE point_id=? AND variant_id=2').run(p.id);
+        return p;
+      });
+    }catch(error){
+      if(attempt===39||!/database (?:table )?is locked|database is busy/i.test(error.message))throw error;
+      await sleep(50);
+    }
+  }
+}
 test('physical shelf confirmation permits zero and partial stock without creating fake available inventory',{timeout:15000},async()=>{
-  const p=point('stress-physical-stock');
-  db.prepare('UPDATE stock SET qty=1 WHERE point_id=? AND variant_id=1').run(p.id);
-  db.prepare('DELETE FROM stock WHERE point_id=? AND variant_id=2').run(p.id);
+  const p=await physicalStockFixture('stress-physical-stock');
   const body=orderBody(p);
-  const initial=await post(body);
+  const initial=await untilResponse(()=>post(body),r=>r.status===409&&r.body.code==='STOCK_CONFIRMATION_REQUIRED');
   assert.equal(initial.status,409,JSON.stringify(initial));
   assert.equal(initial.body.code,'STOCK_CONFIRMATION_REQUIRED');
   assert.equal(initial.body.details.pointId,p.id);
@@ -383,7 +400,7 @@ test('physical shelf confirmation permits zero and partial stock without creatin
   assert.deepEqual(quantities(p),[1]);
   assert.equal(validateFirstPurchasePromo('HV15',body.customerPhone,p.id).valid,true);
   const wrong={...body,physicalStockConfirmation:{pointId:'other',items:[{variantId:1,qty:2},{variantId:2,qty:1}]}};
-  assert.equal((await post(wrong)).body.code,'STOCK_CONFIRMATION_REQUIRED');
+  assert.equal((await untilResponse(()=>post(wrong),r=>r.status===409&&r.body.code==='STOCK_CONFIRMATION_REQUIRED')).body.code,'STOCK_CONFIRMATION_REQUIRED');
   const approved={...body,physicalStockConfirmation:{pointId:p.id,items:[{variantId:1,qty:2},{variantId:2,qty:1}]}};
   const created=await untilResponse(()=>post(approved),r=>[200,201].includes(r.status)&&!!r.body.payment_id);
   assert.equal(created.body.payment_id,gatewayPayment(body.orderId).payment.id);
@@ -393,7 +410,7 @@ test('physical shelf confirmation permits zero and partial stock without creatin
   assert.deepEqual(quantities(p),[0],'pending correction is not available');
   const other=orderBody(p);
   other.physicalStockConfirmation=approved.physicalStockConfirmation;
-  assert.equal((await post(other)).body.code,'STOCK_UNAVAILABLE','never steal another active reservation');
+  assert.equal((await untilResponse(()=>post(other),r=>r.status===409&&r.body.code==='STOCK_UNAVAILABLE')).body.code,'STOCK_UNAVAILABLE','never steal another active reservation');
   assert.equal(orderCount(other),0);assert.equal(payments.has(other.orderId),false);
   await settlePaid(approved);
   assert.equal(order(body).status,'paid');
@@ -410,9 +427,7 @@ test('physical shelf confirmation permits zero and partial stock without creatin
   assert.match(message,/\+1 шт\., сразу списано/);
 });
 test('cancellation restores only originally recorded units and leaves first-order promo usable',{timeout:15000},async()=>{
-  const p=point('stress-physical-cancel');
-  db.prepare('UPDATE stock SET qty=1 WHERE point_id=? AND variant_id=1').run(p.id);
-  db.prepare('DELETE FROM stock WHERE point_id=? AND variant_id=2').run(p.id);
+  const p=await physicalStockFixture('stress-physical-cancel');
   const body=orderBody(p);
   body.physicalStockConfirmation={pointId:p.id,items:[{variantId:1,qty:2},{variantId:2,qty:1}]};
   await untilResponse(()=>post(body),r=>[200,201].includes(r.status)&&!!r.body.payment_id);
@@ -421,7 +436,7 @@ test('cancellation restores only originally recorded units and leaves first-orde
   await untilResponse(()=>poll(body),r=>r.status===200&&r.body.status==='failed');
   assert.deepEqual(quantities(p),[1]);assert.equal(promoCount(body),0);
   assert.equal(validateFirstPurchasePromo('HV15',body.customerPhone,p.id).valid,true);
-  assert.equal((await post(body)).status,409);
+  assert.equal((await untilResponse(()=>post(body),r=>r.status===409)).status,409);
   assert.deepEqual(quantities(p),[1]);
 });
 test('physical confirmation never overrides warehouse delivery shortages',()=>{
