@@ -393,7 +393,7 @@ test('real SQLite writer lock for 20s: no partial order, no duplicate charge, ve
 test('customer accounting failure rolls back paid transition and retry records it exactly once',async()=>{
   const p=point('stress-customer-atomic'),body=orderBody(p);
   await untilResponse(()=>post(body),r=>[200,201].includes(r.status)&&!!r.body.payment_id);
-  const phone=body.customerPhone.replace(/\\D/g,'');
+  const phone=body.customerPhone.replace(/\D/g,'');
   providerStatus(body.orderId,'succeeded');
   // Simulate failure at the customer write after reservation consumption.
   // No timing or race is required to exercise the former loss window.
