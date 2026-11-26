@@ -767,7 +767,7 @@ jobs:
       - name: Verify batched warehouse lists
         run: node --test server/warehouse-list-query.test.js
       - name: Verify batched payout reports and exact recipient balances
-        run: node --test server/payout-brief.test.js server/commission-refunds.test.js
+        run: node --test server/payout-brief.test.js server/commission-refunds.test.js server/payout-brief-on-demand.test.js
       - name: Verify audited payout cancellation and re-payment
         run: node --test server/payout-cancellations.test.js
       - name: Verify compact financial overview, payouts and expense pagination
