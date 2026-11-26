@@ -315,3 +315,71 @@ test('summary query count grows by batches, not by individual inactive or empty 
     assert.ok(after.queries()-count<=6,'70 more accounts should require at most two additional three-query batches: '+(after.queries()-count));
   }finally{db.prepare("DELETE FROM partners WHERE partner_code LIKE 'BATCH-EMPTY-%'").run();}
 });
+
+
+test('order items are read once in bounded batches, not once per order or recipient role',()=>{
+  const now=new Date('2026-11-26T19:00:00Z');
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    const expected=new Map(),ids=[];
+    const date=db.prepare('UPDATE orders SET created_at=? WHERE id=?');
+    for(let i=0;i<260;i++){
+      const id=insertOrder('BATCH-ITEMS-'+i,groomer1,500,'paid');
+      ids.push(id);
+      date.run('2026-11-20 07:00:00',id);
+      const items=i===0?[]:[
+        {name:'Товар '+i,weight:'50 г',price:100,qty:2},
+        {name:'Другой товар '+i,weight:'100 г',price:300,qty:1}
+      ];
+      for(const item of items)addItem.run(id,item.name,item.weight,item.price,item.qty);
+      expected.set(id,items);
+    }
+    // Future orders and full refunds cannot cause monthly product reads.
+    const future=insertOrder('BATCH-ITEMS-FUTURE',groomer1,500,'paid');
+    date.run('2026-11-26 07:00:00',future);addItem.run(future,'Будущий заказ','50 г',500,1);
+    const refunded=insertOrder('BATCH-ITEMS-REFUNDED',groomer1,500,'paid',500);
+    date.run('2026-11-20 07:00:00',refunded);addItem.run(refunded,'Полный возврат','50 г',500,1);
+    const prepare=db.prepare;
+    function measure(options){
+      const itemQueries=[];
+      db.prepare=function(sql){
+        const stmt=prepare.call(this,sql);
+        if(!/FROM order_items\b/i.test(sql))return stmt;
+        const all=stmt.all.bind(stmt);
+        stmt.all=(...params)=>{
+          itemQueries.push(params);
+          return all(...params);
+        };
+        return stmt;
+      };
+      try{return {report:collectPayoutBrief(now,options),itemQueries};}
+      finally{db.prepare=prepare;}
+    }
+    const brief=measure({monthly:true,summaryOnly:true});
+    assert.equal(brief.itemQueries.length,0);
+    const detailed=measure({monthly:true});
+    const seen=detailed.itemQueries.flat();
+    assert.ok(detailed.itemQueries.length<=5,'260 orders plus the small fixture need at most five reads');
+    assert.ok(detailed.itemQueries.every(batch=>batch.length<=128&&batch.length>0));
+    assert.equal(new Set(seen).size,seen.length,'an order must not be fetched again for another role');
+    assert.ok(ids.every(id=>seen.includes(id)));
+    assert.ok(!seen.includes(future));
+    assert.ok(!seen.includes(refunded));
+    assert.equal(detailed.report.total,brief.report.total);
+    const payee=detailed.report.people.find(person=>person.statements.some(s=>s.role==='partner'&&s.account_id===groomer1));
+    assert.ok(payee);
+    const sales=payee.statements.flatMap(s=>s.sales);
+    for(const id of ids){
+      const copies=sales.filter(sale=>sale.order_id===id);
+      assert.ok(copies.length>=1);
+      for(const sale of copies)assert.deepEqual(sale.items,expected.get(id));
+    }
+    const chosen=measure({monthly:true,recipientKey:payee.selection_key});
+    assert.equal(chosen.report.people.length,1);
+    assert.equal(chosen.report.people[0].total,payee.total);
+    assert.deepEqual(chosen.report.people[0].statements,payee.statements);
+    assert.ok(chosen.itemQueries.every(batch=>batch.length<=128));
+    assert.equal(new Set(chosen.itemQueries.flat()).size,chosen.itemQueries.flat().length);
+    assert.match(buildPayoutBriefCsv(detailed.report),/Товар 259/);
+  }finally{db.exec('ROLLBACK');}
+});
