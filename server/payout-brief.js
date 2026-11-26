@@ -140,18 +140,43 @@ function groupedPoints(account,orders){
   return [...result.values()].sort((a,b)=>b.amount-a.amount||a.point.localeCompare(b.point,'ru'));
 }
 
+// Fetch historical line items by bounded ID lists. A sale can appear in
+// several recipient roles: share its immutable projection within this report,
+// never across requests or after a refund or a corrected order.
+const ORDER_ITEM_BATCH_SIZE=128;
 function createOrderItemReader(){
-  const stmt=db.prepare('SELECT name,weight,price,qty FROM order_items WHERE order_id=? ORDER BY id');
   const cache=new Map();
-  return function getItems(orderId){
-    if(!cache.has(orderId)){
-      cache.set(orderId,stmt.all(orderId).map(row=>({
+  const statements=new Map();
+  function prefetch(orderIds){
+    const missing=[...new Set(orderIds)].filter(id=>!cache.has(id));
+    for(let offset=0;offset<missing.length;offset+=ORDER_ITEM_BATCH_SIZE){
+      const batch=missing.slice(offset,offset+ORDER_ITEM_BATCH_SIZE);
+      // Remember empty orders as well, without querying them again per role.
+      const placeholders=batch.map(()=>'?').join(',');
+      let stmt=statements.get(batch.length);
+      if(!stmt){
+        stmt=db.prepare('SELECT order_id,name,weight,price,qty FROM order_items WHERE order_id IN ('+
+          placeholders+') ORDER BY order_id,id');
+        // Keep just one prepared full-size statement and at most one tail.
+        if(batch.length!==ORDER_ITEM_BATCH_SIZE){
+          for(const size of statements.keys())if(size!==ORDER_ITEM_BATCH_SIZE)statements.delete(size);
+        }
+        statements.set(batch.length,stmt);
+      }
+      const rows=stmt.all(...batch);
+      for(const id of batch)cache.set(id,[]);
+      for(const row of rows)cache.get(row.order_id).push({
         name:clean(row.name,100),weight:clean(row.weight,25),
         price:num(row.price),qty:num(row.qty),
-      })));
+      });
     }
+  }
+  const getItems=orderId=>{
+    if(!cache.has(orderId))prefetch([orderId]);
     return cache.get(orderId);
   };
+  getItems.prefetch=prefetch;
+  return getItems;
 }
 function formatSale(account,order,getItems){
   const items=getItems(order.id);
@@ -169,6 +194,7 @@ const {isPayable,planCommission,planCommissionFromCorrections}=require('./commis
 function roleStatement(account,getItems,detail=true,cycle=null,batch=null){
   const pending=(batch?batch.orders.get(account.id):pendingOrders(account)).filter(o=>payoutPeriodPart(o.created_at,cycle)!=='future');
   const eligible=pending.filter(isPayable);
+  if(detail)getItems.prefetch(eligible.map(order=>order.id));
   // Fully returned unpaid orders have no remuneration. Keep the manager's
   // existing report, but do not list these orders for groomers or owners.
   const returned=pending.filter(o=>(o.return_amount>0||o.refund_status==='refunded') && (account.role==='manager'||isPayable(o)));
@@ -283,6 +309,13 @@ function collectPayoutBrief(now=new Date(),{recipientKey=null,summaryOnly=false,
       const batch={orders:readUnpaidOrderBatch(db,role,ids),
         corrections:readCorrectionBatch(db,role,ids),
         bonuses:getPendingBonusesBatch(db,role,ids)};
+      if(!recipientKey&&!summaryOnly){
+        const orderIds=[];
+        for(const orders of batch.orders.values())for(const order of orders){
+          if(isPayable(order)&&payoutPeriodPart(order.created_at,cycle)!=='future')orderIds.push(order.id);
+        }
+        getItems.prefetch(orderIds);
+      }
       for(const account of group){
         const statement=roleStatement(account,getItems,!recipientKey&&!summaryOnly,cycle,batch);
         if(statement.total>0||statement.held_orders||statement.refund_carried)entries.push({account,statement});
