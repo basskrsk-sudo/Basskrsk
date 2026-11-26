@@ -3,6 +3,14 @@ name: Telegram Mini App checks
 on:
   pull_request:
     paths:
+      - server/payout-cancellations.js
+      - server/payout-cancellations.test.js
+      - server/routes-payout-reports.js
+      - server/payout-reports.js
+      - server/payout-report-telegram.js
+      - server/payout-brief-confirmation.js
+      - server/routes-audit.js
+      - public/payout-reports.js
       - Dockerfile
       - .dockerignore
       - scripts/restore-doc-aliases.js
@@ -61,7 +69,6 @@ on:
       - server/owner-payouts.js
       - server/manager-payouts.js
       - server/payout-statement-orders.js
-      - server/payout-brief-confirmation.js
       - server/payout-report-pdf.js
       - server/task-daily-digest-pdf.js
       - server/container-memory.js
@@ -97,7 +104,6 @@ on:
       - public/manager-leads.js
       - public/manager-leads.css
       - server/bonus-logic.js
-      - server/routes-partner-leads.js
       - server/miniapp-promos-ui.test.js
       - public/miniapp-tasks.js
       - server/routes-miniapp-tasks.js
@@ -130,7 +136,6 @@ on:
       - server/weekly-report-pdf-runner.js
       - server/weekly-report-pdf-runner.test.js
       - public/week-over-week.js
-      - server/routes-audit.js
       - server/db.js
       - server/db-indexes.test.js
       - server/routes-operations.js
@@ -180,11 +185,7 @@ on:
       - server/admin-referral-control.test.js
       - server/referral-only-partners.test.js
       - public/admin-referral-control.js
-      - server/bonus-logic.js
       - server/report-bonuses.js
-      - server/referral-program.js
-      - public/payout-reports.js
-      - public/partner-invite.html
       - server/winback.js
       - server/winback-manual-only.test.js
       - public/taiga-warehouse.html
@@ -209,9 +210,7 @@ on:
       - server/image-converter.js
       - server/image-converter.test.js
       - server/manager-miniapp-create-point.test.js
-      - server/manager-payouts.js
       - server/manager-compensation-consistency.test.js
-      - server/payout-reminders.js
       - server/manager-current-points.test.js
       - server/manager-miniapp-registration.test.js
       - server/routes-miniapp.test.js
@@ -247,7 +246,6 @@ on:
       - server/max-miniapp-staff.test.js
       - server/max-miniapp-staff-ui.test.js
       - public/max-miniapp-identity.js
-      - public/miniapp-work.js
       - public/max-miniapp.html
       - public/max-miniapp.js
       - public/max-miniapp.css
@@ -292,7 +290,6 @@ on:
       - server/miniapp-bot-links.js
       - server/miniapp-existing-bot.test.js
       - server/business-founders.js
-      - server/routes-business-founders.js
       - server/business-founders.test.js
       - server/miniapp-founder-ui.test.js
       - server/routes-auth.js
@@ -384,18 +381,6 @@ on:
       - server/sqlite-journal-maintenance.test.js
       - server/single-flight-job.js
       - server/single-flight-job.test.js
-      - server/static-cache.js
-      - server/static-cache.test.js
-      - server/static-cache-async.test.js
-      - server/storage-io-async.test.js
-      - server/salon-page-storage.js
-      - server/report-approvals.js
-      - server/report-approvals.test.js
-      - server/payout-brief.js
-      - server/payout-brief-on-demand.test.js
-      - server/unpaid-order-alerts.js
-      - server/task-reminders.js
-      - server/winback.js
       - server/site-health-ui.test.js
       - server/site-support-links.test.js
       - scripts/site-uptime-monitor.js
@@ -780,6 +765,8 @@ jobs:
         run: node --test server/stock-inventory-transactions.test.js
       - name: Verify batched warehouse lists
         run: node --test server/warehouse-list-query.test.js
+      - name: Verify audited payout cancellation and re-payment
+        run: node --test server/payout-cancellations.test.js
       - name: Verify compact financial overview, payouts and expense pagination
         run: node --test server/finance-compact.test.js
       - name: Verify exact economics totals after streaming paid orders

@@ -6549,11 +6549,12 @@ async function cancelRecordedPayout(role,type,id,amount,button){
     const data=await res.json();
     if(!res.ok||!data.ok)throw Error(data.error||'Не удалось отменить выплату');
     alert('Выплата отменена. Актуальная задолженность пересчитана.');
-    if(typeof closePayoutReportModal==='function')closePayoutReportModal();
+    const modal=document.getElementById('payout-report-modal');
+    if(modal){modal.style.display='none';payoutReportDocument=null;payoutReportData=null;++payoutReportEpoch;}
     if(role==='owner')await renderOwners();
     else if(role==='partner')await renderPartners();
     else await renderManagers();
-    if(type==='referral_bonus'&&typeof loadRecipientBonuses==='function')await loadRecipientBonuses();
+
   }catch(error){alert(error.message||'Проверьте историю выплат перед повтором.');}
   finally{payoutCancellationRunning=false;if(button)button.disabled=false;}
 }

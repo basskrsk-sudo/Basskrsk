@@ -96,6 +96,8 @@ function cancelPayout(db,body,adminId){
       const point=db.prepare('SELECT * FROM manager_points WHERE id=?').get(payout.manager_point_id);
       const field=role==='manager'?'manager_id':role==='owner'?'referred_owner_id':'referred_groomer_id';
       if(!point||Number(point[field])!==recipientId)throw failure('Получатель бонуса изменился. Нужна ручная сверка.');
+      const amount=role==='manager'?Number(point.bonus_manager_amount??2000):Number(point[role==='owner'?'referred_owner_amount':'referred_groomer_amount']);
+      if(!(amount>0)||(role==='manager'&&Number(point.bonus_paid)!==1))throw failure('Начисление бонуса не найдено. Нужна ручная сверка.');
     }
     const offsets=c.items?db.prepare('SELECT * FROM commission_refund_offsets WHERE role=? AND payout_id=?').all(role,id):[];
     const reports=type==='commission'
