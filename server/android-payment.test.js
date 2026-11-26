@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const {webcrypto}=require('node:crypto');
-const {redirectPaymentPath,redirectContinuation,paymentMatchesOrder}=require('./redirect-payment-capability');
+const {redirectPaymentPath,redirectContinuation,paymentMatchesOrder,paymentTiming}=require('./redirect-payment-capability');
 const code='TG-1795194600000-abcdef1234567890';
 const now=Date.parse('2026-11-24T12:00:00Z');
 const order={order_code:code,total:850,status:'pending',reservation_status:'active',
@@ -61,6 +61,8 @@ function harness(responses,withSnapshot=false,ua='Android Chrome',extra={}){
  if(extra.seed)extra.seed(h,body);
  const fetch=async(url,opts)=>{requests.push({url,method:opts.method,body:opts.body});const r=responses.shift();if(!r)throw Error('unexpected request');if(r.wait)await r.wait;if(r.error)throw Error(r.error);return {status:r.status||200,ok:(r.status||200)<300,json:async()=>r.data||{}}};
  const context={window:h.window,document,location:{origin:'https://example.test',search:'?order='+code},URL,URLSearchParams,AbortController,Date,fetch,setTimeout,clearTimeout,navigator:{},localStorage:h.localStorage};
+ vm.runInNewContext(source('payment-countdown.js'),context);
+ if(extra.clock){const create=h.window.HvostPaymentCountdown.create;h.window.HvostPaymentCountdown.create=()=>create(extra.clock);}
  vm.runInNewContext(source('payment-handoff.js'),context);
  return{...h,els,events,requests};
 }
@@ -210,4 +212,72 @@ test('unconfirmed Telegram checkout prefers original tab instead of losing retry
  assert.match(mini,/originalNeeded=!!window\.HvostAndroidPayment\?\.snapshot\(code\)&&publicNumber===code/);
  assert.match(mini,/originalNeeded\?'<a class="btn btn-gold" href="/);
  assert.match(mini,/Открыть оплату в браузере/);
+});
+
+
+test('server supplies the actual UTC deadline only for attached pending payments',()=>{
+ const timing=paymentTiming(order,now);
+ assert.equal(timing.server_now_ms,now);
+ assert.equal(timing.payment_deadline_ms,now+5*60000);
+ const resumed=redirectContinuation(order,payment,now+3*60000);
+ assert.equal(resumed.payment_deadline_ms,timing.payment_deadline_ms);
+ assert.equal(resumed.server_now_ms,now+3*60000);
+ for(const o of [{...order,status:'paid'},{...order,status:'failed'},{...order,reservation_status:'released'},{...order,yookassa_payment_id:null},{...order,reservation_expires_at:null}]){
+  assert.equal(paymentTiming(o,now).payment_deadline_ms,null);
+ }
+});
+function fakeClock(){
+ let current=1234567890,next=0,jobs=new Map();
+ return {now:()=>current,monotonic:()=>current,
+  schedule(fn){const id=++next;jobs.set(id,fn);return id;},cancel(id){jobs.delete(id);},
+  advance(ms){current+=ms;const ready=[...jobs.values()];jobs.clear();for(const run of ready)run();},
+  pending:()=>jobs.size};
+}
+test('countdown uses server offset, resumes after sleeping, never resets on ticks and stops at zero',()=>{
+ const clock=fakeClock(),window={};
+ vm.runInNewContext(source('payment-countdown.js'),{window});
+ const timer=window.HvostPaymentCountdown.create(clock),seen=[];let expired=0;
+ assert.equal(timer.start({server_now_ms:now,payment_deadline_ms:null},()=>{}),false);
+ assert.equal(clock.pending(),0);
+ assert.equal(timer.start({server_now_ms:now,payment_deadline_ms:now+300000},(s,label)=>seen.push(label),()=>expired++),true);
+ assert.deepEqual(seen,['05:00']);
+ clock.advance(241000);
+ assert.equal(seen.at(-1),'00:59');
+ clock.advance(59000);
+ assert.equal(seen.at(-1),'00:00');assert.equal(expired,1);assert.equal(clock.pending(),0);
+ timer.refresh();assert.equal(expired,1);
+ timer.start({server_now_ms:now+240000,payment_deadline_ms:now+300000},(s,label)=>seen.push(label),()=>expired++);
+ assert.equal(seen.at(-1),'01:00');
+ timer.stop();assert.equal(clock.pending(),0);
+});
+test('visible handoff countdown hides expired bank link and checks same order exactly once',async()=>{
+ const clock=fakeClock();
+ const pending={status:'pending',confirmation_url:payment.confirmation.confirmation_url,server_now_ms:now,payment_deadline_ms:now+5000,return_path:'/p/salon/lung?payment_return='+code};
+ const h=harness([{data:pending},{data:{...pending,server_now_ms:now+5000,reservation_expired:true,confirmation_url:null}},{data:{status:'paid',paid:true,return_path:pending.return_path}}],false,'iPhone Safari',{clock});
+ await flush();assert.equal(h.els.paymentCountdown.hidden,false);assert.equal(h.els.paymentCountdownValue.textContent,'00:05');
+ clock.advance(1000);assert.equal(h.els.paymentCountdownValue.textContent,'00:04');assert.equal(h.requests.length,1);
+ clock.advance(4000);await flush();assert.equal(h.els.paymentCountdownValue.textContent,'00:00');
+ assert.equal(h.els.payLink.hidden,true);assert.equal(h.els.recover.hidden,true);assert.equal(h.els.result.hidden,true);
+ assert.equal(h.api.pending().code,code);assert.equal(h.requests.length,2);assert.equal(clock.pending(),0);
+ h.els.check.onclick();await flush();assert.equal(h.requests.length,3);
+ assert.ok(h.requests.every(r=>r.method==='GET'&&r.url.endsWith(code)));
+ assert.equal(h.els.paymentCountdown.hidden,true);assert.equal(h.els.result.hidden,false);assert.equal(h.api.pending(),null);
+});
+test('reopened payment gets remaining time, missing or terminal deadline never starts timer',async()=>{
+ const clock=fakeClock();
+ const h=harness([{data:{status:'pending',confirmation_url:payment.confirmation.confirmation_url,server_now_ms:now+240000,payment_deadline_ms:now+300000}},{data:{status:'failed',return_path:'/p/salon/lung?payment_return='+code}}],false,'Android Chrome',{clock});
+ await flush();assert.equal(h.els.paymentCountdownValue.textContent,'01:00');
+ h.events.pagehide();assert.equal(clock.pending(),0);
+ h.events.pageshow({persisted:true});await flush();assert.equal(h.els.paymentCountdown.hidden,true);
+ assert.equal(clock.pending(),0);
+ const missing=harness([{data:{status:'pending',can_recover:true}}],false,'Android Chrome',{clock});
+ await flush();assert.equal(missing.els.paymentCountdown.hidden,true);assert.equal(clock.pending(),0);
+});
+test('desktop embedded widget and hosted screen share the same server-based timer',()=>{
+ assert.match(source('pay.html'),/id="paymentCountdown"[^>]*role="timer"/);
+ assert.match(source('index.html'),/id="catalog-payment-countdown"[^>]*role="timer"/);
+ assert.match(source('index.html'),/catalogPaymentCountdown\.start\(data/);
+ assert.match(source('index.html'),/id="payment-status-recheck"/);
+ assert.match(source('index.html'),/function closeModal\(\) \{\s*stopCatalogPaymentCountdown\(\)/);
+ for(const file of ['index.html','pay.html'])assert.match(source(file),/\/payment-countdown\.js/);
 });

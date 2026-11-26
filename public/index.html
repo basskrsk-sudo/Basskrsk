@@ -2616,7 +2616,11 @@
       <button class="submit-btn" id="pay-btn" onclick="launchYooKassaPayment()" style="display:flex;align-items:center;justify-content:center;gap:.6rem;">
         <span>Оплатить</span><span id="pay-amount" style="opacity:.85;font-weight:400;font-size:.9rem;"></span>
       </button>
+      <div id="catalog-payment-countdown" role="timer" aria-live="off" style="display:none;justify-content:space-between;align-items:center;gap:.75rem;background:#eef6ef;color:var(--deep);border:1px solid #cfe3d2;border-radius:var(--radius);padding:.8rem 1rem;margin:.8rem 0;font-size:.85rem;font-weight:650;">
+        <span>Осталось времени на оплату</span><strong id="catalog-payment-countdown-value" style="font-size:1.5rem;font-variant-numeric:tabular-nums;white-space:nowrap;"></strong>
+      </div>
       <div id="yk-payment-element" style="display:none;margin-top:1rem;"></div>
+      <button type="button" class="submit-btn" id="payment-status-recheck" style="display:none;margin-top:.8rem;">Проверить оплату</button>
       <div id="payment-reservation-note" style="display:none;background:#FDF3DC;border-radius:var(--radius);padding:.75rem .9rem;margin-top:.8rem;font-size:.82rem;color:var(--deep);line-height:1.5;"></div>
       <div style="background:var(--cream);border-radius:var(--radius);padding:.8rem 1rem;margin-top:1rem;font-size:.82rem;color:var(--muted);display:flex;gap:.6rem;align-items:flex-start;">
         <span style="font-size:1.05rem;flex-shrink:0;">🙋</span>
@@ -2748,6 +2752,7 @@
 
 <script src="/first-purchase-promo-display.js?v=20261124-4"></script>
 <script src="/android-payment.js?v=20261124-5"></script>
+<script src="/payment-countdown.js?v=1"></script>
 <script src="/physical-stock-confirmation.js?v=1"></script>
 <script>
 // ── DATA ──────────────────────────────────────────────
@@ -5599,6 +5604,7 @@ async function openModal() {
   await prefillCheckoutFromAccount();
 }
 function closeModal() {
+  stopCatalogPaymentCountdown();
   document.getElementById('checkoutModal').classList.remove('open');
   const reservationNote = document.getElementById('payment-reservation-note');
   if (reservationNote) reservationNote.style.display = 'none';
@@ -5943,6 +5949,7 @@ async function goToPayment() {
 }
 
 function backToStep1() {
+  stopCatalogPaymentCountdown();
   document.getElementById('modal-step-1').style.display = 'block';
   document.getElementById('modal-step-2').style.display = 'none';
   document.getElementById('step-dot-2').style.background = 'var(--border)';
@@ -5951,6 +5958,15 @@ function backToStep1() {
 }
 
 let ykCheckoutInstance = null;
+let catalogPaymentCountdown = null;
+function stopCatalogPaymentCountdown() {
+  if(catalogPaymentCountdown)catalogPaymentCountdown.stop();
+  catalogPaymentCountdown=null;
+  const timer=document.getElementById('catalog-payment-countdown');
+  if(timer)timer.style.display='none';
+  const recheck=document.getElementById('payment-status-recheck');
+  if(recheck)recheck.style.display='none';
+}
 const YOOKASSA_WIDGET_URL = 'https://yookassa.ru/checkout-widget/v1/checkout-widget.js';
 let yookassaWidgetLoadPromise = null;
 
@@ -6295,9 +6311,11 @@ async function launchYooKassaPaymentImpl() {
       throw new Error((data && data.error) || 'Не удалось открыть форму оплаты');
     }
 
+    stopCatalogPaymentCountdown();
     const reservationNote = document.getElementById('payment-reservation-note');
+    const recheck = document.getElementById('payment-status-recheck');
     if (reservationNote) {
-      reservationNote.textContent = `🔒 Товары и косточки зарезервированы на ${data.reservation_minutes || 1} минут. Завершите оплату в этом окне.`;
+      reservationNote.textContent = '🔒 Товары и косточки зарезервированы. Завершите оплату в этом окне.';
       reservationNote.style.display = 'block';
     }
 
@@ -6315,6 +6333,7 @@ async function launchYooKassaPaymentImpl() {
         return returnUrl.href;
       })(),
       error_callback: function(error) {
+        stopCatalogPaymentCountdown();
         console.error('Ошибка виджета ЮKassa:', error);
         showToast('⚠️ Ошибка инициализации оплаты, попробуйте ещё раз');
         widgetBox.style.display = 'none';
@@ -6336,7 +6355,10 @@ async function launchYooKassaPaymentImpl() {
     };
 
     const resumeWidgetPayment = function() {
-      if (document.visibilityState !== 'hidden') refreshPaymentStatus();
+      if (document.visibilityState !== 'hidden') {
+        if(catalogPaymentCountdown)catalogPaymentCountdown.refresh();
+        refreshPaymentStatus();
+      }
     };
 
     const restorePayButton = function() {
@@ -6349,6 +6371,7 @@ async function launchYooKassaPaymentImpl() {
     const showConfirmedPayment = function() {
       if (paymentUiFinished) return;
       paymentUiFinished = true;
+      stopCatalogPaymentCountdown();
       stopPaymentStatusPolling();
       try { checkout.destroy(); } catch (e) { /* виджет уже мог закрыться сам */ }
       widgetBox.style.display = 'none';
@@ -6360,6 +6383,7 @@ async function launchYooKassaPaymentImpl() {
     const showFailedPayment = function() {
       if (paymentUiFinished) return;
       paymentUiFinished = true;
+      stopCatalogPaymentCountdown();
       stopPaymentStatusPolling();
       try { checkout.destroy(); } catch (e) { /* виджет уже мог закрыться сам */ }
       widgetBox.style.display = 'none';
@@ -6387,6 +6411,7 @@ async function launchYooKassaPaymentImpl() {
     };
 
     checkout.on('success', async function() {
+      stopCatalogPaymentCountdown();
       if (reservationNote) {
         reservationNote.textContent = '⏳ Подтверждаем успешную оплату на сервере. Не закрывайте страницу…';
         reservationNote.style.display = 'block';
@@ -6394,12 +6419,31 @@ async function launchYooKassaPaymentImpl() {
       await refreshPaymentStatus();
     });
 
+    // Provider UI events are not authoritative about cancellation.
+    const showAwaitingStatus = function(message) {
+      widgetBox.style.display='none';
+      if(reservationNote){reservationNote.textContent=message;reservationNote.style.display='block';}
+      if(recheck){recheck.style.display='block';recheck.onclick=refreshPaymentStatus;}
+    };
     checkout.on('fail', function() {
-      showFailedPayment();
-      showToast('⚠️ Оплата не прошла. Попробуйте ещё раз.');
+      stopCatalogPaymentCountdown();
+      showAwaitingStatus('Проверяем статус платежа. Не оплачивайте повторно до подтверждения отмены.');
+      refreshPaymentStatus();
     });
 
-    await checkout.render('yk-payment-element');
+    const timerBlock=document.getElementById('catalog-payment-countdown');
+    const timerValue=document.getElementById('catalog-payment-countdown-value');
+    if(timerBlock&&timerValue&&window.HvostPaymentCountdown){
+      catalogPaymentCountdown=window.HvostPaymentCountdown.create();
+      catalogPaymentCountdown.start(data,function(seconds,formatted){
+        timerBlock.style.display='flex';
+        timerBlock.style.background=seconds<=60?'#FFF2E3':'#EEF6EF';
+        timerBlock.style.color=seconds<=60?'#8B480B':'var(--deep)';
+        timerValue.textContent=formatted;
+        if(seconds===0)showAwaitingStatus('Время оплаты истекло. Проверяем окончательный статус. Если деньги списаны, не платите повторно.');
+      },function(){refreshPaymentStatus();});
+    }
+    if(!catalogPaymentCountdown||catalogPaymentCountdown.remaining()!==0)await checkout.render('yk-payment-element');
     document.addEventListener('visibilitychange', resumeWidgetPayment);
     window.addEventListener('pageshow', resumeWidgetPayment);
 
@@ -6418,6 +6462,7 @@ async function launchYooKassaPaymentImpl() {
       setTimeout(stopPaymentStatusPolling, pollingLifetime);
     }
   } catch (e) {
+    stopCatalogPaymentCountdown();
     console.error('Ошибка запуска оплаты:', e);
     if(androidHosted&&window.HvostAndroidPayment.pending()?.code===orderId){window.HvostAndroidPayment.go(orderId);return;}
     payBtn.style.display = 'flex';

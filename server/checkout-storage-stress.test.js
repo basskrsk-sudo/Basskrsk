@@ -205,6 +205,24 @@ async function settlePaid(body){
   assert.equal((await untilResponse(()=>post(body),r=>r.status===200&&r.body.paid===true)).body.paid,true);
 }
 
+test('checkout and retry expose one server-clock deadline without extending the same payment',async()=>{
+  const p=point('countdown-deadline'),body=orderBody(p);
+  const created=await post(body);
+  assert.equal(created.status,201,JSON.stringify(created.body));
+  assert.ok(Number.isFinite(created.body.server_now_ms));
+  const deadline=created.body.payment_deadline_ms;
+  assert.ok(deadline-created.body.server_now_ms>295000&&deadline-created.body.server_now_ms<=300000);
+  const status=await poll(body);
+  assert.equal(status.status,200);
+  assert.equal(status.body.payment_deadline_ms,deadline);
+  assert.ok(status.body.server_now_ms>=created.body.server_now_ms);
+  const retry=await post(body);
+  assert.equal(retry.status,200);
+  assert.equal(retry.body.payment_deadline_ms,deadline);
+  assert.equal(retry.body.reservation_expires_at,created.body.reservation_expires_at);
+  assert.equal(orderCount(body),1);
+});
+
 test('a legacy demo flag cannot turn a missing YooKassa configuration into a paid order',async()=>{
   const gateway=require('./yookassa');
   const original=gateway.isConfigured;

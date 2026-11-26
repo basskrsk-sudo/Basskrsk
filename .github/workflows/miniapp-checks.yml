@@ -323,6 +323,7 @@ on:
       - server/routes-payment.js
       - public/android-payment.js
       - public/payment-handoff.js
+      - public/payment-countdown.js
       - public/physical-stock-confirmation.js
       - server/physical-stock-confirmation-ui.test.js
       - public/pay.html
@@ -546,6 +547,7 @@ jobs:
           node --check server/routes-payment.js
           node --check public/android-payment.js
           node --check public/payment-handoff.js
+          node --check public/payment-countdown.js
           node --check public/physical-stock-confirmation.js
           node --check server/physical-stock-confirmation-ui.test.js
           node --check server/redirect-payment-capability.js
