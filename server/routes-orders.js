@@ -113,12 +113,13 @@ function registerOrderRoutes(router) {
       const ids = orders.map((order) => order.id);
       const markers = ids.map(() => '?').join(',');
       const items = db.prepare(`
-        SELECT order_id, variant_id, name, weight, price, qty, is_custom
+        SELECT order_id, variant_id, name, weight, price, qty, is_custom, physical_stock_added_qty
         FROM order_items
         WHERE order_id IN (${markers})
         ORDER BY order_id, id
       `).all(...ids);
       for (const { order_id, ...item } of items) {
+        if(!item.physical_stock_added_qty)delete item.physical_stock_added_qty;
         if (!itemsByOrder.has(order_id)) itemsByOrder.set(order_id, []);
         itemsByOrder.get(order_id).push(item);
       }
@@ -138,7 +139,8 @@ function registerOrderRoutes(router) {
       WHERE o.id = ?
     `).get(ctx.params.id);
     if (!order) return sendJson(res, 404, { error: 'Заказ не найден' });
-    const items = db.prepare('SELECT variant_id, name, weight, price, qty, is_custom FROM order_items WHERE order_id = ?').all(order.id);
+    const items = db.prepare('SELECT variant_id, name, weight, price, qty, is_custom, physical_stock_added_qty FROM order_items WHERE order_id = ?').all(order.id);
+    for(const item of items)if(!item.physical_stock_added_qty)delete item.physical_stock_added_qty;
     sendJson(res, 200, { order: { ...order, items } });
   });
 

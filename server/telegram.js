@@ -168,6 +168,8 @@ function buildOrderMessage(order, items) {
   const itemsText = items.map((i) =>
     (i.is_custom ? '✏️ [НЕ ИЗ КАТАЛОГА] ' : '• ') + i.name + ' (' + i.weight + ') × ' + i.qty + ' — ' + (i.price * i.qty) + ' ₽'
   ).join('\n');
+  const confirmedStock=order.status==='paid'?items.filter(i=>Number(i.physical_stock_added_qty)>0):[];
+  const stockNote=confirmedStock.length?'📦 <b>Расхождение остатков: покупатель подтвердил наличие.</b>\n'+confirmedStock.map(i=>'• '+escapeTelegramHtml(i.name)+' ('+escapeTelegramHtml(i.weight)+') +'+Number(i.physical_stock_added_qty)+' шт., сразу списано').join('\n'):'';
   const hasCustom = items.some((i) => i.is_custom);
   const isHomeDelivery = order.fulfillment_type === 'home_delivery';
   const deliveryFlag = isHomeDelivery
@@ -204,6 +206,7 @@ function buildOrderMessage(order, items) {
     (isHomeDelivery ? '🏠 Адрес доставки: ' + order.delivery_address : '📍 Точка: ' + order.pickup_point),
     '',
     itemsText,
+    ...(stockNote?['',stockNote]:[]),
     '',
     commentLine + promoLine + bonesLine + deliveryFeeLine + selfOrderLine + '💳 Оплата: ' + (
       order.payment_method === 'sbp' ? 'СБП'

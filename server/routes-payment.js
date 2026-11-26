@@ -212,7 +212,7 @@ function createReservedOrder(orderData, pricedItems, inventorySource, bonesCusto
       insertItem.run(orderRowId, item.variantId, item.name, item.weight, item.price, item.qty);
     }
     claimFirstPurchasePromo(orderData.promoValidation, orderRowId);
-    reserveForOrder(orderRowId, inventorySource, pricedItems, bonesCustomerId, orderData.bonesUsed);
+    reserveForOrder(orderRowId, inventorySource, pricedItems, bonesCustomerId, orderData.bonesUsed, orderData.physicalStockConfirmation);
     return orderRowId;
   });
 }
@@ -441,7 +441,7 @@ function registerPaymentRoutes(router) {
       customerName, customerLname, pickupPoint, pointId, partnerId, comment,
       promoCode, cartItems,
       fulfillmentType, deliveryAddress, cityId, referralCode, bonesUsed,
-      confirmationMode, returnPath, advisorSelection,
+      confirmationMode, returnPath, advisorSelection, physicalStockConfirmation,
     } = ctx.body || {};
 
     if (!orderId || typeof amount !== 'number' || !customerPhone ||
@@ -725,6 +725,7 @@ function registerPaymentRoutes(router) {
         deliveryFee: authoritativeDeliveryFee, referralCode, bonesUsed: bonesToDeduct,
         commissionRate: orderCommissionRate, isSelfOrder,
         paymentReturnUrl: exactPaymentReturnUrl,
+        physicalStockConfirmation,
       }, pricedCart.items, inventorySource, bonesCustomerId);
     } catch (e) {
       console.warn(`[create-payment] Заказ ${orderId}: резерв не создан — ${e.message}`);

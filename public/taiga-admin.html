@@ -4811,7 +4811,7 @@ function renderOrders() {
     : visibleOrders.length + ' из ' + allOrders.length;
   const statusMap = { paid: ['✓ Оплачен', 'stock-ok'], pending: ['⏳ Ожидание', 'stock-low'], failed: ['✕ Не оплачен', 'stock-out'] };
   document.getElementById('orders-tbody').innerHTML = visibleOrders.length ? visibleOrders.map(function(o) {
-    const itemsText = o.items.map(function(i) { return i.name + ' ×' + i.qty; }).join(', ');
+    const itemsText = o.items.map(function(i) { return i.name + ' ×' + i.qty + (o.status==='paid'&&Number(i.physical_stock_added_qty)>0?' (учёт +'+Number(i.physical_stock_added_qty)+', списано)':''); }).join(', ');
     const st = statusMap[o.status] || [o.status, 'stock-low'];
     const isRefunded = o.refund_status === 'refunded';
     const statusCell = isRefunded
