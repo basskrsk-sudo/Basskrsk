@@ -14,7 +14,9 @@ function initializeRefundOffsets(db){
   refunded_amount REAL NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(role,original_item_id,payout_id)
  );
- CREATE INDEX IF NOT EXISTS idx_commission_offsets_recipient ON commission_refund_offsets(role,recipient_id);`);
+ CREATE INDEX IF NOT EXISTS idx_commission_offsets_recipient ON commission_refund_offsets(role,recipient_id);
+ CREATE INDEX IF NOT EXISTS idx_commission_offsets_original_payout ON commission_refund_offsets(role,original_payout_id);
+ CREATE INDEX IF NOT EXISTS idx_commission_offsets_payout ON commission_refund_offsets(role,payout_id);`);
 }
 function netOrder(order){
  const gross=Number(order.total)||0, net=netPaidRevenue(order);

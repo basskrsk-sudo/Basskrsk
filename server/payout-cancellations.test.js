@@ -115,3 +115,69 @@ test('admin UI exposes cancellation only through guarded history and audit view'
   assert.match(html,/confirm_not_transferred:true/);
   assert.match(html,/value="payout_cancel"/);
 });
+
+
+test('large cancellation validates every order with bounded SQL calls and preserves all safety checks',()=>{
+  const size=300,pointId='cancel-batch-point';
+  const mid=Number(db.prepare('INSERT INTO managers(mgr_code,login,password_hash,full_name,phone) VALUES(?,?,?,?,?)').run('M-CANCEL-BATCH','cancel-batch-mgr','hash','Менеджер пакета','79990002222').lastInsertRowid);
+  db.prepare('INSERT INTO points(id,name,addr,icon,manager_id) VALUES(?,?,?,?,?)').run(pointId,'Пакетный салон','Адрес','x',mid);
+  const pid=Number(db.prepare('INSERT INTO partners(partner_code,login,password_hash,full_name,phone,point_id,point_name,commission_rate) VALUES(?,?,?,?,?,?,?,?)').run('P-CANCEL-BATCH','cancel-batch-partner','hash','Грумер пакета','79990002223',pointId,'Пакетный салон',0.15).lastInsertRowid);
+  const oid=Number(db.prepare('INSERT INTO salon_owners(login,password_hash,full_name,phone,point_id,commission_rate) VALUES(?,?,?,?,?,?)').run('cancel-batch-owner','hash','Владелец пакета','79990002224',pointId,0.05).lastInsertRowid);
+  const insert=db.prepare('INSERT INTO orders(order_code,customer_name,customer_phone,pickup_point,point_id,partner_id,subtotal,total,payment_method,status,commission_rate) VALUES(?,?,?,?,?,?,?,?,?,?,?)');
+  const orderIds=[];
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    for(let i=0;i<size;i++)orderIds.push(Number(insert.run('CANCEL-BATCH-'+i,'Клиент','79001112233','Пакетный салон',pointId,pid,250,250,'sbp','paid',0.15).lastInsertRowid));
+    db.exec('COMMIT');
+  }catch(error){db.exec('ROLLBACK');throw error;}
+  const ledger=[
+    ['partner',pid,partner.createPartnerPayout(pid,admin),()=>partner.getUnpaidSummary(pid).amount],
+    ['owner',oid,owner.createOwnerPayout(oid,admin),()=>owner.getOwnerUnpaidSummary(oid).amount],
+    ['manager',mid,manager.createManagerCommissionPayout(mid,admin),()=>manager.getManagerUnpaidSummary(mid).amount]
+  ];
+  for(const [role,id,payout,pending] of ledger){
+    const c=reports.roleConfig(role),body=bodyFor(role,payout),lastOrder=orderIds.at(-1);
+    assert.equal(payout.orders_count,size);
+    db.prepare("UPDATE orders SET status='pending' WHERE id=?").run(lastOrder);
+    assert.throws(()=>cancelPayout(db,body,adminId),/Заказ или получатель изменился/);
+    db.prepare("UPDATE orders SET status='paid' WHERE id=?").run(lastOrder);
+    // One changed assignment in the tail must still block the whole reversal.
+    if(role==='partner')db.prepare('UPDATE orders SET partner_id=NULL WHERE id=?').run(lastOrder);
+    else if(role==='owner')db.prepare('UPDATE salon_owners SET point_id=NULL WHERE id=?').run(id);
+    else db.prepare('UPDATE points SET manager_id=NULL WHERE id=?').run(pointId);
+    assert.throws(()=>cancelPayout(db,body,adminId),/Заказ или получатель изменился/);
+    if(role==='partner')db.prepare('UPDATE orders SET partner_id=? WHERE id=?').run(id,lastOrder);
+    else if(role==='owner')db.prepare('UPDATE salon_owners SET point_id=? WHERE id=?').run(pointId,id);
+    else db.prepare('UPDATE points SET manager_id=? WHERE id=?').run(id,pointId);
+    const saved=reports.fromPayout(db,role,payout.id,adminId);
+    db.prepare("INSERT INTO payout_report_deliveries(report_id,target_chat_id,status) VALUES(?,?,'pending')").run(saved.id,'batch-test');
+    assert.throws(()=>cancelPayout(db,body,adminId),/Отчёт сейчас отправляется/);
+    db.prepare("UPDATE payout_report_deliveries SET status='sent' WHERE report_id=?").run(saved.id);
+    const item=db.prepare('SELECT id,order_code FROM '+c.items+' WHERE payout_id=? ORDER BY id LIMIT 1').get(payout.id);
+    db.prepare('INSERT INTO commission_refund_offsets(role,recipient_id,original_item_id,original_payout_id,order_code,payout_id,amount,refunded_amount) VALUES(?,?,?,?,?,?,?,?)').run(role,id,item.id,payout.id,item.order_code,999999,1,1);
+    assert.throws(()=>cancelPayout(db,body,adminId),/связанные удержания/);
+    db.prepare('DELETE FROM commission_refund_offsets WHERE role=? AND original_payout_id=? AND payout_id=999999').run(role,payout.id);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM '+c.items+' WHERE payout_id=?').get(payout.id).n,size);
+    assert.equal(pending(),0);
+    const prepare=db.prepare;let reads=0;
+    db.prepare=function(sql){
+      if(/^\s*SELECT\b/i.test(sql))reads++;
+      return prepare.call(this,sql);
+    };
+    let result;
+    try{result=cancelPayout(db,body,adminId);}
+    finally{db.prepare=prepare;}
+    assert.ok(reads<=12,'cancellation must not issue one query per order: '+role+' '+reads);
+    assert.equal(pending(),payout.amount);
+    assert.equal(JSON.parse(db.prepare('SELECT snapshot_json FROM payout_cancellations WHERE id=?').get(result.cancellation_id).snapshot_json).items.length,size);
+    assert.throws(()=>assertReportActive(db,saved.id),/аннулирован/);
+    console.log('[payout-cancel-batch] '+role+' '+size+' orders: '+reads+' SELECT preparations');
+  }
+  for(const [index,sql] of [
+    ['idx_commission_offsets_original_payout',"SELECT 1 FROM commission_refund_offsets WHERE role='owner' AND original_payout_id=1 LIMIT 1"],
+    ['idx_commission_offsets_payout',"SELECT * FROM commission_refund_offsets WHERE role='owner' AND payout_id=1"]
+  ]){
+    const plan=db.prepare('EXPLAIN QUERY PLAN '+sql).all();
+    assert.ok(plan.some(step=>step.detail.includes(index)),JSON.stringify(plan));
+  }
+});

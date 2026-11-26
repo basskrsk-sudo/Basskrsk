@@ -47,14 +47,28 @@ function invalidateConfirmations(db,cancellationId,role,type,id,recipientId){
   // recipient/role, and completed statements that included this exact payout.
   db.prepare(`INSERT OR IGNORE INTO payout_invalidated_confirmations(confirmation_id,cancellation_id)
     SELECT b.id,? FROM payout_brief_confirmations b
-    WHERE (b.state IN ('ready','confirming') AND EXISTS (
+    WHERE NOT EXISTS (SELECT 1 FROM payout_invalidated_confirmations i WHERE i.confirmation_id=b.id)
+    AND ((b.state IN ('ready','confirming') AND EXISTS (
       SELECT 1 FROM json_each(b.snapshot_json,'$.statements') s
       WHERE json_extract(s.value,'$.role')=? AND json_extract(s.value,'$.account_id')=?
     )) OR (b.state='paid' AND EXISTS (
       SELECT 1 FROM json_each(COALESCE(b.result_json,'[]')) r
       WHERE json_extract(r.value,'$.role')=? AND json_extract(r.value,'$.type')=?
       AND json_extract(r.value,'$.payout_id')=?
-    ))`).run(cancellationId,role,recipientId,role,type,id);
+    )))`).run(cancellationId,role,recipientId,role,type,id);
+}
+// Validate the original ledger claim with a single indexed query. No
+// per-order lookups or JS copies of the full order table inside the writer
+// transaction. NULLs, deleted orders and changed assignments still fail.
+function hasInvalidCommissionClaim(db,role,itemsTable,payoutId,recipientId){
+  const recipientMatches={
+    partner:'o.partner_id IS ?',
+    owner:'EXISTS (SELECT 1 FROM salon_owners so WHERE so.id=? AND so.point_id=o.point_id)',
+    manager:'EXISTS (SELECT 1 FROM points p WHERE p.manager_id=? AND p.id=o.point_id)',
+  }[role];
+  return !!db.prepare(`SELECT 1 FROM ${itemsTable} i LEFT JOIN orders o ON o.id=i.order_id
+    WHERE i.payout_id=? AND (o.id IS NULL OR o.status IS NOT 'paid' OR NOT (${recipientMatches})) LIMIT 1`)
+    .get(payoutId,recipientId);
 }
 function cancelPayout(db,body,adminId){
   const {role,payout_type:type='commission'}=body||{};
@@ -80,14 +94,7 @@ function cancelPayout(db,body,adminId){
     if(c.items){
       if(!items.length||items.length!==Number(payout.orders_count)||items.some(x=>x.order_id==null))
         throw failure('Состав исторической выплаты неполный. Нужна ручная сверка.');
-      const invalid=items.some(item=>{
-        const order=db.prepare('SELECT id,point_id,partner_id,status FROM orders WHERE id=?').get(item.order_id);
-        if(!order||order.status!=='paid')return true;
-        if(role==='partner')return Number(order.partner_id)!==recipientId;
-        if(role==='owner')return !db.prepare('SELECT 1 FROM salon_owners WHERE id=? AND point_id=?').get(recipientId,order.point_id);
-        return !db.prepare('SELECT 1 FROM points WHERE id=? AND manager_id=?').get(order.point_id,recipientId);
-      });
-      if(invalid)throw failure('Заказ или получатель изменился. Нужна ручная сверка перед отменой.');
+      if(hasInvalidCommissionClaim(db,role,c.items,id,recipientId))throw failure('Заказ или получатель изменился. Нужна ручная сверка перед отменой.');
       // A later confirmed payout may already have recovered money from this
       // payout after a refund. Never silently undo another cash operation.
       if(db.prepare('SELECT 1 FROM commission_refund_offsets WHERE role=? AND original_payout_id=? LIMIT 1').get(role,id))
@@ -100,13 +107,15 @@ function cancelPayout(db,body,adminId){
       if(!(amount>0)||(role==='manager'&&Number(point.bonus_paid)!==1))throw failure('Начисление бонуса не найдено. Нужна ручная сверка.');
     }
     const offsets=c.items?db.prepare('SELECT * FROM commission_refund_offsets WHERE role=? AND payout_id=?').all(role,id):[];
+    const reportProjection=`SELECT r.id,EXISTS (
+      SELECT 1 FROM payout_report_deliveries d WHERE d.report_id=r.id
+        AND d.status='pending' AND d.updated_at>=datetime('now','-10 minutes')
+    ) AS sending FROM payout_reports r WHERE r.role=? AND `;
     const reports=type==='commission'
-      ?db.prepare('SELECT id FROM payout_reports WHERE role=? AND payout_id=?').all(role,id)
-      :db.prepare("SELECT id FROM payout_reports WHERE role=? AND (source_key=? OR (json_extract(snapshot_json,'$.payout_type')=? AND json_extract(snapshot_json,'$.bonus_payout_id')=?))").all(role,role+':'+type+':'+id,type,id);
-    for(const report of reports){
-      if(db.prepare("SELECT 1 FROM payout_report_deliveries WHERE report_id=? AND status='pending' AND updated_at>=datetime('now','-10 minutes')").get(report.id))
-        throw failure('Отчёт сейчас отправляется. Повторите отмену после окончания отправки.');
-    }
+      ?db.prepare(reportProjection+'r.payout_id=?').all(role,id)
+      :db.prepare(reportProjection+"(r.source_key=? OR (json_extract(r.snapshot_json,'$.payout_type')=? AND json_extract(r.snapshot_json,'$.bonus_payout_id')=?))").all(role,role+':'+type+':'+id,type,id);
+    if(reports.some(report=>report.sending))
+      throw failure('Отчёт сейчас отправляется. Повторите отмену после окончания отправки.');
     const archive={payout,items,offsets,report_ids:reports.map(r=>r.id)};
     const cancellationId=Number(db.prepare(`INSERT INTO payout_cancellations
       (role,payout_type,payout_id,recipient_id,recipient_name,amount,paid_at,reason,admin_id,admin_login,snapshot_json)
