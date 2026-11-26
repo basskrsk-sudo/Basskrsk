@@ -146,12 +146,16 @@ test('both comparison weeks share one read of unchanged commission tables',()=>{
   }
 });
 
-test('founder dashboard and weekly reports use the shared lightweight BSC dataset', () => {
+test('on-demand founder strategy and weekly reports use the shared lightweight BSC dataset', () => {
   const weekly=fs.readFileSync(path.join(__dirname,'weekly-report.js'),'utf8');
   const founderRoute=fs.readFileSync(path.join(__dirname,'routes-business-founders.js'),'utf8');
   assert.match(weekly,/function collectWeeklyBscReport\(/);
   assert.match(weekly,/function getCachedWeeklyBsc\(/);
-  assert.match(founderRoute,/const report=getCachedWeeklyBsc\(\)/);
+  assert.match(founderRoute,/require\('\.\/weekly-report'\)\.getCachedWeeklyBsc\(now\)/);
+  const overview=founderRoute.split('function collectSharedFounderNetwork(bounds,date){')[1]
+    .split('function getCachedFounderDashboard')[0];
+  assert.doesNotMatch(overview,/strategicReadiness\(|founderScorecard\(|getCachedFounderStrategy\(/);
+  assert.match(founderRoute,/router\.get\('\/api\/business-founder\/strategy'/);
   assert.doesNotMatch(founderRoute,/calculateBsc\(report\)/,'must not rescore an already scored BSC');
 });
 

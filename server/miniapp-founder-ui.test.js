@@ -118,3 +118,45 @@ test('founder economics shows lazy receipt controls and no customer contacts in 
  assert.doesNotMatch(html,/should-not-appear-in-html/);
  assert.doesNotMatch(html,/79998887777/);
 });
+
+
+test('ordinary founder overview has no fake zero strategy or automatic network call; strategy loads on click and can retry',async()=>{
+ const listeners={},status={textContent:''},panel={isConnected:true,innerHTML:'',
+   querySelector(selector){return selector==='[data-founder-strategy-status]'?status:null;}};
+ const root={addEventListener(name,fn){listeners[name]=fn;},
+   querySelector(selector){return selector==='#founderStrategyPanel'?panel:null;}};
+ const window={};let requests=0;let shouldFail=true;
+ vm.runInNewContext(client,{window,document:{getElementById:id=>id==='workPage'?root:null},
+   fetch:async(url,options)=>{
+     requests++;
+     assert.equal(url,'/api/business-founder/strategy');
+     assert.equal(options.headers.Authorization,'Bearer founder-private-token');
+     assert.equal(options.cache,'no-store');
+     if(shouldFail)return {ok:false,status:503,json:async()=>({error:'Недоступно'})};
+     return {ok:true,json:async()=>({
+       strategy:{goal_2031:1000,current_active_30d:7,plan_year:2027,year_target:20,
+         forecast_year_end:18,required_launches_per_month:2,current_launches_per_month:1,scale_gates:[]},
+       bsc:{overall_score:72,perspectives:[]},
+     })};
+   }});
+ const html=window.HvostBusinessFounder.render({
+   founder:{full_name:'Собственник',share_percent:45},
+   sales:{revenue:10,orders:1,avg_check:10,previous:{},last_six_months:[]},
+   network:{active_points:7},strategy:null,bsc:null
+ },'founder-private-token');
+ assert.match(html,/data-founder-strategy-load/);
+ assert.doesNotMatch(html,/Общий индекс BSC|Прогноз на конец года|founder-private-token/);
+ assert.equal(requests,0);
+ const button={disabled:false};
+ const event={target:{closest:selector=>selector==='[data-founder-strategy-load]'?button:null},preventDefault(){}};
+ await listeners.click(event);
+ assert.match(status.textContent,/Недоступно/);
+ assert.equal(button.disabled,false);
+ shouldFail=false;
+ await listeners.click(event);
+ assert.equal(requests,2);
+ assert.match(panel.innerHTML,/Прогноз на конец года/);
+ assert.match(panel.innerHTML,/Общий индекс BSC/);
+ assert.match(panel.innerHTML,/72\/100/);
+ assert.doesNotMatch(panel.innerHTML,/founder-private-token/);
+});

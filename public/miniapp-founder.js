@@ -156,6 +156,71 @@
     if(scroll)scroll.scrollTop=0;
     loadPointOrders(orderDrilldown);
   }
+  function renderStrategyDetails(data) {
+    var strategy=data.strategy||{};
+    var html='';
+    if(strategy.goal_2031==null)return section('🎯 Стратегия развития','<p class="work-note">Стратегические данные пока недоступны.</p>');
+    var gates=(strategy.scale_gates||[]);
+    var readiness=strategy.scale_decision;
+    html += section('🎯 Стратегия: 1000 точек',
+      '<div class="founder-target"><strong>' + n(strategy.current_active_30d) +
+      ' <span>/ ' + n(strategy.goal_2031) + '</span></strong><div class="founder-track"><i style="width:' +
+      Math.min(100,Math.max(0,Math.round((Number(strategy.current_active_30d)||0)/Math.max(1,Number(strategy.goal_2031)||1)*100))) +
+      '%"></i></div><small>Активны с продажами за 30 дней</small></div>' +
+      '<div class="work-stats">' +
+        card('Цель на ' + strategy.plan_year,n(strategy.year_target),'По действующей модели') +
+        card('Прогноз на конец года',n(strategy.forecast_year_end),'По текущему темпу') +
+        card('Нужный темп',n(strategy.required_launches_per_month)+'/мес.','Для достижения плана') +
+        card('Текущий темп',n(strategy.current_launches_per_month)+'/мес.','Открытия за последние 90 дней') +
+      '</div>' +
+      '<p class="founder-readiness">' + (readiness==='go'?'🟢':readiness==='stop'?'🔴':'🟠') +
+      ' Решение о расширении: ' + clean(readiness==='go'?'Условия позволяют масштабировать':readiness==='stop'?'Нужно устранить ограничения':'Проверить показатели') +
+      '</p>' +
+      (gates.length?gates.slice(0,6).map(function(g){
+        return row((g.status==='red'?'🔴 ':g.status==='yellow'?'🟠 ':'🟢 ')+g.name,
+          g.actual==null?'—':String(g.actual)+(g.unit||''),'Целевое значение: '+g.target+(g.unit||''));
+      }).join(''):'') +
+      callout(strategy.note||'Прогноз зависит от принятых допущений.'));
+    var bsc=data.bsc||null;
+    if (bsc) {
+      html += section('🧭 Система показателей BSC',
+        '<div class="work-stats">'+card('Общий индекс BSC',
+          bsc.overall_score==null?'—':n(bsc.overall_score)+'/100',
+          bsc.period||'Предыдущая завершённая неделя')+
+          card('Готовность к расширению',bsc.readiness||'Не оценена','По BSC')+
+        '</div>'+
+        (bsc.perspectives||[]).map(function(p) {
+          return row((p.status==='red'?'🔴 ':p.status==='yellow'?'🟠 ':'🟢 ')+p.name,
+            p.score==null?'—':n(p.score)+'/100',
+            (p.weakest_kpis||[]).length?'В зоне внимания: '+p.weakest_kpis.join(', '):'');
+        }).join(''),
+        'Оценка четырёх направлений: финансы, клиенты, процессы и команда');
+    } else {
+      html += section('🧭 Система показателей BSC','<p class="work-note">Расчёт BSC временно недоступен. Обновите стратегию позже.</p>');
+    }
+    return html;
+  }
+  async function loadFounderStrategy(button){
+    if(!root||!accessToken||button.disabled)return;
+    var panel=root.querySelector('#founderStrategyPanel');
+    if(!panel||!panel.isConnected)return;
+    var status=panel.querySelector('[data-founder-strategy-status]');
+    var token=accessToken;
+    button.disabled=true;
+    if(status)status.textContent='Рассчитываем стратегию…';
+    try {
+      var response=await fetch('/api/business-founder/strategy',{
+        headers:{Authorization:'Bearer '+token},cache:'no-store'});
+      var data=await response.json().catch(function(){return {};});
+      if(!response.ok)throw new Error(data.error||'Не удалось загрузить стратегию ('+response.status+').');
+      if(!data.strategy||data.strategy.goal_2031==null)throw new Error('Стратегические данные отсутствуют.');
+      if(accessToken!==token||!panel.isConnected||root.querySelector('#founderStrategyPanel')!==panel)return;
+      panel.innerHTML=renderStrategyDetails(data);
+    }catch(error){
+      if(accessToken===token&&panel.isConnected&&root.querySelector('#founderStrategyPanel')===panel&&status)
+        status.textContent='⚠️ '+(error.message||'Ошибка загрузки')+' Повторите запрос.';
+    }finally{button.disabled=false;}
+  }
   function render(data,token) {
     accessToken=String(token||'');
     orderDrilldown=null;
@@ -186,7 +251,7 @@
       card('Активных точек',n(net.active_points),'Открытых в системе') +
       card('С продажами',n(net.sold_points_period),'За выбранный период') +
       card('Без продаж',n(net.silent_points_count == null ? (net.silent_points||[]).length : net.silent_points_count),'Все действующие точки') +
-      card('План 2031',n(strategy.goal_2031),'Активных точек') + '</div>' +
+      (strategy.goal_2031==null?'':card('План 2031',n(strategy.goal_2031),'Активных точек')) + '</div>' +
       '<h3 class="founder-subhead">Лидеры по выручке</h3>' +
       ((net.top_points||[]).length
         ? net.top_points.slice(0,5).map(function(p){return row(p.name,rub(p.revenue),n(p.orders)+' заказов');}).join('')
@@ -391,42 +456,11 @@
         callout(pe.assumption||'')+callout(pe.profit_disclaimer||''),
       'Выплачено и к выплате: по заказам выбранного периода, независимо от даты перечисления. Бонусы за приглашение точки выше показаны отдельно и не входят в регулярную комиссию. Прибыль собственников — расчётная после себестоимости, налога 7%, начисленных комиссий и переменных расходов, без общесетевых накладных. Только для собственников ХвостМаркета.');
     html += orderDialog;
-    var gates=(strategy.scale_gates||[]);
-    var readiness=strategy.scale_decision;
-    html += section('🎯 Стратегия: 1000 точек',
-      '<div class="founder-target"><strong>' + n(strategy.current_active_30d) +
-      ' <span>/ ' + n(strategy.goal_2031) + '</span></strong><div class="founder-track"><i style="width:' +
-      Math.min(100,Math.max(0,Math.round((Number(strategy.current_active_30d)||0)/Math.max(1,Number(strategy.goal_2031)||1)*100))) +
-      '%"></i></div><small>Активны с продажами за 30 дней</small></div>' +
-      '<div class="work-stats">' +
-        card('Цель на ' + strategy.plan_year,n(strategy.year_target),'По действующей модели') +
-        card('Прогноз на конец года',n(strategy.forecast_year_end),'По текущему темпу') +
-        card('Нужный темп',n(strategy.required_launches_per_month)+'/мес.','Для достижения плана') +
-        card('Текущий темп',n(strategy.current_launches_per_month)+'/мес.','Открытия за последние 90 дней') +
-      '</div>' +
-      '<p class="founder-readiness">' + (readiness==='go'?'🟢':readiness==='stop'?'🔴':'🟠') +
-      ' Решение о расширении: ' + clean(readiness==='go'?'Условия позволяют масштабировать':readiness==='stop'?'Нужно устранить ограничения':'Проверить показатели') +
-      '</p>' +
-      (gates.length?gates.slice(0,6).map(function(g){
-        return row((g.status==='red'?'🔴 ':g.status==='yellow'?'🟠 ':'🟢 ')+g.name,
-          g.actual==null?'—':String(g.actual)+(g.unit||''),'Целевое значение: '+g.target+(g.unit||''));
-      }).join(''):'') +
-      callout(strategy.note||'Прогноз зависит от принятых допущений.'));
-    var bsc=data.bsc||null;
-    if (bsc) {
-      html += section('🧭 Система показателей BSC',
-        '<div class="work-stats">'+card('Общий индекс BSC',
-          bsc.overall_score==null?'—':n(bsc.overall_score)+'/100',
-          bsc.period||'Предыдущая завершённая неделя')+
-          card('Готовность к расширению',bsc.readiness||'Не оценена','По BSC')+
-        '</div>'+
-        (bsc.perspectives||[]).map(function(p) {
-          return row((p.status==='red'?'🔴 ':p.status==='yellow'?'🟠 ':'🟢 ')+p.name,
-            p.score==null?'—':n(p.score)+'/100',
-            (p.weakest_kpis||[]).length?'В зоне внимания: '+p.weakest_kpis.join(', '):'');
-        }).join(''),
-        'Оценка четырёх направлений: финансы, клиенты, процессы и команда');
-    }
+    html += '<div id="founderStrategyPanel">' +
+      (data.strategy && data.strategy.goal_2031!=null ? renderStrategyDetails(data) : section('🎯 Стратегия и BSC',
+        '<p class="work-note">Пятилетний прогноз и система показателей рассчитываются только по запросу.</p>'+
+        '<button type="button" class="work-secondary" data-founder-strategy-load>Рассчитать стратегию и BSC</button>'+
+        '<p data-founder-strategy-status aria-live="polite"></p>')) + '</div>';
     html += section('💰 Финансы и расходы',
       '<div class="work-stats">' +
         card('Учтённые расходы',rub(finance.manual_expenses),'Внесены в журнал') +
@@ -534,6 +568,11 @@
       }finally{input.disabled=false;input.value='';}
     });
     root.addEventListener('click',async function(event){
+      var strategyButton=event.target && event.target.closest && event.target.closest('[data-founder-strategy-load]');
+      if(strategyButton){
+        event.preventDefault();
+        return loadFounderStrategy(strategyButton);
+      }
       var control=event.target && event.target.closest && event.target.closest(
         '[data-founder-point-orders-open],[data-founder-order-close],[data-founder-order-more]');
       if(control){
