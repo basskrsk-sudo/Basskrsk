@@ -200,7 +200,8 @@ test('frontend MAX management is a separate menu section with gated actions',()=
   assert.match(navigation,/max:'system'/);
   assert.match(navigation,/\['max','MAX'\]/);
   assert.match(adminHtml,/id="sec-max"/);
-  assert.match(adminHtml,/src="max-admin\.js/);
+  assert.doesNotMatch(adminHtml,/<script[^>]+src="[^"]*max-admin\.js/);
+  assert.match(navigation,/'max':\{src:'\/max-admin\.js/);
   assert.match(navigation,/if \(id === 'max'\) await loadMaxAdmin\(\)/);
   assert.match(frontend,/currentAdminRole==='super'/);
   assert.match(frontend,/disconnectMaxAdminAccount/);

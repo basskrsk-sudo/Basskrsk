@@ -11,10 +11,10 @@ test('network map is available in admin, manager and both staff Mini App dashboa
   const adminNav = read('admin-navigation.js');
   const mini = read('miniapp.html');
   const miniWork = read('miniapp-work.js');
-  for (const file of [admin, manager, mini]) {
-    assert.match(file, /partner-network-map\.js/);
-    assert.match(file, /partner-network-map\.css/);
-  }
+  for (const file of [manager, mini]) assert.match(file, /partner-network-map\.js/);
+  for (const file of [admin, manager, mini]) assert.match(file, /partner-network-map\.css/);
+  assert.doesNotMatch(admin, /<script[^>]+src="[^"]*partner-network-map\.js/);
+  assert.match(adminNav, /'network-map':\{src:'\/partner-network-map\.js/);
   assert.match(admin, /id="sec-network-map"/);
   assert.match(manager, /id="sec-network-map"/);
   assert.match(adminNav, /'network-map':'network'/);
