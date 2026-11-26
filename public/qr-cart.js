@@ -45,6 +45,11 @@
     if(i.qty<=0)b.items=b.items.filter(function(x){return x!==i;});
     return {ok:true,basket:save(point,b.items)};
   }
+  function remove(point,id){
+    var b=get(point),items=b.items.filter(function(i){return i.variantId!==Number(id);});
+    if(items.length===b.items.length)return {ok:false,error:'Товар уже удалён'};
+    return {ok:true,basket:save(point,items)};
+  }
   function total(items){return items.reduce(function(s,i){return s+i.price*i.qty;},0);}
   function count(items){return items.reduce(function(s,i){return s+i.qty;},0);}
   // A confirmed payment may clear only its own unchanged snapshot. A return
@@ -66,5 +71,5 @@
       return {point:point,product:product};
     }catch(_){return null;}
   }
-  root.HvostQrCart={get:get,save:save,add:add,change:change,total:total,count:count,clearPaid:clearPaid,parseCode:parseCode,key:key};
+  root.HvostQrCart={get:get,save:save,add:add,change:change,remove:remove,total:total,count:count,clearPaid:clearPaid,parseCode:parseCode,key:key};
 })(typeof window!=='undefined'?window:globalThis);
