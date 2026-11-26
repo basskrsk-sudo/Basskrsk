@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { PAYOUT_METHODS, parsePayoutMethod, payoutMethodLabel } = require('./payout-methods');
 
 test('exactly four payout channels are supported', () => {
-  assert.deepEqual(Object.keys(PAYOUT_METHODS), ['sbp', 'card', 'bank_account', 'cash']);
+  assert.deepEqual(Object.keys(PAYOUT_METHODS), ['sbp', 'card', 'bank_account', 'cash', 'mobile_balance']);
   for (const method of Object.keys(PAYOUT_METHODS)) {
     assert.equal(parsePayoutMethod(method, { required: true }), method);
     assert.ok(payoutMethodLabel(method).length > 4);
