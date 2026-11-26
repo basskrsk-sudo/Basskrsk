@@ -5237,7 +5237,9 @@ function removeFromCart(cartKey) {
 function changeCartQty(cartKey, d) {
   const item = cart.find(x => x.cartKey === cartKey);
   if (!item) return;
-  item.qty = Math.max(1, Math.min(99,item.qty+d));
+  if (item.qty+d<=0) { removeFromCart(cartKey); return; }
+  item.qty = Math.min(99,item.qty+d);
+  updateCartCount();
   renderCart();
 }
 
@@ -5271,7 +5273,7 @@ function renderCart() {
           <button class="qty-btn" onclick="changeCartQty('${item.cartKey}',1)">+</button>
         </div>
         <div class="cart-item-price">${item.price * item.qty} ₽</div>
-        <button class="cart-item-del" onclick="removeFromCart('${item.cartKey}')">🗑</button>
+        <button type="button" class="cart-item-del" style="min-height:44px;padding:8px;color:#a52a2a;font-size:.85rem" onclick="removeFromCart('${item.cartKey}')">Удалить</button>
       </div>
     </div>`).join('') + `
     <div class="cart-summary has-mascot">
