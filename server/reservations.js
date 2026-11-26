@@ -154,7 +154,7 @@ function releaseOrderReservation(orderId, nextOrderStatus = 'failed', reason = '
   );
 }
 
-function consumeOrderReservation(orderId) {
+function consumeOrderReservation(orderId, {onPaid}={}) {
   return withImmediateTransaction(() => {
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
     if (!order || order.reservation_status !== 'active') return { consumed: false, order };
@@ -163,10 +163,13 @@ function consumeOrderReservation(orderId) {
       UPDATE orders SET reservation_status = 'consumed', status = 'paid'
       WHERE id = ? AND reservation_status = 'active'
     `).run(order.id);
+    const paidOrder=db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id);
+    const afterPaid=typeof onPaid==='function'?onPaid(paidOrder):false;
     return {
       consumed: true,
-      order: db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id),
+      order: paidOrder,
       items: db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id),
+      afterPaid,
     };
   });
 }

@@ -88,6 +88,7 @@ const {registerPaymentRoutes}=require('./routes-payment');
 const {Router,parseJsonBody,sendJson}=require('./http-utils');
 const {writeNotificationMarker}=require('./deployment-notification');
 const {validateFirstPurchasePromo}=require('./first-purchase-promo');
+const club=require('./routes-partner-club');
 
 const router=new Router();registerPaymentRoutes(router);
 const server=http.createServer(async(req,res)=>{
@@ -335,5 +336,35 @@ test('real SQLite writer lock for 20s: no partial order, no duplicate charge, ve
   }finally{
     if(!released)await lock.worker.terminate().catch(()=>{});
     await lock.done.catch(()=>{});
+  }
+});
+
+test('paid checkout survives stopped Club worker and produces one moderated draft after storage recovers',{timeout:12000},async()=>{
+  const p=point('stress-club-outbox');
+  const body=orderBody(p);
+  db.prepare('INSERT INTO partner_club_settings(id,config_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json')
+    .run(JSON.stringify({enabled:true,chat_id:'-100123',club_started_at:'2026-01-01 00:00:00',
+      sales:true,first_sale:true,record_check:false,record_day:false}));
+  try{
+    const created=await untilResponse(()=>post(body),r=>[200,201].includes(r.status)&&!!r.body.payment_id);
+    assert.ok(created.body.payment_id);
+    await settlePaid(body);checkPaid(p,body);
+    const row=order(body);
+    const jobs=()=>db.prepare('SELECT COUNT(*) n FROM partner_club_sale_jobs WHERE order_id=?').get(row.id).n;
+    const drafts=()=>db.prepare('SELECT COUNT(*) n FROM partner_club_events WHERE event_key=? OR event_key=?').get('first-sale:point:'+p.id,'paid:'+row.id).n;
+    assert.equal(jobs(),1);assert.equal(drafts(),0,'checkout does not format drafts');
+    const lock=await holdSqliteWriter(300);
+    try{
+      assert.throws(()=>club.drainPaidClubSales(),/database is locked/i);
+      assert.equal(jobs(),1);assert.equal(drafts(),0);
+      assert.equal((await poll(body)).body.paid,true);
+    }finally{await lock.done;}
+    club.drainPaidClubSales();
+    assert.equal(jobs(),0);assert.equal(drafts(),1);
+    await settlePaid(body);club.drainPaidClubSales();
+    assert.equal(jobs(),0);assert.equal(drafts(),1);checkPaid(p,body);
+    console.log('[checkout-stress] paid Club outbox survived writer lock and duplicate webhook');
+  }finally{
+    db.prepare('DELETE FROM partner_club_settings WHERE id=1').run();
   }
 });

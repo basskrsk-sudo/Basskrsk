@@ -3,6 +3,8 @@
 'use strict';
 const { trackSync, trackAsync } = require('./runtime-diagnostics');
 const db = require('./db');
+const {withImmediateTransaction}=require('./reservations');
+const {setPaidClubSaleWakeHandler,pendingPaidClubSaleIds,readPaidClubSaleJob,completePaidClubSaleJob}=require('./partner-club-sale-outbox');
 const dailyRecords = require('./partner-club-daily-records').createDailySalesRecords(db);
 const { sendJson } = require('./http-utils');
 const { requireSuperAdmin } = require('./routes-auth');
@@ -13,8 +15,7 @@ const clubPhotos = require('./partner-club-photo-posts');
 
 const FLAGS=['sales','record_check','record_day','first_sale','daily','weekly','milestones','new_points','tips','new_products','top_products_week','top_products_all'];
 const DEFAULTS=Object.freeze({sales:true,record_check:true,record_day:true,first_sale:true,daily:true,weekly:true,milestones:true,new_points:true,tips:false,new_products:false,top_products_week:true,top_products_all:false,sales_mode:'all',hourly_limit:5,include_groomer_names:false,enabled:false,chat_id:null});
-db.exec(`CREATE TABLE IF NOT EXISTS partner_club_settings(id INTEGER PRIMARY KEY CHECK(id=1),config_json TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS partner_club_events(id INTEGER PRIMARY KEY AUTOINCREMENT,event_key TEXT UNIQUE NOT NULL,event_type TEXT NOT NULL,message TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL DEFAULT 'draft' CHECK(status='draft'));
+db.exec(`CREATE TABLE IF NOT EXISTS partner_club_events(id INTEGER PRIMARY KEY AUTOINCREMENT,event_key TEXT UNIQUE NOT NULL,event_type TEXT NOT NULL,message TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL DEFAULT 'draft' CHECK(status='draft'));
 CREATE INDEX IF NOT EXISTS idx_partner_club_events_created ON partner_club_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_partner_club_events_type ON partner_club_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_partner_club_events_moderation
@@ -28,8 +29,11 @@ if (!db.prepare("SELECT 1 FROM partner_club_migrations WHERE key='anonymous_week
 function settings(){let row=db.prepare('SELECT config_json FROM partner_club_settings WHERE id=1').get(),saved={};try{if(row)saved=JSON.parse(row.config_json)}catch(_){}
 return {...DEFAULTS,...saved,include_groomer_names:false};}
 function money(n){return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(Number(n)||0)+' ₽';}
+function insertDraft(key,type,message){
+  return db.prepare("INSERT OR IGNORE INTO partner_club_events(event_key,event_type,message,status) VALUES (?,?,?,'draft')").run(key,type,message).changes>0;
+}
 function queue(key,type,message){
-  const inserted=db.prepare("INSERT OR IGNORE INTO partner_club_events(event_key,event_type,message,status) VALUES (?,?,?,'draft')").run(key,type,message).changes>0;
+  const inserted=insertDraft(key,type,message);
   // New sales wake moderation without waiting for a periodic SQLite scan.
   if(inserted)wakeClubWorker();
   return inserted;
@@ -98,7 +102,7 @@ function recordCheckMessage(location,product,total,previous){
    '🎉 Поздравляем команду! Вместе устанавливаем новые рекорды! 🐾'
  ].join('\n');
 }
-function queueRecordCheck(order,product,location,config){
+function queueRecordCheck(order,product,location,config,{draft=queue,deferred=false}={}){
  // A demo checkout has no YooKassa payment ID. Do not count test receipts.
  if(!config.record_check || order.is_partner_self_order || !order.yookassa_payment_id)return false;
  const total=Number(order.total);
@@ -109,16 +113,17 @@ function queueRecordCheck(order,product,location,config){
      AND yookassa_payment_id IS NOT NULL
      AND COALESCE(refund_status,'')!='refunded'
      AND COALESCE(is_partner_self_order,0)=0
+     ${deferred?'AND NOT EXISTS (SELECT 1 FROM partner_club_sale_jobs j WHERE j.order_id=orders.id)':''}
  `).get(order.id);
  if(row?.previous_max==null)return false;
  const previous=Number(row.previous_max);
  if(!Number.isFinite(previous)||total<=previous)return false;
- return queue('record-check:'+String(order.id),'record_check',
+ return draft('record-check:'+String(order.id),'record_check',
    recordCheckMessage(location,product,total,previous));
 }
-function recordPaidOrder(order,items,demo=false){
+function recordPaidOrder(order,items,demo=false,{config=null,draft=queue,deferred=false}={}){
  if(demo||!order||order.status!=='paid'||order.refund_status==='refunded')return false;
- const config=settings();
+ config=config||settings();
  // The disabled club must not create invisible sales drafts or perform extra
  // database scans during every paid checkout.
  if(!config.enabled || !config.chat_id || !config.club_started_at ||
@@ -134,22 +139,50 @@ function recordPaidOrder(order,items,demo=false){
  // First paid CUSTOMER order only. Other paid orders prevent retrospective greetings.
  // Permanent event key also prevents repeat milestones after restarts or order removal.
  if(point&&!order.is_partner_self_order&&config.first_sale){
-   const previous=db.prepare("SELECT 1 FROM orders WHERE point_id=? AND id<>? AND status='paid' AND COALESCE(is_partner_self_order,0)=0 LIMIT 1").get(point.id,order.id);
+   const previous=db.prepare("SELECT 1 FROM orders WHERE point_id=? AND id<>? AND status='paid' AND COALESCE(is_partner_self_order,0)=0 "+
+      (deferred?"AND NOT EXISTS (SELECT 1 FROM partner_club_sale_jobs j WHERE j.order_id=orders.id) ":"")+"LIMIT 1").get(point.id,order.id);
    if(!previous){
      isFirstSale=true;
      const message=saleMessage('🎉 Первая продажа!',location,'🦴 '+product,
        '💚 '+money(order.total),
        '👏 Поздравляем команду с первым успехом! Отличный старт — дальше больше! 💪🐾');
-     saleQueued=queue('first-sale:point:'+String(point.id),'first_sale',message);
+     saleQueued=draft('first-sale:point:'+String(point.id),'first_sale',message);
    }
  }
  if(!isFirstSale && config.sales){
    const message=saleMessage('🐾 Новая покупка!',location,'🦴 '+product,
      '💚 '+money(order.total),nextSaleEnding());
-   saleQueued=queue('paid:'+order.id,'sales',message);
+   saleQueued=draft('paid:'+order.id,'sales',message);
  }
- const recordQueued=queueRecordCheck(order,product,location,config);
+ const recordQueued=queueRecordCheck(order,product,location,config,{draft,deferred});
  return saleQueued||recordQueued;
+}
+// Pending jobs are ordered by PAYMENT commit, not order creation ID. When
+// calculating first-sale/record history, exclude the still-unprocessed jobs:
+// otherwise two fast payments before the next wake would hide the first sale.
+// Draft inserts and job acknowledgement commit together; a lock or crash
+// rolls back all of them and the same job remains available for retry.
+function drainPaidClubSales(){
+ const ids=pendingPaidClubSaleIds(6);
+ for(const id of ids.slice(0,5)){
+   withImmediateTransaction(()=>{
+     const job=readPaidClubSaleJob(id);
+     if(!job)return;
+     const latest=settings();
+     if(!latest.enabled||!latest.chat_id||!latest.club_started_at)return;
+     // A new activation must not resurrect news from the previous session.
+     if(String(latest.club_started_at)===job.club_started_at){
+       const order=db.prepare("SELECT * FROM orders WHERE id=? AND status='paid'").get(job.order_id);
+       if(order&&order.refund_status!=='refunded'){
+         const items=db.prepare('SELECT * FROM order_items WHERE order_id=? ORDER BY id').all(order.id);
+         recordPaidOrder(order,items,false,{config:{...latest,sales:!!job.sales,
+           first_sale:!!job.first_sale,record_check:!!job.record_check},draft:insertDraft,deferred:true});
+       }
+     }
+     completePaidClubSaleJob(id);
+   });
+ }
+ return {hasMore:ids.length>5};
 }
 function range(period){const now=new Date();const today=now.toISOString().slice(0,10);
   if(period==='yesterday')return {start:`date('now','-1 day')`,end:`date('now')`};
@@ -723,27 +756,38 @@ function parkClubWorker(){
  workerTimer=null;
  workerDueAt=0;
 }
-function wakeClubWorker(){
+function wakeQueuedPaidClubSale(){
  if(!workerStarted)return;
- if(!clubAutomaticReady(settings())){
-   workerWakeRequested=false;
-   parkClubWorker();
-   return;
- }
  if(workerBusy){workerWakeRequested=true;return;}
  scheduleClubWorker(CLUB_WAKE_MS);
+}
+function wakeClubWorker(){
+ if(!workerStarted)return;
+ try{
+   if(!clubAutomaticReady(settings())){
+     workerWakeRequested=false;
+     parkClubWorker();
+     return;
+   }
+ }catch(error){
+   console.warn('Partner club wake:',error.message);
+   scheduleClubWorker(CLUB_RETRY_MS);
+   return;
+ }
+ wakeQueuedPaidClubSale();
 }
 async function sendClubUpdates(){
  if(workerBusy)return {hasMore:true};
  const cfg=settings();if(!cfg.enabled||!cfg.chat_id||!cfg.club_started_at)return {hasMore:false};
- const reviewer=reviewerForClub();if(!reviewer)return {hasMore:false};
  workerBusy=true;
  try{
+  const saleJobs=trackSync('club_sale_drafts',()=>drainPaidClubSales());
+  const reviewer=reviewerForClub();if(!reviewer)return {hasMore:saleJobs.hasMore};
   trackSync('club_daily_record',()=>dailyRecords.checkYesterday(new Date(),cfg,queue));
   // Disabled event types must not occupy the first five rows and hide new
   // sales. The query params come from fixed, known setting keys only.
   const enabled=FLAGS.filter(type=>cfg[type]===true);
-  if(!enabled.length)return {hasMore:false};
+  if(!enabled.length)return {hasMore:saleJobs.hasMore};
   const placeholders=enabled.map(()=>'?').join(',');
   const events=db.prepare(
     "SELECT e.* FROM partner_club_events e LEFT JOIN partner_club_reviews r ON r.event_id=e.id "+
@@ -759,7 +803,7 @@ async function sendClubUpdates(){
    if(!result.ok)return {retry:true};
    db.prepare("INSERT OR IGNORE INTO partner_club_reviews(event_id,state,reviewer_chat_id,requested_at) VALUES(?,'pending',?,CURRENT_TIMESTAMP)").run(ev.id,reviewer);
   }
-  return {hasMore:events.length>5};
+  return {hasMore:saleJobs.hasMore||events.length>5};
  }catch(e){
   console.warn('Partner club moderation:',e.message);
   return {retry:true};
@@ -772,7 +816,8 @@ async function runClubWorker(){
  const wake=workerWakeRequested;
  workerWakeRequested=false;
  if(!workerStarted)return;
- const config=settings();
+ let config;
+ try{config=settings();}catch(error){console.warn('Partner club schedule:',error.message);scheduleClubWorker(CLUB_RETRY_MS);return;}
  if(!clubAutomaticReady(config)){parkClubWorker();return;}
  if(outcome?.retry){scheduleClubWorker(CLUB_RETRY_MS);return;}
  if(outcome?.hasMore||wake){scheduleClubWorker(CLUB_WAKE_MS);return;}
@@ -783,12 +828,15 @@ async function runClubWorker(){
 function startPartnerClubWorker(){
  if(workerStarted)return;
  workerStarted=true;
- // On restart recover existing queued drafts for an active club.
+ setPaidClubSaleWakeHandler(wakeQueuedPaidClubSale);
+ // On restart recover existing queued drafts and sale jobs for an active club.
  // A disabled club starts no timer and creates no recurring database work.
- if(clubAutomaticReady(settings()))scheduleClubWorker(0);
+ try{if(clubAutomaticReady(settings()))scheduleClubWorker(0);}
+ catch(error){console.warn('Partner club startup:',error.message);scheduleClubWorker(CLUB_RETRY_MS);}
 }
 function stopPartnerClubWorker(){
  workerStarted=false;
+ setPaidClubSaleWakeHandler(null);
  parkClubWorker();
  workerWakeRequested=false;
 }
@@ -806,7 +854,7 @@ function generateApprovedClubReport(type,{approved=false}={}){
 module.exports={generateApprovedClubReport,registerPartnerClubRoutes,settings,preview,analytics,
   nextClubDailyCheckDelay,dailySalesRecords:dailyRecords.metrics,
   checkDailySalesRecord:(now)=>dailyRecords.checkYesterday(now,settings(),queue),
-  report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,
+  report,topProducts,topProductsMessage,recordPaidOrder,welcomeNewPoint,drainPaidClubSales,
   startPartnerClubWorker,stopPartnerClubWorker,handleClubCallback,handleClubEdit,
   isClubModerator,startClubPost,handleClubPostInput,cancelClubInput,
   handleClubPhotoMessage,handleClubPhotoCallback,sendClubReviewPreview};
