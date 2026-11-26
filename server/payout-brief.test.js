@@ -292,7 +292,7 @@ test('batch payout projections agree with individual ledgers for every role and 
     for(const id of ids){
       assert.deepEqual(orders.get(id),individual(id));
       assert.deepEqual(offsets.get(id),corrections(db,role,id));
-      assert.deepEqual(bonuses.get(id),getBonuses(db,role,id).pending);
+      assert.deepEqual(bonuses.get(id),getBonuses(db,role,id).pending.map(row=>({...row})));
       assert.deepEqual(planCommissionFromCorrections(orders.get(id).filter(isPayable),offsets.get(id)),
         planCommission(db,role,id,individual(id).filter(isPayable)));
     }
@@ -307,8 +307,8 @@ test('summary query count grows by batches, not by individual inactive or empty 
     finally{db.prepare=prepare;}
   }
   const before=measure(),count=before.queries();
-  const insert=db.prepare('INSERT INTO partners(partner_code,login,password_hash,full_name,active) VALUES(?,?,?,?,0)');
-  for(let i=0;i<70;i++)insert.run('BATCH-EMPTY-'+i,'batch-empty-'+i,'hash','Пустой аккаунт '+i);
+  const insert=db.prepare('INSERT INTO partners(partner_code,login,password_hash,full_name,phone,point_name,active) VALUES(?,?,?,?,?,?,0)');
+  for(let i=0;i<70;i++)insert.run('BATCH-EMPTY-'+i,'batch-empty-'+i,'hash','Пустой аккаунт '+i,String(79009000000+i),'Пустая точка');
   try{
     const after=measure();
     assert.deepEqual(after.report,before.report);
