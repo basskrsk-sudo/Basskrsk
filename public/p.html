@@ -606,7 +606,7 @@ function renderQrCart(message){
     html+='<div class="qr-cart-line"><div><b>'+esc(i.name)+'</b><span class="small muted">'+esc(i.weight)+' · '+fmtPrice(i.price)+'/шт.</span>'+
       (QR_CART_READY?(available==null?'<p class="qr-cart-message">Товар недоступен в каталоге. Удалите его.</p>':i.qty>available?'<p class="qr-cart-message">По учёту: '+available+' шт. При оплате подтвердите наличие.</p>':''):'')+'</div><div class="qr-cart-qty">'+
       '<button aria-label="Уменьшить количество" onclick="changeQrCart('+i.variantId+',-1)">−</button><b>'+i.qty+'</b>'+
-      '<button aria-label="Увеличить количество" '+(!QR_CART_READY||available==null||i.qty>=99?'disabled ':'')+'onclick="changeQrCart('+i.variantId+',1)">+</button></div></div>';
+      '<button aria-label="Увеличить количество" '+(!QR_CART_READY||available==null||i.qty>=99?'disabled ':'')+'onclick="changeQrCart('+i.variantId+',1)">+</button></div><button type="button" class="qr-secondary" style="width:auto;min-height:44px;color:#a52a2a" onclick="removeQrCart('+i.variantId+')">Удалить</button></div>';
   });
   if(b.items.length)html+='<div class="qr-cart-bar"><b>Итого</b><b>'+fmtPrice(api.total(b.items))+'</b></div>'+
     '<button class="cta" style="margin-top:14px" '+(blocked?'disabled ':'')+'onclick="checkoutQrBasket()">Оформить заказ →</button>';
@@ -631,6 +631,11 @@ function changeQrCart(id,delta){
   if(readPendingQrPayment()){showPendingQrPayment();return;}
   var result=window.HvostQrCart.change(CTX.pointId,id,delta,QR_CART_AVAILABLE[id]==null?0:99);
   renderQrCart(result.ok?'':result.error);
+}
+function removeQrCart(id){
+  if(readPendingQrPayment()){showPendingQrPayment();return;}
+  var result=window.HvostQrCart.remove(CTX.pointId,id);
+  renderQrCart(result.ok?'Товар удалён':result.error);
 }
 function checkoutQrBasket(){
   if(readPendingQrPayment()){showPendingQrPayment();return;}
