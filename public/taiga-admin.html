@@ -2072,6 +2072,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
               <option value="account_profile_change">Исправление анкет партнёров</option>
               <option value="point_creation_date_backfill">Уточнение дат создания точек</option>
               <option value="expense_date_change">Исправление даты траты</option>
+              <option value="payout_cancel">Отмена выплаты</option>
             </select>
             <button class="row-btn" onclick="renderAuditLog()">↻ Обновить</button>
           </div>
@@ -6288,7 +6289,7 @@ function renderManagerPayoutHistory(payouts) {
       '<td style="font-weight:500;">' + escapeOrderCell(payout.manager_name) + '</td>' +
       '<td>' + type + '</td><td>' + details + '</td>' +
       '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><small>'+escapeOrderCell(actualPayoutMethodLabel(payout.payout_method))+'</small><br><button class="row-btn" onclick="openPayoutReportForPayment(\'manager\', ' + Number(payout.id) + ', \'' + (payout.payout_type === 'launch_bonus' ? 'launch_bonus' : 'commission') + '\')">Отчёт</button></td></tr>';
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><small>'+escapeOrderCell(actualPayoutMethodLabel(payout.payout_method))+'</small><br><button class="row-btn" onclick="openPayoutReportForPayment(\'manager\', ' + Number(payout.id) + ', \'' + (payout.payout_type === 'launch_bonus' ? 'launch_bonus' : 'commission') + '\')">Отчёт</button>' + payoutCancelButton('manager',(payout.payout_type==='launch_bonus'?'launch_bonus':'commission'),payout.id,payout.amount) + '</td></tr>';
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплаты менеджерам пока не зафиксированы</td></tr>';
 }
 
@@ -6527,6 +6528,36 @@ async function renderOwners() {
   renderOwnerPayoutHistory(payoutData.payouts || []);
 }
 
+// The API independently checks the live super-admin role and amount.
+function payoutCancelButton(role,type,id,amount){
+  if(currentAdminRole!=='super'||!Number.isSafeInteger(Number(id))||!Number.isSafeInteger(Number(amount))||Number(amount)<=0)return '';
+  if(!['partner','owner','manager'].includes(role)||!['commission','launch_bonus','referral_bonus'].includes(type))return '';
+  return ' <button type="button" class="row-btn" style="color:#a12635" onclick="cancelRecordedPayout('+["'"+role+"'","'"+type+"'",Number(id),Number(amount)].join(',')+',this)">Отменить выплату</button>';
+}
+let payoutCancellationRunning=false;
+async function cancelRecordedPayout(role,type,id,amount,button){
+  if(currentAdminRole!=='super'||payoutCancellationRunning)return;
+  const raw=prompt('Причина отмены выплаты №'+id+' на '+Number(amount).toLocaleString('ru-RU')+' ₽ (обязательно):','');
+  if(raw===null)return;
+  const reason=raw.trim();
+  if(reason.length<3||reason.length>500){alert('Укажите причину длиной 3–500 символов.');return;}
+  if(!confirm('Подтвердите: деньги фактически НЕ перечислялись. Отмена вернёт начисление в расчёт задолженности, а старый отчёт будет аннулирован. Продолжить?'))return;
+  payoutCancellationRunning=true;
+  if(button)button.disabled=true;
+  try{
+    const res=await authFetch('/api/payout-reports/cancel-payment',{method:'POST',body:{role,payout_type:type,payout_id:id,expected_amount:amount,reason,confirm_not_transferred:true}});
+    const data=await res.json();
+    if(!res.ok||!data.ok)throw Error(data.error||'Не удалось отменить выплату');
+    alert('Выплата отменена. Актуальная задолженность пересчитана.');
+    if(typeof closePayoutReportModal==='function')closePayoutReportModal();
+    if(role==='owner')await renderOwners();
+    else if(role==='partner')await renderPartners();
+    else await renderManagers();
+    if(type==='referral_bonus'&&typeof loadRecipientBonuses==='function')await loadRecipientBonuses();
+  }catch(error){alert(error.message||'Проверьте историю выплат перед повтором.');}
+  finally{payoutCancellationRunning=false;if(button)button.disabled=false;}
+}
+
 function renderOwnerPayoutHistory(payouts) {
   document.getElementById('owner-payouts-count').textContent = payouts.length + ' выплат';
   document.getElementById('owner-payouts-tbody').innerHTML = payouts.length ? payouts.map(function(payout) {
@@ -6538,7 +6569,7 @@ function renderOwnerPayoutHistory(payouts) {
       '<td>' + escapeOrderCell(payout.point_name || '—') + '</td>' +
       '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
       '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><small>'+escapeOrderCell(actualPayoutMethodLabel(payout.payout_method))+'</small><br><button class="row-btn" onclick="openPayoutReportForPayment(\'owner\', ' + Number(payout.id) + ')">Отчёт</button></td>' +
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><small>'+escapeOrderCell(actualPayoutMethodLabel(payout.payout_method))+'</small><br><button class="row-btn" onclick="openPayoutReportForPayment(\'owner\', ' + Number(payout.id) + ')">Отчёт</button>' + payoutCancelButton('owner','commission',payout.id,payout.amount) + '</td>' +
       '</tr>';
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплат владельцам пока не зафиксировано</td></tr>';
 }
@@ -6937,7 +6968,7 @@ function renderPartnerPayoutHistory(payouts) {
       '<td>' + (payout.manager_name ? escapeOrderCell(payout.manager_name) : '—') + '</td>' +
       '<td class="r">' + Number(payout.orders_count || 0) + '</td>' +
       '<td class="r" style="font-weight:700;color:var(--deep);">' + Number(payout.amount || 0).toLocaleString('ru-RU') + ' ₽</td>' +
-      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><small>'+escapeOrderCell(actualPayoutMethodLabel(payout.payout_method))+'</small><br><button class="row-btn" onclick="openPayoutReportForPayment(\'partner\', ' + Number(payout.id) + ')">Отчёт</button></td>' +
+      '<td>' + escapeOrderCell(payout.paid_by_admin_login || 'Администратор') + '<br><small>'+escapeOrderCell(actualPayoutMethodLabel(payout.payout_method))+'</small><br><button class="row-btn" onclick="openPayoutReportForPayment(\'partner\', ' + Number(payout.id) + ')">Отчёт</button>' + payoutCancelButton('partner','commission',payout.id,payout.amount) + '</td>' +
       '</tr>';
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">Выплат пока не зафиксировано</td></tr>';
 }
@@ -7388,6 +7419,12 @@ async function renderAuditLog() {
       target = auditEscape(event.point_name || event.point_id || '—');
       details = 'Дата создания: ' + auditEscape(event.local_date || '—') +
         ' · точка ' + auditEscape(event.point_id || '—');
+    } else if (event.type === 'payout_cancel') {
+      action = 'Отмена выплаты';
+      target = auditEscape(event.recipient_name || '—') + ' · №' + auditEscape(event.payout_id);
+      const labels={partner:'Грумер',owner:'Владелец салона',manager:'Менеджер'};
+      const kinds={commission:'Вознаграждение',launch_bonus:'Бонус за запуск',referral_bonus:'Реферальный бонус'};
+      details = auditEscape(labels[event.role]||event.role) + ' · ' + auditEscape(kinds[event.payout_type]||event.payout_type) + ' · ' + Number(event.amount||0).toLocaleString('ru-RU') + ' ₽; возвращено в расчёт задолженности';
     } else if (event.type === 'expense_date_change') {
       action = 'Исправление даты траты';
       target = 'Трата №' + auditEscape(event.expense_id || '—');
@@ -8191,7 +8228,7 @@ if ('serviceWorker' in navigator) {
 }
 
 </script>
-<script src="/payout-reports.js?v=methods-20261125"></script>
+<script src="/payout-reports.js?v=cancel-20261126"></script>
 <script src="/miniapp-return.js"></script>
 <script src="/notification-settings.js?v=20261119-system"></script>
 </body>

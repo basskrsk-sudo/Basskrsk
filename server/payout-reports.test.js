@@ -320,3 +320,34 @@ test('actual payment methods are immutable; legacy rows remain unknown',()=>{
  assert.match(reports.printableReport(old),/Фактический способ выплаты: Не указан/);
  db.close();
 });
+
+// Cancel only a real ledger entry, preserving its original data and report.
+test('cancellation reopens commissions and preserves the immutable archived report for all three roles',()=>{
+  const {cancelPayout,assertReportActive}=require('./payout-cancellations');
+  for(const role of ['partner','owner','manager']){
+    const db=fixture();
+    db.exec("CREATE TABLE admins(id INTEGER PRIMARY KEY,login TEXT,role TEXT,active INTEGER); INSERT INTO admins VALUES(1,'super','super',1),(2,'regular','admin',1),(3,'disabled','super',0)");
+    const api=loadWithDb('./'+role+'-payouts',db);
+    const create={partner:'createPartnerPayout',owner:'createOwnerPayout',manager:'createManagerCommissionPayout'};
+    const payout=api[create[role]](1,{id:1,login:'super'});
+    const c=reports.roleConfig(role);
+    const body={role,payout_type:'commission',payout_id:payout.id,expected_amount:payout.amount,reason:'Ошибочная отметка',confirm_not_transferred:true};
+    for(const id of [2,3])assert.throws(()=>cancelPayout(db,body,id),e=>e.statusCode===403);
+    assert.throws(()=>cancelPayout(db,{...body,reason:''},1),e=>e.statusCode===400);
+    assert.throws(()=>cancelPayout(db,{...body,expected_amount:payout.amount+1},1),e=>e.statusCode===409);
+    const snapshot=reports.fromPayout(db,role,payout.id,1);
+    const result=cancelPayout(db,body,1);
+    assert.ok(result.ok);
+    assert.equal(db.prepare('SELECT count(*) n FROM '+c.payouts).get().n,0);
+    assert.equal(db.prepare('SELECT count(*) n FROM '+c.items).get().n,0);
+    const archived=db.prepare('SELECT * FROM payout_cancellations').get();
+    assert.equal(archived.amount,payout.amount);
+    assert.equal(archived.reason,body.reason);
+    assert.equal(JSON.parse(archived.snapshot_json).items.length,payout.orders_count);
+    assert.deepEqual(JSON.parse(db.prepare('SELECT snapshot_json FROM payout_reports WHERE id=?').get(snapshot.id).snapshot_json),JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(snapshot).filter(([key])=>key!=='id')))));
+    assert.throws(()=>assertReportActive(db,snapshot.id),/аннулирован/);
+    assert.throws(()=>reports.fromPayout(db,role,payout.id,1),/отменена/);
+    assert.throws(()=>cancelPayout(db,body,1),/уже отменена/);
+    db.close();
+  }
+});

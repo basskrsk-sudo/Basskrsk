@@ -24,6 +24,7 @@ async function sendWorkReport(db, report, admin, options, dependencies = {}) {
   if (options.target_key !== target.key) throw error('Настройки рабочего чата изменились. Повторно выберите отправку.',409,'TARGET_CHANGED');
   db.exec('BEGIN IMMEDIATE');
   try {
+    require('./payout-cancellations').assertReportActive(db,report.id);
     const prior = db.prepare('SELECT *, updated_at < datetime(\'now\', \'-10 minutes\') AS stale FROM payout_report_deliveries WHERE report_id = ? AND target_chat_id = ?').get(report.id,target.chatId);
     if (prior?.status === 'sent') { db.exec('COMMIT'); return {already_sent:true,sent_at:prior.sent_at,target_label:target.label}; }
     if (prior?.status === 'pending' && !prior.stale) throw error('Этот отчёт уже формируется или отправляется. Дождитесь результата.',409,'DELIVERY_PENDING');
@@ -54,6 +55,7 @@ async function sendWorkReport(db, report, admin, options, dependencies = {}) {
       (report.kind==='payout'?'Фактический способ выплаты: ':'Способ выплаты: ')+require('./payout-methods').payoutMethodLabel(report.kind==='payout'?report.payout_method:report.preferred_payout_method),
       'Заказов: ' + report.items.length,'Начислено: ' + rub(report.accrued),
       report.kind === 'payout' ? 'Сумма выплаты: ' + rub(report.payout_amount) : 'К выплате: ' + rub(report.unpaid)].join('\n');
+    require('./payout-cancellations').assertReportActive(db,report.id);
     providerStarted = true;
     const result = await send(file,caption);
     if (!(result.ok && result.data?.ok === true && result.data?.result?.message_id)) {

@@ -119,6 +119,8 @@ function handlePayoutConfirmation(chatId,data){
   const found=ownedRow(chatId,id);
   if(!found)return {ok:false,message:'Нет доступа к этой справке. Откройте свой личный Telegram, привязанный к действующему кабинету администратора.'};
   const {row}=found;
+  if(db.prepare('SELECT 1 FROM payout_invalidated_confirmations WHERE confirmation_id=?').get(id))
+    return {ok:false,clear:true,documentMessageId:row.document_message_id,message:'Справка аннулирована после отмены выплаты. Запросите новую /payouts.'};
   if(row.state==='paid')return {ok:true,clear:true,documentMessageId:row.document_message_id,
     message:'✅ Выплата уже зафиксирована: '+row.recipient_name+' — '+rub(row.amount)+'. Повторная фиксация не выполняется.'};
   if(action==='paid'){

@@ -43,6 +43,7 @@ function initializeReports(db) {
     if(columns.length&&!columns.some(c=>c.name==='payout_method'))db.exec('ALTER TABLE '+table+' ADD COLUMN payout_method TEXT');
   }
   require('./commission-refunds').initializeRefundOffsets(db);
+  require('./payout-cancellations').initializePayoutCancellations(db);
 }
 
 function validDate(value) {
@@ -239,6 +240,7 @@ function snapshotBonusPayout(db,role,person,payout,adminId,type='launch_bonus',a
 
 function fromPayout(db, role, payoutId, adminId, type='commission') {
   const c = roleConfig(role);
+  require('./payout-cancellations').assertPaymentActive(db,role,type,payoutId);
   if (type !== 'commission') {
     if (type !== (role === 'manager' ? 'launch_bonus' : 'referral_bonus')) throw Object.assign(new Error('Неизвестный вид выплаты'),{statusCode:400});
     const source = role+':'+type+':'+payoutId;

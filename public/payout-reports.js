@@ -97,7 +97,7 @@ async function loadPayoutReportArchive() {
   const id = document.getElementById('pr-form').style.display === 'none' ? 0 : Number(document.getElementById('pr-recipient').value);
   const data = await reportRequest('/api/payout-reports?role=' + payoutReportRole + (id ? '&recipient_id=' + id : ''));
   if (epoch !== payoutReportEpoch) return;
-  document.getElementById('pr-archive').innerHTML = data.reports.length ? data.reports.map(r => `<p><button class="row-btn" onclick="loadSavedPayoutReport(${Number(r.id)})">Отчёт № ${Number(r.id)}</button> ${reportEscape(r.recipient_name)} · ${reportEscape(r.period_start || 'по выплате')} — ${reportEscape(r.period_end || '')}${r.payout_id ? ' · выплата № ' + Number(r.payout_id) : ''}</p>`).join('') : '<p>Сохранённых отчётов пока нет.</p>';
+  document.getElementById('pr-archive').innerHTML = data.reports.length ? data.reports.map(r => `<p>${r.cancelled_at ? '<strong style="color:#a12635">Отчёт № '+Number(r.id)+' · аннулирован</strong>' : '<button class="row-btn" onclick="loadSavedPayoutReport('+Number(r.id)+')">Отчёт № '+Number(r.id)+'</button>'} ${reportEscape(r.recipient_name)} · ${reportEscape(r.period_start || 'по выплате')} — ${reportEscape(r.period_end || '')}${r.payout_id ? ' · выплата № ' + Number(r.payout_id) : ''}</p>`).join('') : '<p>Сохранённых отчётов пока нет.</p>';
 }
 
 function displayPayoutReport(data) {
@@ -167,7 +167,7 @@ async function loadRecipientBonuses() {
     const held=(data.held||[]).map(b=>'<p>'+reportEscape(b.point_name)+' · '+
       Number(b.amount).toLocaleString('ru-RU')+' ₽ — временно недоступен к переводу ('+
       reportEscape(b.reason||'после возврата выручка ниже порога')+')</p>').join('');
-    const paid=data.paid.map(b=>`<p>${reportEscape(b.point_name)} · ${Number(b.amount).toLocaleString('ru-RU')} ₽ · ${reportEscape(b.paid_at)} · ${reportEscape(actualPayoutMethodLabel(b.payout_method))} <button class="row-btn" onclick="openPayoutReportForPayment('${role}',${Number(b.payout_id)},'${role==='manager'?'launch_bonus':'referral_bonus'}')">Отчёт по выплате</button></p>`).join('');
+    const paid=data.paid.map(b=>`<p>${reportEscape(b.point_name)} · ${Number(b.amount).toLocaleString('ru-RU')} ₽ · ${reportEscape(b.paid_at)} · ${reportEscape(actualPayoutMethodLabel(b.payout_method))} <button class="row-btn" onclick="openPayoutReportForPayment('${role}',${Number(b.payout_id)},'${role==='manager'?'launch_bonus':'referral_bonus'}')">Отчёт по выплате</button>${typeof payoutCancelButton==='function'?payoutCancelButton(role,role==='manager'?'launch_bonus':'referral_bonus',b.payout_id,b.amount):''}</p>`).join('');
     document.getElementById('pr-bonuses').innerHTML='<h3>Бонусы за привлечение точек</h3>'+(role!=='manager'&&data.pending.length?'<label>Фактический способ выплаты бонуса <select id="pr-bonus-method"><option value="">Не указан</option><option value="sbp">СБП</option><option value="card">На карту</option><option value="bank_account">Безналичный расчёт по договору</option><option value="cash">Наличными</option></select></label>':'')+ (pending||'<p>Готовых к выплате бонусов нет.</p>')+(held?'<h4>Ожидают восстановления выручки</h4>'+held:'')+paid+'<p style="font-size:.8rem">Фиксируйте только уже выполненный перевод. Эта кнопка не отправляет деньги или сообщения.</p>';
     const methodSelect=document.getElementById('pr-bonus-method');
     if(methodSelect)methodSelect.value=document.getElementById('pr-recipient')?.selectedOptions?.[0]?.dataset?.payoutMethod||'';
