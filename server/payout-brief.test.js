@@ -344,7 +344,7 @@ test('order items are read once in bounded batches, not once per order or recipi
       const itemQueries=[];
       db.prepare=function(sql){
         const stmt=prepare.call(this,sql);
-        if(!/FROM order_items\\b/i.test(sql))return stmt;
+        if(!/FROM order_items\b/i.test(sql))return stmt;
         const all=stmt.all.bind(stmt);
         stmt.all=(...params)=>{
           itemQueries.push(params);
