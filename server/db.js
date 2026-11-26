@@ -2121,6 +2121,22 @@ if (missingPartnerPhoneKeys.length) {
     throw error;
   }
 }
+// Payout reports use these paths by recipient or payout, not all paid orders.
+// Create only once via SQLite's idempotent DDL; no maintenance timers or data rewrites.
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_orders_partner_status_created
+    ON orders(partner_id,status,created_at,id);
+  CREATE INDEX IF NOT EXISTS idx_points_manager
+    ON points(manager_id,id);
+  CREATE INDEX IF NOT EXISTS idx_manager_points_rate_lookup
+    ON manager_points(point_id,manager_id,active DESC,id DESC);
+  CREATE INDEX IF NOT EXISTS idx_partner_payout_items_payout
+    ON partner_payout_items(payout_id);
+  CREATE INDEX IF NOT EXISTS idx_owner_payout_items_payout
+    ON owner_payout_items(payout_id);
+  CREATE INDEX IF NOT EXISTS idx_manager_commission_payout_items_payout
+    ON manager_commission_payout_items(payout_id);
+`);
 require('./payout-reports').initializeReports(db);
 // Historical threshold repair runs once; live payment/referral handlers
 // remain responsible for subsequent accruals. Mark completion atomically.
