@@ -1,6 +1,7 @@
 'use strict';
 const db = require('./db');
-const { requireAuth } = require('./routes-auth');
+const { requireAuth, requireSuperAdmin } = require('./routes-auth');
+const {cancelPayout,assertReportActive}=require('./payout-cancellations');
 const { sendJson } = require('./http-utils');
 const { roleConfig, generatePeriodReport, saveReport, fromPayout, printableReport, enrichReportOrders } = require('./payout-reports');
 const { getBonuses, createReferralBonusPayout } = require('./report-bonuses');
@@ -23,9 +24,20 @@ function registerPayoutReportRoutes(router) {
       sendJson(res, err.statusCode || 500, { error: err.statusCode ? err.message : 'Не удалось сформировать отчёт' });
     }
   };
+  router.post('/api/payout-reports/cancel-payment',(req,res,ctx)=>{
+    const admin=requireSuperAdmin(req,res,ctx);
+    if(!admin)return;
+    res.setHeader('Cache-Control','no-store');
+    try{sendJson(res,200,cancelPayout(db,ctx.body,admin.id));}
+    catch(error){
+      if(!error.statusCode)console.error('[payout-cancellation]',error);
+      sendJson(res,error.statusCode||500,{error:error.statusCode?error.message:'Не удалось отменить выплату. Изменения не сохранены.'});
+    }
+  });
   router.get('/api/payout-reports/:id/telegram', handler((req,res,ctx) => {
     const id = positiveId(ctx.params.id);
     if (!db.prepare('SELECT id FROM payout_reports WHERE id = ?').get(id)) return sendJson(res,404,{error:'Отчёт не найден'});
+    assertReportActive(db,id);
     sendJson(res,200,require('./payout-report-telegram').deliveryStatus(db,id));
   }));
   router.post('/api/payout-reports/:id/telegram', async (req,res,ctx) => {
@@ -36,6 +48,7 @@ function registerPayoutReportRoutes(router) {
       const id = positiveId(ctx.params.id);
       const row = db.prepare('SELECT id,snapshot_json FROM payout_reports WHERE id=?').get(id);
       if (!row) return sendJson(res,404,{error:'Отчёт не найден'});
+      assertReportActive(db,id);
       const result = await require('./payout-report-telegram').sendWorkReport(db,{...withLifetime(enrichReportOrders(db,JSON.parse(row.snapshot_json))),id:row.id},admin,ctx.body);
       sendJson(res,200,result);
     } catch(e) {
@@ -50,8 +63,10 @@ function registerPayoutReportRoutes(router) {
       const id = positiveId(ctx.params.id);
       const row = db.prepare('SELECT id, snapshot_json FROM payout_reports WHERE id = ?').get(id);
       if (!row) return sendJson(res, 404, { error:'Отчёт не найден' });
+      assertReportActive(db,id);
       const report = { ...enrichReportOrders(db,JSON.parse(row.snapshot_json)), id:row.id };
       const buffer = await require('./payout-report-pdf').renderPayoutPdf(report);
+      assertReportActive(db,id);
       res.writeHead(200, { 'Content-Type':'application/pdf', 'Content-Length':buffer.length,
         'Content-Disposition':'attachment; filename="HvostMarket_report_' + id + '.pdf"' });
       res.end(buffer);
@@ -83,6 +98,7 @@ function registerPayoutReportRoutes(router) {
     roleConfig(role);
     const recipientId = ctx.query.recipient_id ? positiveId(ctx.query.recipient_id) : null;
     const reports = db.prepare(`SELECT id, recipient_id,
+      (SELECT c.created_at FROM payout_cancelled_reports cr JOIN payout_cancellations c ON c.id=cr.cancellation_id WHERE cr.report_id=payout_reports.id) AS cancelled_at,
       COALESCE(payout_id,json_extract(snapshot_json,'$.bonus_payout_id')) AS payout_id,
       period_start, period_end, created_at,
       json_extract(snapshot_json, '$.recipient.name') AS recipient_name,
@@ -107,6 +123,7 @@ function registerPayoutReportRoutes(router) {
     const id = positiveId(ctx.params.id);
     const row = db.prepare('SELECT id, snapshot_json FROM payout_reports WHERE id = ?').get(id);
     if (!row) return sendJson(res, 404, { error: 'Отчёт не найден' });
+    assertReportActive(db,id);
     const report = { ...enrichReportOrders(db,JSON.parse(row.snapshot_json)), id: row.id };
     sendJson(res, 200, { report, html: printableReport(report) });
   }));

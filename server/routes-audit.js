@@ -140,7 +140,10 @@ function registerAuditRoutes(router) {
       " FROM expense_date_change_log ORDER BY created_at DESC,id DESC LIMIT ?"
     ).all(limit);
 
-    const events = customerEvents.concat(warehouseEvents, managerEvents, orderPartnerEvents, profileEvents, pointDateEvents, bscEvents, expenseDateEvents)
+    const cancellationEvents=type&&type!=='payout_cancel' ? [] : db.prepare(
+      "SELECT 'payout_cancel' AS type,id,created_at,admin_id,admin_login,reason,role,payout_type,payout_id,recipient_name,amount,paid_at FROM payout_cancellations ORDER BY created_at DESC,id DESC LIMIT ?"
+    ).all(limit);
+    const events = customerEvents.concat(warehouseEvents, managerEvents, orderPartnerEvents, profileEvents, pointDateEvents, bscEvents, expenseDateEvents,cancellationEvents)
       .sort((a, b) => {
         const byDate = String(b.created_at).localeCompare(String(a.created_at));
         if (byDate) return byDate;
