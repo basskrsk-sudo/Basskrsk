@@ -212,9 +212,58 @@ function loadAdminFinanceModule(){
   return adminFinanceModulePromise;
 }
 
+// These optional tools must not be downloaded or parsed during admin login.
+const adminSectionScripts=Object.freeze({
+  'network-map':{src:'/partner-network-map.js?v=10',ready:()=>!!window.HvostPartnerNetworkMap},
+  'max':{src:'/max-admin.js?v=3',ready:()=>typeof loadMaxAdmin==='function'},
+  'telegram-connections':{src:'/telegram-connections.js?v=1',ready:()=>typeof loadTelegramConnections==='function'},
+  'referrals':{src:'/admin-referral-control.js?v=3',ready:()=>!!window.HvostAdminReferralControl},
+  'qr':{src:'/admin-qr.js?v=1',ready:()=>window.HvostAdminQrReady===true&&typeof qrInitSection==='function'},
+});
+const adminSectionScriptPromises=new Map();
+function loadAdminSectionScript(id){
+  const config=Object.hasOwn(adminSectionScripts,id)?adminSectionScripts[id]:null;
+  if(!config||config.ready())return Promise.resolve();
+  if(adminSectionScriptPromises.has(id))return adminSectionScriptPromises.get(id);
+  const script=document.createElement('script');
+  script.src=config.src;
+  script.async=true;
+  const promise=new Promise((resolve,reject)=>{
+    script.onload=()=>config.ready()?resolve():reject(new Error('Модуль раздела не запустился'));
+    script.onerror=()=>reject(new Error('Не удалось загрузить раздел. Повторите попытку.'));
+  }).catch(error=>{
+    adminSectionScriptPromises.delete(id);
+    if(script.remove)script.remove();
+    throw error;
+  });
+  adminSectionScriptPromises.set(id,promise);
+  document.head.appendChild(script);
+  return promise;
+}
+let adminNavigationRequest=0;
+
 async function showSection(id) {
   // Old links to the removed BSC dashboard return to the business overview.
   if (!sections.includes(id)) id = 'dashboard';
+  const request=++adminNavigationRequest;
+  const loadStatus=document.getElementById('admin-section-load-status');
+  const deferred=Object.hasOwn(adminSectionScripts,id)?adminSectionScripts[id]:null;
+  if(loadStatus){loadStatus.hidden=true;loadStatus.textContent='';}
+  // Keep the previous screen usable until the optional script is available.
+  // A slower earlier click must never override a newer navigation choice.
+  if(deferred&&!deferred.ready()){
+    if(loadStatus){loadStatus.hidden=false;loadStatus.textContent='Загрузка раздела…';}
+    try{await loadAdminSectionScript(id);}
+    catch(error){
+      if(request===adminNavigationRequest){
+        if(loadStatus){loadStatus.hidden=true;loadStatus.textContent='';}
+        alert(error.message||'Не удалось открыть раздел');
+      }
+      return false;
+    }
+    if(request!==adminNavigationRequest)return false;
+    if(loadStatus){loadStatus.hidden=true;loadStatus.textContent='';}
+  }
   sections.forEach(function(s) {
     const el = document.getElementById('sec-' + s);
     if (el) el.style.display = (s === id) ? 'block' : 'none';
@@ -307,5 +356,6 @@ async function showSection(id) {
     const link=document.getElementById('partner-club-admin-link');
     if(link)link.style.display=currentAdminRole==='super'?'flex':'none';
   }
+  return request===adminNavigationRequest;
 }
 

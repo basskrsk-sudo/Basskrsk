@@ -9,7 +9,7 @@ function openCurrentPointPageSettings() {
 async function openCurrentPointQr() {
   const point = POINTS_INFO[currentPointIdx];
   if (!point) return;
-  await showSection('qr');
+  if(await showSection('qr')===false)return;
   const fullPoint = QR_POINTS.find(function(item) { return item.id === point.id; });
   const citySelect = document.getElementById('qr-sel-city');
   const pointSelect = document.getElementById('qr-sel-point');

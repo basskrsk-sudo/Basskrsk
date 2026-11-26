@@ -115,3 +115,84 @@ test('Finance provides calendar 2026, every subsequent year, and all-time',async
  await b.click({financePeriod:'2027'});
  assert.match(b.urls.at(-1),/\/api\/admin\/finance\/summary\?period=2027$/);
 });
+
+
+test('five optional admin modules are not requested at login; QR implementation stays intact',()=>{
+  const optional=['partner-network-map.js','max-admin.js','telegram-connections.js','admin-referral-control.js','admin-qr.js'];
+  for(const file of optional){
+    assert.doesNotMatch(admin,new RegExp('<script[^>]+src="[^"]*'+file.replace('.','\\.')+'\\b'));
+    assert.ok(nav.includes('/'+file+'?v='));
+    assert.doesNotThrow(()=>new Function(read(file)));
+  }
+  const qr=read('admin-qr.js');
+  assert.doesNotMatch(admin,/async function qrInitSection\(/);
+  for(const name of ['qrInitSection','qrGenerate','printLabelSheet','qrDownloadAll','qrCopyURL']){
+    assert.match(qr,new RegExp('function '+name+'\\('));
+  }
+  assert.match(qr,/window\.HvostAdminQrReady=true/);
+  assert.match(qr,/\/api\/sample-qr\/scan\?point=/);
+  assert.match(qr,/\/p\//);
+  assert.match(read('admin-point.js'),/if\(await showSection\('qr'\)===false\)return;/);
+});
+
+test('optional section scripts load once, share concurrent requests and allow retry after failure',async()=>{
+  const appended=[],window={};
+  const document={querySelectorAll:()=>[],addEventListener(){},
+    createElement:()=>({remove(){this.removed=true;}}),
+    head:{appendChild(script){appended.push(script);}}};
+  window.addEventListener=()=>{};
+  const ctx=vm.createContext({document,window,console,Promise});
+  vm.runInContext(nav,ctx);
+  assert.equal(appended.length,0);
+  await ctx.loadAdminSectionScript('dashboard');
+  assert.equal(appended.length,0);
+  const a=ctx.loadAdminSectionScript('network-map'),b=ctx.loadAdminSectionScript('network-map');
+  assert.strictEqual(a,b);
+  assert.equal(appended.length,1);
+  assert.match(appended[0].src,/partner-network-map\.js/);
+  window.HvostPartnerNetworkMap={};
+  appended[0].onload();await a;
+  await ctx.loadAdminSectionScript('network-map');
+  assert.equal(appended.length,1);
+  const bad=ctx.loadAdminSectionScript('max');
+  appended[1].onerror();
+  await assert.rejects(bad,/Не удалось загрузить/);
+  assert.equal(appended[1].removed,true);
+  const retry=ctx.loadAdminSectionScript('max');
+  assert.equal(appended.length,3);
+  vm.runInContext('function loadMaxAdmin(){}',ctx);
+  appended[2].onload();await retry;
+  const missing=ctx.loadAdminSectionScript('referrals');
+  appended[3].onload();
+  await assert.rejects(missing,/не запустился/);
+  assert.equal(appended[3].removed,true);
+});
+
+test('a late optional module cannot switch the screen after another navigation',async()=>{
+  const appended=[],alerts=[],window={addEventListener(){}};
+  const elements={
+    'sec-network-map':{id:'sec-network-map',style:{display:'none'}},
+    'sec-dashboard':{id:'sec-dashboard',style:{display:'block'}},
+    'sec-guides':{id:'sec-guides',style:{display:'none'}},
+    'section-title':{textContent:'Главная'},
+    'admin-section-load-status':{hidden:true,textContent:''},
+  };
+  const document={querySelectorAll:selector=>selector==='[id^="sec-"]'?Object.values(elements).filter(x=>x.id):[],
+    getElementById:id=>elements[id]||null,addEventListener(){},
+    createElement:()=>({remove(){}}),
+    head:{appendChild(script){appended.push(script);}}};
+  const ctx=vm.createContext({document,window,console,Promise,alert:s=>alerts.push(s)});
+  vm.runInContext(nav,ctx);
+  vm.runInContext('closeAdminMenu=function(){};renderContextTabs=function(){};',ctx);
+  const pending=ctx.showSection('network-map');
+  assert.equal(elements['sec-dashboard'].style.display,'block');
+  assert.equal(elements['admin-section-load-status'].hidden,false);
+  assert.equal(await ctx.showSection('guides'),true);
+  window.HvostPartnerNetworkMap={mount(){throw Error('stale map must not mount');}};
+  appended[0].onload();
+  assert.equal(await pending,false);
+  assert.equal(elements['sec-guides'].style.display,'block');
+  assert.equal(elements['sec-network-map'].style.display,'none');
+  assert.equal(elements['admin-section-load-status'].hidden,true);
+  assert.deepEqual(alerts,[]);
+});

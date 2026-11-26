@@ -68,9 +68,10 @@ test('only enabled administrators can inspect connections',()=>{
 test('searchable Telegram registry is connected to the admin navigation',()=>{
  const html=fs.readFileSync(path.join(__dirname,'../public/taiga-admin.html'),'utf8');
  assert.match(html,/id="sec-telegram-connections"/);
- assert.match(html,/telegram-connections\.js/);
+ assert.doesNotMatch(html,/<script[^>]+src="[^"]*telegram-connections\.js/);
  assert.match(html,/loadTelegramConnections\(\)/);
  const navigation=fs.readFileSync(path.join(__dirname,'../public/admin-navigation.js'),'utf8');
+ assert.match(navigation,/'telegram-connections':\{src:'\/telegram-connections\.js/);
  assert.match(navigation,/'telegram-connections':'system'/);
  assert.match(navigation,/\['telegram-connections','Telegram'\]/);
 });
