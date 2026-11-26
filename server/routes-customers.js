@@ -464,7 +464,7 @@ function generateUniqueReferralCode() {
 // bonesUsed — сколько косточек клиент списал на ЭТОТ заказ: если больше 0,
 // кэшбэк на этот же заказ не начисляется (либо тратим, либо зарабатываем —
 // не одновременно).
-function recordCustomerOrder(phone, name, lname, total, email, referralCode, bonesUsed, suppressBones) {
+function recordCustomerOrder(phone, name, lname, total, email, referralCode, bonesUsed, suppressBones, {deferNotification}={}) {
   const normalized = normalizePhone(phone);
   if (!normalized) return;
   const existing = db.prepare('SELECT * FROM customers WHERE phone = ?').get(normalized);
@@ -479,7 +479,7 @@ function recordCustomerOrder(phone, name, lname, total, email, referralCode, bon
       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'), 1, ?)
     `).run(normalized, name || null, lname || null, email || null, referredBy, total);
 
-    if (referredBy && !suppressBones) rewardReferralPair(referredBy, info.lastInsertRowid, name);
+    if (referredBy && !suppressBones) rewardReferralPair(referredBy, info.lastInsertRowid, name, deferNotification);
   } else {
     // Кэшбэк считаем по статусу клиента ДО этого заказа (сколько заказов уже
     // было, какой у питомца день рождения) — то же правило, что действовало
@@ -524,7 +524,7 @@ function recordCustomerOrder(phone, name, lname, total, email, referralCode, bon
 // больше не уменьшается скидкой, награда приходит на баланс уже после).
 // Плюс сообщение в Telegram рефереру, если он когда-либо входил через бота
 // (у нас остался его chat_id) — иначе награда просто ждёт его в кабинете.
-function rewardReferralPair(referrerId, friendCustomerId, friendName) {
+function rewardReferralPair(referrerId, friendCustomerId, friendName, deferNotification) {
   const { awardBones } = require('./bones');
   const referrer = db.prepare('SELECT * FROM customers WHERE id = ?').get(referrerId);
   if (!referrer) return;
@@ -546,22 +546,28 @@ function rewardReferralPair(referrerId, friendCustomerId, friendName) {
     'Первый заказ по коду друга (' + (referrer.name || referrer.phone) + ')'
   );
 
-  try {
-    const tokenRow = db.prepare("SELECT chat_id FROM telegram_login_tokens WHERE phone = ? AND role = 'customer' AND chat_id IS NOT NULL ORDER BY id DESC LIMIT 1").get(referrer.phone);
-    if (tokenRow && tokenRow.chat_id) {
-      const TG_TOKEN = process.env.TG_TOKEN || '';
-      if (TG_TOKEN) {
-        fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: tokenRow.chat_id,
-            text: '🎉 Ваш друг' + (friendName ? ' (' + friendName + ')' : '') + ' сделал первый заказ по вашему коду!\n\n🦴 Вам начислено ' + referrerBones + ' косточек — можно потратить на следующий заказ (1 косточка = 1 ₽).',
-          }),
-        }).catch(() => {});
+  // Payment accounting may run inside an order transaction. Do not send an
+  // external notification for a reward until that transaction has committed.
+  const notify=()=>{
+    try {
+      const tokenRow = db.prepare("SELECT chat_id FROM telegram_login_tokens WHERE phone = ? AND role = 'customer' AND chat_id IS NOT NULL ORDER BY id DESC LIMIT 1").get(referrer.phone);
+      if (tokenRow && tokenRow.chat_id) {
+        const TG_TOKEN = process.env.TG_TOKEN || '';
+        if (TG_TOKEN) {
+          fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: tokenRow.chat_id,
+              text: '🎉 Ваш друг' + (friendName ? ' (' + friendName + ')' : '') + ' сделал первый заказ по вашему коду!\n\n🦴 Вам начислено ' + referrerBones + ' косточек — можно потратить на следующий заказ (1 косточка = 1 ₽).',
+            }),
+          }).catch(() => {});
+        }
       }
-    }
-  } catch (e) { /* уведомление необязательно */ }
+    } catch (e) { /* уведомление необязательно */ }
+  };
+  if(typeof deferNotification==='function')deferNotification(notify);
+  else notify();
 }
 
 module.exports = { registerCustomerRoutes, recordCustomerOrder, normalizePhone };
