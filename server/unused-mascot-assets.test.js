@@ -32,3 +32,36 @@ test('client source does not request the retired PNG paths', () => {
     }
   }
 });
+
+
+test('superseded original mascot artwork is removed without breaking new art or the 404 page',()=>{
+  const replacements = {
+    'cart-full.png':'cart-full-v2-clean.webp',
+    'catalog.png':'catalog-v2.webp',
+    'checkout.png':'checkout-v2-clean.webp',
+    'order-success.png':'purchase-success-v2.webp',
+  };
+  for(const [oldName,newName] of Object.entries(replacements)){
+    assert.equal(fs.existsSync(path.join(root,'public/images/mascot',oldName)),false,oldName);
+    assert.ok(fs.existsSync(path.join(root,'public/images/mascot',newName)),newName);
+  }
+  function scan(dir){
+    for(const entry of fs.readdirSync(path.join(root,dir),{withFileTypes:true})){
+      const relative=path.join(dir,entry.name);
+      if(entry.isDirectory()){
+        if(entry.name!=='uploads'&&entry.name!=='node_modules')scan(relative);
+        continue;
+      }
+      if(!entry.isFile()||!/\.(html|js|css|json|svg|xml|txt)$/i.test(entry.name)||
+          entry.name.endsWith('.test.js'))continue;
+      const source=fs.readFileSync(path.join(root,relative),'utf8').toLowerCase();
+      for(const name of Object.keys(replacements)){
+        assert.equal(source.includes('mascot/'+name),false,relative+' still requests '+name);
+      }
+    }
+  }
+  for(const dir of ['public','server','scripts'])scan(dir);
+  const store=fs.readFileSync(path.join(root,'public/index.html'),'utf8');
+  for(const name of Object.values(replacements))assert.ok(store.includes('mascot/'+name));
+  assert.ok(fs.existsSync(path.join(root,'public/images/mascot/not-found.png')));
+});

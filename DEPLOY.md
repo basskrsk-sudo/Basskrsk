@@ -761,7 +761,10 @@ server/              ← весь бэкенд
 public/               ← сайт (то же, что раньше отдавал nginx)
   index.html, taiga-admin.html, taiga-groomer.html, taiga-manager.html,
   taiga-register.html, taiga-qr.html, privacy-policy.html,
-  config.js, favicon.ico, images/, qrcode.min.js, taiga_notion_template.xlsx
+  config.js, favicon.ico, images/, qrcode.min.js
+
+Исторический Excel-шаблон для Notion сохранён вне публичной папки:
+`docs/archive/taiga_notion_template.xlsx`. В образ сайта не включается.
 ```
 
 ---
