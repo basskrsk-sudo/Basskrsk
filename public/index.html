@@ -701,6 +701,21 @@
     line-height: 1.03; margin-bottom: 1.15rem;
   }
   .partner-recruit-copy h1 em { color: var(--amber-lt); font-style: normal; }
+  .partner-network-count {
+    display: flex; flex-direction: column; gap: .2rem;
+    width: fit-content; max-width: 100%; box-sizing: border-box;
+    margin: 0 0 1rem; padding: .7rem .95rem;
+    border: 1px solid rgba(246,196,90,.45); border-radius: 12px;
+    background: rgba(255,255,255,.07);
+  }
+  .partner-network-count[hidden] { display: none; }
+  .partner-network-count strong {
+    color: var(--amber-lt); font-size: clamp(1.12rem, 2vw, 1.5rem);
+    font-weight: 800; line-height: 1.25;
+  }
+  .partner-network-count span {
+    color: rgba(255,255,255,.85); font-size: .82rem; line-height: 1.4;
+  }
   .partner-recruit-copy > p {
     max-width: 680px; color: rgba(255,255,255,.8); line-height: 1.72;
     font-size: clamp(.96rem, 1.4vw, 1.08rem); margin-bottom: 1.55rem;
@@ -1906,6 +1921,10 @@
       <div class="partner-recruit-copy">
         <div class="partner-recruit-kicker">Для груминг-салонов, ветклиник и кинологических центров</div>
         <h1>Дополнительный доход — <em>без вложений в товар</em></h1>
+        <div class="partner-network-count" id="partner-network-count" role="status" hidden>
+          <strong id="partner-network-count-value"></strong>
+          <span>🐾 Присоединяйтесь к сети ХвостМаркет</span>
+        </div>
         <p>Разместите компактный минимаркет у себя в салоне, клинике или центре дрессировки. Мы предоставим стойку и товар, организуем оплату, учёт и пополнение. Вы получаете согласованную долю от продаж, а посетители могут купить нужные товары на месте.</p>
         <div class="partner-recruit-actions">
           <button class="btn-primary" onclick="document.getElementById('partnerFormAnchor').scrollIntoView({behavior:'smooth'})">Получить стойку бесплатно</button>
@@ -7147,12 +7166,21 @@ function openPartnerPointCatalog(pointId) {
 async function renderPartnerWorkingPoints() {
   const grid = document.getElementById('partner-working-points');
   if (!grid || partnerWorkingPointsLoaded) return;
+  const countBlock = document.getElementById('partner-network-count');
+  const countValue = document.getElementById('partner-network-count-value');
+  if (countBlock) countBlock.hidden = true;
   grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:28px;color:var(--muted);">Загрузка точек…</div>';
   try {
     const response = await fetch('/api/partner-showcase-points');
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Не удалось загрузить точки');
-    const points = data.points || [];
+    if (!Array.isArray(data.points)) throw new Error('Некорректный список точек');
+    const points = data.points;
+    if (countBlock && countValue) {
+      const n = points.length;
+      countValue.textContent = n + ' ' + pluralRu(n, 'действующий минимаркет', 'действующих минимаркета', 'действующих минимаркетов');
+      countBlock.hidden = false;
+    }
     if (!points.length) {
       grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:28px;color:var(--muted);">Карточки действующих точек скоро появятся.</div>';
       partnerWorkingPointsLoaded = true;
@@ -7203,6 +7231,7 @@ async function renderPartnerWorkingPoints() {
     });
     partnerWorkingPointsLoaded = true;
   } catch (error) {
+    if (countBlock) countBlock.hidden = true;
     grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:28px;color:var(--muted);">Не удалось загрузить точки. Обновите страницу и попробуйте ещё раз.</div>';
   }
 }

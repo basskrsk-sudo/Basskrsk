@@ -895,7 +895,7 @@ function registerProductRoutes(router) {
              p.salon_page_published, c.name AS city_name
       FROM points p
       LEFT JOIN cities c ON c.id = p.city_id
-      WHERE p.active = 1
+      WHERE p.active = 1 AND COALESCE(p.is_hub, 0) = 0
       ORDER BY COALESCE(c.name, ''), p.name
     `).all();
     const points = rows.map((point) => {
