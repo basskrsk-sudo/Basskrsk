@@ -194,6 +194,7 @@ function buildPoints(current, previous) {
   const points = db.prepare(`
     SELECT p.id, p.name, p.addr, p.active, p.city_id, c.name AS city_name
     FROM points p LEFT JOIN cities c ON c.id = p.city_id
+    WHERE COALESCE(p.is_hub, 0) = 0
     ORDER BY p.active DESC, c.name, p.name
   `).all();
 
@@ -347,7 +348,7 @@ function buildOperations(period) {
     FROM stock s
     JOIN product_variants v ON v.id = s.variant_id AND v.active = 1
     JOIN products p ON p.id = v.product_id AND p.active = 1
-    JOIN points pt ON pt.id = s.point_id AND pt.active = 1
+    JOIN points pt ON pt.id = s.point_id AND pt.active = 1 AND COALESCE(pt.is_hub, 0) = 0
   `).get();
   const warehouse = db.prepare(`
     SELECT COALESCE(SUM(ws.qty), 0) AS units,
@@ -370,7 +371,7 @@ function buildOperations(period) {
     new_partners: Number(db.prepare('SELECT COUNT(*) AS count FROM partners WHERE created_at >= ? AND created_at < ?').get(period.start_utc, period.end_utc_exclusive).count || 0),
     new_owners: Number(db.prepare('SELECT COUNT(*) AS count FROM salon_owners WHERE created_at >= ? AND created_at < ?').get(period.start_utc, period.end_utc_exclusive).count || 0),
     new_managers: Number(db.prepare('SELECT COUNT(*) AS count FROM managers WHERE created_at >= ? AND created_at < ?').get(period.start_utc, period.end_utc_exclusive).count || 0),
-    active_points: Number(db.prepare('SELECT COUNT(*) AS count FROM points WHERE active = 1').get().count || 0),
+    active_points: Number(db.prepare('SELECT COUNT(*) AS count FROM points WHERE active = 1 AND COALESCE(is_hub, 0) = 0').get().count || 0),
   };
   return {
     stock: {

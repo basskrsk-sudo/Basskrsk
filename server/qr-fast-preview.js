@@ -1,6 +1,6 @@
 'use strict';
 function loadQrPreview(database, pointId, productKey, findDefaultGroomer) {
-  const point = database.prepare("SELECT id,name,addr,city_id FROM points WHERE id=? AND active=1").get(String(pointId || ''));
+  const point = database.prepare("SELECT id,name,addr,city_id FROM points WHERE id=? AND active=1 AND COALESCE(is_hub,0)=0").get(String(pointId || ''));
   if (!point) return null;
   const key = String(productKey || '');
   if (!key || key.length > 200) return null;
@@ -34,7 +34,7 @@ function loadQrCartPreview(database,pointId,variantIds,findDefaultGroomer){
   if(!Array.isArray(variantIds)||!variantIds.length||variantIds.length>50||
     variantIds.some(id=>!Number.isSafeInteger(id)||id<1)||new Set(variantIds).size!==variantIds.length)
     return null;
-  const point=database.prepare('SELECT id,name,addr,city_id FROM points WHERE id=? AND active=1').get(String(pointId||''));
+  const point=database.prepare('SELECT id,name,addr,city_id FROM points WHERE id=? AND active=1 AND COALESCE(is_hub,0)=0').get(String(pointId||''));
   if(!point)return null;
   const marks=variantIds.map(()=>'?').join(',');
   const items=database.prepare(

@@ -221,6 +221,24 @@ test('exact Telegram presentation matches September/October 2026 sample', () => 
   assert.equal(formatted,expected);
 });
 
+test('legacy demo records never inflate the network, but old payments remain intact', () => {
+  const before=report.collectBusinessYearReport(2026,now);
+  const id='legacy-business-demo';
+  db.prepare("INSERT INTO points(id,name,addr,icon,active,is_hub,created_at) VALUES(?,?,?,?,1,1,?)").run(id,'Demo','Test','🐾','2026-09-02 00:00:00');
+  try {
+    order('BUSINESS-LEGACY-DEMO',id,'paid',100,'2026-09-10 12:00:00');
+    const after=report.collectBusinessYearReport(2026,now);
+    assert.equal(after.total_points_in_registry,before.total_points_in_registry);
+    assert.equal(after.totals.new_points,before.totals.new_points);
+    assert.equal(after.totals.active_points,before.totals.active_points);
+    assert.equal(after.totals.revenue,before.totals.revenue+100);
+    assert.equal(after.points.some(p=>p.id===id),false);
+  } finally {
+    db.prepare("DELETE FROM orders WHERE order_code='BUSINESS-LEGACY-DEMO'").run();
+    db.prepare('DELETE FROM points WHERE id=?').run(id);
+  }
+});
+
 test.after(() => {
   try { db.close(); } catch (_) {}
   fs.rmSync(dir,{recursive:true,force:true});

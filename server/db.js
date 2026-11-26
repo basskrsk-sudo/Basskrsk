@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS points (
   lat              REAL,                                  -- широта — для отображения на Яндекс.Картах
   lng              REAL,                                  -- долгота
   manager_id    INTEGER REFERENCES managers(id),  -- кто отвечает за пополнение этой точки (NULL = хаб)
-  is_hub           INTEGER NOT NULL DEFAULT 0,           -- 1 — исходные 3 точки без менеджера-логиста
+  is_hub           INTEGER NOT NULL DEFAULT 0,           -- legacy marker: 1 = archived demonstration record; retain until reviewed
   active           INTEGER NOT NULL DEFAULT 1,           -- 0 — скрыта из чекаута/списков, но история заказов сохранена
   created_at       TEXT,                                 -- дата и время СОЗДАНИЯ записи, UTC
   created_at_source TEXT                                 -- recorded | manager_action_log | manual_date_only
@@ -973,6 +973,12 @@ ensureColumn('product_reviews', 'photos_json', "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn('guest_product_reviews', 'photos_json', "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn('points', 'manager_id', 'INTEGER REFERENCES managers(id)');
 ensureColumn('points', 'is_hub', 'INTEGER NOT NULL DEFAULT 0');
+// One-time, non-destructive repair. Preserve all linked orders, stock,
+// accounts and historical payments. Never infer a demo from a point's name.
+runStartupBackfillOnce('archive_legacy_demo_points_v1', () => {
+  const result = require('./legacy-demo-points').archiveLegacyDemoPoints(db);
+  if (result.total > 0) console.log('[legacy-demo-points] archived=' + result.archived + ' retained=' + result.total);
+});
 ensureColumn('partners', 'point_id', 'TEXT REFERENCES points(id)');
 // Referral-only partners are independent network advocates: no point,
 // equipment, stock, sale commission or groomer loyalty privileges.

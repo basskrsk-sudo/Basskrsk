@@ -53,13 +53,13 @@ function registerOwnerRoutes(router) {
       const activeManager = db.prepare('SELECT id FROM managers WHERE id = ? AND active = 1').get(payload.id);
       if (!activeManager) return sendJson(res, 401, { error: 'Учётная запись менеджера отключена' });
       if (!point_id) return sendJson(res, 400, { error: 'Выберите точку' });
-      const point = db.prepare('SELECT id, manager_id FROM points WHERE id = ? AND active = 1').get(point_id);
+      const point = db.prepare('SELECT id, manager_id FROM points WHERE id = ? AND active = 1 AND COALESCE(is_hub, 0) = 0').get(point_id);
       if (!point) return sendJson(res, 400, { error: 'Точка с таким id не найдена' });
       if (point.manager_id !== payload.id) {
         return sendJson(res, 403, { error: 'Эта точка не закреплена за вами' });
       }
     } else if (point_id) {
-      const point = db.prepare('SELECT id FROM points WHERE id = ? AND active = 1').get(point_id);
+      const point = db.prepare('SELECT id FROM points WHERE id = ? AND active = 1 AND COALESCE(is_hub, 0) = 0').get(point_id);
       if (!point) return sendJson(res, 400, { error: 'Точка с таким id не найдена' });
     }
     if (point_id) {
@@ -212,8 +212,11 @@ function registerOwnerRoutes(router) {
       }
       targetPointId = String(point_id || '').trim() || null;
       if (targetPointId) {
-        const point = db.prepare('SELECT id FROM points WHERE id = ?').get(targetPointId);
+        const point = db.prepare('SELECT id, is_hub FROM points WHERE id = ?').get(targetPointId);
         if (!point) return sendJson(res, 400, { error: 'Точка с таким id не найдена' });
+        if (Number(point.is_hub) !== 0 && String(targetPointId) !== String(existing.point_id || '')) {
+          return sendJson(res, 400, { error: 'Нельзя назначить владельца на старую демонстрационную запись' });
+        }
       }
     }
 

@@ -2999,9 +2999,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
 <script src="/first-purchase-promo-display.js?v=20261124-4"></script>
 <script>
 // ── DATA ─────────────────────────────────────────────────────────────
-// (Старый демонстрационный список точек убран — нигде не использовался,
-// реальный список точек везде теперь берётся динамически, см. STOCK_TABLE_POINTS,
-// POINTS_INFO, adminAllPoints, QR_POINTS — каждый грузится из /api/points.)
+// Реальный список точек загружается динамически из /api/points.
 
 // ── PRODUCT CATALOG (из базы данных через API, было — localStorage) ──
 function slugify(str) {
@@ -5560,9 +5558,12 @@ async function renderPointsManagement() {
   const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
     timeZone:'Asia/Krasnoyarsk', day:'2-digit', month:'2-digit', year:'numeric',
   });
-  document.getElementById('points-mgmt-count').textContent = adminAllPoints.length + ' шт.';
+  const legacyDemoCount = adminAllPoints.filter(p => Number(p.is_hub || 0) !== 0).length;
+  document.getElementById('points-mgmt-count').textContent =
+    (adminAllPoints.length - legacyDemoCount) + ' шт.' +
+    (legacyDemoCount ? ' · старых демозаписей: ' + legacyDemoCount : '');
   document.getElementById('points-mgmt-tbody').innerHTML = adminAllPoints.map(function(p) {
-    const type = p.is_hub ? 'Хаб' : (p.manager_id ? 'Через менеджера №' + p.manager_id : 'Добавлена вручную');
+    const type = p.is_hub ? 'Старая демозапись (архив)' : (p.manager_id ? 'Через менеджера №' + p.manager_id : 'Добавлена вручную');
     const launch = launchByPoint.get(p.id);
     const equipment = equipByPoint.get(p.id);
     const createdAt = p.created_at && !Number.isNaN(new Date(String(p.created_at).replace(' ', 'T') + 'Z').getTime())
@@ -7401,10 +7402,31 @@ function closePartnerActions() {
   partnerActionsTrigger = null;
 }
 
+async function showLegacyDemoPointAudit(id) {
+  try {
+    const res = await authFetch('/api/points/legacy-demo-audit');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось проверить демозаписи');
+    const p = (data.points || []).find(row => String(row.id) === String(id));
+    if (!p) throw new Error('Демозапись не найдена');
+    alert('Архивная демозапись: ' + p.name +
+      '\nЗаказы: ' + p.orders_count + ' (оплаченные: ' + p.paid_orders_count + ', ожидающие: ' + p.pending_orders_count + ')' +
+      '\nГрумеры: ' + p.partners_count + ', владельцы: ' + p.owners_count +
+      '\nЗаписи менеджеров: ' + p.manager_links_count + ', позиции с ненулевым остатком: ' + p.stock_positions_count +
+      '\nДанные не удалены. Перед удалением проверьте историю и резервную копию.');
+  } catch (error) { alert(error.message || 'Не удалось проверить демозаписи'); }
+}
+
 function getNetworkActions(role,id) {
   if(role==='point'){
     const p=adminAllPoints.find(x=>String(x.id)===String(id));
     if(!p)return [];
+    if(Number(p.is_hub || 0) !== 0){
+      const actions=[];
+      if(currentAdminRole==='super')actions.push({label:'Проверить связанные записи',run:()=>showLegacyDemoPointAudit(p.id)});
+      actions.push({label:'Удалить точку',danger:true,run:()=>deletePoint(p.id)});
+      return actions;
+    }
     const actions=[
       {label:'Открыть карточку',disabled:!p.active,run:()=>openNetworkRecord('point',p.id)},
       {label:'Чек-лист открытия',disabled:!p.active,run:()=>openPointChecklistById(p.id)},

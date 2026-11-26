@@ -79,7 +79,7 @@ function registerOrderRoutes(router) {
     }
     // Main dashboard needs only the count, not a complete public point list.
     const activePointsCount = db.prepare(
-      'SELECT COUNT(*) AS count FROM points WHERE active = 1'
+      'SELECT COUNT(*) AS count FROM points WHERE active = 1 AND COALESCE(is_hub, 0) = 0'
     ).get().count;
     sendJson(res, 200, {
       days, revenue, orders_count: ordersCount, active_points_count: activePointsCount,

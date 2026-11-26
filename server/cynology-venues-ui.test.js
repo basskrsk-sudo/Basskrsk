@@ -121,3 +121,51 @@ test('public working-point showcase excludes inactive and legacy demonstration h
   assert.match(route,/WHERE p\.active = 1 AND COALESCE\(p\.is_hub, 0\) = 0/);
   assert.match(route,/sendJson\(res, 200, \{ points \}\)/);
 });
+
+
+test('legacy point repair archives only marked demos without deleting or changing linked history', () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const { archiveLegacyDemoPoints, auditLegacyDemoPoints } = require('./legacy-demo-points');
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE points(id TEXT PRIMARY KEY,name TEXT,active INTEGER,is_hub INTEGER);
+      CREATE TABLE orders(id INTEGER PRIMARY KEY,point_id TEXT,status TEXT,total INTEGER);
+      CREATE TABLE partners(id INTEGER PRIMARY KEY,point_id TEXT);
+      CREATE TABLE salon_owners(id INTEGER PRIMARY KEY,point_id TEXT);
+      CREATE TABLE manager_points(id INTEGER PRIMARY KEY,point_id TEXT);
+      CREATE TABLE stock(point_id TEXT,qty INTEGER);
+      INSERT INTO points VALUES('real','Real',1,0),('closed','Closed',0,0),('demo','Legacy',1,1),('old','Already archived',0,1);
+      INSERT INTO orders VALUES(1,'demo','paid',100),(2,'demo','pending',200),(3,'real','paid',300);
+      INSERT INTO partners VALUES(1,'demo');
+      INSERT INTO salon_owners VALUES(1,'demo');
+      INSERT INTO manager_points VALUES(1,'demo');
+      INSERT INTO stock VALUES('demo',4),('demo',0);
+    `);
+    assert.deepEqual(archiveLegacyDemoPoints(db),{total:2,archived:1});
+    assert.deepEqual(archiveLegacyDemoPoints(db),{total:2,archived:0});
+    assert.equal(db.prepare("SELECT active FROM points WHERE id='real'").get().active,1);
+    assert.equal(db.prepare("SELECT active FROM points WHERE id='closed'").get().active,0);
+    assert.equal(db.prepare("SELECT active FROM points WHERE id='demo'").get().active,0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS c FROM points').get().c,4);
+    assert.equal(db.prepare('SELECT SUM(total) AS total FROM orders').get().total,600);
+    const row=auditLegacyDemoPoints(db).find(p=>p.id==='demo');
+    assert.deepEqual([row.orders_count,row.paid_orders_count,row.pending_orders_count,row.partners_count,row.owners_count,row.manager_links_count,row.stock_positions_count],[2,1,1,1,1,1,1]);
+    assert.equal(auditLegacyDemoPoints(db).some(p=>p.id==='real'),false);
+  } finally { db.close(); }
+});
+
+test('public registration, checkout, counters and archive administration are guarded', () => {
+  const server = file => fs.readFileSync(path.resolve(__dirname,file),'utf8');
+  const routes = server('routes-products.js');
+  assert.match(routes,/SELECT \* FROM points WHERE active = 1 AND COALESCE\(is_hub, 0\) = 0/);
+  assert.match(routes,/WHERE p\.active = 1 AND COALESCE\(p\.is_hub, 0\) = 0 AND so\.id IS NULL/);
+  assert.match(routes,/router\.get\('\/api\/points\/legacy-demo-audit'[\s\S]*?if \(!requireSuperAdmin\(req, res, ctx\)\) return;/);
+  assert.match(routes,/if \(active && Number\(existing\.is_hub\) !== 0\)/);
+  assert.match(server('routes-payment.js'),/FROM points WHERE id = \? AND active = 1 AND COALESCE\(is_hub, 0\) = 0/);
+  for (const name of ['routes-orders.js','weekly-report.js']) assert.match(server(name),/COUNT\(\*\) AS count FROM points WHERE active = 1 AND COALESCE\(is_hub, 0\) = 0/);
+  assert.match(server('db.js'),/runStartupBackfillOnce\('archive_legacy_demo_points_v1'/);
+  const admin=read('taiga-admin.html');
+  assert.match(admin,/adminAllPoints\.length - legacyDemoCount/);
+  assert.match(admin,/Проверить связанные записи/);
+});

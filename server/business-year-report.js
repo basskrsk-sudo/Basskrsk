@@ -100,6 +100,9 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
   const monthlyPointSets = new Map(months.map((row) => [row.key, new Set()]));
   const yearPointSet = new Set();
   const annualPointSales = new Map();
+  // Legacy demo records must not inflate network counts. Keep historical
+  // financial totals intact until the related payments have been reviewed.
+  const legacyDemoIds = new Set(db.prepare('SELECT id FROM points WHERE COALESCE(is_hub, 0) <> 0').all().map(row => String(row.id)));
 
   // Группировка выполняется SQLite: не выгружаем в Node.js все чеки сети.
   // Ставка грумера — снимок из заказа, остальные ставки из справочников
@@ -143,8 +146,10 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
       const point = String(sale.point_id);
       month.manager_commission += revenue * (managerRates.get(point) || 0);
       month.owner_commission += revenue * (ownerRates.get(point) || 0);
-      monthlyPointSets.get(month.key).add(point);
-      yearPointSet.add(point);
+      if (!legacyDemoIds.has(point)) {
+        monthlyPointSets.get(month.key).add(point);
+        yearPointSet.add(point);
+      }
       let annual = annualPointSales.get(point);
       if (!annual) {
         annual = {sales:0, revenue:0, months:new Set(), by_month:new Map()};
@@ -163,17 +168,18 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
     }
   }
 
-  // Включаем ВСЕ существующие в реестре точки: действующие, отключённые,
+  // Включаем все реальные точки реестра: действующие, отключённые,
   // без продаж и без известной даты регистрации. Дата создания берётся
   // исключительно из points.created_at, никогда из даты первого заказа.
   // Для выбранного прошлого года показываем нынешний реестр (снимков
   // удалённых точек в системе нет), но их продажи — только за этот год.
   const points = db.prepare(`
     SELECT p.id, p.name, p.addr, p.city_id, c.name AS city_name,
-           p.active, p.is_hub, p.created_at, p.created_at_source,
+           p.active, p.created_at, p.created_at_source,
            strftime('%Y-%m', p.created_at, '+7 hours') AS created_month,
            strftime('%Y-%m-%d', p.created_at, '+7 hours') AS created_local_date
     FROM points p LEFT JOIN cities c ON c.id = p.city_id
+    WHERE COALESCE(p.is_hub, 0) = 0
     ORDER BY p.name COLLATE NOCASE, p.id
   `).all().map((point) => {
     const paid = annualPointSales.get(String(point.id));
@@ -181,7 +187,7 @@ function collectBusinessYearReport(requestedYear, now = new Date()) {
     return {
       id: String(point.id), name: String(point.name || point.id),
       address: String(point.addr || ''), city: String(point.city_name || point.city_id || '—'),
-      active: !!point.active, is_hub: !!point.is_hub,
+      active: !!point.active,
       created_at: validDate ? String(point.created_at) : null,
       created_date: validDate ? point.created_local_date : null,
       created_month: validDate ? point.created_month : null,
@@ -410,7 +416,7 @@ function buildBusinessPointsCsv(report) {
     lines.push([
       p.name, p.id, p.city, p.address,
       p.active ? 'Активна' : 'Отключена',
-      p.is_hub ? 'Хаб' : 'Точка',
+      'Точка',
       p.created_date || 'НЕТ ДАННЫХ',
       p.created_date ? (sourceName[p.created_source] || 'Историческая дата') : 'Требуется уточнение',
       p.sales, p.revenue, p.months_with_sales,
