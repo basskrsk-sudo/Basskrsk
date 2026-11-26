@@ -26,6 +26,13 @@ function paymentMatchesOrder(order,payment){
     payment.amount?.currency==='RUB'&&Math.round(Number(payment.amount.value)*100)===Math.round(Number(order.total)*100)&&
     (!order.yookassa_payment_id||payment.id===order.yookassa_payment_id));
 }
+// SQLite timestamps are UTC. Only an attached, active payment has a
+// customer-facing five-minute payment deadline (not the initial stock hold).
+function paymentTiming(order,now=Date.now()){
+  const expiry=Date.parse(String(order?.reservation_expires_at||'').replace(' ','T')+'Z');
+  const active=order?.status==='pending'&&order.reservation_status==='active'&&!!order.yookassa_payment_id;
+  return {server_now_ms:now,payment_deadline_ms:active&&Number.isFinite(expiry)?expiry:null};
+}
 function redirectContinuation(order,payment,now=Date.now()){
   const path=redirectPaymentPath(order);
   if(!path)return {};
@@ -36,6 +43,6 @@ function redirectContinuation(order,payment,now=Date.now()){
   return {return_path:path+'?payment_return='+encodeURIComponent(order.order_code),
     confirmation_url:url||null,reservation_expires_at:order.reservation_expires_at||null,
     reservation_expired:order.status==='pending'&&Number.isFinite(expiry)&&expiry<=now,
-    can_recover:!!(active&&!order.yookassa_payment_id)};
+    can_recover:!!(active&&!order.yookassa_payment_id),...paymentTiming(order,now)};
 }
-module.exports={redirectPaymentPath,safeProviderUrl,paymentMatchesOrder,redirectContinuation};
+module.exports={redirectPaymentPath,safeProviderUrl,paymentMatchesOrder,redirectContinuation,paymentTiming};

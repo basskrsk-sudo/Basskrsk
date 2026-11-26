@@ -16,7 +16,7 @@ const { resolveCheckoutGroomer } = require('./auto-groomer');
 const yookassa = require('./yookassa');
 const { matchesQrPaymentRetry } = require('./qr-payment-retry');
 const { storedQrPaymentArgs } = require('./qr-payment-recovery');
-const { redirectPaymentPath, paymentMatchesOrder, redirectContinuation } = require('./redirect-payment-capability');
+const { redirectPaymentPath, paymentMatchesOrder, redirectContinuation, paymentTiming } = require('./redirect-payment-capability');
 const { sendTelegram, buildOrderMessage } = require('./telegram');
 const { sendPaidOrderNotifications } = require('./order-notifications');
 const { sendSuperadminSaleProfit } = require('./superadmin-sale-profit');
@@ -302,12 +302,14 @@ function attachQrPayment(order, payment) {
   if (!payment?.id) throw new Error('ЮKassa не вернула ID платежа');
   const expiry = new Date(Date.now() + PAYMENT_ACTIVE_RESERVATION_MINUTES * 60000)
     .toISOString().slice(0, 19).replace('T', ' ');
-  const update = db.prepare(
-    "UPDATE orders SET yookassa_payment_id=?, reservation_expires_at=? " +
-    "WHERE id=? AND status='pending' AND reservation_status='active'"
-  ).run(payment.id, expiry, order.id);
+  // Retrying the same idempotent provider payment must not restart its clock.
+  const updated = db.prepare(
+    "UPDATE orders SET reservation_expires_at=CASE WHEN yookassa_payment_id IS NULL THEN ? ELSE reservation_expires_at END, yookassa_payment_id=? " +
+    "WHERE id=? AND status='pending' AND reservation_status='active' AND (yookassa_payment_id IS NULL OR yookassa_payment_id=?) " +
+    "RETURNING reservation_expires_at"
+  ).get(expiry, payment.id, order.id, payment.id);
   reservationCleanupScheduler.wake();
-  return { attached: update.changes > 0, expiry };
+  return { attached: !!updated, expiry:updated?.reservation_expires_at||null };
 }
 const RESERVATION_CLEANUP_BATCH_SIZE = 8;
 let reservationCleanupCursor = 0;
@@ -504,7 +506,8 @@ function registerPaymentRoutes(router) {
           }
           if (recovered.confirmation?.confirmation_url) {
             return sendJson(res, 200, { ...existingSummary,
-              payment_id:recovered.id,confirmation_url:recovered.confirmation.confirmation_url });
+              payment_id:recovered.id,confirmation_url:recovered.confirmation.confirmation_url,
+              reservation_expires_at:attached.expiry,...paymentTiming({...existingOrder,yookassa_payment_id:recovered.id,reservation_expires_at:attached.expiry}) });
           }
           return sendJson(res, 202, { ...existingSummary,status:'initializing' });
         } catch (error) {
@@ -534,6 +537,7 @@ function registerPaymentRoutes(router) {
           return sendJson(res, 200, {
             ...existingSummary, payment_id: payment.id,
             confirmation_url: payment.confirmation.confirmation_url,
+            reservation_expires_at:existingOrder.reservation_expires_at,...paymentTiming(existingOrder),
           });
         }
         return sendJson(res, 202, {
@@ -770,6 +774,7 @@ function registerPaymentRoutes(router) {
         confirmation_url: payment.confirmation && payment.confirmation.confirmation_url,
         reservation_expires_at: paymentExpiry,
         reservation_minutes: PAYMENT_ACTIVE_RESERVATION_MINUTES,
+        ...paymentTiming({status:'pending',reservation_status:'active',yookassa_payment_id:payment.id,reservation_expires_at:paymentExpiry}),
         is_partner_self_order: isSelfOrder,
       });
     } catch (e) {
@@ -818,6 +823,7 @@ function registerPaymentRoutes(router) {
       order_code: order.order_code,
       display_number: order.display_number || null,
       is_partner_self_order: !!order.is_partner_self_order,
+      ...paymentTiming(order),
     });
   });
 
