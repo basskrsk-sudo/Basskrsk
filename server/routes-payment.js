@@ -42,6 +42,13 @@ const {
   consumeOrderReservation,
 } = require('./reservations');
 
+// A competing SQLite writer is not an inventory or pricing rejection.
+function isCheckoutStorageBusy(error) {
+  const sqliteCode=Number(error?.errcode);
+  return (Number.isInteger(sqliteCode)&&[5,6].includes(sqliteCode&255))||
+    /^SQLITE_(BUSY|LOCKED)(_|$)/.test(String(error?.code||''));
+}
+
 function releaseFailedOrderAndAlert(orderId, reason) {
   const result = releaseOrderReservation(orderId, 'failed', reason);
   sendUnpaidOrderAlert(orderId, 'failed', reason).catch((error) => {
@@ -723,6 +730,11 @@ function registerPaymentRoutes(router) {
       }, pricedCart.items, inventorySource, bonesCustomerId);
     } catch (e) {
       console.warn(`[create-payment] Заказ ${orderId}: резерв не создан — ${e.message}`);
+      if(isCheckoutStorageBusy(e)){
+        res.setHeader('Retry-After','2');
+        return sendJson(res,503,{code:'CHECKOUT_STORAGE_BUSY',
+          error:'Хранилище временно занято. Проверьте и продолжите этот же заказ через несколько секунд.'});
+      }
       return sendJson(res, e.statusCode || 409, { error: e.message, code: e.code || 'RESERVATION_ERROR', details: e.details });
     }
 
