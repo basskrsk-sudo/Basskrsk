@@ -53,10 +53,11 @@ test('PDF download uses the saved snapshot endpoint and an actual PDF filename',
   assert.deepEqual(downloads,['HvostMarket_report_12.pdf']);
 });
 test('PDF endpoint requires admin, validates ids, and exports only stored financial data', async () => {
-  const handlers=new Map();let allowed=false, queried=false, rendered;
+  const handlers=new Map();let allowed=false, queried=false, rendered, cancelled=false;
   const r=sample(1);
   const db={prepare(sql){
     queried=true;
+    if(sql.includes('FROM payout_cancelled_reports'))return {get:()=>cancelled?{id:1}:undefined};
     if(sql.includes('FROM payout_reports'))return {get:()=>({id:12,snapshot_json:JSON.stringify(r)})};
     // enrichReportOrders prepares both historical lookup statements even when
     // the stored snapshot already contains a date and product lines.
@@ -81,6 +82,9 @@ test('PDF endpoint requires admin, validates ids, and exports only stored financ
   res=response();await fn({},res,{params:{id:12},body:{total:999999}});
   assert.equal(res.status,200);assert.equal(res.headers['Content-Type'],'application/pdf');
   assert.ok(res.buffer.toString().startsWith('%PDF-'));assert.equal(rendered.accrued,38);
+  cancelled=true; rendered=undefined;
+  res=response();await fn({},res,{params:{id:12}});
+  assert.equal(res.status,409);assert.equal(rendered,undefined);assert.match(res.data.error,/аннулирован/);
 });
 test('owner and manager PDFs use their correct titles and include commission and bonus totals', () => {
   for(const [role,title] of [['owner','Владелец салона'],['manager','Менеджер']]) {
