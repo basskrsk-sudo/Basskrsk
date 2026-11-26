@@ -15,7 +15,8 @@ const DB_PATH = process.env.DATA_DIR
   : path.join(__dirname, '..', 'data', 'taiga.db');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
-const db = new DatabaseSync(DB_PATH);
+const {instrumentSqlite,observeSqlite}=require('./sqlite-runtime-diagnostics');
+const db = instrumentSqlite(observeSqlite('sqlite_open',()=>new DatabaseSync(DB_PATH)));
 // WAL persists inside an existing SQLite database across restarts. Do not
 // force it again: Amvera /data may be slow, and an explicitly maintained
 // DELETE database must not silently switch back to WAL after deployment.
@@ -2171,8 +2172,12 @@ if (missingPartnerPhoneKeys.length) {
   }
 }
 require('./payout-reports').initializeReports(db);
-const ownerReferralBackfill=require('./referral-policy').backfillOwnerReferrals(db);
-if(ownerReferralBackfill)console.info('[referrals] Owner bonuses accrued at unified threshold:',ownerReferralBackfill);
+// Historical threshold repair runs once; live payment/referral handlers
+// remain responsible for subsequent accruals. Mark completion atomically.
+runStartupBackfillOnce('owner_referral_threshold_backfill_v1',()=>{
+  const count=require('./referral-policy').backfillOwnerReferrals(db,{withinTransaction:true});
+  if(count)console.info('[referrals] Owner bonuses accrued at unified threshold:',count);
+});
 module.exports = db;
 module.exports.DB_PATH = DB_PATH;
 module.exports.JOURNAL_MODE = JOURNAL_MODE;

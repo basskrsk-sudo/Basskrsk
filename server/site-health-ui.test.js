@@ -31,6 +31,9 @@ test('admin Mini App retrieves health from authenticated route without adding it
   assert.match(html,/info\.backup_correlation/);
   assert.match(html,/Совпадение по времени не доказывает/);
   assert.match(html,/Длительность фоновых задач и SQL/);
+  assert.match(html,/Медленные операции SQLite/);
+  assert.match(html,/info\.recent_slow_sqlite_operations/);
+  assert.match(html,/safe\(op.source/);
   assert.match(ui,/Ограничения CPU/);
   assert.match(ui,/cpu_percent/);
 });

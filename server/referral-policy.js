@@ -11,7 +11,7 @@ function computeReferralRevenue(db,pointId){
 // On startup, bring previously locked owner invitations under the same
 // threshold. Only inspect unaccrued, eligible points; no timer, no cash
 // transfers, no changes to snapshots, no new accrual after full manager pay.
-function backfillOwnerReferrals(db){
+function backfillOwnerReferrals(db,{withinTransaction=false}={}){
  const rows=db.prepare(`SELECT mp.id,pr.recipient_id
   FROM point_referrals pr
   JOIN salon_owners so ON so.id=pr.recipient_id
@@ -28,14 +28,14 @@ function backfillOwnerReferrals(db){
       WHERE point_id=pr.point_id AND status='paid')>=?
   ORDER BY mp.id`).all(REFERRAL_SPLIT,REFERRAL_REVENUE_THRESHOLD);
  if(!rows.length)return 0;
- db.exec('BEGIN IMMEDIATE');
+ if(!withinTransaction)db.exec('BEGIN IMMEDIATE');
  try{
   const update=db.prepare(`UPDATE manager_points SET referred_owner_id=?,referred_owner_amount=?,
     referral_bonus_accrued_at=datetime('now')
     WHERE id=? AND referred_owner_id IS NULL AND referred_groomer_id IS NULL`);
   let count=0;
   for(const row of rows)count+=Number(update.run(row.recipient_id,REFERRAL_SPLIT,row.id).changes);
-  db.exec('COMMIT');return count;
- }catch(error){try{db.exec('ROLLBACK')}catch(_){}throw error;}
+  if(!withinTransaction)db.exec('COMMIT');return count;
+ }catch(error){if(!withinTransaction){try{db.exec('ROLLBACK')}catch(_){}}throw error;}
 }
 module.exports={REFERRAL_REVENUE_THRESHOLD,REFERRAL_SPLIT,computeReferralRevenue,backfillOwnerReferrals};

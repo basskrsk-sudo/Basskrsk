@@ -49,4 +49,32 @@ function correlateBackupWithHealth(backup,events=[],samples=[],{now=new Date().t
     peak_event_loop_ms:maxPause,
   };
 }
-module.exports={correlateBackupWithHealth,timeUtc,WINDOW_MS};
+
+ // Compare the latest known backup against the exact stall window rather
+ // than treating any failed backup on the same night as a causal match.
+function backupStallContext(backup,stall,{now=Date.now(),windowMs=70000}={}){
+  if(!backup)return {status:'unknown'};
+  if(backup.configured===false)return {status:'disabled'};
+  const start=timeUtc(backup.started_at),finish=timeUtc(backup.finished_at);
+  const end=Number.isFinite(finish)?finish:backup.running?now:NaN;
+  const stallEnd=stall?timeUtc(stall.at):now;
+  const span=stall?Number(stall.sample_window_ms||stall.late_by_ms):windowMs;
+  if(!Number.isFinite(start)||!Number.isFinite(end)||end<start||
+    !Number.isFinite(stallEnd)||!Number.isFinite(span)||span<=0)
+    return {status:'unknown'};
+  const phase=['preparing','snapshot','sending','idle'].includes(backup.phase)?backup.phase:'unknown';
+  return {status:start<=stallEnd&&end>=stallEnd-span?'overlap':'outside',
+    started_at:new Date(start).toISOString(),finished_at:Number.isFinite(finish)?new Date(finish).toISOString():null,
+    phase,result:backup.result==='success'||backup.result==='failed'?backup.result:null};
+}
+function describeBackupStall(backup,stall,options){
+  const context=backupStallContext(backup,stall,options);
+  if(context.status==='disabled')return 'Бэкап не настроен. ';
+  if(context.status==='unknown')return 'Бэкап: время последней попытки неизвестно. ';
+  const phase={preparing:'подготовка',snapshot:'снимок SQLite',sending:'отправка',idle:'завершён',unknown:'неизвестно'}[context.phase];
+  return 'Бэкап (UTC): '+context.started_at+' — '+(context.finished_at||'выполняется')+
+    '; состояние '+phase+(context.result==='failed'?' (ошибка)':context.result==='success'?' (успешно)':'')+
+    '. '+(context.status==='overlap'?'Совпадение по времени с '+(stall?'паузой':'окном наблюдения')+'; причина не доказана. ':
+      'Последняя известная попытка вне '+(stall?'окна паузы':'окна наблюдения')+'. ');
+}
+module.exports={correlateBackupWithHealth,timeUtc,WINDOW_MS,backupStallContext,describeBackupStall};

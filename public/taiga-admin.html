@@ -4690,6 +4690,10 @@ async function renderSystemHealth() {
       '<div style="overflow-x:auto"><table class="admin-table"><thead><tr><th>Операция</th><th>Запусков</th><th>Среднее</th><th>Максимум</th></tr></thead><tbody>'+ 
       ((info.slow_operations||[]).map(op=>'<tr><td>'+safe(op.name)+'</td><td>'+n(op.calls)+'</td><td>'+n(op.avg_ms)+' мс</td><td>'+n(op.max_ms)+' мс</td></tr>').join('')||
         '<tr><td colspan="4">Наблюдения появятся после запусков задач</td></tr>')+
+      '</tbody></table></div><h3 style="margin:18px 0 8px">Медленные операции SQLite (от 500 мс)</h3>'+
+      '<p style="font-size:.8rem;color:var(--muted)">До 32 последних операций основной базы в памяти. Без SQL-текста, параметров и данных покупателей. После перезапуска история очищается.</p>'+
+      '<div style="overflow-x:auto;max-height:320px;overflow-y:auto"><table class="admin-table"><thead><tr><th>Начало (UTC)</th><th>Операция</th><th>Место в коде</th><th>Длительность</th></tr></thead><tbody>'+
+      ((info.recent_slow_sqlite_operations||[]).map(op=>'<tr><td>'+safe(op.started_at||'—')+'</td><td>'+safe(op.name)+'</td><td>'+safe(op.source||'—')+'</td><td>'+n(op.duration_ms)+' мс</td></tr>').join('')||'<tr><td colspan="4">Медленных операций пока нет</td></tr>')+
       '</tbody></table></div><h3 style="margin:18px 0 8px">История событий</h3>'+
       '<div style="overflow-x:auto"><table class="admin-table"><thead><tr><th>Время</th>'+
       '<th>Событие</th><th>Уровень</th><th>Описание</th></tr></thead><tbody>'+

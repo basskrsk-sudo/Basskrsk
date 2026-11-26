@@ -57,3 +57,15 @@ test('unfinished backup is compared only through the current observation time',(
   assert.equal(timeUtc('2026-11-21 20:00:00'),timeUtc('2026-11-21T20:00:00Z'));
   assert.equal(WINDOW_MS,300000);
 });
+
+test('stall alert distinguishes exact backup overlap, unrelated attempt and unavailable history',()=>{
+  const {backupStallContext,describeBackupStall}=require('./backup-load-correlation');
+  const during={at:'2026-11-21T20:02:01.000Z',sample_window_ms:16000};
+  const after={at:'2026-11-21T22:03:40.358Z',sample_window_ms:16726};
+  assert.equal(backupStallContext({...backup,configured:true},during).status,'overlap');
+  assert.equal(backupStallContext({...backup,configured:true},after).status,'outside');
+  assert.match(describeBackupStall(backup,during),/причина не доказана/);
+  assert.match(describeBackupStall(backup,after),/вне окна паузы/);
+  assert.equal(backupStallContext({configured:true},after).status,'unknown');
+  assert.equal(backupStallContext({configured:false},after).status,'disabled');
+});
