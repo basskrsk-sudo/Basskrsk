@@ -7,6 +7,7 @@
 
 const db = require('./db');
 const { trackAsync } = require('./runtime-diagnostics');
+const {enqueuePaidClubSale,signalPaidClubSaleQueued}=require('./partner-club-sale-outbox');
 const { readExpiredReservationsBatch, readEarliestReservationExpiry } = require('./reservation-cleanup-reader');
 const { createReservationCleanupScheduler } = require('./reservation-cleanup-scheduler');
 const { createSingleFlightJob } = require('./single-flight-job');
@@ -258,7 +259,7 @@ async function finalizePaidOrder(orderId, demo = false) {
 
   let finalized;
   if (before.reservation_status === 'active') {
-    finalized = consumeOrderReservation(before.id);
+    finalized = consumeOrderReservation(before.id,{onPaid:order=>enqueuePaidClubSale(order,demo)});
     if (!finalized.consumed) return false;
   } else if (before.reservation_status === 'none') {
     finalized = withImmediateTransaction(() => {
@@ -275,10 +276,12 @@ async function finalizePaidOrder(orderId, demo = false) {
         if (customer) spendBones(customer.id, current.bones_used, current.id, 'Оплата заказа ' + current.order_code);
       }
       db.prepare("UPDATE orders SET status = 'paid' WHERE id = ?").run(current.id);
+      const paidOrder=db.prepare('SELECT * FROM orders WHERE id = ?').get(current.id);
       return {
         consumed: true,
-        order: db.prepare('SELECT * FROM orders WHERE id = ?').get(current.id),
+        order: paidOrder,
         items,
+        afterPaid:enqueuePaidClubSale(paidOrder,demo),
       };
     });
     if (!finalized.consumed) return false;
@@ -287,12 +290,7 @@ async function finalizePaidOrder(orderId, demo = false) {
     return false;
   }
 
-  try {
-    const { recordPaidOrder } = require('./routes-partner-club');
-    recordPaidOrder(finalized.order, finalized.items, demo);
-  } catch (error) {
-    console.error('[partner-club] Could not record paid order draft:', error.message);
-  }
+  if(finalized.afterPaid)signalPaidClubSaleQueued();
   // Commit the paid state BEFORE waiting on Telegram, email or bonus services.
   // A slow notification must never keep the buyer on "Подтверждаем оплату".
   try {

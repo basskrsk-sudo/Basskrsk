@@ -283,6 +283,8 @@ on:
       - server/partner-club-daily-record-integration.test.js
       - server/partner-club-record-check.test.js
       - server/partner-club-worker.test.js
+      - server/partner-club-sale-outbox.js
+      - server/partner-club-sale-outbox.test.js
       - public/partner-club-settings.html
       - server/partner-club-photo-posts.js
       - server/partner-club-photo-posts.test.js
@@ -654,6 +656,8 @@ jobs:
           node --check server/partner-club-daily-records.js
           node --check server/partner-club-daily-records.test.js
           node --check server/partner-club-worker.test.js
+          node --check server/partner-club-sale-outbox.js
+          node --check server/partner-club-sale-outbox.test.js
           node --check server/partner-club-daily-record-integration.test.js
           node --check server/partner-club-record-check.test.js
           node --check server/partner-club-photo-posts.js
@@ -848,6 +852,8 @@ jobs:
         run: node --test --test-concurrency=1 server/bot-support.test.js
       - name: Verify MAX phone identity and all four staff roles
         run: node --test --test-concurrency=1 server/max-miniapp-staff.test.js server/max-miniapp-staff-ui.test.js server/max-reward-report-file.test.js
+      - name: Verify durable Partner Club sale drafts and retry behavior
+        run: node --test server/partner-club-sale-outbox.test.js
       - name: Stress checkout during 5s, 10s and 20s storage delays
         run: node --test server/checkout-storage-stress.test.js
       - name: Verify Telegram auth and all four staff dashboards
