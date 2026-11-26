@@ -96,3 +96,15 @@ test('shared pending checkout survives a new scanned product and cannot be clear
   context.clearPendingQrPayment('other');assert.equal(context.readPendingQrPayment().orderId,a.orderId);
   context.clearPendingQrPayment(a.orderId);assert.equal(context.readPendingQrPayment(),null);
 });
+
+test('explicit removal deletes all units, persists and preserves other products',()=>{
+  const store=storage(),a=browser(store),b=browser(store);
+  a.add('salon',lung,3);a.add('salon',lung,3);a.add('salon',toy,2);
+  const old=a.get('salon').revision;
+  assert.equal(a.remove('salon',5).ok,true);
+  assert.equal(b.total(b.get('salon').items),300);
+  assert.equal(a.clearPaid('salon',old),false);
+  assert.equal(b.remove('salon',9).ok,true);
+  assert.equal(a.get('salon').items.length,0);
+  assert.match(page,/onclick="removeQrCart\(/);
+});
