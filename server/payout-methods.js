@@ -7,6 +7,7 @@ const PAYOUT_METHODS = Object.freeze({
   card: 'Перевод на банковскую карту',
   bank_account: 'Безналичный расчёт по договору (на счёт)',
   cash: 'Наличными по согласованию',
+  mobile_balance: 'Пополнение баланса мобильного телефона',
 });
 
 function parsePayoutMethod(value, { required = false } = {}) {
