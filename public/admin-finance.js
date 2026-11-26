@@ -135,7 +135,8 @@
       '<p style="font-size:.78rem;line-height:1.55;color:var(--muted);margin-top:.8rem">'+
       text(data.disclaimer)+'</p>'+
       '<button type="button" class="row-btn" data-finance-action="report-center">'+
-      'Отчёты и архив выплат</button></div>';
+      'Отчёты и архив выплат</button> '+
+      '<button type="button" class="row-btn" data-finance-action="debt-report">Вся задолженность · за всё время</button></div>';
   }
   async function reload(){
     if(!container||!request)return;
@@ -182,6 +183,12 @@
           state.page=Number(target.dataset.financePage)||1;reload();return;
         }
         if(target.dataset.financeAction==='refresh'){reload();return;}
+        if(target.dataset.financeAction==='debt-report'){
+          if(navigate)Promise.resolve(navigate('report-center')).then(function(opened){
+            if(opened!==false&&typeof global.reportCenterSelect==='function')global.reportCenterSelect('debts');
+          });
+          return;
+        }
         if(navigate)navigate(target.dataset.financeAction);
       });
       container.addEventListener('change',function(event){

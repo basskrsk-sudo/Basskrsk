@@ -250,7 +250,7 @@ function buildWelcomeMessage() {
     '',
     'Сотрудникам: /tasks откроет список задач, /taskpdf пришлёт PDF-сводку, /newtask создаст задачу, а /expense запишет трату бизнеса.',
     'Менеджерам и администраторам: /contact ссылка — контакт из Яндекс Карт или 2ГИС с согласованием. /2gis также работает.',
-    'Администраторам: /reports — единое меню из 7 разделов, отчёты создаются после подтверждения. Прежние команды /salesweek, /business, /businesspoints, /stock, /nogroomer и /payouts продолжают работать.',
+    'Администраторам: /reports — единое меню из 7 разделов, отчёты создаются после подтверждения. Прежние команды /salesweek, /business, /businesspoints, /stock, /nogroomer и /payouts продолжают работать. /debts — вся задолженность за всё время.',
     'Супер-администратору: /ownerpdf — PDF-отчёт собственникам на 16.11.2026; /newproduct — рассылка новинки; /tierapprovals — заявки на снижение процента грумеров.',
     'Администраторам: ответьте /edit на сообщение бота в Клубе партнёров, затем пришлите новый текст боту лично.',
     '',
@@ -698,6 +698,22 @@ async function sendPayoutBriefs(chatId) {
   await replyToChat(chatId, menu.message, menu.reply_markup);
 }
 
+// Operational debt snapshot: includes open-cycle accruals and bonuses.
+async function sendAllTimeDebtReport(chatId) {
+  if (!adminCanReadSales(chatId)) {
+    const error = new Error('Отчёт доступен только подключённым администраторам в личном Telegram.');
+    error.publicMessage = true;
+    throw error;
+  }
+  const report = collectPayoutBrief(new Date(),{monthly:false});
+  await replyToChat(chatId, formatPayoutBriefMessage(report,{includePersonalPdf:false}));
+  await sendPayoutBriefDocument(
+    chatId, buildPayoutBriefCsv(report), 'HvostMarket_debts_' + report.generated_at.slice(0,10) + '.csv',
+    'Вся задолженность на дату отчёта: получатели, заказы, бонусы и корректировки.',
+    'text/csv;charset=utf-8'
+  );
+}
+
 async function sendIndividualPayoutPdf(chatId, params = {}) {
   if (!adminCanReadSales(chatId)) throw new Error('Нет доступа к выплатам');
   if (!/^[0-9a-f]{16}$/.test(String(params.recipientKey || ''))) throw new Error('Некорректный выбор получателя');
@@ -782,6 +798,7 @@ async function executeApprovedReport({chatId,type,params}) {
   if(type==='stock')return sendWarehouseStockReport(chatId,params.citySelector||'');
   if(type==='nogroomer')return sendNoGroomerReport(chatId,params.days);
   if(type==='payouts')return sendPayoutBriefs(chatId);
+  if(type==='debts')return sendAllTimeDebtReport(chatId);
   if(type==='payoutpdf')return sendIndividualPayoutPdf(chatId,params);
   if(type==='taskpdf')return sendFreshTaskPdf(chatId);
   if(type==='qrweek'){
@@ -1547,6 +1564,10 @@ async function processUpdate(update) {
   }
   if (/^\/(?:payouts|payoutbrief)(?:@\w+)?$/i.test(text) || /^справк[аи] (?:для |к )?выплат[аым]?$/i.test(text)) {
     await requestBotReport(msg.chat.id,'payouts');
+    return;
+  }
+  if (/^\/debts(?:@\w+)?$/i.test(text)) {
+    if (msg.chat.type === 'private') await requestBotReport(msg.chat.id,'debts');
     return;
   }
   const businessPointsCommand = text.match(/^\/businesspoints(?:@\w+)?(?:\s+(.+))?$/i);

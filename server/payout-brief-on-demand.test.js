@@ -67,6 +67,20 @@ test('payout default request produces CSV and never batch-renders personal PDFs'
   assert.match(src,/show_alert:!allowed/,'only an authorized private admin may request a payee');
 });
 
+test('all-time debts are an approved, read-only report without monthly PDF selection',()=>{
+  const src=fs.readFileSync(path.join(__dirname,'telegram-login-poller.js'),'utf8');
+  const debts=src.split('async function sendAllTimeDebtReport(chatId) {')[1]
+    .split('async function sendIndividualPayoutPdf(')[0];
+  assert.ok(debts.includes('adminCanReadSales(chatId)'));
+  assert.ok(debts.includes('collectPayoutBrief(new Date(),{monthly:false})'));
+  assert.ok(debts.includes('buildPayoutBriefCsv(report)'));
+  assert.ok(debts.includes('includePersonalPdf:false'));
+  assert.ok(!debts.includes('payoutBriefMenu('));
+  assert.ok(!debts.includes('registerPayoutBrief('));
+  assert.ok(src.includes("if(type==='debts')return sendAllTimeDebtReport(chatId)"));
+  assert.ok(src.includes("requestBotReport(msg.chat.id,'debts')"));
+});
+
 // Keep reporting imports out of the always-on HTTP and Telegram startup path.
 test('large report engines load on demand rather than at server start',()=>{
   const bot=fs.readFileSync(path.join(__dirname,'telegram-login-poller.js'),'utf8');

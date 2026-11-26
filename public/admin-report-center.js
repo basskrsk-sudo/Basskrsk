@@ -13,6 +13,8 @@ const HM_REPORTS=Object.freeze([
   detail:'Выручка, прибыль и расходы',mode:'telegram',year:true},
  {type:'payouts',cat:'Выплаты',title:'Сводка выплат',
   detail:'Общий CSV после подтверждения; персональные PDF по выбору в Telegram',mode:'telegram'},
+ {type:'debts',cat:'Выплаты',title:'Вся задолженность · за всё время',
+  detail:'Все невыплаченные комиссии и бонусы на дату запроса, включая текущий период; общий CSV',mode:'telegram'},
  {type:'economics',cat:'Финансы',title:'Экономика сети',
   detail:'Действующая экономическая модель',target:'economics',mode:'view'},
  {type:'businesspoints',cat:'Сеть',title:'Реестр точек · CSV',
@@ -43,7 +45,7 @@ const HM_REPORT_GROUPS=Object.freeze([
  {name:'Сеть',detail:'Реестр и эффективность минимаркетов'},
  {name:'Остатки',detail:'Центральный склад и товар на полках'},
  {name:'QR и маркетинг',detail:'Сканирования, конверсия и CSV'},
- {name:'Выплаты',detail:'Справки и история перечислений'},
+ {name:'Выплаты',detail:'Вся задолженность, справки и история перечислений'},
  {name:'Управление',detail:'Отчёт ГД и архив'},
  {name:'Клуб партнёров',detail:'Итоги дня, недели и рейтинги товаров'},
 ]);

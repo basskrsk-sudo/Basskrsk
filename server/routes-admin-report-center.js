@@ -6,7 +6,7 @@ const {sendJson}=require('./http-utils');
 const {requireActiveAdmin}=require('./routes-auth');
 
 const SUPPORTED=new Set(['salesweek','business','businesspoints','stock',
-  'nogroomer','payouts','gdweek','qrweek']);
+  'nogroomer','payouts','debts','gdweek','qrweek']);
 
 function reportParams(type,body){
   const params={};

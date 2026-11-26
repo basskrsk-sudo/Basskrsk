@@ -12,6 +12,7 @@ const REPORTS = Object.freeze({
   stock: {title:'Остатки центрального склада',role:'admin'},
   nogroomer: {title:'Заказы без грумера',role:'admin'},
   payouts: {title:'Сводка выплат и общий CSV',role:'admin'},
+  debts: {title:'Вся задолженность · за всё время',role:'admin'},
   // Hidden from the seven-group menu. A recipient button requests a separate
   // one-use confirmation before its PDF is ever rendered.
   payoutpdf: {title:'Персональная справка к выплате · PDF',role:'admin'},
@@ -27,7 +28,7 @@ const REPORTS = Object.freeze({
 // existing messages, commands and pending one-use Telegram confirmations.
 const REPORT_GROUPS = Object.freeze([
   {id:'sales', title:'📈 Продажи', types:['salesweek','nogroomer']},
-  {id:'finance', title:'💰 Финансы и выплаты', types:['business','payouts']},
+  {id:'finance', title:'💰 Финансы и выплаты', types:['business','payouts','debts']},
   {id:'network', title:'🏪 Сеть и точки', types:['businesspoints']},
   {id:'stock', title:'📦 Остатки', types:['stock']},
   {id:'qr', title:'📱 QR и маркетинг', types:['qrweek']},
