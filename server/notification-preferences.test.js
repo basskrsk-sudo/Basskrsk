@@ -237,6 +237,12 @@ test('customer winback messages and gift candidates honor explicit customer cons
   assert.equal(findWinbackCandidates().some(x=>x.id===c),false);
   savePreferences('customer',c,{offers:true});
   assert.equal(findWinbackCandidates().some(x=>x.id===c),true);
+  db.prepare("UPDATE customers SET last_order_at=datetime('now','-2 days') WHERE id=?").run(c);
+  assert.equal(findWinbackCandidates().some(x=>x.id===c),false);
+  db.prepare("UPDATE customers SET last_order_at=datetime('now','-40 days'),winback_sent_at=datetime('now') WHERE id=?").run(c);
+  assert.equal(findWinbackCandidates().some(x=>x.id===c),false);
+  db.prepare("UPDATE customers SET winback_sent_at=NULL WHERE id=?").run(c);
+  assert.equal(findWinbackCandidates().some(x=>x.id===c),true);
   savePreferences('customer',c,{offers:false});
   assert.equal(findWinbackCandidates().some(x=>x.id===c),false);
 });

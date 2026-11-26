@@ -30,6 +30,23 @@ const publicNewsCache=createPublicNewsCache(()=>db.prepare(
   "SELECT id, title, body, created_at FROM news WHERE active = 1 AND target_role = 'public' ORDER BY id DESC LIMIT 10"
 ).all());
 
+// Company announcements are shared by audience, not by user. Keep caches
+// independent so partner-only news cannot leak into the manager response.
+function createStaffNewsCaches(load,options={}) {
+  const roles=['partner','manager','admin'];
+  const caches=new Map(roles.map(role=>[role,createPublicNewsCache(()=>load(role),options)]));
+  return {
+    get(role) {
+      if(!caches.has(role))throw new Error('Unknown news audience');
+      return caches.get(role).get();
+    },
+    invalidate(){for(const cache of caches.values())cache.invalidate();},
+  };
+}
+const staffNewsCaches=createStaffNewsCaches(role=>role==='admin'
+  ? db.prepare("SELECT * FROM news WHERE active = 1 ORDER BY id DESC LIMIT 30").all()
+  : db.prepare("SELECT * FROM news WHERE active = 1 AND (target_role = 'all' OR target_role = ?) ORDER BY id DESC LIMIT 30").all(role));
+
 function registerNewsRoutes(router) {
   // GET /api/news/public — публично, без авторизации, для главной страницы сайта
   router.get('/api/news/public', (req, res, ctx) => {
@@ -40,11 +57,7 @@ function registerNewsRoutes(router) {
   router.get('/api/news', (req, res, ctx) => {
     const payload = requireAuth(['partner', 'manager', 'admin'])(req, res, ctx);
     if (!payload) return;
-    const role = payload.role === 'partner' ? 'partner' : payload.role === 'manager' ? 'manager' : null;
-    const rows = role
-      ? db.prepare("SELECT * FROM news WHERE active = 1 AND (target_role = 'all' OR target_role = ?) ORDER BY id DESC LIMIT 30").all(role)
-      : db.prepare("SELECT * FROM news WHERE active = 1 ORDER BY id DESC LIMIT 30").all();
-    sendJson(res, 200, { news: rows });
+    sendJson(res, 200, { news: staffNewsCaches.get(payload.role) });
   });
 
   // GET /api/news/admin — все новости (включая отключённые) для управления
@@ -65,6 +78,7 @@ function registerNewsRoutes(router) {
     const info = db.prepare('INSERT INTO news (title, body, target_role, active) VALUES (?, ?, ?, 1)')
       .run(title.trim(), body || null, role);
     publicNewsCache.invalidate();
+    staffNewsCaches.invalidate();
     sendJson(res, 201, { ok: true, id: info.lastInsertRowid });
   });
 
@@ -83,6 +97,7 @@ function registerNewsRoutes(router) {
       ctx.params.id
     );
     publicNewsCache.invalidate();
+    staffNewsCaches.invalidate();
     sendJson(res, 200, { ok: true });
   });
 
@@ -92,8 +107,9 @@ function registerNewsRoutes(router) {
     if (!payload) return;
     db.prepare('DELETE FROM news WHERE id = ?').run(ctx.params.id);
     publicNewsCache.invalidate();
+    staffNewsCaches.invalidate();
     sendJson(res, 200, { ok: true });
   });
 }
 
-module.exports = { registerNewsRoutes, createPublicNewsCache, PUBLIC_NEWS_TTL_MS };
+module.exports = { registerNewsRoutes, createPublicNewsCache, createStaffNewsCaches, PUBLIC_NEWS_TTL_MS };

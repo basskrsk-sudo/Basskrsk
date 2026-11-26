@@ -22,13 +22,16 @@ const WINBACK_BONES = 100;          // разовый подарок за воз
 
 function findWinbackCandidates() {
   return db.prepare(`
-    SELECT id, phone, name, pet_name, telegram_chat_id
-    FROM customers
-    WHERE telegram_chat_id IS NOT NULL
-      AND last_order_at IS NOT NULL
-      AND last_order_at <= datetime('now', '-' || ? || ' days')
-      AND winback_sent_at IS NULL
-  `).all(WINBACK_INACTIVE_DAYS).filter(customer => preference('customer', customer.id, 'offers'));
+    SELECT c.id, c.phone, c.name, c.pet_name, c.telegram_chat_id
+    FROM customers c
+    JOIN notification_preferences np
+      ON np.recipient_role='customer' AND np.recipient_id=c.id
+      AND np.notification_key='offers' AND np.enabled=1
+    WHERE c.telegram_chat_id IS NOT NULL
+      AND c.last_order_at IS NOT NULL
+      AND c.last_order_at <= datetime('now', '-' || ? || ' days')
+      AND c.winback_sent_at IS NULL
+  `).all(WINBACK_INACTIVE_DAYS);
 }
 
 function buildWinbackMessage(customer) {
@@ -54,6 +57,9 @@ async function runWinbackCheck() {
 
   for (const customer of candidates) {
     try {
+      // A customer may opt out while an administrator's manual run is in
+      // progress. Recheck immediately before each actual delivery.
+      if (!preference('customer', customer.id, 'offers')) continue;
       const result = await sendToChat(customer.telegram_chat_id, buildWinbackMessage(customer));
       if (result.ok) {
         // Косточки начисляем только при успешной отправке — если клиент не

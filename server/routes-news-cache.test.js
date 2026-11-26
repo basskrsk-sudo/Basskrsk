@@ -3,7 +3,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {createPublicNewsCache,PUBLIC_NEWS_TTL_MS}=require('./routes-news');
+const {createPublicNewsCache,createStaffNewsCaches,PUBLIC_NEWS_TTL_MS}=require('./routes-news');
 test('empty public news is cached without repeating a SQLite load',()=>{
   let now=0,queries=0;
   const cache=createPublicNewsCache(()=>{queries++;return [];},{clock:()=>now});
@@ -33,4 +33,28 @@ test('news admin actions invalidate and public route only reads cached values',(
   assert.match(source,/sendJson\(res, 200, \{ news: publicNewsCache\.get\(\) \}\)/);
   const invalidations=(source.match(/publicNewsCache\.invalidate\(\)/g)||[]).length;
   assert.equal(invalidations,3,'create, edit and delete invalidate the cache');
+});
+
+test('staff news caches isolate audiences, cache empty lists and invalidate on edits',()=>{
+  let now=0; const calls=[];
+  const rows={partner:[],manager:[{id:1,title:'Manager'}],admin:[{id:2,title:'Admin'}]};
+  const caches=createStaffNewsCaches(role=>{calls.push(role);return rows[role];},{clock:()=>now});
+  assert.deepEqual(caches.get('partner'),[]);
+  assert.deepEqual(caches.get('partner'),[]);
+  assert.deepEqual(caches.get('manager'),rows.manager);
+  assert.deepEqual(caches.get('admin'),rows.admin);
+  assert.deepEqual(calls,['partner','manager','admin']);
+  assert.throws(()=>caches.get('customer'),/Unknown news audience/);
+  rows.partner=[{id:3,title:'Partner'}];
+  assert.deepEqual(caches.get('partner'),[]);
+  caches.invalidate();
+  assert.deepEqual(caches.get('partner'),rows.partner);
+  assert.deepEqual(caches.get('manager'),rows.manager);
+  assert.equal(calls.length,5);
+  now=PUBLIC_NEWS_TTL_MS;
+  caches.get('partner');
+  assert.equal(calls.length,6);
+  const source=fs.readFileSync(path.join(__dirname,'routes-news.js'),'utf8');
+  assert.equal((source.match(/staffNewsCaches\.invalidate\(\)/g)||[]).length,3);
+  assert.match(source,/if \(!payload\) return;\s*sendJson\(res, 200, \{ news: staffNewsCaches\.get\(payload\.role\)/);
 });

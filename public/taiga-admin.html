@@ -5352,7 +5352,7 @@ async function deleteCustomer(customerId) {
     }
     await loadCustomers();
     renderCustomers();
-    await loadWinbackCandidates();
+    // Win-back candidates are refreshed only on opening their own section.
   } catch (error) {
     alert('Ошибка сети. Попробуйте ещё раз.');
   }
