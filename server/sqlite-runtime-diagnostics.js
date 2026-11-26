@@ -16,7 +16,7 @@ function callerLocation(){
   for(const frame of String(holder.stack||'').split('\n')){
     const i=frame.lastIndexOf(prefix);
     if(i<0)continue;
-    const m=/^([a-zA-Z0-9_-]+\.js):(\d+):\d+\)?$/.exec(frame.slice(i+prefix.length));
+    const m=/^([a-zA-Z0-9_.-]+\.js):(\d+):\d+\)?$/.exec(frame.slice(i+prefix.length));
     if(m&&m[1]!==path.basename(__filename))return m[1]+':'+m[2];
   }
   return null;
@@ -37,7 +37,7 @@ function createSqliteDiagnostics({now=()=>performance.now(),wallNow=Date.now,
         // Monitoring must never replace an original SQLite return or exception.
         try{
           const at=wallNow(),location=getSource();
-          const source=typeof location==='string'&&/^[a-zA-Z0-9_-]{1,100}\.js:\d{1,8}$/.test(location)?location:null;
+          const source=typeof location==='string'&&/^[a-zA-Z0-9_.-]{1,100}\.js:\d{1,8}$/.test(location)?location:null;
           recent.push({name,duration_ms:Math.round(elapsed),source,
             started_at:new Date(at-elapsed).toISOString(),at:new Date(at).toISOString()});
           if(recent.length>maxEvents)recent.shift();
