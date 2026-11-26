@@ -161,7 +161,7 @@ window.addEventListener('resize', function() {
 const archivedFinanceScripts={};
 function loadDeferredFinanceScript(section){
   const config=section==='report-center'
-    ?{src:'/admin-report-center.js?v=2',ready:function(){return typeof loadReportCenter==='function';}}
+    ?{src:'/admin-report-center.js?v=20261126-debts',ready:function(){return typeof loadReportCenter==='function';}}
     :section==='week-comparison'
       ?{src:'/week-over-week.js?v=2',ready:function(){return typeof renderWeekComparison==='function';}}
       :null;
@@ -196,7 +196,7 @@ function loadAdminFinanceModule(){
   if(!adminFinanceModulePromise){
     adminFinanceModulePromise=new Promise(function(resolve,reject){
       const script=document.createElement('script');
-      script.src='/admin-finance.js?v=20261121-calendar-years';
+      script.src='/admin-finance.js?v=20261126-debts';
       script.async=true;
       script.onload=function(){
         if(window.HvostAdminFinance)resolve(window.HvostAdminFinance);

@@ -72,6 +72,9 @@ test('consolidated Telegram report menu has seven groups while preserving every 
   const finance=approvals.groupMenu('70002','finance');
   assert.ok(finance.reply_markup.inline_keyboard.some(row=>row[0].callback_data==='report:new:business'));
   assert.ok(finance.reply_markup.inline_keyboard.some(row=>row[0].callback_data==='report:new:payouts'));
+  assert.ok(finance.reply_markup.inline_keyboard.some(row=>row[0].callback_data==='report:new:debts'));
+  assert.equal(approvals.canRequest('70002','debts'),true);
+  assert.equal(approvals.canRequest('73333','debts'),false);
   assert.ok(finance.reply_markup.inline_keyboard.some(row=>row[0].callback_data==='report:menu'));
   const denied=approvals.groupMenu('70001','finance');
   assert.match(denied.message,/Нет доступа/,'disabled admin cannot navigate secured reports');
@@ -88,7 +91,7 @@ test('admin report center exposes eight primary sections, keeping approved repor
   ]);
   assert.match(code,/function renderReportCenterGroups\(/);
   assert.match(code,/const members=visibleReportCatalog\(\)\.filter/);
-  for(const type of ['salesweek','nogroomer','business','payouts','gdweek','qrweek','businesspoints']){
+  for(const type of ['salesweek','nogroomer','business','payouts','debts','gdweek','qrweek','businesspoints']){
     assert.match(code,new RegExp("type:'"+type+"'"),'legacy report '+type+' missing');
   }
   const bot=fs.readFileSync(path.join(__dirname,'telegram-login-poller.js'),'utf8');

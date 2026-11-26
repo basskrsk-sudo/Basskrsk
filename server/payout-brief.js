@@ -317,8 +317,8 @@ function monthlyBreakdownLines(person){
     ...(person.adjustments_applied?['Корректировки: −'+money(person.adjustments_applied)]:[]),
     ...(person.deferred_commission?['Комиссия перенесена: −'+money(person.deferred_commission)]:[])];
 }
-function formatPayoutBriefMessage(report){
-  const lines=['💸 ХвостМаркет — справка для выплат',
+function formatPayoutBriefMessage(report,{includePersonalPdf=true}={}){
+  const lines=[includePersonalPdf?'💸 ХвостМаркет — справка для выплат':'💸 ХвостМаркет — вся задолженность',
     '🗓 '+formatMoment(report.generated_at)+' (Красноярск)',
     report.period?'Расчётный период: '+report.period.label:'Невыплаченные начисления за всё время',
     ...monthlyBreakdownLines(report),'',
@@ -343,7 +343,7 @@ function formatPayoutBriefMessage(report){
     }
   }
   lines.push('','📊 CSV: общая детализация по получателям, ролям и точкам.',
-    '📄 Персональные PDF: только после выбора получателя и отдельного подтверждения.');
+    ...(includePersonalPdf?['📄 Персональные PDF: только после выбора получателя и отдельного подтверждения.']:[]));
   if(report.held_orders)lines.push('⚠️ Исторических возвратов без сохранённой ставки: '+report.held_orders+'. Требуется проверка.');
   if(report.identities_to_verify.length)lines.push('⚠️ ФИО совпадают, но личность не подтверждена: '+
     report.identities_to_verify.slice(0,5).join(', ')+'. Не объединены.');

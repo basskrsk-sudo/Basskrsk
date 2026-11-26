@@ -237,6 +237,15 @@ test('closed monthly payout cycle is fixed on local 25th through 24th, independe
  assert.doesNotMatch(pdf,/MONTHLY-NEXT/);
  const csv=buildPayoutBriefCsv(monthly);
  assert.match(csv,/MONTHLY-LAST/);assert.doesNotMatch(csv,/MONTHLY-NEXT/);
+ const all=collectPayoutBrief(now,{monthly:false});
+ assert.equal(all.period,undefined);
+ const allPerson=all.people.find(p=>p.selection_key===person.selection_key);
+ assert.equal(allPerson.total,800);
+ assert.ok(allPerson.statements[0].sales.some(s=>s.order_id===next));
+ assert.match(buildPayoutBriefCsv(all),/MONTHLY-NEXT/);
+ const allMessage=formatPayoutBriefMessage(all,{includePersonalPdf:false});
+ assert.match(allMessage,/Невыплаченные начисления за всё время/);
+ assert.doesNotMatch(allMessage,/Персональные PDF/);
  const nextReport=collectPayoutBrief(new Date('2026-12-25T08:00:00Z'),{monthly:true,recipientKey:person.selection_key});
  assert.equal(nextReport.people[0].period_accrued,400);
 });

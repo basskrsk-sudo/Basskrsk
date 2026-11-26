@@ -84,6 +84,9 @@ test('UI only loads summary initially; expenses and payouts are genuinely lazy',
  assert.match(a.target.innerHTML,/Предварительная оценка/);
  await a.click({financeAction:'report-center'});
  assert.equal(a.destinations[0],'report-center');
+ assert.match(a.target.innerHTML,/Вся задолженность · за всё время/);
+ await a.click({financeAction:'debt-report'});
+ assert.equal(a.destinations[1],'report-center');
 });
 test('repeated mount binds at most one set of listeners and escapes XSS',async()=>{
  const a=start();
