@@ -198,7 +198,7 @@ function getAllPointLaunchSummaries(activeOnly = true) {
         WHERE s.point_id = p.id AND s.qty > 0) AS stock_qty,
       (SELECT COUNT(*) FROM point_launch_checklist c
         WHERE c.point_id = p.id AND c.completed = 1 AND c.item_key IN (${manualPlaceholders})) AS manual_completed
-    FROM points p ${activeOnly ? 'WHERE p.active = 1' : ''} ORDER BY p.name
+    FROM points p WHERE COALESCE(p.is_hub, 0) = 0 ${activeOnly ? 'AND p.active = 1' : ''} ORDER BY p.name
   `).all(...MANUAL_KEYS);
 
   return rows.map((row) => {

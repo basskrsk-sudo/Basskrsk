@@ -57,7 +57,7 @@ function listCurrentManagerPoints(managerId, database = db) {
              WHERE o.point_id = p.id AND o.status = 'paid'
                AND COALESCE(o.refund_status, '') <> 'refunded'), 0) AS live_revenue
     FROM points p
-    WHERE p.manager_id = ? AND p.active = 1
+    WHERE p.manager_id = ? AND p.active = 1 AND COALESCE(p.is_hub, 0) = 0
     ORDER BY p.name COLLATE NOCASE, p.id
   `).all(managerId).map(row => ({ ...row, revenue: row.live_revenue }));
 }
@@ -305,7 +305,7 @@ function registerManagerRoutes(router) {
       let candidate = base, i = 1;
       while (db.prepare('SELECT id FROM points WHERE id = ?').get(candidate)) candidate = base + '-' + (++i);
       pointId = candidate;
-      db.prepare('INSERT INTO points (id, name, addr, icon, manager_id, is_hub) VALUES (?, ?, ?, ?, ?, 0)')
+      db.prepare('INSERT INTO points (id, name, addr, icon, manager_id) VALUES (?, ?, ?, ?, ?)')
         .run(pointId, point_name, address, icon || '📍', ctx.params.id);
       const products = db.prepare('SELECT id FROM products').all();
       for (const p of products) {

@@ -185,7 +185,7 @@ function registerProductRoutes(router) {
   router.get('/api/points', (req, res, ctx) => {
     const includeInactive = ctx.query.all === '1';
     const cityFilter = ctx.query.city || null;
-    let sql = includeInactive ? 'SELECT * FROM points' : 'SELECT * FROM points WHERE active = 1';
+    let sql = includeInactive ? 'SELECT * FROM points' : 'SELECT * FROM points WHERE active = 1 AND COALESCE(is_hub, 0) = 0';
     const params = [];
     if (cityFilter) {
       sql += (includeInactive ? ' WHERE' : ' AND') + ' city_id = ?';
@@ -193,6 +193,13 @@ function registerProductRoutes(router) {
     }
     const rows = db.prepare(sql).all(...params);
     sendJson(res, 200, { points: rows });
+  });
+
+  // Read-only legacy cleanup audit. Never deletes records or changes payouts.
+  router.get('/api/points/legacy-demo-audit', (req, res, ctx) => {
+    if (!requireSuperAdmin(req, res, ctx)) return;
+    const points = require('./legacy-demo-points').auditLegacyDemoPoints(db);
+    sendJson(res, 200, { points, total: points.length });
   });
 
   // GET /api/points/available-for-registration — публичный список минимаркетов,
@@ -206,7 +213,7 @@ function registerProductRoutes(router) {
   router.get('/api/points/available-for-registration', (req, res, ctx) => {
     const cityFilter = ctx.query.city || null;
     const managerFilter = ctx.query.manager_id || null;
-    let sql = `SELECT p.* FROM points p WHERE p.active = 1`;
+    let sql = `SELECT p.* FROM points p WHERE p.active = 1 AND COALESCE(p.is_hub, 0) = 0`;
     const params = [];
     if (cityFilter) { sql += ' AND p.city_id = ?'; params.push(cityFilter); }
     if (managerFilter) { sql += ' AND p.manager_id = ?'; params.push(managerFilter); }
@@ -225,7 +232,7 @@ function registerProductRoutes(router) {
     let sql = `
       SELECT p.* FROM points p
       LEFT JOIN salon_owners so ON so.point_id = p.id
-      WHERE p.active = 1 AND so.id IS NULL
+      WHERE p.active = 1 AND COALESCE(p.is_hub, 0) = 0 AND so.id IS NULL
     `;
     const params = [];
     if (cityFilter) { sql += ' AND p.city_id = ?'; params.push(cityFilter); }
@@ -381,7 +388,7 @@ function registerProductRoutes(router) {
           lockedLead.referrer.role!==referringLead.referrer.role ||
           lockedLead.referrer.recipient_id!==referringLead.referrer.recipient_id))
         throw Object.assign(new Error('Реферальная заявка изменилась'),{statusCode:409});
-      db.prepare('INSERT INTO points (id, name, addr, icon, lat, lng, city_id, manager_id, is_hub, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)')
+      db.prepare('INSERT INTO points (id, name, addr, icon, lat, lng, city_id, manager_id, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)')
         .run(candidate, name, addr, icon || '📍', pointLat, pointLng, city_id, manager_id || null);
       if(launchEquipment)savePointEquipmentInTransaction(db,candidate,launchEquipment,payload);
   
@@ -556,8 +563,11 @@ function registerProductRoutes(router) {
     const payload = requireAuth(['admin'])(req, res, ctx);
     if (!payload) return;
     const { active } = ctx.body || {};
-    const existing = db.prepare('SELECT id FROM points WHERE id = ?').get(ctx.params.id);
+    const existing = db.prepare('SELECT id, is_hub FROM points WHERE id = ?').get(ctx.params.id);
     if (!existing) return sendJson(res, 404, { error: 'Точка не найдена' });
+    if (active && Number(existing.is_hub) !== 0) {
+      return sendJson(res, 409, { error: 'Старая демонстрационная запись не может быть активирована. Создайте реальную точку отдельно.' });
+    }
     db.prepare('UPDATE points SET active = ? WHERE id = ?').run(active ? 1 : 0, ctx.params.id);
     sendJson(res, 200, { ok: true });
   });
@@ -856,7 +866,7 @@ function registerProductRoutes(router) {
   router.get('/api/salon/:pointId', (req, res, ctx) => {
     const p = db.prepare(`
       SELECT id, name, addr, salon_tagline, salon_description, salon_photo_url, salon_photo_urls, salon_instagram, salon_vk, salon_website
-      FROM points WHERE id = ? AND active = 1 AND salon_page_published = 1
+      FROM points WHERE id = ? AND active = 1 AND COALESCE(is_hub, 0) = 0 AND salon_page_published = 1
     `).get(ctx.params.pointId);
     if (!p) return sendJson(res, 404, { error: 'Страница салона не найдена' });
     p.salon_photo_urls = normalizeSalonPhotoUrls(p.salon_photo_urls, p.salon_photo_url);
@@ -868,7 +878,7 @@ function registerProductRoutes(router) {
   router.get('/api/salons', (req, res) => {
     const rows = db.prepare(`
       SELECT id, name, addr, salon_tagline, salon_photo_url, salon_photo_urls
-      FROM points WHERE active = 1 AND salon_page_published = 1
+      FROM points WHERE active = 1 AND COALESCE(is_hub, 0) = 0 AND salon_page_published = 1
       ORDER BY name
     `).all();
     const salons = rows.map((salon) => {

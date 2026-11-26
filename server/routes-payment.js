@@ -153,12 +153,8 @@ async function checkPartnerTierForOrder(pointId, partnerId) {
   if (solePartner.length === 1) await checkAndUpgradePartnerTier(solePartner[0].id);
 }
 
-// Раньше здесь был захардкожен демонстрационный список точек — задумывался
-// как защита от мусорных/пустых point_id, но по факту блокировал списание
-// остатков для ЛЮБОЙ точки за пределами исходных трёх (включая все новые
-// точки, зарегистрированные позже, и точки в других городах). Проверяем
-// реальное существование точки в базе — так защита работает как задумано,
-// не блокируя настоящие точки.
+// Check the actual point in the database; historical pending orders can
+// still finish after a point is archived.
 function tryDecrementStock(pointId, variantId, qty, legacyName, legacyWeight) {
   if (!pointId) return;
   const pointExists = db.prepare('SELECT 1 FROM points WHERE id = ?').get(pointId);
@@ -595,7 +591,7 @@ function registerPaymentRoutes(router) {
     if (authoritativeFulfillment === 'home_delivery') {
       authoritativePickupPoint = 'Доставка на дом — ' + String(deliveryAddress).trim();
     } else if (pointId) {
-      const point = db.prepare('SELECT id, name, addr FROM points WHERE id = ? AND active = 1').get(pointId);
+      const point = db.prepare('SELECT id, name, addr FROM points WHERE id = ? AND active = 1 AND COALESCE(is_hub, 0) = 0').get(pointId);
       if (!point) return sendJson(res, 400, { error: 'Выбранная точка не найдена или временно не работает', code: 'POINT_UNAVAILABLE' });
       authoritativePickupPoint = point.name + (point.addr ? ' — ' + point.addr : '');
     }

@@ -166,7 +166,7 @@ function registerPartnerRoutes(router) {
       String(point.manager_id) !== String(managerPayload.id) ||
       Number(point.is_hub) === 1
     )) return sendJson(res, 403, { error: 'Можно регистрировать грумеров только на своих действующих точках' });
-    if (adminOnly && Number(point.is_hub) === 1) {
+    if (Number(point.is_hub) !== 0) {
       return sendJson(res, 403, { error: 'Нельзя регистрировать грумера на служебную точку' });
     }
     if ((managerOnly || adminOnly) && manager_code) return sendJson(res, 400, {
@@ -223,9 +223,8 @@ function registerPartnerRoutes(router) {
       else referrerOwner = {id:inviting.recipient_id};
     }
 
-    // Менеджер — берётся у самой точки (назначается при её создании), если
-    // явно не передан код другого менеджера. Хаб-точки могут не иметь
-    // менеджера вовсе (is_hub) — тогда manager_code можно указать отдельно.
+    // Менеджер — берётся у самой точки (назначается при её создании),
+    // если явно не передан код другого менеджера.
     let managerRow = null;
     if (manager_code) {
       managerRow = db.prepare('SELECT id, city_id, mgr_code FROM managers WHERE mgr_code = ? AND active = 1').get(manager_code);
@@ -517,8 +516,11 @@ function registerPartnerRoutes(router) {
       }
       targetPointId = String(point_id || '').trim() || null;
       if (targetPointId) {
-        pointRow = db.prepare('SELECT id, name, addr FROM points WHERE id = ?').get(targetPointId);
+        pointRow = db.prepare('SELECT id, name, addr, is_hub FROM points WHERE id = ?').get(targetPointId);
         if (!pointRow) return sendJson(res, 400, { error: 'Точка не найдена' });
+        if (Number(pointRow.is_hub) !== 0 && String(targetPointId) !== String(existing.point_id || '')) {
+          return sendJson(res, 400, { error: 'Нельзя назначить грумера на старую демонстрационную запись' });
+        }
       }
     }
     const pointChanged = String(targetPointId || '') !== String(existing.point_id || '');
