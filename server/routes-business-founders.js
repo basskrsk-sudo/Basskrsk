@@ -7,7 +7,6 @@ const { sendJson } = require('./http-utils');
 const { requireAuth, requireSuperAdmin } = require('./routes-auth');
 const { safeFounder, activeFounder, getFounder, configureFounder, FOUNDER_SLOTS } = require('./business-founders');
 const { listExpenseDocuments } = require('./expense-documents');
-const { buildGrowthPlanDashboard } = require('./growth-plan');
 const { getCachedOperationsCenter } = require('./routes-operations');
 const { createSqliteAnalyticsCache } = require('./analytics-cache');
 // Different founders never share personal capital or expense statements.
@@ -17,7 +16,8 @@ const founderDashboardCache = createSqliteAnalyticsCache(db, { ttlMs: 8000, maxE
 // short-lived read-only snapshot across accounts. Personal finance, documents
 // and tasks must NEVER enter this shared cache.
 const founderNetworkCache = createSqliteAnalyticsCache(db, { ttlMs: 8000, maxEntries: 8 });
-const { getCachedWeeklyBsc } = require('./weekly-report');
+// Strategy calculations are loaded and cached only on an explicit request.
+let founderStrategyCache = null;
 const { getUnitEconomicsSettings,calculateUnitEconomics } = require('./unit-economics');
 const { buildPointEquipmentEconomics } = require('./point-equipment');
 const { loadPointPayoutProfit } = require('./point-period-finance');
@@ -242,7 +242,7 @@ function investmentSummary(founder) {
   };
 }
 function strategicReadiness(now) {
-  const growth = buildGrowthPlanDashboard(now);
+  const growth = require('./growth-plan').buildGrowthPlanDashboard(now);
   const g = growth.progress || {};
   const gates = growth.gates || {};
   return {
@@ -268,9 +268,9 @@ function strategicReadiness(now) {
     note:'Стратегический прогноз строится по текущей утверждённой модели. Нулевые центральные расходы и другие допущения не должны приниматься за фактические.',
   };
 }
-function founderScorecard() {
+function founderScorecard(now) {
   try {
-    const report=getCachedWeeklyBsc();
+    const report=require('./weekly-report').getCachedWeeklyBsc(now);
     const bsc=report.bsc || {};
     return {
       period:report.period ? report.period.start_local + ' — ' + report.period.end_local : null,
@@ -285,6 +285,14 @@ function founderScorecard() {
     console.warn('Founder BSC summary unavailable:',err.message);
     return null;
   }
+}
+function getCachedFounderStrategy(now=new Date()) {
+  const date=nowDate(now);
+  if(!founderStrategyCache)founderStrategyCache=createSqliteAnalyticsCache(db,{ttlMs:30000,maxEntries:2});
+  return founderStrategyCache.get(ymdUtc(date),()=>trackSync('founder_strategy_build',()=>({
+    strategy:strategicReadiness(date),
+    bsc:founderScorecard(date),
+  })));
 }
 function collectSharedFounderNetwork(bounds,date){
   const pointSettings=getUnitEconomicsSettings();
@@ -321,8 +329,6 @@ function collectSharedFounderNetwork(bounds,date){
       silent_points_count:silentPointRows.length,
       silent_points:silentPointRows.slice(0,7),
     },
-    strategy:strategicReadiness(date),
-    bsc:founderScorecard(),
     operations:{
       summary:operations.summary,
       issues:(operations.issues||[]).slice(0,8).map(i=>({
@@ -350,8 +356,10 @@ function collectFounderDashboard(founder,period='30d',now=new Date()){
     finance:shared.finance,
     point_economics:shared.point_economics,
     network:shared.network,
-    strategy:shared.strategy,
-    bsc:shared.bsc,
+    // Do not calculate strategy or BSC in the daily operating dashboard.
+    // Null explicitly means not loaded, never zero or missing business data.
+    strategy:null,
+    bsc:null,
     // Identity-scoped records and task assignment are always read separately.
     capital:investmentSummary(founder),
     operations:shared.operations,
@@ -438,6 +446,17 @@ function registerBusinessFounderRoutes(router) {
         'Не включены общесетевые постоянные расходы и разовые вложения.',
     });
   });
+  router.get('/api/business-founder/strategy', (req,res,ctx)=>{
+    const payload=requireAuth(['founder'])(req,res,ctx);
+    if(!payload)return;
+    if(!activeFounder(payload.id))return sendJson(res,401,{error:'Доступ собственника отключён'});
+    try {
+      sendJson(res,200,getCachedFounderStrategy());
+    } catch(error) {
+      console.error('Business founder strategy:',error);
+      sendJson(res,500,{error:'Не удалось рассчитать стратегию. Попробуйте повторить запрос.'});
+    }
+  });
   router.get('/api/business-founder/dashboard', (req,res,ctx)=>{
     const payload=requireAuth(['founder'])(req,res,ctx);
     if(!payload)return;
@@ -455,7 +474,7 @@ function registerBusinessFounderRoutes(router) {
 }
 
 module.exports={
-  collectFounderDashboard,getCachedFounderDashboard,summarizePreviousPeriod,
+  collectFounderDashboard,getCachedFounderDashboard,getCachedFounderStrategy,summarizePreviousPeriod,
   registerBusinessFounderRoutes,periodBounds,
   summarizeOrders, estimatedEconomics, founderTasks,
 };

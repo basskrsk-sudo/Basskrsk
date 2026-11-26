@@ -12,7 +12,7 @@ const {verifyToken,verifyPassword,hashPassword,signToken}=require('./auth');
 const {
  FOUNDER_SLOTS,activeFounder,getFounder,configureFounder,
 }=require('./business-founders');
-const {registerBusinessFounderRoutes,collectFounderDashboard,getCachedFounderDashboard,
+const {registerBusinessFounderRoutes,collectFounderDashboard,getCachedFounderDashboard,getCachedFounderStrategy,
   summarizeOrders,summarizePreviousPeriod,periodBounds,estimatedEconomics}=require('./routes-business-founders');
 const {getCachedOperationsCenter}=require('./routes-operations');
 const {getUnitEconomicsSettings,calculateUnitEconomics}=require('./unit-economics');
@@ -104,6 +104,8 @@ test('founder cannot access admin data even if founder token is valid',()=>{
  assert.equal(call('GET','/api/business-founders',{token:founderToken}).status,401);
  assert.equal(call('GET','/api/business-founder/dashboard',{token:'invalid',query:{period:'30d'}}).status,401);
  assert.equal(call('GET','/api/business-founder/dashboard',{token:founderToken,query:{period:'wrong'}}).status,400);
+ assert.equal(call('GET','/api/business-founder/strategy',{token:'invalid'}).status,401);
+ assert.equal(call('GET','/api/business-founder/strategy',{token:signToken({role:'admin',id:admin('super',1),adminRole:'super'})}).status,401);
 });
 test('founder revenue, capital and expenses derive from actual records, not fabricated values',()=>{
  db.prepare(
@@ -138,7 +140,12 @@ test('founder revenue, capital and expenses derive from actual records, not fabr
  assert.equal(dashboard.network.active_points,2);
  assert.equal(dashboard.network.top_points[0].name,'БаркЛай');
  assert.equal(dashboard.network.silent_points[0].name,'Точка без продаж');
- assert.ok(dashboard.strategy.goal_2031>=1000);
+ assert.equal(dashboard.strategy,null);
+ assert.equal(dashboard.bsc,null);
+ const strategy=call('GET','/api/business-founder/strategy',{token:signToken({role:'founder',id:1})});
+ assert.equal(strategy.status,200);
+ assert.ok(strategy.body.strategy.goal_2031>=1000);
+ assert.equal(JSON.stringify(strategy.body).includes('79135554433'),false);
  assert.equal(JSON.stringify(dashboard).includes('79135554433'),false,'no customer phone in founder dashboard');
  assert.equal(JSON.stringify(dashboard).includes('password_hash'),false);
 });
@@ -167,6 +174,29 @@ test('read-only founder and admin analytics are revision-aware, identity-scoped,
  assert.notStrictEqual(getCachedOperationsCenter(),operations);
  assert.ok(changed.capital.personal_expenses_recorded>=snapshot.capital.personal_expenses_recorded+17);
 });
+test('default founder overview never calculates growth or BSC; explicit strategy shares a revision-aware result',()=>{
+ const growth=require('./growth-plan'),weekly=require('./weekly-report');
+ const originalGrowth=growth.buildGrowthPlanDashboard,originalBsc=weekly.getCachedWeeklyBsc;
+ let growthCalls=0,bscCalls=0;
+ growth.buildGrowthPlanDashboard=(...args)=>{growthCalls++;return originalGrowth(...args);};
+ weekly.getCachedWeeklyBsc=(...args)=>{bscCalls++;return originalBsc(...args);};
+ const now=new Date('2026-10-29T12:00:00Z');
+ try{
+   const a=collectFounderDashboard(getFounder(1),'30d',now);
+   const b=collectFounderDashboard(getFounder(2),'month',now);
+   assert.equal(a.strategy,null);assert.equal(b.bsc,null);
+   assert.equal(growthCalls,0);assert.equal(bscCalls,0);
+   const first=getCachedFounderStrategy(now);
+   assert.ok(first.strategy.goal_2031>=1000);
+   assert.ok(first.bsc);
+   assert.strictEqual(getCachedFounderStrategy(now),first);
+   assert.equal(growthCalls,1);assert.equal(bscCalls,1);
+ }finally{
+   growth.buildGrowthPlanDashboard=originalGrowth;
+   weekly.getCachedWeeklyBsc=originalBsc;
+ }
+});
+
 test('network metrics are shared across founders but capital and tasks stay private',()=>{
  const first=getFounder(1),second=getFounder(2);
  const fixedNow=new Date('2026-11-01T12:00:00Z');
@@ -175,7 +205,10 @@ test('network metrics are shared across founders but capital and tasks stay priv
  assert.notEqual(a.founder.id,b.founder.id);
  assert.strictEqual(a.sales,b.sales,'common network revenue is computed only once');
  assert.strictEqual(a.point_economics,b.point_economics);
- assert.strictEqual(a.strategy,b.strategy);
+ assert.equal(a.strategy,null);
+ assert.equal(b.strategy,null);
+ assert.equal(a.bsc,null);
+ assert.equal(b.bsc,null);
  assert.strictEqual(a.operations,b.operations);
  assert.notStrictEqual(a.capital,b.capital,'personal capital must not be cached across accounts');
  assert.notStrictEqual(a.tasks,b.tasks,'task assignments remain account-specific');
@@ -317,6 +350,7 @@ test('deactivating owner denies previously signed sessions and prevents Telegram
  });
  assert.equal(result.status,200);
  assert.equal(call('GET','/api/business-founder/me',{token:ownerSession}).status,401);
+ assert.equal(call('GET','/api/business-founder/strategy',{token:ownerSession}).status,401);
  assert.equal(issueTelegramAccountSession(811122330,'founder'),null);
 });
 test('changing registered phone forces Telegram re-link',()=>{
