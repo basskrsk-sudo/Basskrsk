@@ -94,6 +94,7 @@ RUN node ./scripts/restore-doc-aliases.js
 ARG GIT_COMMIT=unknown
 ARG AMVERA_GIT_COMMIT=unknown
 RUN set -eu; \
+    echo 'HvostMarket rollout: 20261127-mobile-balance-r2'; \
     COMMIT="${GIT_COMMIT}"; \
     if [ "$COMMIT" = "unknown" ]; then COMMIT="${AMVERA_GIT_COMMIT}"; fi; \
     if [ "$COMMIT" = "unknown" ]; then \
