@@ -3,8 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { PAYOUT_METHODS, parsePayoutMethod, payoutMethodLabel } = require('./payout-methods');
 
-test('exactly four payout channels are supported', () => {
-  assert.deepEqual(Object.keys(PAYOUT_METHODS), ['sbp', 'card', 'bank_account', 'cash']);
+test('exactly five payout channels are supported', () => {
+  assert.deepEqual(Object.keys(PAYOUT_METHODS), ['sbp', 'card', 'bank_account', 'cash', 'mobile_balance']);
   for (const method of Object.keys(PAYOUT_METHODS)) {
     assert.equal(parsePayoutMethod(method, { required: true }), method);
     assert.ok(payoutMethodLabel(method).length > 4);
@@ -28,6 +28,8 @@ test('actual payout method is explicit, nullable and validates enum',()=>{
  const {parseActualPayoutMethod}=require('./payout-methods');
  assert.equal(parseActualPayoutMethod(undefined),null);
  assert.equal(parseActualPayoutMethod('cash'),'cash');
+ assert.equal(parseActualPayoutMethod('mobile_balance'),'mobile_balance');
+ assert.equal(payoutMethodLabel('mobile_balance'),'Пополнение баланса мобильного телефона');
  assert.throws(()=>parseActualPayoutMethod('bogus'),{statusCode:400});
  assert.equal(payoutMethodLabel('constructor'),'Не указан');
 });

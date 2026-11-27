@@ -94,7 +94,7 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
-  var PAYOUT_OPTIONS = [ {id:'sbp',label:'СБП на номер телефона'}, {id:'card',label:'Перевод на банковскую карту'}, {id:'bank_account',label:'Безналичный расчёт по договору (на счёт)'}, {id:'cash',label:'Наличными по согласованию'} ];
+  var PAYOUT_OPTIONS = [ {id:'sbp',label:'СБП на номер телефона'}, {id:'card',label:'Перевод на банковскую карту'}, {id:'bank_account',label:'Безналичный расчёт по договору (на счёт)'}, {id:'cash',label:'Наличными по согласованию'}, {id:'mobile_balance',label:'Пополнение баланса мобильного телефона'} ];
   function payoutOptionsMarkup(selected) {
     return '<option value="">— Выберите способ —</option>' + PAYOUT_OPTIONS.map(function(item) {
       return '<option value="' + esc(item.id) + '"' + (selected === item.id ? ' selected' : '') + '>' + esc(item.label) + '</option>';
