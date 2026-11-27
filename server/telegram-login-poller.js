@@ -907,7 +907,7 @@ async function processUpdate(update) {
       return;
     }
 
-    if (/^payout:(?:paid|confirm|cancel|confirm-(?:sbp|card|bank_account|cash|unknown)):[0-9a-f]{32}$/.test(callback.data||'')) {
+    if (/^payout:(?:paid|confirm|cancel|confirm-(?:sbp|card|bank_account|cash|mobile_balance|unknown)):[0-9a-f]{32}$/.test(callback.data||'')) {
       const chat=callback.message?.chat;
       const allowed=chat?.type==='private'&&String(chat.id)===String(callback.from?.id);
       let result;

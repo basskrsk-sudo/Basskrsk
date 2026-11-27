@@ -113,7 +113,7 @@ function applyStatement(snapshot,admin,override){
   return results;
 }
 function handlePayoutConfirmation(chatId,data){
-  const match=/^payout:(paid|confirm|cancel|confirm-(?:sbp|card|bank_account|cash|unknown)):([0-9a-f]{32})$/.exec(String(data||''));
+  const match=/^payout:(paid|confirm|cancel|confirm-(?:sbp|card|bank_account|cash|mobile_balance|unknown)):([0-9a-f]{32})$/.exec(String(data||''));
   if(!match)return {ok:false,message:'Некорректная кнопка выплаты.'};
   const [,action,id]=match;
   const found=ownedRow(chatId,id);

@@ -66,6 +66,11 @@ test('registration saves payout methods, role-scoped profiles edit them safely',
   assert.equal(db.prepare('SELECT payout_method FROM salon_owners WHERE id=?').get(owner.id).payout_method,'cash');
   assert.throws(()=>normalizeProfile(partner,{payout_method:'unknown'}),ProfileCorrectionError);
   assert.equal(normalizeProfile(partner,{payout_method:'sbp'}).values.payout_method,'sbp');
+  assert.equal((await invoke('PUT','/api/partners/me/payout-method',partnerActor,{payout_method:'mobile_balance'})).status,200);
+  assert.equal((await invoke('PUT','/api/owner/me/payout-method',ownerActor,{payout_method:'mobile_balance'})).status,200);
+  assert.equal((await invoke('GET','/api/partners/me',partnerActor)).body.partner.payout_method,'mobile_balance');
+  assert.equal((await invoke('GET','/api/owner/me',ownerActor)).body.owner.payout_method,'mobile_balance');
+  assert.equal(normalizeProfile(partner,{payout_method:'mobile_balance'}).values.payout_method,'mobile_balance');
   assert.equal(db.prepare('SELECT commission_rate FROM partners WHERE id=?').get(partner.id).commission_rate,partner.commission_rate);
 });
 

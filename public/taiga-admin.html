@@ -2198,7 +2198,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <option value="sbp">СБП на номер телефона</option>
         <option value="card">Перевод на банковскую карту</option>
         <option value="bank_account">Безналичный расчёт по договору (на счёт)</option>
-        <option value="cash">Наличными по согласованию</option>
+        <option value="cash">Наличными по согласованию</option><option value="mobile_balance">Пополнение баланса мобильного телефона</option>
           </select>
           <small style="font-size:.73rem;color:var(--muted);">Выбор получателя — реквизиты согласуются отдельно.</small>
         </div>
@@ -2480,7 +2480,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
         <h3 style="margin-bottom:.3rem;">Подтверждение выплаты</h3>
         <p id="payout-approval-meta" style="font-size:.84rem;color:var(--muted);margin-bottom:.8rem;line-height:1.5;"></p>
         <div id="payout-approval-error" style="display:none;background:#FDECEA;color:#9B2335;font-size:.8rem;padding:.6rem .75rem;border-radius:6px;margin-bottom:.8rem;line-height:1.45;"></div>
-        <div class="admin-field"><label for="payout-actual-method">Фактический способ выплаты</label><select id="payout-actual-method" class="pm-select"><option value="">Не указан</option><option value="sbp">СБП на телефон</option><option value="card">Перевод на карту</option><option value="bank_account">Безналичный расчёт по договору (на счёт)</option><option value="cash">Наличными</option></select><small>Укажите способ уже выполненного перевода. Настройки партнёра не изменятся.</small></div>
+        <div class="admin-field"><label for="payout-actual-method">Фактический способ выплаты</label><select id="payout-actual-method" class="pm-select"><option value="">Не указан</option><option value="sbp">СБП на телефон</option><option value="card">Перевод на карту</option><option value="bank_account">Безналичный расчёт по договору (на счёт)</option><option value="cash">Наличными</option><option value="mobile_balance">Пополнение баланса мобильного телефона</option></select><small>Укажите способ уже выполненного перевода. Настройки партнёра не изменятся.</small></div>
         <div id="payout-approval-channels" style="display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.8rem;"></div>
         <div id="payout-approval-warning" style="display:none;background:#FFF5DA;color:#79520A;font-size:.8rem;padding:.6rem .75rem;border-radius:6px;margin-bottom:.8rem;line-height:1.45;"></div>
         <label id="payout-notification-choice" style="display:none;align-items:flex-start;gap:.65rem;padding:.75rem;background:#F7F5EF;border:1px solid var(--border);border-radius:8px;margin-bottom:.8rem;cursor:pointer;">
@@ -2762,7 +2762,7 @@ body { font-family: 'Inter', sans-serif; background: #F0EDE6; color: var(--text)
             <div class="admin-field"><label for="referral-new-phone">Телефон *</label><input id="referral-new-phone" type="tel" required autocomplete="tel" placeholder="+7 999 123-45-67"></div>
             <p style="font-size:.8rem;color:var(--muted);line-height:1.5;">Логин и пароль не нужны. Рекомендатель входит через Telegram-мини-приложение с подтверждением своего номера или через MAX на сайте.</p>
             <div class="admin-field"><label for="referral-new-payout">Получение бонуса</label><select id="referral-new-payout" class="pm-select">
-              <option value="">Не указано</option><option value="sbp">СБП на телефон</option><option value="card">Перевод на карту</option><option value="bank_account">Безналичный расчёт по договору (на счёт)</option><option value="cash">Наличными</option>
+              <option value="">Не указано</option><option value="sbp">СБП на телефон</option><option value="card">Перевод на карту</option><option value="bank_account">Безналичный расчёт по договору (на счёт)</option><option value="cash">Наличными</option><option value="mobile_balance">Пополнение баланса мобильного телефона</option>
             </select></div>
             <label style="font-size:.8rem;"><input id="referral-new-consent" type="checkbox" required> Согласие партнёра на обработку персональных данных получено</label>
             <button id="referral-new-submit" type="submit" class="row-btn" style="background:var(--forest);color:#fff;width:fit-content;">Создать рекомендателя</button>
@@ -6615,7 +6615,7 @@ function updatePayoutNotificationChoice() {
 }
 
 function actualPayoutMethodLabel(method) {
-  const labels={sbp:'СБП на номер телефона',card:'Перевод на банковскую карту',bank_account:'Безналичный расчёт по договору (на счёт)',cash:'Наличными по согласованию'};
+  const labels={sbp:'СБП на номер телефона',card:'Перевод на банковскую карту',bank_account:'Безналичный расчёт по договору (на счёт)',cash:'Наличными по согласованию',mobile_balance:'Пополнение баланса мобильного телефона'};
   return Object.hasOwn(labels,method)?labels[method]:'Не указан';
 }
 function renderPayoutApprovalPreview(preview, changed) {
@@ -8229,7 +8229,7 @@ if ('serviceWorker' in navigator) {
 }
 
 </script>
-<script src="/payout-reports.js?v=cancel-20261126"></script>
+<script src="/payout-reports.js?v=mobile-balance-20261127"></script>
 <script src="/miniapp-return.js"></script>
 <script src="/notification-settings.js?v=20261119-system"></script>
 </body>

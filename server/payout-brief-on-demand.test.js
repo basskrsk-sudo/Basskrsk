@@ -225,11 +225,16 @@ test('PDF document has a real Telegram keyboard and payment callback is private,
   assert.deepEqual(counts(),before);
   await callback(button.callback_data);
   const prompt=calls.filter(c=>c.method==='sendMessage').at(-1);
-  const confirm=prompt.body.reply_markup.inline_keyboard[0][0].callback_data;
-  assert.match(confirm,/^payout:confirm:/);
+  assert.match(prompt.body.reply_markup.inline_keyboard[0][0].callback_data,/^payout:confirm:/);
+  const mobile=prompt.body.reply_markup.inline_keyboard.flat().find(b=>b.callback_data.startsWith('payout:confirm-mobile_balance:'));
+  assert.ok(mobile,'mobile balance must be available in the actual Telegram keyboard');
+  assert.match(mobile.text,/Пополнение баланса мобильного телефона/);
+  assert.ok(Buffer.byteLength(mobile.callback_data)<=64);
+  const confirm=mobile.callback_data;
   assert.deepEqual(counts(),before);
   await callback(confirm);
   assert.match(calls.filter(c=>c.method==='sendMessage').at(-1).body.text,/Выплачено и зафиксировано/);
+  for(const table of ['partner_payouts','owner_payouts','manager_commission_payouts'])assert.equal(db.prepare('SELECT payout_method FROM '+table+' ORDER BY id DESC LIMIT 1').get().payout_method,'mobile_balance');
   assert.ok(calls.some(c=>c.method==='editMessageReplyMarkup'));
   const completed=counts();
   await callback(confirm);
