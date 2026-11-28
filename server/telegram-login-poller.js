@@ -1204,6 +1204,17 @@ async function processUpdate(update) {
     if (/^club:(send|edit|reject|reroll):\d+$/.test(callback.data||'')) {
       const club=require('./routes-partner-club');
       const result=await club.handleClubCallback(callback.message?.chat?.id,callback.data);
+      async function retireClubPreview(){
+        const msg=callback.message;
+        if(!msg?.chat?.id||!msg.message_id)return;
+        const target={chat_id:msg.chat.id,message_id:msg.message_id};
+        try{await callBotApi('deleteMessage',target);}
+        catch(error){
+          try{await callBotApi('editMessageReplyMarkup',{...target,reply_markup:{inline_keyboard:[]}});}
+          catch(fallback){console.warn('[partner-club] Не удалось убрать кнопки:',fallback.message);}
+        }
+      }
+      if(result?.finished)await retireClubPreview();
       if(result?.rerolled){
         // Replace the original draft in-place, preserving its approval buttons.
         // The selected ending is already persisted before this Telegram call.
@@ -1233,6 +1244,7 @@ async function processUpdate(update) {
           // Some older drafts can no longer be edited by Telegram.
           // Send a fresh, correctly formatted copy rather than losing the preview.
           await replyToChat(callback.message.chat.id,result.preview_html,result.reply_markup,'HTML');
+          await retireClubPreview();
         }
         return;
       }
